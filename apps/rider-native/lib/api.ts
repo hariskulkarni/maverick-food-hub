@@ -66,10 +66,15 @@ async function request<T = unknown>(path: string, opts: RequestOptions = {}): Pr
   }
 
   if (!res.ok) {
-    const msg =
-      (body && typeof body === 'object' && 'error' in body && typeof (body as any).error === 'string'
-        ? (body as any).error
-        : null) ?? `Request failed (${res.status})`;
+    let msg: string;
+    if (body && typeof body === 'object' && 'error' in body && typeof (body as any).error === 'string') {
+      msg = (body as any).error;
+    } else if (typeof body === 'string' && body.trim()) {
+      // Some routes (e.g. pool claim) return a plain-text reason, not JSON.
+      msg = body.trim();
+    } else {
+      msg = `Request failed (${res.status})`;
+    }
     throw new ApiError(msg, res.status, body);
   }
 
@@ -151,6 +156,28 @@ export interface Assignment {
   order: AssignmentOrder;
 }
 
+/** A claimable order from the shared pool — GET /api/rider/pool. */
+export interface PoolOrder {
+  orderId: string;
+  code: string;
+  restaurant: string;
+  branch: string;
+  branchLoc: { lat: number; lng: number } | null;
+  delivery: { line: string; lat: number | null; lng: number | null } | null;
+  itemSummary: string; // "2× Margherita, 1× Garlic Bread"
+  total: number;
+  payout: number; // what the rider earns if they claim
+  distanceKm: number;
+  readyAt: string | null;
+}
+
+/** POST /api/rider/pool/[id]/claim — the freshly created assignment row. */
+export interface ClaimResult {
+  id: string;
+  orderId: string;
+  status: AssignmentStatus;
+}
+
 // ─── Endpoints ───────────────────────────────────────────────────────────────
 
 export const api = {
@@ -183,4 +210,11 @@ export const api = {
   /** Liveness ping — sent every ~30s while online so the server doesn't auto-offline us. */
   heartbeat: () =>
     request<null>('/api/rider/heartbeat', { method: 'POST', body: { gpsEnabled: true } }),
+
+  /** Claimable orders from the shared pool (READY, unclaimed, platform-wide). */
+  pool: () => request<PoolOrder[]>('/api/rider/pool'),
+
+  /** Claim a pool order — 409 if another rider grabbed it first, 400 if offline. */
+  claimOrder: (orderId: string) =>
+    request<ClaimResult>(`/api/rider/pool/${orderId}/claim`, { method: 'POST' }),
 };

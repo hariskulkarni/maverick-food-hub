@@ -23,6 +23,7 @@ import {
   SafeAreaView,
   Alert,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { api, ApiError, type Assignment, type AssignmentStatus } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
@@ -120,13 +121,20 @@ export default function DashboardScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      await load();
-      setLoading(false);
-    })();
-  }, [load]);
+  // Refetch whenever the Home tab gains focus — so a freshly claimed order
+  // appears the moment the rider lands back here from the pool.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        await load();
+        if (!cancelled) setLoading(false);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [load])
+  );
 
   // Heartbeat — runs only while online.
   useEffect(() => {

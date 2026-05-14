@@ -1,9 +1,13 @@
 /**
- * Authenticated app layout — the guard. Anything under (app)/ requires a token;
- * without one we bounce to the login screen. This is also where the bottom-tab
- * navigation will live once the dashboard / pool / earnings screens land.
+ * Authenticated app shell — the guard + the bottom tab bar.
+ *
+ * Anything under (app)/ requires a token; without one we bounce to login.
+ * Tabs: Home (dashboard) and Orders (the claimable pool). Earnings and Profile
+ * land here as they're built; the active-delivery screen will be a pushed
+ * screen on top of these tabs.
  */
-import { Redirect, Stack } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../lib/auth';
 import { colors } from '../../lib/theme';
 
@@ -16,11 +20,36 @@ export default function AppLayout() {
   if (!token) return <Redirect href="/login" />;
 
   return (
-    <Stack
+    <Tabs
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: colors.bg },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
+        },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}
-    />
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="pool"
+        options={{
+          title: 'Orders',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="bicycle" color={color} size={size} />
+          ),
+        }}
+      />
+    </Tabs>
   );
 }
