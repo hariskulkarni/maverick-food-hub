@@ -19,6 +19,9 @@ import {
   TrainingCategory,
   RiderType,
   RiderDispatchMode,
+  KycDocumentType,
+  OrderStatus,
+  PaymentMethod,
 } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -247,6 +250,40 @@ Keep your cash balance low — deposit often.`,
   },
 ];
 
+// Maps each KYC document type → the real demo asset shipped under
+// apps/web/public/demo/kyc/ (served by Next at /demo/kyc/...). The cuisines
+// seed left every fileUrl pointing at a fake cdn.example host that 404s.
+const KYC_DOC_ASSETS: Record<
+  KycDocumentType,
+  { fileUrl: string; fileName: string; fileMimeType: string }
+> = {
+  [KycDocumentType.AADHAAR]: {
+    fileUrl: '/demo/kyc/aadhaar.png',
+    fileName: 'Aadhaar.png',
+    fileMimeType: 'image/png',
+  },
+  [KycDocumentType.DRIVING_LICENSE]: {
+    fileUrl: '/demo/kyc/driving-license.png',
+    fileName: 'Driving-License.png',
+    fileMimeType: 'image/png',
+  },
+  [KycDocumentType.VEHICLE_INSURANCE]: {
+    fileUrl: '/demo/kyc/vehicle-insurance.png',
+    fileName: 'Vehicle-Insurance.png',
+    fileMimeType: 'image/png',
+  },
+  [KycDocumentType.VEHICLE_RC]: {
+    fileUrl: '/demo/kyc/vehicle-rc.png',
+    fileName: 'Vehicle-RC.png',
+    fileMimeType: 'image/png',
+  },
+  [KycDocumentType.PAN_CARD]: {
+    fileUrl: '/demo/kyc/pan-card.png',
+    fileName: 'PAN-Card.png',
+    fileMimeType: 'image/png',
+  },
+};
+
 async function main() {
   console.log('Seeding rider competitor-feature demo data…');
 
@@ -310,6 +347,165 @@ async function main() {
   } else {
     console.log('  • no ACTIVE restaurant found — skipped rider-type demo setup');
   }
+
+  // ── Fix KYC document images ────────────────────────────────────────────────
+  // The cuisines seed set every RiderKycDocument.fileUrl to a fake
+  // https://cdn.example/...jpg that 404s. Re-point each row at the matching
+  // real demo asset. One updateMany per KycDocumentType — idempotent.
+  let kycFixed = 0;
+  for (const type of Object.values(KycDocumentType)) {
+    const asset = KYC_DOC_ASSETS[type];
+    const res = await prisma.riderKycDocument.updateMany({
+      where: { type },
+      data: {
+        fileUrl: asset.fileUrl,
+        fileName: asset.fileName,
+        fileMimeType: asset.fileMimeType,
+      },
+    });
+    kycFixed += res.count;
+  }
+  console.log(`  ✓ ${kycFixed} KYC documents re-pointed at /demo/kyc/*.png`);
+
+  // ── Rider avatars ──────────────────────────────────────────────────────────
+  // Round-robin the 8 demo avatars across every rider's User row. Ordered by
+  // createdAt so the mapping is stable across re-runs.
+  const allRiders = await prisma.riderProfile.findMany({
+    orderBy: { createdAt: 'asc' },
+    select: { userId: true },
+  });
+  let avatarsSet = 0;
+  for (let i = 0; i < allRiders.length; i++) {
+    await prisma.user.update({
+      where: { id: allRiders[i].userId },
+      data: { avatarUrl: `/demo/avatars/avatar-${(i % 8) + 1}.png` },
+    });
+    avatarsSet++;
+  }
+  console.log(`  ✓ ${avatarsSet} rider avatars assigned`);
+
+  // ── Live pool orders ───────────────────────────────────────────────────────
+  // Create a fresh batch of READY, unassigned orders so the rider pool isn't
+  // empty. Idempotent: every order gets a `POOL-…` code, and we wipe the prior
+  // batch first (OrderItem cascades on Order delete, RiderAssignment is null).
+  await prisma.order.deleteMany({ where: { code: { startsWith: 'POOL-' } } });
+
+  const activeRestaurants = await prisma.restaurant.findMany({
+    where: { status: 'ACTIVE' },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, slug: true, name: true },
+  });
+
+  // Bengaluru drop-point spread: lat ~12.90–12.99 N, lng ~77.55–77.70 E.
+  const POOL_LAT_MIN = 12.9;
+  const POOL_LAT_MAX = 12.99;
+  const POOL_LNG_MIN = 77.55;
+  const POOL_LNG_MAX = 77.7;
+  const lerp = (min: number, max: number, t: number) =>
+    +(min + (max - min) * t).toFixed(6);
+
+  let poolOrders = 0;
+  for (const restaurant of activeRestaurants) {
+    const branch = await prisma.branch.findFirst({
+      where: { restaurantId: restaurant.id },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (!branch) continue;
+
+    const menuItems = await prisma.menuItem.findMany({
+      where: { branchId: branch.id },
+      orderBy: { sortOrder: 'asc' },
+      take: 12,
+      select: { id: true, name: true, price: true },
+    });
+    if (menuItems.length === 0) continue;
+
+    // Reuse a seeded customer for this restaurant, else create a pool customer.
+    let customer = await prisma.user.findFirst({
+      where: { role: 'CUSTOMER' },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!customer) {
+      customer = await prisma.user.upsert({
+        where: { phone: '+919800000000' },
+        update: { role: 'CUSTOMER', name: 'Pool Demo Customer' },
+        create: { role: 'CUSTOMER', name: 'Pool Demo Customer', phone: '+919800000000' },
+      });
+    }
+
+    const slugTag = restaurant.slug.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+
+    for (let n = 1; n <= 4; n++) {
+      const code = `POOL-${slugTag}-${n}`;
+
+      // Vary the drop point deterministically across the Bengaluru box.
+      const latT = ((n * 17 + restaurant.slug.length * 7) % 100) / 100;
+      const lngT = ((n * 31 + restaurant.slug.length * 13) % 100) / 100;
+      const address = await prisma.address.create({
+        data: {
+          userId: customer.id,
+          label: 'Pool Drop',
+          line1: `Pool delivery point ${n} for ${restaurant.name}`,
+          city: 'Bengaluru',
+          state: 'KA',
+          postalCode: '560001',
+          latitude: lerp(POOL_LAT_MIN, POOL_LAT_MAX, latT),
+          longitude: lerp(POOL_LNG_MIN, POOL_LNG_MAX, lngT),
+          isDefault: false,
+        },
+      });
+
+      // 1–3 real MenuItems of this restaurant's branch.
+      const itemCount = ((n - 1) % 3) + 1;
+      const picks: { id: string; name: string; price: number }[] = [];
+      for (let k = 0; k < itemCount; k++) {
+        const it = menuItems[(n + k) % menuItems.length];
+        picks.push({ id: it.id, name: it.name, price: Number(it.price) });
+      }
+
+      const subtotal = +picks.reduce((s, p) => s + p.price, 0).toFixed(2);
+      const tax = +(subtotal * 0.05).toFixed(2);
+      const fee = 40;
+      const total = +(subtotal + tax + fee).toFixed(2);
+
+      // placedAt recent, readyAt a few minutes ago — keeps the pool "fresh".
+      const placedAt = new Date(Date.now() - (n * 9 + 15) * 60_000);
+      const readyAt = new Date(Date.now() - (n + 2) * 60_000);
+
+      await prisma.order.create({
+        data: {
+          code,
+          branchId: branch.id,
+          customerId: customer.id,
+          addressId: address.id,
+          status: OrderStatus.READY,
+          subtotal: subtotal as any,
+          taxAmount: tax as any,
+          deliveryFee: fee as any,
+          discountAmount: 0 as any,
+          total: total as any,
+          paymentMethod: n % 2 === 0 ? PaymentMethod.RAZORPAY : PaymentMethod.COD,
+          placedAt,
+          acceptedAt: new Date(placedAt.getTime() + 60_000),
+          preparingAt: new Date(placedAt.getTime() + 90_000),
+          readyAt,
+          items: {
+            create: picks.map((p) => ({
+              menuItemId: p.id,
+              name: p.name,
+              quantity: 1,
+              unitPrice: p.price as any,
+            })),
+          },
+        },
+      });
+      poolOrders++;
+    }
+  }
+  console.log(
+    `  ✓ ${poolOrders} live pool orders (READY, unassigned) across ${activeRestaurants.length} restaurants`,
+  );
 
   console.log('Done.');
 }

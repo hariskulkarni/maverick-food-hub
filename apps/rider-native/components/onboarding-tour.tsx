@@ -14,7 +14,6 @@ import {
   Pressable,
   ScrollView,
   Modal,
-  useWindowDimensions,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from 'react-native';
@@ -108,27 +107,33 @@ interface OnboardingTourProps {
 }
 
 export function OnboardingTour({ visible, onClose }: OnboardingTourProps) {
-  const { width } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const [index, setIndex] = useState(0);
+  // Measured width of the pager itself. The ScrollView sits inside two padded
+  // containers, so it's narrower than the window — `pagingEnabled` snaps to
+  // THIS width, so each slide must match it exactly or the text gets clipped.
+  const [pagerWidth, setPagerWidth] = useState(0);
 
   const isLast = index === SLIDES.length - 1;
 
   const goTo = useCallback(
     (next: number) => {
       const clamped = Math.max(0, Math.min(SLIDES.length - 1, next));
-      scrollRef.current?.scrollTo({ x: clamped * width, animated: true });
+      if (pagerWidth) {
+        scrollRef.current?.scrollTo({ x: clamped * pagerWidth, animated: true });
+      }
       setIndex(clamped);
     },
-    [width]
+    [pagerWidth]
   );
 
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const next = Math.round(e.nativeEvent.contentOffset.x / width);
+      if (!pagerWidth) return;
+      const next = Math.round(e.nativeEvent.contentOffset.x / pagerWidth);
       if (next !== index) setIndex(next);
     },
-    [index, width]
+    [index, pagerWidth]
   );
 
   return (
@@ -152,10 +157,11 @@ export function OnboardingTour({ visible, onClose }: OnboardingTourProps) {
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             onMomentumScrollEnd={onScroll}
+            onLayout={(e) => setPagerWidth(e.nativeEvent.layout.width)}
             style={styles.pager}
           >
             {SLIDES.map((slide) => (
-              <View key={slide.title} style={[styles.slide, { width: width - spacing.lg * 2 }]}>
+              <View key={slide.title} style={[styles.slide, { width: pagerWidth }]}>
                 <View style={styles.iconBadge}>
                   <Text style={styles.icon}>{slide.icon}</Text>
                 </View>

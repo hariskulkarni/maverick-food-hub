@@ -1549,6 +1549,7 @@ model RiderProfile {
   referralsMade       RiderReferral[]
   trainingProgress    RiderTrainingProgress[]
   supportTickets      RiderSupportTicket[]
+  conversations       RiderConversation[]
 
   @@index([isOnline])
   @@index([branchId, isOnline])
@@ -2594,4 +2595,56 @@ model RiderSupportMessage {
   ticket RiderSupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([ticketId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Rider ⇄ staff direct messaging (2026-05-15)
+//  A rider has at most one conversation thread with platform ops (SUPER_ADMIN)
+//  and one per restaurant they're connected to (ADMIN). Bidirectional, real-time
+//  via the existing SSE channel.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum RiderConversationParty {
+  ADMIN // a restaurant admin (scoped to `restaurantId`)
+  SUPER_ADMIN // platform operations
+}
+
+enum RiderMessageSender {
+  RIDER
+  ADMIN
+  SUPER_ADMIN
+}
+
+model RiderConversation {
+  id            String                 @id @default(cuid())
+  riderId       String
+  party         RiderConversationParty
+  // Set only when `party = ADMIN` — the restaurant the admin belongs to.
+  restaurantId  String?
+  subject       String?
+  lastMessageAt DateTime               @default(now())
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  rider    RiderProfile               @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  messages RiderConversationMessage[]
+
+  @@index([riderId])
+  @@index([party, restaurantId])
+  @@index([lastMessageAt])
+}
+
+model RiderConversationMessage {
+  id             String             @id @default(cuid())
+  conversationId String
+  sender         RiderMessageSender
+  senderName     String?
+  body           String
+  readByRider    Boolean            @default(false)
+  readByStaff    Boolean            @default(false)
+  createdAt      DateTime           @default(now())
+
+  conversation RiderConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
 }

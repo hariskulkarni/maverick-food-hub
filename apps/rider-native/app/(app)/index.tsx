@@ -32,6 +32,7 @@ import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 import { OnboardingTour, useTourSeen } from '../../components/onboarding-tour';
 import { SurgeBanner } from '../../components/surge-banner';
 import { BreakModeCard } from '../../components/break-mode-card';
+import { useRiderLocation } from '../../lib/use-rider-location';
 
 /** A square quick-action tile on the dashboard. */
 function QuickAction({
@@ -53,7 +54,9 @@ function QuickAction({
       <View style={[styles.quickIcon, { backgroundColor: tint + '1a' }]}>
         <Ionicons name={icon} size={22} color={tint} />
       </View>
-      <Text style={styles.quickLabel}>{label}</Text>
+      <Text style={styles.quickLabel} numberOfLines={2}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -163,6 +166,10 @@ export default function DashboardScreen() {
   // First-launch onboarding.
   const { seen: tourSeen, loading: tourLoading, markSeen: markTourSeen } = useTourSeen();
   const showTour = !tourLoading && !tourSeen;
+
+  // Stream GPS the whole time the rider is online — not just on an active
+  // delivery — so the super-admin fleet map always has a live position.
+  useRiderLocation({ orderId: null, enabled: online });
 
   const load = useCallback(async () => {
     setError(null);
@@ -539,18 +546,24 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xs,
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   quickActionPressed: { backgroundColor: colors.primarySoft },
+  // Perfect circle (48 / 2 = 24 radius) so all four quick-action icons are
+  // visually identical regardless of glyph.
   quickIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Fixed two-line height so every tile is the same size and the icons line
+  // up across the row whether the label is one word or two.
   quickLabel: {
     fontSize: 11,
+    lineHeight: 14,
+    height: 28,
     fontWeight: font.weight.semibold,
     color: colors.text,
     textAlign: 'center',

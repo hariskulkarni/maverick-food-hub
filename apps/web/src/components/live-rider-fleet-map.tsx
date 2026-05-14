@@ -75,6 +75,11 @@ interface Props {
   visibleLayers?: VisibleLayers;
   /** Whether the user has super-admin powers (drives the panel's CTAs). */
   isSuperAdmin?: boolean;
+  /** Optional REST endpoint returning `{ riders: [...] }`. When set, the map
+   *  polls it (~4s) as a reliable backstop to the SSE stream so every online
+   *  rider stays plotted with their freshest stored position even if an SSE
+   *  frame never arrives. */
+  pollUrl?: string;
   /** Fires whenever the live position map mutates. */
   onPositionsChange?: (positions: RiderPosition[]) => void;
 }
@@ -147,6 +152,7 @@ export function LiveRiderFleetMap({
   statusFilter = 'ALL',
   visibleLayers = { branches: true, customers: false, trails: false },
   isSuperAdmin = false,
+  pollUrl,
   onPositionsChange
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -159,6 +165,15 @@ export function LiveRiderFleetMap({
   const [lastUpdateAt, setLastUpdateAt] = useState<number | null>(initial.length ? Date.now() : null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [trailPings, setTrailPings] = useState<{ lat: number; lng: number; at: string }[]>([]);
+  // Poll backstop state: surfaces a quiet banner if the REST endpoint fails,
+  // and tracks whether the very first poll has resolved (so the empty-state
+  // copy doesn't flash before we know the fleet is genuinely empty).
+  const [pollError, setPollError] = useState(false);
+  const [polledOnce, setPolledOnce] = useState(false);
+  // Keep the latest selectedId reachable from the polling closure without
+  // re-subscribing the interval every time the selection changes.
+  const selectedIdRef = useRef<string | null>(null);
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
 
   // Init map once
   useEffect(() => {
@@ -261,8 +276,12 @@ export function LiveRiderFleetMap({
     }
   }, [selectedId]);
 
-  // Stale-rider sweep — fade out anyone we haven't heard from in 60s
+  // Stale-rider sweep — fade out anyone we haven't heard from in 60s.
+  // Skipped when `pollUrl` is set: in that mode the REST poll is the
+  // authority on who's online and does its own pruning, so a sweep here
+  // would just fight it (remove → poll re-adds → flicker).
   useEffect(() => {
+    if (pollUrl) return;
     const t = setInterval(() => {
       const now = Date.now();
       let changed = false;
@@ -281,7 +300,7 @@ export function LiveRiderFleetMap({
       }
     }, 5_000);
     return () => clearInterval(t);
-  }, [selectedId, onPositionsChange]);
+  }, [selectedId, onPositionsChange, pollUrl]);
 
   useSSE(channel, {
     onMessage: (e: any) => {
@@ -321,6 +340,96 @@ export function LiveRiderFleetMap({
     }
   });
 
+  // REST poll backstop — every ~4s, pull the authoritative list of online
+  // riders + their stored positions and reconcile the map. This guarantees a
+  // rider stays plotted even if their SSE frames are dropped, and prunes pins
+  // for riders who have gone offline. SSE still drives sub-second motion; the
+  // poll just keeps the picture honest.
+  useEffect(() => {
+    if (!pollUrl) return;
+    let cancelled = false;
+
+    async function tick() {
+      try {
+        const res = await fetch(pollUrl!, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (cancelled) return;
+        const map = mapRef.current;
+        if (!map) return;
+        const rows: any[] = Array.isArray(data?.riders) ? data.riders : [];
+        const seen = new Set<string>();
+        let changed = false;
+
+        for (const row of rows) {
+          if (typeof row?.lat !== 'number' || typeof row?.lng !== 'number') continue;
+          seen.add(row.id);
+          const prev = positions.current.get(row.id);
+          const next: RiderPosition = {
+            riderId: row.id,
+            lat: row.lat,
+            lng: row.lng,
+            at: row.lastSeenAt ?? new Date().toISOString(),
+            name: row.name ?? prev?.name,
+            // Don't clobber a workflow-status the SSE stream already gave us.
+            status: prev?.status,
+            orderId: prev?.orderId
+          };
+          // If SSE delivered a strictly newer fix, keep it — the poll only
+          // fills gaps, it never rewinds a live rider.
+          if (prev && new Date(prev.at).getTime() >= new Date(next.at).getTime()
+              && Math.abs(prev.lat - next.lat) < 1e-7 && Math.abs(prev.lng - next.lng) < 1e-7) {
+            continue;
+          }
+          positions.current.set(row.id, { ...prev, ...next });
+          let m = markers.current.get(row.id);
+          const show = matchesStatus(positions.current.get(row.id)!, statusFilter);
+          if (m) {
+            animateMarker(m, { lat: next.lat, lng: next.lng });
+            if (!show && map.hasLayer(m)) m.remove();
+            if (show && !map.hasLayer(m)) m.addTo(map);
+          } else if (show) {
+            m = L.marker([next.lat, next.lng], { icon: riderIcon(next.name, row.id === selectedIdRef.current) }).addTo(map);
+            m.on('click', () => setSelectedId(row.id));
+            markers.current.set(row.id, m);
+          }
+          changed = true;
+        }
+
+        // Prune riders the endpoint no longer reports as online.
+        for (const id of Array.from(positions.current.keys())) {
+          if (seen.has(id)) continue;
+          markers.current.get(id)?.remove();
+          markers.current.delete(id);
+          positions.current.delete(id);
+          if (id === selectedIdRef.current) setSelectedId(null);
+          changed = true;
+        }
+
+        setPollError(false);
+        setPolledOnce(true);
+        if (changed) {
+          setCount(positions.current.size);
+          setLastUpdateAt(Date.now());
+          onPositionsChange?.(Array.from(positions.current.values()));
+        }
+      } catch {
+        if (!cancelled) {
+          setPollError(true);
+          setPolledOnce(true);
+        }
+      }
+    }
+
+    tick();
+    const t = setInterval(tick, 4_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pollUrl, statusFilter, onPositionsChange]);
+
   const selectedPos = selectedId ? positions.current.get(selectedId) : null;
 
   // Toggling the trail switch lives in the panel header; expose a handler.
@@ -338,17 +447,38 @@ export function LiveRiderFleetMap({
           </span>
           {count} {count === 1 ? 'rider' : 'riders'} live
         </div>
-        {lastUpdateAt && (
-          <div className="rounded-full bg-white/95 backdrop-blur px-2.5 py-1 text-[11px] text-muted-foreground shadow">
-            Updated <UpdatedAgo at={lastUpdateAt} />
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {pollError && (
+            <div className="rounded-full bg-warning/95 text-warning-foreground px-2.5 py-1 text-[11px] font-medium shadow">
+              Reconnecting…
+            </div>
+          )}
+          {lastUpdateAt && (
+            <div className="rounded-full bg-white/95 backdrop-blur px-2.5 py-1 text-[11px] text-muted-foreground shadow">
+              Updated <UpdatedAgo at={lastUpdateAt} />
+            </div>
+          )}
+        </div>
       </div>
       {count === 0 && (
         <div className="absolute inset-0 grid place-items-center bg-card/60 backdrop-blur-sm pointer-events-none">
           <div className="text-center">
-            <div className="text-sm font-medium text-muted-foreground">Waiting for riders to go online…</div>
-            <div className="text-xs text-muted-foreground mt-1">Pins appear in real-time as the app reports GPS.</div>
+            {pollUrl && !polledOnce ? (
+              <>
+                <div className="text-sm font-medium text-muted-foreground">Loading live riders…</div>
+                <div className="text-xs text-muted-foreground mt-1">Fetching the fleet's latest positions.</div>
+              </>
+            ) : pollError ? (
+              <>
+                <div className="text-sm font-medium text-muted-foreground">Can't reach the live feed</div>
+                <div className="text-xs text-muted-foreground mt-1">Retrying automatically — positions will reappear shortly.</div>
+              </>
+            ) : (
+              <>
+                <div className="text-sm font-medium text-muted-foreground">Waiting for riders to go online…</div>
+                <div className="text-xs text-muted-foreground mt-1">Pins appear in real-time as the app reports GPS.</div>
+              </>
+            )}
           </div>
         </div>
       )}

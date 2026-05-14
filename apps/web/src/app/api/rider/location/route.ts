@@ -100,11 +100,23 @@ export async function POST(req: NextRequest) {
   const now = Date.now();
   if (now - last >= DB_THROTTLE_MS) {
     lastPersistAt.set(profile.id, now);
+    const nowDate = new Date();
     // Fire-and-forget: do not block the SSE-publish acknowledgment behind disk I/O.
     Promise.all([
+      // Source of truth for the super-admin live map between SSE frames.
+      // `@updatedAt` on RiderProfile bumps automatically, so the freshness of
+      // currentLat/currentLng is observable via `updatedAt`.
       prisma.riderProfile.update({ where: { id: profile.id }, data: { currentLat: data.lat, currentLng: data.lng } }),
       prisma.deliveryLocationPing.create({
         data: { riderId: profile.id, orderId: data.orderId, lat: data.lat, lng: data.lng, speedKph: data.speedKph }
+      }),
+      // Stamp lastLocationAt on the heartbeat row so the live endpoint can
+      // report an accurate "last GPS fix" time even when the rider is idle
+      // (no active order) and only the location stream is running.
+      prisma.riderHeartbeat.upsert({
+        where: { riderId: profile.id },
+        create: { riderId: profile.id, lastSeenAt: nowDate, lastLocationAt: nowDate, gpsEnabled: true },
+        update: { lastLocationAt: nowDate }
       })
     ]).catch(() => {});
   }

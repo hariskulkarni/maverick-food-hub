@@ -8,6 +8,7 @@ import {
   View,
   Text,
   TextInput,
+  Image,
   StyleSheet,
   ScrollView,
   Pressable,
@@ -17,7 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { api, ApiError, type KycDoc, type RiderMe } from '../../lib/api';
+import { api, API_BASE, ApiError, type KycDoc, type RiderMe } from '../../lib/api';
 import { growth, type TierName } from '../../lib/api-growth';
 import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
@@ -67,6 +68,12 @@ function prettyType(type: string): string {
     .replace(/_/g, ' ')
     .toLowerCase()
     .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Local-storage avatarUrls are relative ("/rider-avatars/..."); S3 ones are absolute. */
+function absoluteUrl(fileUrl: string): string {
+  if (/^https?:\/\//i.test(fileUrl)) return fileUrl;
+  return `${API_BASE}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`;
 }
 
 export default function ProfileScreen() {
@@ -159,9 +166,16 @@ export default function ProfileScreen() {
         {/* Identity card */}
         <View style={styles.card}>
           <View style={styles.identityRow}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials || 'R'}</Text>
-            </View>
+            {me?.avatarUrl ? (
+              <Image
+                source={{ uri: absoluteUrl(me.avatarUrl) }}
+                style={styles.avatarImage}
+              />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{initials || 'R'}</Text>
+              </View>
+            )}
             <View style={styles.identityText}>
               {editing ? (
                 <TextInput
@@ -308,6 +322,17 @@ export default function ProfileScreen() {
           </>
         )}
 
+        {/* Rider tools — communication */}
+        <Text style={styles.sectionLabel}>MESSAGES</Text>
+        <View style={styles.toolList}>
+          <ToolRow
+            icon="chatbubbles-outline"
+            label="Messages"
+            hint="Chat with your restaurant and platform support"
+            route="/messages"
+          />
+        </View>
+
         {/* Rider tools — safety & work */}
         <Text style={styles.sectionLabel}>SAFETY & WORK</Text>
         <View style={styles.toolList}>
@@ -408,6 +433,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
+  },
+  avatarImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    marginRight: spacing.md,
+    backgroundColor: colors.primarySoft,
   },
   avatarText: {
     color: colors.white,

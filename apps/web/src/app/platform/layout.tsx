@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
-import { Building2, ListOrdered, Users, Bike, BarChart3, Radio, Coins, AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet, History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones, GraduationCap } from 'lucide-react';
+import { Building2, ListOrdered, Users, Bike, BarChart3, Radio, Coins, AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet, History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones, GraduationCap, MessagesSquare } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
@@ -37,6 +37,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           <NavLink href="/platform/system-health" icon={Activity}>System health</NavLink>
 
           <NavSection>Rider operations</NavSection>
+          <NavLink href="/platform/messages" icon={MessagesSquare}>Messages</NavLink>
           <NavLink href="/platform/rider-payouts" icon={Wallet}>Rider payouts</NavLink>
           <NavLink href="/platform/rider-incentives" icon={Trophy}>Incentives</NavLink>
           <NavLink href="/platform/surge-zones" icon={Flame}>Surge zones</NavLink>

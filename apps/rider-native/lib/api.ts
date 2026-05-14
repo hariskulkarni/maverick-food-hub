@@ -67,10 +67,17 @@ async function request<T = unknown>(path: string, opts: RequestOptions = {}): Pr
 
   if (!res.ok) {
     let msg: string;
+    const looksLikeHtml =
+      typeof body === 'string' && /^\s*<(?:!doctype|html)/i.test(body);
     if (body && typeof body === 'object' && 'error' in body && typeof (body as any).error === 'string') {
       msg = (body as any).error;
-    } else if (typeof body === 'string' && body.trim()) {
-      // Some routes (e.g. pool claim) return a plain-text reason, not JSON.
+    } else if (res.status >= 500 || res.status === 0 || looksLikeHtml) {
+      // A 5xx, or an HTML error page (e.g. nginx 502/503/504 while the API is
+      // down or restarting). Never surface raw markup or a bare status code to
+      // the rider — give them a calm, actionable message instead.
+      msg = "Oak & Sizzler servers are briefly unavailable. Please try again in a moment.";
+    } else if (typeof body === 'string' && body.trim() && body.trim().length <= 200) {
+      // Some routes (e.g. pool claim) return a short plain-text reason, not JSON.
       msg = body.trim();
     } else {
       msg = `Request failed (${res.status})`;
@@ -124,6 +131,8 @@ export interface RiderMe {
   riderType: 'FLEET' | 'DEDICATED';
   /** The restaurant a DEDICATED rider belongs to — null for FLEET riders. */
   dedicatedRestaurant: { id: string; name: string } | null;
+  /** Profile photo — relative to API_BASE for local storage, absolute for S3, or null. */
+  avatarUrl: string | null;
 }
 
 /** What POST /api/rider/online returns — the updated rider profile row. */
@@ -246,6 +255,42 @@ export interface KycResponse {
   summary: unknown; // shape varies server-side — the app just lists documents
 }
 
+// ─── Rider ⇄ staff messaging ─────────────────────────────────────────────────
+
+/** Who the rider is talking to: their dedicated restaurant's admin, or the platform team. */
+export type MessageParty = 'ADMIN' | 'SUPER_ADMIN';
+
+/** A single chat message within a conversation. */
+export interface RiderMessage {
+  id: string;
+  conversationId: string;
+  sender: 'RIDER' | 'ADMIN' | 'SUPER_ADMIN';
+  senderName: string;
+  body: string;
+  readByRider: boolean;
+  readByStaff: boolean;
+  createdAt: string;
+}
+
+/** A rider ⇄ staff conversation thread. */
+export interface RiderConversation {
+  id: string;
+  riderId: string;
+  party: MessageParty;
+  restaurantId: string | null;
+  restaurantName: string | null;
+  subject: string | null;
+  lastMessageAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  /** Messages unread by the rider. */
+  unreadCount: number;
+  lastMessage: RiderMessage | null;
+  messages: RiderMessage[];
+  rider: Rider;
+}
+
 // ─── Endpoints ───────────────────────────────────────────────────────────────
 
 export const api = {
@@ -349,6 +394,29 @@ export const api = {
     }
     return res.json();
   },
+
+  // ── Rider ⇄ staff messaging ───────────────────────────────────────────────
+  /** All of the rider's conversations (with their restaurant admin and the platform team). */
+  conversations: () =>
+    request<{ conversations: RiderConversation[] }>('/api/rider/messages'),
+
+  /** A single conversation thread — marks staff messages read. */
+  conversation: (id: string) =>
+    request<{ conversation: RiderConversation }>(`/api/rider/messages/${id}`),
+
+  /** Start (or append to) a conversation with a party. 409 if ADMIN with no dedicated restaurant. */
+  sendMessageToParty: (party: MessageParty, body: string) =>
+    request<{ conversation: RiderConversation }>('/api/rider/messages', {
+      method: 'POST',
+      body: { party, body },
+    }),
+
+  /** Reply within an existing conversation thread. */
+  replyToConversation: (id: string, body: string) =>
+    request<{ conversation: RiderConversation }>(`/api/rider/messages/${id}`, {
+      method: 'POST',
+      body: { body },
+    }),
 
   // ── Profile & KYC ─────────────────────────────────────────────────────────
   /** Rider's KYC documents (masked) + status summary. */

@@ -39,6 +39,10 @@ interface Props {
   /** Whether to render the branch dropdown. Hidden on the admin page since
    *  tenancy is implicit. */
   showBranchFilter?: boolean;
+  /** Optional REST endpoint the fleet map polls (~4s) as a reliable backstop
+   *  to the SSE stream — keeps every online rider's pin fresh even if an SSE
+   *  frame is dropped. */
+  pollUrl?: string;
 }
 
 const STATUS_TABS: { id: StatusFilter; label: string }[] = [
@@ -48,7 +52,7 @@ const STATUS_TABS: { id: StatusFilter; label: string }[] = [
   { id: 'AWAITING_PICKUP', label: 'Awaiting pickup' }
 ];
 
-export function LivePlatformClient({ initial, branches, customers, destinations, isSuperAdmin = true, channel = 'platform:riders', showBranchFilter = true }: Props) {
+export function LivePlatformClient({ initial, branches, customers, destinations, isSuperAdmin = true, channel = 'platform:riders', showBranchFilter = true, pollUrl }: Props) {
   const [status, setStatus] = useState<StatusFilter>('ALL');
   const [branchId, setBranchId] = useState<string>('');
   const [layers, setLayers] = useState<VisibleLayers>({ branches: true, customers: false, trails: false });
@@ -153,6 +157,7 @@ export function LivePlatformClient({ initial, branches, customers, destinations,
             statusFilter={status}
             visibleLayers={layers}
             isSuperAdmin={isSuperAdmin}
+            pollUrl={pollUrl}
             onPositionsChange={setPositions}
           />
         </CardContent>

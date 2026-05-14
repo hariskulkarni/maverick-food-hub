@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { currentRestaurant } from '@/server/tenancy';
-import { LayoutDashboard, ScrollText, Utensils, BarChart3, Tag, Settings, Building2, Radio, Sparkles, Layers, Clock, Trophy, Package, Mail, History, MessageSquare, Bike, ShieldAlert } from 'lucide-react';
+import { LayoutDashboard, ScrollText, Utensils, BarChart3, Tag, Settings, Building2, Radio, Sparkles, Layers, Clock, Trophy, Package, Mail, History, MessageSquare, Bike, ShieldAlert, MessagesSquare } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -52,6 +52,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <NavLink href="/admin/branches" icon={Building2}>Branches</NavLink>
           <NavLink href="/admin/riders" icon={Bike}>Dedicated Riders</NavLink>
           <NavLink href="/admin/safety" icon={ShieldAlert}>Rider Safety</NavLink>
+          <NavLink href="/admin/messages" icon={MessagesSquare}>Messages</NavLink>
           <NavLink href="/admin/reports" icon={BarChart3}>Reports</NavLink>
           <NavLink href="/admin/activity" icon={History}>Activity</NavLink>
           <NavLink href="/admin/feedback" icon={MessageSquare}>Feedback</NavLink>

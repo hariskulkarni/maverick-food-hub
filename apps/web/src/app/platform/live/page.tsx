@@ -103,6 +103,7 @@ export default async function PlatformLivePage() {
         destinations={destinations}
         isSuperAdmin={true}
         channel="platform:riders"
+        pollUrl="/api/platform/riders/live"
       />
     </div>
   );

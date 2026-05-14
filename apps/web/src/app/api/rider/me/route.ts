@@ -25,7 +25,9 @@ export async function GET() {
       isOnline: true,
       riderType: true,
       // Pull the dedicated restaurant (if any) so we can echo {id,name}.
-      dedicatedRestaurant: { select: { id: true, name: true } }
+      dedicatedRestaurant: { select: { id: true, name: true } },
+      // Profile photo lives on the User row.
+      user: { select: { avatarUrl: true } }
     }
   });
   if (!profile) {
@@ -35,7 +37,8 @@ export async function GET() {
       online: false,
       lastSeenAt: null,
       riderType: 'FLEET',
-      dedicatedRestaurant: null
+      dedicatedRestaurant: null,
+      avatarUrl: null
     });
   }
   const hb = await prisma.riderHeartbeat.findUnique({
@@ -48,6 +51,7 @@ export async function GET() {
     riderType: profile.riderType,
     dedicatedRestaurant: profile.dedicatedRestaurant
       ? { id: profile.dedicatedRestaurant.id, name: profile.dedicatedRestaurant.name }
-      : null
+      : null,
+    avatarUrl: profile.user?.avatarUrl ?? null
   });
 }
