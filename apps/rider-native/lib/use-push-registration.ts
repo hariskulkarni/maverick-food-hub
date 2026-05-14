@@ -2,33 +2,47 @@
  * Registers this device for push notifications and reports the Expo push token
  * to the backend. Called once from the authenticated app shell.
  *
- * NOTE: remote push requires a development / standalone build — it does NOT
- * fire inside Expo Go on Android (Expo dropped that in SDK 53+). The code is
- * correct and activates automatically in the EAS-built APK; inside Expo Go it
- * simply no-ops after the permission check. No harm either way.
+ * IMPORTANT: remote push was removed from Expo Go in SDK 53+. Even *importing*
+ * `expo-notifications` at module scope inside Expo Go throws a console error,
+ * so we:
+ *   - detect Expo Go via expo-constants and no-op there entirely
+ *   - load expo-notifications with a *dynamic* import, so the native module is
+ *     never even evaluated while running in Expo Go
+ *
+ * In a development build or the EAS-built standalone APK this runs normally:
+ * ask permission → get the Expo push token → report it to
+ * /api/rider/push-token. No code change needed between dev and prod.
  */
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { api } from './api';
 
-// Foreground notifications: show a banner + play a sound.
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// `storeClient` === running inside the Expo Go app.
+const IS_EXPO_GO = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 export function usePushRegistration(enabled: boolean) {
   useEffect(() => {
-    if (!enabled) return;
+    // Expo Go can't do remote push — silently skip; this lights up in a real build.
+    if (!enabled || IS_EXPO_GO) return;
+
     let cancelled = false;
 
     (async () => {
       try {
+        // Dynamic import: Expo Go never evaluates the native module because we
+        // returned above before reaching this line.
+        const Notifications = await import('expo-notifications');
+
+        Notifications.setNotificationHandler({
+          handleNotification: async () => ({
+            shouldShowBanner: true,
+            shouldShowList: true,
+            shouldPlaySound: true,
+            shouldSetBadge: false,
+          }),
+        });
+
         const existing = await Notifications.getPermissionsAsync();
         let status = existing.status;
         if (status !== 'granted') {
