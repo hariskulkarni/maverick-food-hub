@@ -1,4 +1,4 @@
-import { auth } from '@/server/auth';
+import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 
 export async function GET() {

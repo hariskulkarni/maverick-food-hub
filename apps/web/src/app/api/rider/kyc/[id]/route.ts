@@ -6,7 +6,7 @@
  * goes through super-admin review.
  */
 import { NextRequest } from 'next/server';
-import { auth } from '@/server/auth';
+import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { audit } from '@/server/audit';
 

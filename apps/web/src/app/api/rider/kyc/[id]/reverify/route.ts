@@ -11,7 +11,7 @@
  * authoritative live source, so the request is rejected with 422.
  */
 import { NextRequest } from 'next/server';
-import { auth } from '@/server/auth';
+import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { decryptDocNumber, liveVerifyAndPersist, toPublicDoc } from '@/server/kyc';
 

@@ -7,7 +7,7 @@
  * Tenancy: rider must own the assignment.
  */
 import { NextRequest } from 'next/server';
-import { auth } from '@/server/auth';
+import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { transitionOrder } from '@/server/orders';
 

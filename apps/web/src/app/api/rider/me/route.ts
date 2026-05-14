@@ -5,7 +5,7 @@
  * online flag and the last heartbeat timestamp so the UI can show a fresh
  * "Last GPS ping: 12s ago" without polling the heartbeat write endpoint.
  */
-import { auth } from '@/server/auth';
+import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 
 export const runtime = 'nodejs';

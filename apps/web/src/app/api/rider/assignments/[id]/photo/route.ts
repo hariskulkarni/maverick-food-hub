@@ -4,7 +4,7 @@
  * and updates RiderAssignment.deliveryPhotoUrl.
  */
 import { NextRequest } from 'next/server';
-import { auth } from '@/server/auth';
+import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { storage } from '@/server/storage';
 

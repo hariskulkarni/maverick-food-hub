@@ -13,7 +13,7 @@
  *   file        — Blob (jpg/png/webp/pdf, ≤ 8 MB)
  */
 import { NextRequest } from 'next/server';
-import { auth } from '@/server/auth';
+import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { storage } from '@/server/storage';
 import { audit } from '@/server/audit';

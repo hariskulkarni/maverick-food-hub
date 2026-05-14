@@ -4,7 +4,7 @@
  * claimed by someone else, returns 409.
  */
 import { NextRequest } from 'next/server';
-import { auth } from '@/server/auth';
+import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { AssignmentStatus, OrderStatus } from '@prisma/client';
 import { transitionOrder } from '@/server/orders';

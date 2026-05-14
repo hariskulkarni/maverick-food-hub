@@ -7,7 +7,7 @@
  * it) so the rider can never see food ratings, food tags, food images, or
  * private comments.
  */
-import { auth } from '@/server/auth';
+import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { loadRiderFeedback } from '@/server/feedback';
 

@@ -4,7 +4,7 @@
  * across the entire platform. Optional ?lat=&lng= for distance ranking.
  */
 import { NextRequest } from 'next/server';
-import { auth } from '@/server/auth';
+import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { computeBasePayout } from '@/server/payouts';
 
