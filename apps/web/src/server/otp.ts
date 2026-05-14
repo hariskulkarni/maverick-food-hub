@@ -150,8 +150,12 @@ export async function sendOtp(args: { phone: string; purpose?: string; ipAddress
     template: 'otp.login'
   });
 
-  if (process.env.NODE_ENV !== 'production') {
-    log.info({ phone: args.phone, purpose, code }, 'OTP issued (dev)');
+  // In non-prod, OR when OTP_DEBUG_LOG=true is set (demo / pre-SMS-provider
+  // deployments), surface the code: log it server-side AND return it in the
+  // response so it can be read without an SMS gateway. Set the flag back to
+  // false / remove it the moment a real SMS provider (MSG91 etc.) is wired up.
+  if (process.env.NODE_ENV !== 'production' || process.env.OTP_DEBUG_LOG === 'true') {
+    log.info({ phone: args.phone, purpose, code }, 'OTP issued (debug-log)');
     return { ok: true, devCode: code };
   }
   return { ok: true };
