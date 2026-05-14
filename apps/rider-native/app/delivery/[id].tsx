@@ -36,6 +36,8 @@ import { api, ApiError, type Assignment } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRiderLocation } from '../../lib/use-rider-location';
 import { DeliveryMap } from '../../components/delivery-map';
+import { SuccessCelebration } from '../../components/success-celebration';
+import { haversineKm, estimateEtaMinutes } from '../../lib/geo';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 
 type Step =
@@ -78,6 +80,46 @@ function milestoneIndex(step: Step): number {
 function rupees(s: string): string {
   const n = Number.parseFloat(s);
   return Number.isFinite(n) ? `₹${Math.round(n)}` : '₹0';
+}
+
+type Waypoint = { coords: { lat: number; lng: number } | null; label: string };
+
+/**
+ * The next place the rider is heading for, given the current step:
+ * the restaurant for the to_restaurant/at_restaurant steps, the customer
+ * for the to_customer/at_customer steps.
+ */
+function nextWaypoint(a: Assignment, step: Step): Waypoint | null {
+  const o = a.order;
+  if (step === 'to_restaurant' || step === 'at_restaurant') {
+    const b = o.branch;
+    return {
+      label: 'pickup',
+      coords:
+        b && b.latitude != null && b.longitude != null
+          ? { lat: b.latitude, lng: b.longitude }
+          : null,
+    };
+  }
+  if (step === 'to_customer' || step === 'at_customer') {
+    const ad = o.address;
+    return {
+      label: 'customer',
+      coords:
+        ad && ad.latitude != null && ad.longitude != null
+          ? { lat: ad.latitude, lng: ad.longitude }
+          : null,
+    };
+  }
+  return null;
+}
+
+/** Open external turn-by-turn navigation to a coordinate. */
+function openNavigation(coords: { lat: number; lng: number } | null) {
+  if (!coords) return;
+  Linking.openURL(
+    `https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}&travelmode=driving`
+  );
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -295,8 +337,8 @@ export default function DeliveryScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
-          <View style={styles.successIcon}>
-            <Ionicons name="checkmark" size={48} color={colors.white} />
+          <View style={{ width: 200, height: 160, marginBottom: spacing.lg }}>
+            <SuccessCelebration visible />
           </View>
           <Text style={styles.successTitle}>Delivered!</Text>
           <Text style={styles.successBody}>
@@ -335,6 +377,20 @@ export default function DeliveryScreen() {
   const o = assignment.order;
   const itemCount = o.items.reduce((s, it) => s + (it.quantity ?? 1), 0);
 
+  // Distance + ETA from the rider's live position to the next waypoint.
+  const waypoint = nextWaypoint(assignment, step);
+  const etaInfo =
+    riderPos && waypoint?.coords
+      ? (() => {
+          const km = haversineKm(riderPos, waypoint.coords!);
+          return {
+            label: waypoint.label,
+            distanceKm: km,
+            etaMin: estimateEtaMinutes(km),
+          };
+        })()
+      : null;
+
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
@@ -371,11 +427,49 @@ export default function DeliveryScreen() {
             }
             rider={riderPos}
           />
+          {etaInfo ? (
+            <View style={styles.etaBanner}>
+              <Ionicons name="navigate-circle" size={20} color={colors.primary} />
+              <Text style={styles.etaText}>
+                {etaInfo.distanceKm < 10
+                  ? etaInfo.distanceKm.toFixed(1)
+                  : Math.round(etaInfo.distanceKm)}{' '}
+                km · ~{etaInfo.etaMin} min to {etaInfo.label}
+              </Text>
+            </View>
+          ) : null}
           {permissionDenied ? (
             <Text style={styles.permWarning}>
               Location permission is off — your live position won't show on the
               customer's tracker. Enable it in your phone's settings.
             </Text>
+          ) : null}
+          {step === 'to_restaurant' || step === 'at_restaurant' ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.navBtn,
+                pressed && styles.navBtnPressed,
+                !waypoint?.coords && styles.navBtnDisabled,
+              ]}
+              onPress={() => openNavigation(waypoint?.coords ?? null)}
+              disabled={!waypoint?.coords}
+            >
+              <Ionicons name="navigate" size={18} color={colors.primary} />
+              <Text style={styles.navBtnText}>Navigate to pickup</Text>
+            </Pressable>
+          ) : step === 'to_customer' || step === 'at_customer' ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.navBtn,
+                pressed && styles.navBtnPressed,
+                !waypoint?.coords && styles.navBtnDisabled,
+              ]}
+              onPress={() => openNavigation(waypoint?.coords ?? null)}
+              disabled={!waypoint?.coords}
+            >
+              <Ionicons name="navigate" size={18} color={colors.primary} />
+              <Text style={styles.navBtnText}>Navigate to customer</Text>
+            </Pressable>
           ) : null}
           <Stepper activeIndex={idx} />
           <RouteBlock a={assignment} />
@@ -763,6 +857,48 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: spacing.xl,
   },
+  // ETA + distance banner
+  etaBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    marginBottom: spacing.md,
+  },
+  etaText: {
+    flex: 1,
+    fontSize: font.size.sm,
+    fontWeight: font.weight.semibold,
+    color: colors.text,
+  },
+
+  // Navigate (external turn-by-turn) button
+  navBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    marginBottom: spacing.md,
+    ...shadow.card,
+  },
+  navBtnPressed: { backgroundColor: colors.primarySoft },
+  navBtnDisabled: { opacity: 0.4 },
+  navBtnText: {
+    fontSize: font.size.md,
+    fontWeight: font.weight.bold,
+    color: colors.primary,
+  },
+
   permWarning: {
     backgroundColor: '#fdf4e3',
     borderWidth: 1,

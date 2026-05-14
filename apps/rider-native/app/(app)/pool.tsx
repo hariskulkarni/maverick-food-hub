@@ -22,6 +22,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api, ApiError, type PoolOrder } from '../../lib/api';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
+import { useOrderAlerts } from '../../lib/use-order-alerts';
+import { NewOrderBanner } from '../../components/new-order-banner';
 
 function rupees(n: number): string {
   return Number.isFinite(n) ? `₹${Math.round(n)}` : '₹0';
@@ -106,6 +108,9 @@ export default function PoolScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Buzz + banner whenever brand-new orders appear in the pool.
+  const { newCount, clear: clearAlerts } = useOrderAlerts(orders);
 
   const load = useCallback(async () => {
     setError(null);
@@ -200,6 +205,10 @@ export default function PoolScreen() {
       ) : null}
 
       {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+
+      {newCount > 0 ? (
+        <NewOrderBanner count={newCount} onDismiss={clearAlerts} />
+      ) : null}
 
       <FlatList
         data={orders}

@@ -24,15 +24,28 @@ import {
   Alert,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { api, ApiError, type Assignment, type AssignmentStatus } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
+import { OnboardingTour, useTourSeen } from '../../components/onboarding-tour';
 
 const HEARTBEAT_MS = 30_000;
 
 function rupees(decimalString: string): string {
   const n = Number.parseFloat(decimalString);
   return Number.isFinite(n) ? `₹${Math.round(n)}` : '₹0';
+}
+
+/** "just now" / "12s ago" / "3m ago" — keeps the sync indicator human-readable. */
+function relativeTime(from: number, now: number): string {
+  const secs = Math.max(0, Math.round((now - from) / 1000));
+  if (secs < 5) return 'just now';
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  return `${hrs}h ago`;
 }
 
 const STATUS_META: Record<
@@ -113,12 +126,22 @@ export default function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // "Last synced" indicator — set whenever data lands or the heartbeat fires,
+  // and ticked on an interval so the relative label stays fresh.
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  // First-launch onboarding.
+  const { seen: tourSeen, loading: tourLoading, markSeen: markTourSeen } = useTourSeen();
+  const showTour = !tourLoading && !tourSeen;
+
   const load = useCallback(async () => {
     setError(null);
     try {
       const [me, list] = await Promise.all([api.me(), api.assignments()]);
       setOnline(me.online);
       setAssignments(list);
+      setLastSyncedAt(Date.now());
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not load your dashboard.');
     }
@@ -139,12 +162,19 @@ export default function DashboardScreen() {
     }, [load])
   );
 
-  // Heartbeat — runs only while online.
+  // Heartbeat — runs only while online. Each successful ping refreshes the
+  // "last synced" stamp so the indicator visibly tracks the 30s loop.
   useEffect(() => {
     if (online) {
-      api.heartbeat().catch(() => {});
+      api
+        .heartbeat()
+        .then(() => setLastSyncedAt(Date.now()))
+        .catch(() => {});
       heartbeatRef.current = setInterval(() => {
-        api.heartbeat().catch(() => {});
+        api
+          .heartbeat()
+          .then(() => setLastSyncedAt(Date.now()))
+          .catch(() => {});
       }, HEARTBEAT_MS);
     }
     return () => {
@@ -155,6 +185,12 @@ export default function DashboardScreen() {
     };
   }, [online]);
 
+  // Re-render the relative "synced Ns ago" label once a second.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await load();
@@ -163,6 +199,8 @@ export default function DashboardScreen() {
 
   async function toggleOnline(next: boolean) {
     if (toggling) return;
+    // Tactile confirmation the moment the rider flips their status.
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setToggling(true);
     setOnline(next); // optimistic
     try {
@@ -246,6 +284,21 @@ export default function DashboardScreen() {
           />
         </View>
 
+        {/* Last-synced indicator — makes the 30s heartbeat visibly alive. */}
+        <View style={styles.syncRow}>
+          <View
+            style={[
+              styles.syncDot,
+              { backgroundColor: online ? colors.success : colors.textMuted },
+            ]}
+          />
+          <Text style={styles.syncText}>
+            {lastSyncedAt
+              ? `Synced ${relativeTime(lastSyncedAt, now)}`
+              : 'Waiting for first sync…'}
+          </Text>
+        </View>
+
         {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
 
         {/* Current delivery */}
@@ -273,6 +326,9 @@ export default function DashboardScreen() {
           <Text style={styles.signOutText}>Sign out</Text>
         </Pressable>
       </ScrollView>
+
+      {/* First-launch walkthrough — shown once, then suppressed via secure-store. */}
+      <OnboardingTour visible={showTour} onClose={markTourSeen} />
     </SafeAreaView>
   );
 }
@@ -336,6 +392,24 @@ const styles = StyleSheet.create({
     fontSize: font.size.sm,
     color: colors.textMuted,
     marginTop: 2,
+  },
+
+  syncRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  syncDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: spacing.xs + 2,
+  },
+  syncText: {
+    fontSize: font.size.xs,
+    color: colors.textMuted,
+    fontWeight: font.weight.medium,
   },
 
   errorBanner: {

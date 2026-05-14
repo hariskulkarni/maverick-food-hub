@@ -2,8 +2,9 @@
  * Authenticated app shell — the guard + the bottom tab bar.
  *
  * Anything under (app)/ requires a token; without one we bounce to login.
- * Four tabs: Home (dashboard), Orders (the claimable pool), Earnings, Profile.
- * The active-delivery screen is a pushed full-screen route on top of these.
+ * Five tabs: Home (dashboard), Orders (the pool), Activity (recent feed),
+ * Earnings, Profile. The active-delivery screen is a pushed full-screen route
+ * on top of these.
  *
  * This is also where push-notification registration kicks in — it runs as soon
  * as the rider is authenticated.
@@ -54,6 +55,15 @@ export default function AppLayout() {
           title: 'Orders',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="bicycle" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="activity"
+        options={{
+          title: 'Activity',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="time" color={color} size={size} />
           ),
         }}
       />

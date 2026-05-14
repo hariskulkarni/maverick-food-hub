@@ -6,9 +6,11 @@
  * frames the route on first paint; the rider marker then moves within it
  * without yanking the viewport around.
  */
+import { useRef } from 'react';
 import MapView, { Marker } from 'react-native-maps';
-import { View, Text, StyleSheet } from 'react-native';
-import { colors, radius, spacing, font } from '../lib/theme';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, radius, spacing, font, shadow } from '../lib/theme';
 
 export interface MapPoint {
   lat: number;
@@ -24,6 +26,7 @@ export function DeliveryMap({
   drop: MapPoint | null;
   rider: MapPoint | null;
 }) {
+  const mapRef = useRef<MapView>(null);
   const fixed = [pickup, drop].filter((p): p is MapPoint => p != null);
 
   // Nothing to anchor the map on — the order has no geocoded coordinates.
@@ -52,9 +55,23 @@ export function DeliveryMap({
     longitudeDelta: Math.max((maxLng - minLng) * 1.8, 0.015),
   };
 
+  // Re-frame the viewport on the rider's current position.
+  function recenterOnRider() {
+    if (!rider) return;
+    mapRef.current?.animateToRegion(
+      {
+        latitude: rider.lat,
+        longitude: rider.lng,
+        latitudeDelta: 0.015,
+        longitudeDelta: 0.015,
+      },
+      350
+    );
+  }
+
   return (
     <View style={styles.wrap}>
-      <MapView style={styles.map} initialRegion={initialRegion}>
+      <MapView ref={mapRef} style={styles.map} initialRegion={initialRegion}>
         {pickup ? (
           <Marker
             coordinate={{ latitude: pickup.lat, longitude: pickup.lng }}
@@ -77,6 +94,19 @@ export function DeliveryMap({
           />
         ) : null}
       </MapView>
+      {rider ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.recenterBtn,
+            pressed && styles.recenterBtnPressed,
+          ]}
+          onPress={recenterOnRider}
+          hitSlop={8}
+          accessibilityLabel="Recenter map on my location"
+        >
+          <Ionicons name="locate" size={20} color={colors.primary} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -91,6 +121,21 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   map: { flex: 1 },
+  recenterBtn: {
+    position: 'absolute',
+    bottom: spacing.md,
+    right: spacing.md,
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadow.card,
+  },
+  recenterBtnPressed: { backgroundColor: colors.primarySoft },
   placeholder: {
     minHeight: 90,
     borderRadius: radius.lg,
