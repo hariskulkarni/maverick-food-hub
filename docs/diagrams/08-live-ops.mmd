@@ -1,0 +1,65 @@
+flowchart TB
+    classDef alert fill:#fee2e2,stroke:#b91c1c,stroke-width:2px,color:#7f1d1d
+    classDef warn fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#78350f
+    classDef src fill:#e0e7ff,stroke:#4338ca,stroke-width:1.5px,color:#1e1b4b
+    classDef esc fill:#f3e8ff,stroke:#7c3aed,stroke-width:1.5px,color:#581c87
+
+    subgraph SOURCES[Signal sources]
+        S1[Order state machine]
+        S2[Rider heartbeat]
+        S3[Payment webhook]
+        S4[KYC pipeline]
+        S5[COD ledger]
+        S6[Support tickets]
+        S7[Kitchen panel]
+    end
+
+    subgraph DETECT[Detection engine]
+        D1{Stuck-order >20m}
+        D2{Rider silent >60s}
+        D3{Payment failure spike}
+        D4{Restaurant pause}
+    end
+
+    subgraph DASH[Live Ops tiles]
+        T1[Delayed orders]
+        T2[Riders online]
+        T3[No rider assigned]
+        T4[COD pending]
+        T5[Payment failures]
+        T6[Restaurants paused]
+        T7[Support tickets]
+        T8[Kitchen delays]
+    end
+
+    subgraph ESCALATE[Escalation]
+        E1[Auto-reassign rider]
+        E2[Page on-call]
+        E3[Email super admin]
+        E4[Slack webhook]
+    end
+
+    S1 --> D1
+    S2 --> D2
+    S3 --> D3
+    S7 --> D1
+    S4 -.-> T7
+    S5 -.-> T4
+    S6 -.-> T7
+
+    D1 --> T1 & T3 & T8
+    D2 --> T2
+    D3 --> T5
+    D4 --> T6
+
+    D1 --> E1 & E2
+    D2 --> E1
+    D3 --> E2 & E3
+    D4 --> E3
+    E2 --> E4
+    E3 --> E4
+
+    class T1,T3,T5,T6 alert
+    class T2,T4,T7,T8 warn
+    class S1,S2,S3,S4,S5,S6,S7 src
+    class D1,D2,D3,D4,E1,E2,E3,E4 esc

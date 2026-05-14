@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-05-10T00:00:00.000Z" agent="restaurant-manager-architecture" version="22.0.0">
+  <diagram id="arch" name="Architecture">
+    <mxGraphModel dx="1422" dy="757" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2600" pageHeight="2200" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+<mxCell id="n101" value="Restaurant Marketplace — End-to-End Architecture" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="10" width="2520" height="40" as="geometry"/></mxCell>
+<mxCell id="n102" value="L1 — Clients (browsers / installable PWAs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#888;dashed=1;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingTop=4;spacingLeft=8;fillColor=#f5faff;" vertex="1" parent="1"><mxGeometry x="40" y="60" width="520" height="22" as="geometry"/></mxCell>
+<mxCell id="n103" value="Customer
+Web / PWA
+
+Discovery, ordering, live tracking" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="60" y="90" width="380" height="110" as="geometry"/></mxCell>
+<mxCell id="n104" value="Restaurant Admin
+Web
+
+Per-restaurant dashboard, menu, KOT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="580" y="90" width="380" height="110" as="geometry"/></mxCell>
+<mxCell id="n105" value="Kitchen Tablet
+Web
+
+Order board, prep timers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="1100" y="90" width="380" height="110" as="geometry"/></mxCell>
+<mxCell id="n106" value="Rider
+Mobile PWA
+
+OTP login, GPS, OTP-verified delivery" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="1620" y="90" width="380" height="110" as="geometry"/></mxCell>
+<mxCell id="n107" value="Platform
+Super-Admin
+
+All restaurants, approvals, GMV" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;align=center;verticalAlign=middle;" vertex="1" parent="1"><mxGeometry x="2140" y="90" width="380" height="110" as="geometry"/></mxCell>
+<mxCell id="n108" value="Next.js Edge Middleware  ·  src/middleware.ts
+JWT decode (NextAuth Edge)  ·  RBAC gates: /platform → SUPER_ADMIN  ·  /admin → ADMIN  ·  /kitchen → KITCHEN+ADMIN  ·  /rider → RIDER  ·  /profile,/orders → any signed-in user" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontStyle=1;align=center;" vertex="1" parent="1"><mxGeometry x="60" y="240" width="2480" height="70" as="geometry"/></mxCell>
+<mxCell id="e109" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n103" target="n108"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e110" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n104" target="n108"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e111" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n105" target="n108"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e112" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n106" target="n108"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e113" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n107" target="n108"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="n114" value="L3 — App Router pages  (apps/web/src/app/...)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#888;dashed=1;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingTop=4;spacingLeft=8;fillColor=#fffaf0;" vertex="1" parent="1"><mxGeometry x="40" y="330" width="600" height="22" as="geometry"/></mxCell>
+<mxCell id="n115" value="  Customer site  (customer)/...
+
+/  (home — featured restaurants)
+/restaurants  (discover)
+/r/[slug]  (per-restaurant menu + combos)
+/cart   →  /checkout  →  /orders/[id]
+/track  (public tracking by code)
+/signup/restaurant  ·  /signup/rider
+/login  (OTP for customer/rider, pwd for staff)
+/profile  ·  /profile/addresses  ·  /profile/referrals" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="60" y="360" width="480" height="220" as="geometry"/></mxCell>
+<mxCell id="e116" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n108" target="n115"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="n117" value="  Restaurant Admin /admin
+
+/admin  (KPIs + charts, scoped)
+/admin/orders  (live board, filters)
+/admin/orders/[id]  (detail + KOT/Invoice)
+/admin/menu  (items + categories CRUD)
+/admin/coupons  (CRUD)
+/admin/riders  (active + applications + add)
+/admin/branches  ·  /admin/branches/new
+/admin/reports  ·  /admin/settings" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="580" y="360" width="480" height="220" as="geometry"/></mxCell>
+<mxCell id="e118" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n108" target="n117"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="n119" value="  Kitchen /kitchen
+
+/kitchen  (3-column board)
+  · ACCEPTED → PREPARING
+  · PREPARING → READY
+  · KOT print
+  · prep timers + overdue highlight" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1100" y="360" width="480" height="220" as="geometry"/></mxCell>
+<mxCell id="e120" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n108" target="n119"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="n121" value="  Rider PWA /rider
+
+/rider  (active deliveries)
+  · online toggle  ·  GPS streaming
+  · accept → pickup → delivered (OTP)
+/rider/history
+/rider/earnings
+Service Worker  /sw.js  (offline shell)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1620" y="360" width="480" height="220" as="geometry"/></mxCell>
+<mxCell id="e122" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n108" target="n121"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="n123" value="  Platform Super-Admin /platform
+
+/platform  (cross-restaurant KPIs)
+/platform/restaurants  (approve / suspend)
+/platform/orders  (all orders feed)
+/platform/riders  (all riders)
+/platform/users  (all users)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="2140" y="360" width="480" height="220" as="geometry"/></mxCell>
+<mxCell id="e124" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n108" target="n123"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="n125" value="L4 — API routes  (apps/web/src/app/api/...)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#888;dashed=1;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingTop=4;spacingLeft=8;fillColor=#f4faf2;" vertex="1" parent="1"><mxGeometry x="40" y="600" width="480" height="22" as="geometry"/></mxCell>
+<mxCell id="n126" value="Auth &amp; Session
+
+POST /api/auth/[...nextauth]   (NextAuth handler)
+POST /api/auth/otp             (issue OTP, dev-logged)
+GET  /api/me                   (current session)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="60" y="630" width="480" height="110" as="geometry"/></mxCell>
+<mxCell id="n127" value="Customer ordering
+
+POST /api/checkout/quote        (live pricing)
+POST /api/orders                (place order)
+GET  /api/orders/lookup?code    (public tracking)
+GET  /api/orders/[id]/items     (reorder helper)
+POST /api/orders/[id]/confirm-mock-payment
+GET  /api/orders/[id]/location  (rider trail seed)
+POST /api/addresses  ·  DELETE /api/addresses/[id]
+POST /api/signup/restaurant  ·  /api/signup/rider" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="560" y="630" width="480" height="162" as="geometry"/></mxCell>
+<mxCell id="n128" value="Restaurant Admin
+
+GET  /api/admin/orders/[id]
+POST /api/admin/orders/[id]/transition
+GET  /api/admin/orders/[id]/suggest-riders
+POST /api/admin/orders/[id]/assign  ·  /auto-assign
+GET  /api/admin/orders/[id]/kot  ·  invoice.pdf
+POST/PATCH/DELETE /api/admin/menu/items[/[id]]
+POST/DELETE       /api/admin/menu/categories
+POST/PATCH        /api/admin/coupons[/[id]]
+POST              /api/admin/branches
+POST              /api/admin/riders
+POST /api/admin/rider-applications/[id]/{approve,reject}
+GET  /api/admin/reports/orders.{csv,xlsx}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1060" y="630" width="480" height="218" as="geometry"/></mxCell>
+<mxCell id="n129" value="Rider
+
+POST /api/rider/online
+POST /api/rider/location  (GPS ping)
+GET  /api/rider/assignments
+POST /api/rider/assignments/[id]/accept
+POST /api/rider/assignments/[id]/pickup
+POST /api/rider/assignments/[id]/deliver  (verify OTP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1620" y="630" width="480" height="134" as="geometry"/></mxCell>
+<mxCell id="n130" value="Platform
+
+POST /api/platform/restaurants/[id]/approve
+POST /api/platform/restaurants/[id]/reject
+POST /api/platform/restaurants/[id]/suspend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="2050" y="630" width="460" height="110" as="geometry"/></mxCell>
+<mxCell id="n131" value="Payments
+
+POST /api/payments/verify    (HMAC of Razorpay signature)
+POST /api/payments/webhook   (Razorpay events)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="60" y="920" width="480" height="110" as="geometry"/></mxCell>
+<mxCell id="n132" value="Realtime
+
+GET  /api/events?channel=ORDER:id|BRANCH:id|RIDER:id
+      Server-Sent Events stream, heartbeat every 25s" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="560" y="920" width="480" height="110" as="geometry"/></mxCell>
+<mxCell id="n133" value="Health / Ops
+
+GET /api/health  (liveness)
+GET /api/ready   (DB ping)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1060" y="920" width="480" height="110" as="geometry"/></mxCell>
+<mxCell id="e134" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n115" target="n127"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e135" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n115" target="n126"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e136" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n115" target="n132"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e137" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n117" target="n128"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e138" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n117" target="n132"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e139" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n119" target="n128"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e140" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n119" target="n132"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e141" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n121" target="n129"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e142" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n121" target="n132"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e143" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n123" target="n130"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="n144" value="L5 — Server modules  (apps/web/src/server/...)  — pure business logic, type-safe, testable" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#888;dashed=1;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingTop=4;spacingLeft=8;fillColor=#fff7ee;" vertex="1" parent="1"><mxGeometry x="40" y="1100" width="1000" height="22" as="geometry"/></mxCell>
+<mxCell id="n145" value="auth.ts + auth.config.ts
+
+NextAuth v5 split (edge-safe + node)
+Credentials: phone-otp, email-password
+Argon2id passwords + JWT sessions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="60" y="1130" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="n146" value="otp.ts
+
+6-digit OTP, 5-min TTL, max 5 attempts
+Argon2 hash at rest, single-use
+Dev: code printed to log + login toast" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="430" y="1130" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="n147" value="tenancy.ts
+
+currentRestaurant() / requireRestaurant()
+requireSuperAdmin()
+Scopes every admin query to one restaurant" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="760" y="1130" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="n148" value="orders.ts  (state machine)
+
+Strict transitions: RECEIVED → ACCEPTED → PREPARING
+→ READY → OUT_FOR_DELIVERY → DELIVERED
+Fires SSE events + notifications + loyalty earn" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1100" y="1130" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="n149" value="pricing.ts
+
+Subtotal, % / flat coupon (caps), wallet, loyalty
+Tax % from Branch · base + per-km delivery
+Haversine distance from branch → address" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1480" y="1130" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="n150" value="rider-allocator.ts
+
+Distance + load + rating scorer
+Pluggable RiderScorer interface for ML
+suggestRiders() · autoAssign() · assignRider()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1840" y="1130" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="n151" value="realtime.ts
+
+In-process EventEmitter + per-conn SSE
+Channels: order:{id}, branch:{id}:orders, rider:{id}
+Swap to Postgres LISTEN/NOTIFY for multi-pod" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="2200" y="1130" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="n152" value="payments/  (adapter)
+
+PaymentProvider interface
+razorpay.ts (HMAC verify, refunds)
+mock.ts (dev auto-confirm)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="60" y="1300" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="n153" value="notifications.ts
+
+Channels: SMS, WhatsApp, Email, (Push hook)
+Adapters: mock (dev) / Twilio / SMTP
+Every send journaled in NotificationLog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="430" y="1300" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="n154" value="exports.ts
+
+Orders → CSV / Excel (ExcelJS)
+Invoices → PDF (PDFKit)
+KOT → printable HTML auto-print" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="760" y="1300" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="n155" value="analytics.ts
+
+dashboardKpis, salesSeries, bestSellers,
+paymentMixToday, peakHours, riderPerformance,
+customerInsights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1100" y="1300" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="n156" value="db.ts  +  log.ts
+
+Single Prisma client (singleton)
+Pino structured logger
+Reused everywhere" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1480" y="1300" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="n157" value="food-images.ts
+
+Curated Unsplash URL map: slug → image
+FOOD_IMAGES, COMBO_IMAGES, CATEGORY_IMAGES
+Hero, fallback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1840" y="1300" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="n158" value="DeliveryMap (client)
+
+react-leaflet + OpenStreetMap (free)
+Live marker + dashed polyline trail
+Seeded by /api/orders/[id]/location" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="2200" y="1300" width="360" height="130" as="geometry"/></mxCell>
+<mxCell id="e159" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n126" target="n145"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e160" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n126" target="n146"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e161" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n127" target="n148"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e162" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n127" target="n149"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e163" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n128" target="n147"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e164" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n128" target="n148"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e165" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n128" target="n150"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e166" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n128" target="n154"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e167" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n128" target="n155"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e168" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n129" target="n148"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e169" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n129" target="n151"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e170" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n130" target="n147"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e171" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n131" target="n152"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e172" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#5a8c43;strokeWidth=1.4;" edge="1" parent="1" source="n132" target="n151"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e173" value="status SMS" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n148" target="n153"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e174" value="publish" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n148" target="n151"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e175" value="rider:{id}" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n150" target="n151"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e176" value="send code" style="endArrow=classic;html=1;rounded=0;strokeColor=#444;strokeWidth=1.4;" edge="1" parent="1" source="n146" target="n153"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="n177" value="L6 — PostgreSQL via Prisma  (apps/web/prisma/schema.prisma)  · 32 models" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#888;dashed=1;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingTop=4;spacingLeft=8;fillColor=#f9f5fc;" vertex="1" parent="1"><mxGeometry x="40" y="1480" width="1100" height="22" as="geometry"/></mxCell>
+<mxCell id="n178" value="Identity &amp; RBAC
+
+User (Role: CUSTOMER / ADMIN / KITCHEN / RIDER / SUPER_ADMIN)
+OtpToken  ·  Address" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="60" y="1510" width="410" height="130" as="geometry"/></mxCell>
+<mxCell id="n179" value="Tenant
+
+Restaurant (PENDING/ACTIVE/SUSPENDED/REJECTED)
+RestaurantUser  ·  RiderApplication
+Branch  ·  BranchUser  ·  OperatingHours" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="520" y="1510" width="410" height="130" as="geometry"/></mxCell>
+<mxCell id="n180" value="Catalog
+
+Category  ·  MenuItem  ·  MenuItemAvailability
+Combo  ·  ComboItem" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1080" y="1510" width="380" height="130" as="geometry"/></mxCell>
+<mxCell id="n181" value="Orders
+
+Order  ·  OrderItem  ·  OrderStatusEvent
+Coupon  ·  CouponRedemption" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1480" y="1510" width="380" height="130" as="geometry"/></mxCell>
+<mxCell id="n182" value="Payments
+
+Payment  ·  Refund
+(provider-agnostic JSON column)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1900" y="1510" width="410" height="130" as="geometry"/></mxCell>
+<mxCell id="n183" value="Delivery
+
+RiderProfile  ·  RiderAssignment
+DeliveryLocationPing  (GPS trail)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="60" y="1660" width="410" height="130" as="geometry"/></mxCell>
+<mxCell id="n184" value="Engagement (future-features ✓)
+
+LoyaltyAccount + LoyaltyTransaction
+Wallet + WalletTransaction
+Referral" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="520" y="1660" width="410" height="130" as="geometry"/></mxCell>
+<mxCell id="n185" value="Inventory (future ✓)
+
+InventoryItem  ·  InventoryMovement" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1080" y="1660" width="380" height="130" as="geometry"/></mxCell>
+<mxCell id="n186" value="Notifications
+
+NotificationLog  (per-send audit trail)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1480" y="1660" width="380" height="130" as="geometry"/></mxCell>
+<mxCell id="n187" value="Indexing strategy
+
+Hot paths indexed: Order(branchId,status,placedAt),
+MenuItem(branchId,isAvailable),
+RiderProfile(branchId,isOnline),
+DeliveryLocationPing(orderId,createdAt)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1900" y="1660" width="410" height="130" as="geometry"/></mxCell>
+<mxCell id="e188" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#7c5fa0;strokeWidth=1.4;" edge="1" parent="1" source="n145" target="n178"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e189" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#7c5fa0;strokeWidth=1.4;" edge="1" parent="1" source="n146" target="n178"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e190" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#7c5fa0;strokeWidth=1.4;" edge="1" parent="1" source="n147" target="n179"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e191" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#7c5fa0;strokeWidth=1.4;" edge="1" parent="1" source="n148" target="n181"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e192" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#7c5fa0;strokeWidth=1.4;" edge="1" parent="1" source="n148" target="n182"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e193" value="loyalty earn" style="endArrow=classic;html=1;rounded=0;strokeColor=#7c5fa0;strokeWidth=1.4;" edge="1" parent="1" source="n148" target="n184"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e194" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#7c5fa0;strokeWidth=1.4;" edge="1" parent="1" source="n149" target="n180"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e195" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#7c5fa0;strokeWidth=1.4;" edge="1" parent="1" source="n150" target="n183"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e196" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#7c5fa0;strokeWidth=1.4;" edge="1" parent="1" source="n152" target="n182"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e197" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#7c5fa0;strokeWidth=1.4;" edge="1" parent="1" source="n153" target="n186"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e198" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#7c5fa0;strokeWidth=1.4;" edge="1" parent="1" source="n154" target="n181"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e199" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#7c5fa0;strokeWidth=1.4;" edge="1" parent="1" source="n155" target="n181"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e200" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#7c5fa0;strokeWidth=1.4;" edge="1" parent="1" source="n155" target="n180"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="n201" value="L7 — External services (all swappable / mockable in dev)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#888;dashed=1;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingTop=4;spacingLeft=8;fillColor=#fdf3f3;" vertex="1" parent="1"><mxGeometry x="40" y="1830" width="700" height="22" as="geometry"/></mxCell>
+<mxCell id="n202" value="Razorpay
+(PaymentProvider)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="60" y="1860" width="260" height="90" as="geometry"/></mxCell>
+<mxCell id="n203" value="Twilio SMS
++ WhatsApp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="340" y="1860" width="260" height="90" as="geometry"/></mxCell>
+<mxCell id="n204" value="SMTP / Nodemailer
+(email)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="620" y="1860" width="260" height="90" as="geometry"/></mxCell>
+<mxCell id="n205" value="OpenStreetMap
+Leaflet tiles · FREE" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="900" y="1860" width="260" height="90" as="geometry"/></mxCell>
+<mxCell id="n206" value="Browser
+Geolocation API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="1180" y="1860" width="260" height="90" as="geometry"/></mxCell>
+<mxCell id="n207" value="S3-compatible
+(image storage, optional)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="1460" y="1860" width="260" height="90" as="geometry"/></mxCell>
+<mxCell id="e208" value="HTTPS" style="endArrow=classic;html=1;rounded=0;strokeColor=#b85450;strokeWidth=1.4;dashed=1;" edge="1" parent="1" source="n152" target="n202"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e209" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#b85450;strokeWidth=1.4;dashed=1;" edge="1" parent="1" source="n153" target="n203"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e210" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#b85450;strokeWidth=1.4;dashed=1;" edge="1" parent="1" source="n153" target="n204"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e211" value="tiles" style="endArrow=classic;html=1;rounded=0;strokeColor=#b85450;strokeWidth=1.4;dashed=1;" edge="1" parent="1" source="n158" target="n205"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e212" value="navigator.geolocation" style="endArrow=classic;html=1;rounded=0;strokeColor=#b85450;strokeWidth=1.4;dashed=1;" edge="1" parent="1" source="n106" target="n206"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e213" value="SSE: order updates" style="endArrow=classic;startArrow=classic;html=1;rounded=0;strokeColor=#b46504;strokeWidth=1.6;" edge="1" parent="1" source="n151" target="n103"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e214" value="SSE: new orders" style="endArrow=classic;startArrow=classic;html=1;rounded=0;strokeColor=#b46504;strokeWidth=1.6;" edge="1" parent="1" source="n151" target="n104"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e215" value="SSE: prep board" style="endArrow=classic;startArrow=classic;html=1;rounded=0;strokeColor=#b46504;strokeWidth=1.6;" edge="1" parent="1" source="n151" target="n105"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e216" value="SSE: assignments" style="endArrow=classic;startArrow=classic;html=1;rounded=0;strokeColor=#b46504;strokeWidth=1.6;" edge="1" parent="1" source="n151" target="n106"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="n217" value="Deployment: single Next.js standalone container + Postgres.  Same image → Vercel / Railway / Render / Fly / AWS / self-hosted Docker.
+
+Arrows:  black = browser→server request  ·  green = HTTP API call  ·  purple = Prisma query  ·  red dashed = external HTTPS  ·  orange double = SSE stream
+
+Auth: phone-OTP (customer/rider) and email+Argon2id (admin/kitchen/super-admin).  Session JWT decoded in edge middleware for RBAC gating.
+Multi-tenancy: every admin query filters by currentRestaurant().  Super-admin bypasses tenant scoping for /platform views.
+Realtime: in-process bus by default; swap realtime.ts implementation for Postgres LISTEN/NOTIFY or Redis to scale horizontally." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666;fontSize=10;align=left;spacingLeft=8;verticalAlign=top;spacingTop=6;" vertex="1" parent="1"><mxGeometry x="1800" y="1830" width="760" height="220" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
+

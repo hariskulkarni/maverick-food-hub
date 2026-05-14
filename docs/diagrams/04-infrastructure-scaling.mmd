@@ -1,0 +1,50 @@
+flowchart TB
+    classDef p1 fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#064e3b
+    classDef p2 fill:#eff6ff,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
+    classDef p3 fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
+    classDef p4 fill:#fce7f3,stroke:#be185d,stroke-width:2px,color:#831843
+
+    subgraph PHASE1[Phase 1 · single VPS]
+        P1_CF[Cloudflare Free]
+        P1_NX[nginx]
+        P1_APP[Next.js standalone + PM2]
+        P1_PG[(PostgreSQL 16)]
+        P1_FS[Local FS uploads]
+        P1_BAK[Cron pg_dump]
+        P1_CF --> P1_NX --> P1_APP --> P1_PG
+        P1_APP --> P1_FS
+        P1_PG --> P1_BAK
+    end
+
+    subgraph PHASE2[Phase 2 · +Redis +R2 +CDN]
+        P2_R2[Cloudflare R2]
+        P2_RD[Redis backplane]
+        P2_APP[Next.js + R2 adapter]
+        P2_CDN[Cloudflare CDN]
+        P2_APP --> P2_R2 --> P2_CDN
+        P2_APP --> P2_RD
+    end
+
+    subgraph PHASE3[Phase 3 · DB split + horizontal]
+        P3_LB[Load balancer]
+        P3_APP[2-3 Next.js boxes]
+        P3_POOL[PgBouncer]
+        P3_PG[(Dedicated PG + read replica)]
+        P3_LB --> P3_APP --> P3_POOL --> P3_PG
+    end
+
+    subgraph PHASE4[Phase 4 · Intelligence]
+        P4_AI[ML dispatch service]
+        P4_DW[(Analytics warehouse)]
+        P4_RT[Smart routing optimizer]
+        P4_DW --> P4_AI --> P4_RT
+    end
+
+    PHASE1 -. 20 restaurants · 5k DAU .-> PHASE2
+    PHASE2 -. 100 restaurants · 50k DAU .-> PHASE3
+    PHASE3 -. 1000 restaurants · 500k DAU .-> PHASE4
+
+    class P1_CF,P1_NX,P1_APP,P1_PG,P1_FS,P1_BAK p1
+    class P2_R2,P2_RD,P2_APP,P2_CDN p2
+    class P3_LB,P3_APP,P3_POOL,P3_PG p3
+    class P4_AI,P4_DW,P4_RT p4

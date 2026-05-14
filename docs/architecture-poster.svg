@@ -1,0 +1,260 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1700" viewBox="0 0 2400 1700" font-family="Inter, Helvetica Neue, Arial, sans-serif">
+<rect x="0" y="0" width="2400" height="1700" fill="#f5f1e8" rx="0" ry="0" opacity="1"/>
+<text x="140" y="60" font-size="20" fill="#8c8780" font-weight="500" text-anchor="start" letter-spacing="8">FOODHUB · ARCHITECTURE</text>
+<text x="140" y="158" font-size="78" fill="#161b21" font-weight="600" text-anchor="start" letter-spacing="-1.5">What we built, in one picture.</text>
+<line x1="140" y1="198" x2="280" y2="198" stroke="#161b21" stroke-width="3" opacity="1"/>
+<text x="140" y="232" font-size="22" fill="#3a4148" font-weight="400" text-anchor="start" letter-spacing="0.0">Four audiences see four purpose-built surfaces. Every one sits on a single platform engine —</text>
+<text x="140" y="260" font-size="22" fill="#3a4148" font-weight="400" text-anchor="start" letter-spacing="0.0">open standards underneath, swappable vendors, multi-tenant from day one.</text>
+<rect x="170.0" y="320" width="470.0" height="4" fill="#1f3a73" rx="0" ry="0" opacity="1"/>
+<text x="405.0" y="368" font-size="28" fill="#161b21" font-weight="600" text-anchor="middle" letter-spacing="-0.3">Customer</text>
+<text x="405.0" y="392" font-size="14" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.4">the diner ordering food</text>
+<rect x="265.0" y="430" width="280" height="580" rx="32" ry="32" fill="#1c1f24"/>
+<rect x="275.0" y="440" width="260" height="560" rx="22" ry="22" fill="#f9f6ee"/>
+<rect x="275.0" y="440" width="260" height="22" rx="22" ry="22" fill="#f9f6ee"/>
+<text x="293.0" y="455" font-size="9" fill="#222" font-weight="600">9:41</text>
+<text x="513.0" y="455" font-size="9" fill="#222" font-weight="600">100%</text>
+<rect x="355.0" y="438" width="100" height="22" rx="11" ry="11" fill="#0d0f12"/>
+<g transform="translate(275.0,462)" clip-path="url(#phone-clip-265-430)">
+<defs><clipPath id="phone-clip-265-430"><rect x="0" y="0" width="260" height="538" rx="0"/></clipPath></defs>
+<text x="14" y="24" font-size="12" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Order ORD-AB12CD</text>
+<text x="218" y="24" font-size="8" fill="#2f6b3a" font-weight="700" text-anchor="end" letter-spacing="0.0">Out for delivery</text>
+<circle cx="30" cy="50" r="9" fill="#fff" opacity="1" stroke="#2f6b3a" stroke-width="2"/>
+<text x="30" y="54" font-size="10" fill="#2f6b3a" font-weight="700" text-anchor="middle" letter-spacing="0.0">✓</text>
+<text x="30" y="72" font-size="7" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.0">Placed</text>
+<line x1="39" y1="50" x2="69" y2="50" stroke="#2f6b3a" stroke-width="2" opacity="1"/>
+<circle cx="78" cy="50" r="9" fill="#fff" opacity="1" stroke="#2f6b3a" stroke-width="2"/>
+<text x="78" y="54" font-size="10" fill="#2f6b3a" font-weight="700" text-anchor="middle" letter-spacing="0.0">✓</text>
+<text x="78" y="72" font-size="7" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.0">Accepted</text>
+<line x1="87" y1="50" x2="117" y2="50" stroke="#2f6b3a" stroke-width="2" opacity="1"/>
+<circle cx="126" cy="50" r="9" fill="#fff" opacity="1" stroke="#2f6b3a" stroke-width="2"/>
+<text x="126" y="54" font-size="10" fill="#2f6b3a" font-weight="700" text-anchor="middle" letter-spacing="0.0">✓</text>
+<text x="126" y="72" font-size="7" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.0">Cooking</text>
+<line x1="135" y1="50" x2="165" y2="50" stroke="#2f6b3a" stroke-width="2" opacity="1"/>
+<circle cx="174" cy="50" r="9" fill="#fff" opacity="1" stroke="#a35e1d" stroke-width="2"/>
+<text x="174" y="54" font-size="10" fill="#a35e1d" font-weight="700" text-anchor="middle" letter-spacing="0.0">●</text>
+<text x="174" y="72" font-size="7" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.0">Out</text>
+<line x1="183" y1="50" x2="213" y2="50" stroke="#8c8780" stroke-width="2" opacity="1"/>
+<circle cx="222" cy="50" r="9" fill="#fff" opacity="1" stroke="#8c8780" stroke-width="2"/>
+<text x="222" y="54" font-size="10" fill="#8c8780" font-weight="700" text-anchor="middle" letter-spacing="0.0">○</text>
+<text x="222" y="72" font-size="7" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.0">Delivered</text>
+<rect x="14" y="86" width="232" height="130" fill="#dde7df" rx="10" ry="10" opacity="1"/>
+<line x1="14" y1="130" x2="246" y2="152" stroke="#cfc9bb" stroke-width="1.6" opacity="1" stroke-dasharray="3 4"/>
+<line x1="50" y1="86" x2="38" y2="216" stroke="#cfc9bb" stroke-width="1.6" opacity="1" stroke-dasharray="3 4"/>
+<line x1="160" y1="86" x2="200" y2="216" stroke="#cfc9bb" stroke-width="1.6" opacity="1" stroke-dasharray="3 4"/>
+<circle cx="60" cy="110" r="8" fill="#a35e1d" opacity="1" stroke="#fff" stroke-width="2"/>
+<text x="60" y="114" font-size="8" fill="#fff" font-weight="700" text-anchor="middle" letter-spacing="0.0">🍽</text>
+<circle cx="140" cy="165" r="9" fill="#2f6b3a" opacity="1" stroke="#fff" stroke-width="2"/>
+<text x="140" y="170" font-size="9" fill="#fff" font-weight="700" text-anchor="middle" letter-spacing="0.0">🛵</text>
+<circle cx="210" cy="200" r="8" fill="#1f3a73" opacity="1" stroke="#fff" stroke-width="2"/>
+<text x="210" y="204" font-size="8" fill="#fff" font-weight="700" text-anchor="middle" letter-spacing="0.0">🏠</text>
+<line x1="60" y1="110" x2="140" y2="165" stroke="#a35e1d" stroke-width="1.6" opacity="1" stroke-dasharray="3 4"/>
+<rect x="14" y="226" width="232" height="58" fill="#fff" rx="8" ry="8" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="28" y="244" font-size="9" fill="#161b21" font-weight="600" text-anchor="start" letter-spacing="0.0">Hand the rider this code</text>
+<text x="28" y="270" font-size="22" fill="#161b21" font-weight="800" text-anchor="start" letter-spacing="8">4 7 2 9</text>
+</g>
+<text x="405.0" y="1040" font-size="14" fill="#8c8780" text-anchor="middle" letter-spacing="3">Customer · Live tracking</text>
+<rect x="700.0" y="320" width="470.0" height="4" fill="#a35e1d" rx="0" ry="0" opacity="1"/>
+<text x="935.0" y="368" font-size="28" fill="#161b21" font-weight="600" text-anchor="middle" letter-spacing="-0.3">Restaurant</text>
+<text x="935.0" y="392" font-size="14" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.4">owner + kitchen workflow</text>
+<rect x="795.0" y="430" width="280" height="580" rx="32" ry="32" fill="#1c1f24"/>
+<rect x="805.0" y="440" width="260" height="560" rx="22" ry="22" fill="#f9f6ee"/>
+<rect x="805.0" y="440" width="260" height="22" rx="22" ry="22" fill="#f9f6ee"/>
+<text x="823.0" y="455" font-size="9" fill="#222" font-weight="600">9:41</text>
+<text x="1043.0" y="455" font-size="9" fill="#222" font-weight="600">100%</text>
+<rect x="885.0" y="438" width="100" height="22" rx="11" ry="11" fill="#0d0f12"/>
+<g transform="translate(805.0,462)" clip-path="url(#phone-clip-795-430)">
+<defs><clipPath id="phone-clip-795-430"><rect x="0" y="0" width="260" height="538" rx="0"/></clipPath></defs>
+<text x="14" y="24" font-size="11" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Saffron &amp; Smoke</text>
+<text x="218" y="24" font-size="9" fill="#8c8780" font-weight="600" text-anchor="end" letter-spacing="0.0">Owner</text>
+<text x="14" y="44" font-size="8" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Dashboard · Saturday, May 10</text>
+<rect x="14" y="56" width="110" height="60" fill="#fff" rx="6" ry="6" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="22" y="70" font-size="6" fill="#8c8780" font-weight="600" text-anchor="start" letter-spacing="1">ORDERS TODAY</text>
+<text x="22" y="94" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">138</text>
+<text x="22" y="108" font-size="7" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">+12% vs yesterday</text>
+<rect x="130" y="56" width="110" height="60" fill="#fff" rx="6" ry="6" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="138" y="70" font-size="6" fill="#8c8780" font-weight="600" text-anchor="start" letter-spacing="1">REVENUE</text>
+<text x="138" y="94" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">₹42,180</text>
+<text x="138" y="108" font-size="7" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">+18% vs yesterday</text>
+<rect x="14" y="126" width="110" height="60" fill="#fff" rx="6" ry="6" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="22" y="140" font-size="6" fill="#8c8780" font-weight="600" text-anchor="start" letter-spacing="1">PENDING</text>
+<text x="22" y="164" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">2</text>
+<text x="22" y="178" font-size="7" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Action required</text>
+<rect x="130" y="126" width="110" height="60" fill="#fff" rx="6" ry="6" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="138" y="140" font-size="6" fill="#8c8780" font-weight="600" text-anchor="start" letter-spacing="1">OUT FOR DELIVERY</text>
+<text x="138" y="164" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">6</text>
+<text x="138" y="178" font-size="7" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">On the road</text>
+<rect x="14" y="200" width="232" height="88" fill="#fff" rx="6" ry="6" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="22" y="214" font-size="8" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Revenue · last 14 days</text>
+<line x1="22.0" y1="254.0" x2="38.15384615384615" y2="248.0" stroke="#a35e1d" stroke-width="1.6" opacity="1"/>
+<line x1="38.15384615384615" y1="248.0" x2="54.30769230769231" y2="250.8" stroke="#a35e1d" stroke-width="1.6" opacity="1"/>
+<line x1="54.30769230769231" y1="250.8" x2="70.46153846153845" y2="245.2" stroke="#a35e1d" stroke-width="1.6" opacity="1"/>
+<line x1="70.46153846153845" y1="245.2" x2="86.61538461538461" y2="241.6" stroke="#a35e1d" stroke-width="1.6" opacity="1"/>
+<line x1="86.61538461538461" y1="241.6" x2="102.76923076923077" y2="246.8" stroke="#a35e1d" stroke-width="1.6" opacity="1"/>
+<line x1="102.76923076923077" y1="246.8" x2="118.92307692307692" y2="238.0" stroke="#a35e1d" stroke-width="1.6" opacity="1"/>
+<line x1="118.92307692307692" y1="238.0" x2="135.0769230769231" y2="234.0" stroke="#a35e1d" stroke-width="1.6" opacity="1"/>
+<line x1="135.0769230769231" y1="234.0" x2="151.23076923076923" y2="240.0" stroke="#a35e1d" stroke-width="1.6" opacity="1"/>
+<line x1="151.23076923076923" y1="240.0" x2="167.3846153846154" y2="234.8" stroke="#a35e1d" stroke-width="1.6" opacity="1"/>
+<line x1="167.3846153846154" y1="234.8" x2="183.53846153846155" y2="228.0" stroke="#a35e1d" stroke-width="1.6" opacity="1"/>
+<line x1="183.53846153846155" y1="228.0" x2="199.69230769230768" y2="230.8" stroke="#a35e1d" stroke-width="1.6" opacity="1"/>
+<line x1="199.69230769230768" y1="230.8" x2="215.84615384615384" y2="225.2" stroke="#a35e1d" stroke-width="1.6" opacity="1"/>
+<line x1="215.84615384615384" y1="225.2" x2="232.0" y2="218.8" stroke="#a35e1d" stroke-width="1.6" opacity="1"/>
+<text x="14" y="308" font-size="9" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Latest orders</text>
+<text x="14" y="326" font-size="8" fill="#161b21" font-weight="600" text-anchor="start" letter-spacing="0.0">ORD-K2X9</text>
+<text x="96" y="326" font-size="7" fill="#8c8780" font-weight="600" text-anchor="start" letter-spacing="1">DELIVERED</text>
+<text x="246" y="326" font-size="8" fill="#161b21" font-weight="700" text-anchor="end" letter-spacing="0.0">₹540</text>
+<text x="14" y="344" font-size="8" fill="#161b21" font-weight="600" text-anchor="start" letter-spacing="0.0">ORD-A77P</text>
+<text x="96" y="344" font-size="7" fill="#8c8780" font-weight="600" text-anchor="start" letter-spacing="1">OUT</text>
+<text x="246" y="344" font-size="8" fill="#161b21" font-weight="700" text-anchor="end" letter-spacing="0.0">₹820</text>
+<text x="14" y="362" font-size="8" fill="#161b21" font-weight="600" text-anchor="start" letter-spacing="0.0">ORD-D1MX</text>
+<text x="96" y="362" font-size="7" fill="#8c8780" font-weight="600" text-anchor="start" letter-spacing="1">COOKING</text>
+<text x="246" y="362" font-size="8" fill="#161b21" font-weight="700" text-anchor="end" letter-spacing="0.0">₹290</text>
+<text x="14" y="380" font-size="8" fill="#161b21" font-weight="600" text-anchor="start" letter-spacing="0.0">ORD-W3TJ</text>
+<text x="96" y="380" font-size="7" fill="#8c8780" font-weight="600" text-anchor="start" letter-spacing="1">DELIVERED</text>
+<text x="246" y="380" font-size="8" fill="#161b21" font-weight="700" text-anchor="end" letter-spacing="0.0">₹450</text>
+</g>
+<text x="935.0" y="1040" font-size="14" fill="#8c8780" text-anchor="middle" letter-spacing="3">Restaurant admin · Dashboard</text>
+<rect x="1230.0" y="320" width="470.0" height="4" fill="#2f6b3a" rx="0" ry="0" opacity="1"/>
+<text x="1465.0" y="368" font-size="28" fill="#161b21" font-weight="600" text-anchor="middle" letter-spacing="-0.3">Rider</text>
+<text x="1465.0" y="392" font-size="14" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.4">deliveries on the bike</text>
+<rect x="1325.0" y="430" width="280" height="580" rx="32" ry="32" fill="#1c1f24"/>
+<rect x="1335.0" y="440" width="260" height="560" rx="22" ry="22" fill="#f9f6ee"/>
+<rect x="1335.0" y="440" width="260" height="22" rx="22" ry="22" fill="#f9f6ee"/>
+<text x="1353.0" y="455" font-size="9" fill="#222" font-weight="600">9:41</text>
+<text x="1573.0" y="455" font-size="9" fill="#222" font-weight="600">100%</text>
+<rect x="1415.0" y="438" width="100" height="22" rx="11" ry="11" fill="#0d0f12"/>
+<g transform="translate(1335.0,462)" clip-path="url(#phone-clip-1325-430)">
+<defs><clipPath id="phone-clip-1325-430"><rect x="0" y="0" width="260" height="538" rx="0"/></clipPath></defs>
+<text x="14" y="24" font-size="11" fill="#2f6b3a" font-weight="700" text-anchor="start" letter-spacing="0.0">Rider · Online</text>
+<rect x="186" y="14" width="60" height="18" fill="#2f6b3a" rx="9" ry="9" opacity="1"/>
+<text x="216" y="27" font-size="8" fill="#fff" font-weight="700" text-anchor="middle" letter-spacing="1.5">ONLINE</text>
+<rect x="14" y="44" width="232" height="222" fill="#fff" rx="10" ry="10" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="28" y="64" font-size="11" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">ORD-AB12CD</text>
+<text x="218" y="64" font-size="11" fill="#161b21" font-weight="700" text-anchor="end" letter-spacing="0.0">₹540</text>
+<text x="28" y="80" font-size="8" fill="#2f6b3a" font-weight="600" text-anchor="start" letter-spacing="0.0">Picked up · Out for delivery</text>
+<line x1="28" y1="92" x2="232" y2="92" stroke="#dfd9cd" stroke-width="1" opacity="1"/>
+<text x="28" y="108" font-size="9" fill="#161b21" font-weight="600" text-anchor="start" letter-spacing="0.0">📍  402 Lotus Apartments</text>
+<text x="40" y="122" font-size="8" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">5th Cross, Indiranagar 560038</text>
+<text x="28" y="144" font-size="9" fill="#161b21" font-weight="600" text-anchor="start" letter-spacing="0.0">👤  Priya Iyer · ☎ +9198…</text>
+<rect x="28" y="156" width="204" height="70" fill="#dde7df" rx="6" ry="6" opacity="1"/>
+<circle cx="60" cy="178" r="6" fill="#a35e1d" opacity="1" stroke="#fff" stroke-width="1.5"/>
+<circle cx="120" cy="195" r="7" fill="#2f6b3a" opacity="1" stroke="#fff" stroke-width="1.5"/>
+<circle cx="190" cy="215" r="6" fill="#1f3a73" opacity="1" stroke="#fff" stroke-width="1.5"/>
+<line x1="60" y1="178" x2="120" y2="195" stroke="#a35e1d" stroke-width="1.6" opacity="1" stroke-dasharray="3 4"/>
+<rect x="28" y="234" width="110" height="24" fill="#fff" rx="4" ry="4" opacity="1" stroke="#cfc9bb" stroke-width="0.8"/>
+<text x="34" y="250" font-size="8" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Enter delivery code</text>
+<rect x="146" y="234" width="86" height="24" fill="#2f6b3a" rx="4" ry="4" opacity="1"/>
+<text x="189" y="250" font-size="7" fill="#fff" font-weight="700" text-anchor="middle" letter-spacing="1">MARK DELIVERED</text>
+<text x="14" y="286" font-size="9" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Today  ₹240</text>
+<text x="218" y="286" font-size="8" fill="#8c8780" font-weight="400" text-anchor="end" letter-spacing="0.0">8 deliveries</text>
+</g>
+<text x="1465.0" y="1040" font-size="14" fill="#8c8780" text-anchor="middle" letter-spacing="3">Rider · Active delivery</text>
+<rect x="1760.0" y="320" width="470.0" height="4" fill="#4a3a6a" rx="0" ry="0" opacity="1"/>
+<text x="1995.0" y="368" font-size="28" fill="#161b21" font-weight="600" text-anchor="middle" letter-spacing="-0.3">Platform team</text>
+<text x="1995.0" y="392" font-size="14" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.4">FoodHub operating it all</text>
+<rect x="1855.0" y="430" width="280" height="580" rx="32" ry="32" fill="#1c1f24"/>
+<rect x="1865.0" y="440" width="260" height="560" rx="22" ry="22" fill="#f9f6ee"/>
+<rect x="1865.0" y="440" width="260" height="22" rx="22" ry="22" fill="#f9f6ee"/>
+<text x="1883.0" y="455" font-size="9" fill="#222" font-weight="600">9:41</text>
+<text x="2103.0" y="455" font-size="9" fill="#222" font-weight="600">100%</text>
+<rect x="1945.0" y="438" width="100" height="22" rx="11" ry="11" fill="#0d0f12"/>
+<g transform="translate(1865.0,462)" clip-path="url(#phone-clip-1855-430)">
+<defs><clipPath id="phone-clip-1855-430"><rect x="0" y="0" width="260" height="538" rx="0"/></clipPath></defs>
+<text x="14" y="24" font-size="11" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">FoodHub · Platform</text>
+<text x="218" y="24" font-size="9" fill="#8c8780" font-weight="600" text-anchor="end" letter-spacing="0.0">Super</text>
+<text x="14" y="44" font-size="8" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Cross-marketplace overview</text>
+<rect x="14" y="56" width="110" height="56" fill="#fff" rx="6" ry="6" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="22" y="70" font-size="6" fill="#8c8780" font-weight="600" text-anchor="start" letter-spacing="1">RESTAURANTS</text>
+<text x="22" y="94" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">12</text>
+<text x="22" y="106" font-size="7" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">1 pending</text>
+<rect x="130" y="56" width="110" height="56" fill="#fff" rx="6" ry="6" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="138" y="70" font-size="6" fill="#8c8780" font-weight="600" text-anchor="start" letter-spacing="1">CUSTOMERS</text>
+<text x="138" y="94" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">2,418</text>
+<text x="138" y="106" font-size="7" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">+184 this week</text>
+<rect x="14" y="120" width="110" height="56" fill="#fff" rx="6" ry="6" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="22" y="134" font-size="6" fill="#8c8780" font-weight="600" text-anchor="start" letter-spacing="1">ORDERS TODAY</text>
+<text x="22" y="158" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">1,047</text>
+<text x="22" y="170" font-size="7" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">across all</text>
+<rect x="130" y="120" width="110" height="56" fill="#fff" rx="6" ry="6" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="138" y="134" font-size="6" fill="#8c8780" font-weight="600" text-anchor="start" letter-spacing="1">RIDERS ONLINE</text>
+<text x="138" y="158" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">36</text>
+<text x="138" y="170" font-size="7" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">of 58 active</text>
+<rect x="14" y="192" width="232" height="36" fill="#4a3a6a" rx="6" ry="6" opacity="1"/>
+<text x="22" y="207" font-size="7" fill="#dfd9ea" font-weight="700" text-anchor="start" letter-spacing="1.5">TOTAL GMV TODAY</text>
+<text x="22" y="224" font-size="16" fill="#fff" font-weight="700" text-anchor="start" letter-spacing="0.0">₹3,82,610</text>
+<text x="238" y="224" font-size="9" fill="#dfd9ea" font-weight="600" text-anchor="end" letter-spacing="0.0">+22% w/w</text>
+<text x="14" y="250" font-size="7" fill="#a06a1c" font-weight="700" text-anchor="start" letter-spacing="1.5">PENDING RESTAURANT APPROVALS</text>
+<rect x="14" y="268" width="232" height="32" fill="#fff" rx="4" ry="4" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="22" y="281" font-size="9" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Spice Route</text>
+<text x="22" y="294" font-size="7" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Maya · Indian</text>
+<rect x="180" y="276" width="24" height="16" fill="#2f6b3a" rx="3" ry="3" opacity="1"/>
+<text x="192" y="287" font-size="9" fill="#fff" font-weight="700" text-anchor="middle" letter-spacing="0.0">✓</text>
+<rect x="208" y="276" width="24" height="16" fill="#fff" rx="3" ry="3" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="220" y="287" font-size="9" fill="#8c8780" font-weight="700" text-anchor="middle" letter-spacing="0.0">✕</text>
+<rect x="14" y="304" width="232" height="32" fill="#fff" rx="4" ry="4" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="22" y="317" font-size="9" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Bao Bandits</text>
+<text x="22" y="330" font-size="7" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Lin · Asian</text>
+<rect x="180" y="312" width="24" height="16" fill="#2f6b3a" rx="3" ry="3" opacity="1"/>
+<text x="192" y="323" font-size="9" fill="#fff" font-weight="700" text-anchor="middle" letter-spacing="0.0">✓</text>
+<rect x="208" y="312" width="24" height="16" fill="#fff" rx="3" ry="3" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="220" y="323" font-size="9" fill="#8c8780" font-weight="700" text-anchor="middle" letter-spacing="0.0">✕</text>
+<rect x="14" y="340" width="232" height="32" fill="#fff" rx="4" ry="4" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="22" y="353" font-size="9" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Doughworks</text>
+<text x="22" y="366" font-size="7" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Jay · European</text>
+<rect x="180" y="348" width="24" height="16" fill="#2f6b3a" rx="3" ry="3" opacity="1"/>
+<text x="192" y="359" font-size="9" fill="#fff" font-weight="700" text-anchor="middle" letter-spacing="0.0">✓</text>
+<rect x="208" y="348" width="24" height="16" fill="#fff" rx="3" ry="3" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="220" y="359" font-size="9" fill="#8c8780" font-weight="700" text-anchor="middle" letter-spacing="0.0">✕</text>
+</g>
+<text x="1995.0" y="1040" font-size="14" fill="#8c8780" text-anchor="middle" letter-spacing="3">Platform · Super-admin</text>
+<rect x="140" y="1090" width="2120" height="240" fill="#fff" rx="24" ry="24" opacity="1" stroke="#cfc9bb" stroke-width="1.2"/>
+<text x="170" y="1128" font-size="14" fill="#a06a1c" font-weight="700" text-anchor="start" letter-spacing="4">PLATFORM ENGINE</text>
+<text x="170" y="1170" font-size="26" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="-0.3">One codebase. Four surfaces. Multi-tenant.</text>
+<text x="170" y="1200" font-size="16" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Every screen above is the same engine, dressed for its audience.</text>
+<text x="690.0" y="1234" font-size="16" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Order machine</text>
+<text x="690.0" y="1254" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Strict status flow from Received to</text>
+<text x="690.0" y="1270" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Delivered. Auto-printed kitchen tickets.</text>
+<text x="994.0" y="1234" font-size="16" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Live tracking</text>
+<text x="994.0" y="1254" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Real-time updates fan out to every</text>
+<text x="994.0" y="1270" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">screen the moment a status changes.</text>
+<text x="1298.0" y="1234" font-size="16" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Payments</text>
+<text x="1298.0" y="1254" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">UPI, cards, COD, wallet, loyalty</text>
+<text x="1298.0" y="1270" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">redemption. Refunds in one click.</text>
+<text x="1602.0" y="1234" font-size="16" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Engagement</text>
+<text x="1602.0" y="1254" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Coupons, loyalty points, referrals,</text>
+<text x="1602.0" y="1270" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">wallet credits — all wired in.</text>
+<text x="1906.0" y="1234" font-size="16" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Insights</text>
+<text x="1906.0" y="1254" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Daily KPIs, best sellers, peak</text>
+<text x="1906.0" y="1270" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">hours, rider performance — exportable.</text>
+<line x1="405.0" y1="1048" x2="405.0" y2="1084" stroke="#1f3a73" stroke-width="2.4" opacity="0.7"/>
+<circle cx="405.0" cy="1084" r="6" fill="#1f3a73" opacity="1"/>
+<line x1="935.0" y1="1048" x2="935.0" y2="1084" stroke="#a35e1d" stroke-width="2.4" opacity="0.7"/>
+<circle cx="935.0" cy="1084" r="6" fill="#a35e1d" opacity="1"/>
+<line x1="1465.0" y1="1048" x2="1465.0" y2="1084" stroke="#2f6b3a" stroke-width="2.4" opacity="0.7"/>
+<circle cx="1465.0" cy="1084" r="6" fill="#2f6b3a" opacity="1"/>
+<line x1="1995.0" y1="1048" x2="1995.0" y2="1084" stroke="#4a3a6a" stroke-width="2.4" opacity="0.7"/>
+<circle cx="1995.0" cy="1084" r="6" fill="#4a3a6a" opacity="1"/>
+<line x1="140" y1="1368" x2="2260" y2="1368" stroke="#161b21" stroke-width="1" opacity="1"/>
+<text x="140" y="1398" font-size="14" fill="#8c8780" font-weight="700" text-anchor="start" letter-spacing="4">FOUNDATION</text>
+<text x="140" y="1432" font-size="22" fill="#161b21" font-weight="600" text-anchor="start" letter-spacing="0.0">All swappable. Open standards. No lock-in.</text>
+<rect x="680.0" y="1398" width="242.66666666666669" height="56" fill="#fff" rx="8" ry="8" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="694.0" y="1420" font-size="13" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Postgres</text>
+<text x="694.0" y="1440" font-size="10" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Single source of truth</text>
+<rect x="936.6666666666667" y="1398" width="242.66666666666669" height="56" fill="#fff" rx="8" ry="8" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="950.6666666666667" y="1420" font-size="13" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">OpenStreetMap</text>
+<text x="950.6666666666667" y="1440" font-size="10" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Free maps, no API key</text>
+<rect x="1193.3333333333335" y="1398" width="242.66666666666669" height="56" fill="#fff" rx="8" ry="8" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="1207.3333333333335" y="1420" font-size="13" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Razorpay</text>
+<text x="1207.3333333333335" y="1440" font-size="10" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Indian payments + COD</text>
+<rect x="1450.0" y="1398" width="242.66666666666669" height="56" fill="#fff" rx="8" ry="8" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="1464.0" y="1420" font-size="13" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Twilio</text>
+<text x="1464.0" y="1440" font-size="10" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">SMS + WhatsApp</text>
+<rect x="1706.6666666666667" y="1398" width="242.66666666666669" height="56" fill="#fff" rx="8" ry="8" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="1720.6666666666667" y="1420" font-size="13" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Docker</text>
+<text x="1720.6666666666667" y="1440" font-size="10" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">Deploys anywhere</text>
+<rect x="1963.3333333333335" y="1398" width="242.66666666666669" height="56" fill="#fff" rx="8" ry="8" opacity="1" stroke="#cfc9bb" stroke-width="0.6"/>
+<text x="1977.3333333333335" y="1420" font-size="13" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Next.js</text>
+<text x="1977.3333333333335" y="1440" font-size="10" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">One app, four surfaces</text>
+<line x1="140" y1="1640" x2="2260" y2="1640" stroke="#161b21" stroke-width="1" opacity="1"/>
+<text x="140" y="1670" font-size="13" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="4">FOODHUB · ARCHITECTURE · ED. 1</text>
+<text x="2260" y="1670" font-size="13" fill="#8c8780" font-weight="400" text-anchor="end" letter-spacing="4">EVERY SURFACE LIVES ON THE SAME ENGINE · TENANT-SCOPED · SCALES HORIZONTALLY</text>
+</svg>

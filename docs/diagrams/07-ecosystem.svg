@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1200" width="1800" height="1200" font-family='system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+  </marker>
+  <marker id="arrow-dash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+  </marker>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.08"/>
+  </filter>
+</defs>
+<rect width="1800" height="1200" fill="#ffffff"/>
+<text x="48" y="56" font-size="32" font-weight="700" fill="#0f172a">Ecosystem — Hub-and-spoke</text>
+<text x="48" y="84" font-size="15" fill="#475569">Order engine at the center · six ecosystems plug in as self-contained capability rings.</text>
+<circle cx="900.0" cy="640.0" r="130" fill="#fbbf24" stroke="#92400e" stroke-width="2" filter="url(#shadow)"/>
+<text x="900.0" y="615.0666666666666" text-anchor="middle" font-size="17" font-weight="700" fill="#451a03">Maverick&#x27;s</text>
+<text x="900.0" y="635.4666666666666" text-anchor="middle" font-size="17" font-weight="700" fill="#451a03">Food Hub</text>
+<text x="900.0" y="655.8666666666666" text-anchor="middle" font-size="17" font-weight="700" fill="#451a03"></text>
+<text x="900.0" y="676.2666666666667" text-anchor="middle" font-size="17" font-weight="700" fill="#451a03">ORDER ENGINE</text>
+<rect x="760.0" y="150.0" width="280" height="220" rx="14" ry="14" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="776.0" y="174.0" font-size="13" font-weight="700" fill="#94a3b8" letter-spacing="1.5">CUSTOMER</text>
+<rect x="776.0" y="200.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="900.0" y="216.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">QR scan</text>
+<rect x="776.0" y="228.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="900.0" y="244.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Mobile PWA</text>
+<rect x="776.0" y="256.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="900.0" y="272.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Auto-apply offers</text>
+<rect x="776.0" y="284.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="900.0" y="300.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">OTP login</text>
+<rect x="776.0" y="312.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="900.0" y="328.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Live tracking</text>
+<rect x="776.0" y="340.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="900.0" y="356.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">48h feedback</text>
+<line x1="900.0" y1="505.0" x2="900.0" y2="333.3333333333333" stroke="#fbbf24" stroke-width="3"/>
+<rect x="1158.3716857408417" y="340.0" width="280" height="220" rx="14" ry="14" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="1174.3716857408417" y="364.0" font-size="13" font-weight="700" fill="#94a3b8" letter-spacing="1.5">RESTAURANT</text>
+<rect x="1174.3716857408417" y="390.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1298.3716857408417" y="406.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Menu + combos</text>
+<rect x="1174.3716857408417" y="418.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1298.3716857408417" y="434.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Offers · happy hours</text>
+<rect x="1174.3716857408417" y="446.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1298.3716857408417" y="462.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Kitchen KOT</text>
+<rect x="1174.3716857408417" y="474.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1298.3716857408417" y="490.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Reports + ratings</text>
+<rect x="1174.3716857408417" y="502.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1298.3716857408417" y="518.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Coupon campaigns</text>
+<line x1="1016.9134295108992" y1="572.5" x2="1217.5426480542942" y2="486.6666666666667" stroke="#fbbf24" stroke-width="3"/>
+<rect x="1158.3716857408417" y="720.0" width="280" height="220" rx="14" ry="14" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="1174.3716857408417" y="744.0" font-size="13" font-weight="700" fill="#94a3b8" letter-spacing="1.5">RIDER</text>
+<rect x="1174.3716857408417" y="770.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1298.3716857408417" y="786.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Capacitor Android</text>
+<rect x="1174.3716857408417" y="798.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1298.3716857408417" y="814.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">KYC</text>
+<rect x="1174.3716857408417" y="826.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1298.3716857408417" y="842.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Order pool</text>
+<rect x="1174.3716857408417" y="854.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1298.3716857408417" y="870.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">GPS service</text>
+<rect x="1174.3716857408417" y="882.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1298.3716857408417" y="898.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Earnings overrides</text>
+<rect x="1174.3716857408417" y="910.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1298.3716857408417" y="926.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">COD</text>
+<line x1="1016.9134295108993" y1="707.5" x2="1217.5426480542942" y2="793.3333333333334" stroke="#fbbf24" stroke-width="3"/>
+<rect x="760.0" y="910.0" width="280" height="220" rx="14" ry="14" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="776.0" y="934.0" font-size="13" font-weight="700" fill="#94a3b8" letter-spacing="1.5">ADMIN</text>
+<rect x="776.0" y="960.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="900.0" y="976.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Super-admin portal</text>
+<rect x="776.0" y="988.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="900.0" y="1004.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">KYC approvals</text>
+<rect x="776.0" y="1016.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="900.0" y="1032.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Brand umbrellas</text>
+<rect x="776.0" y="1044.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="900.0" y="1060.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Challenges</text>
+<rect x="776.0" y="1072.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="900.0" y="1088.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Signup bonus</text>
+<rect x="776.0" y="1100.0" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="900.0" y="1116.125" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Live ops</text>
+<line x1="900.0" y1="775.0" x2="900.0" y2="946.6666666666666" stroke="#fbbf24" stroke-width="3"/>
+<rect x="361.6283142591583" y="720.0000000000001" width="280" height="220" rx="14" ry="14" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="377.6283142591583" y="744.0000000000001" font-size="13" font-weight="700" fill="#94a3b8" letter-spacing="1.5">PAYMENTS</text>
+<rect x="377.6283142591583" y="770.0000000000001" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="501.6283142591583" y="786.1250000000001" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Razorpay</text>
+<rect x="377.6283142591583" y="798.0000000000001" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="501.6283142591583" y="814.1250000000001" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">COD</text>
+<rect x="377.6283142591583" y="826.0000000000001" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="501.6283142591583" y="842.1250000000001" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Wallet + loyalty</text>
+<rect x="377.6283142591583" y="854.0000000000001" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="501.6283142591583" y="870.1250000000001" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Refunds</text>
+<line x1="783.0865704891008" y1="707.5" x2="582.4573519457059" y2="793.3333333333334" stroke="#fbbf24" stroke-width="3"/>
+<rect x="361.62831425915806" y="340.0000000000002" width="280" height="220" rx="14" ry="14" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="377.62831425915806" y="364.0000000000002" font-size="13" font-weight="700" fill="#94a3b8" letter-spacing="1.5">NOTIFICATIONS</text>
+<rect x="377.62831425915806" y="390.0000000000002" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="501.62831425915806" y="406.1250000000002" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">SMS</text>
+<rect x="377.62831425915806" y="418.0000000000002" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="501.62831425915806" y="434.1250000000002" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Email</text>
+<rect x="377.62831425915806" y="446.0000000000002" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="501.62831425915806" y="462.1250000000002" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Menu alerts</text>
+<rect x="377.62831425915806" y="474.0000000000002" width="248" height="24" rx="10" ry="10" fill="#ffffff" stroke="#374151" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="501.62831425915806" y="490.1250000000002" text-anchor="middle" font-size="11" font-weight="600" fill="#111827">Integration alerts</text>
+<line x1="783.0865704891007" y1="572.5000000000001" x2="582.4573519457057" y2="486.66666666666686" stroke="#fbbf24" stroke-width="3"/>
+</svg>

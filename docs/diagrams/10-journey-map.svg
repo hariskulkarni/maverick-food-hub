@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1900 1200" width="1900" height="1200" font-family='system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+  </marker>
+  <marker id="arrow-dash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+  </marker>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.08"/>
+  </filter>
+</defs>
+<rect width="1900" height="1200" fill="#ffffff"/>
+<text x="48" y="56" font-size="32" font-weight="700" fill="#0f172a">Mobile + Web Experience Journey Map</text>
+<text x="48" y="84" font-size="15" fill="#475569">Four roles, one shared realtime backbone. Each row reads left-to-right as a moment in time.</text>
+<rect x="48" y="180" width="180" height="110" rx="10" ry="10" fill="#fef3e7" stroke="#d97706" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="138.0" y="242.5" text-anchor="middle" font-size="20" font-weight="600" fill="#7c2d12">Customer</text>
+<rect x="248.0" y="170" width="237.33333333333331" height="60" rx="10" ry="10" fill="#fef3e7" stroke="#d97706" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="366.66666666666663" y="205.625" text-anchor="middle" font-size="15" font-weight="600" fill="#7c2d12">Discover</text>
+<rect x="248.0" y="240" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="366.66666666666663" y="274.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Scan QR · land on /r/[slug]</text>
+<path d="M 485.33333333333326 200 L 517.3333333333333 200" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="515.3333333333333" y="170" width="237.33333333333331" height="60" rx="10" ry="10" fill="#fef3e7" stroke="#d97706" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="633.9999999999999" y="205.625" text-anchor="middle" font-size="15" font-weight="600" fill="#7c2d12">Browse</text>
+<rect x="515.3333333333333" y="240" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="633.9999999999999" y="274.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Menu with happy-hour prices · cross-sell strips</text>
+<path d="M 752.6666666666665 200 L 784.6666666666665 200" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="782.6666666666666" y="170" width="237.33333333333331" height="60" rx="10" ry="10" fill="#fef3e7" stroke="#d97706" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="901.3333333333333" y="205.625" text-anchor="middle" font-size="15" font-weight="600" fill="#7c2d12">Decide</text>
+<rect x="782.6666666666666" y="240" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="901.3333333333333" y="274.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Auto-apply offer · signup bonus appears</text>
+<path d="M 1020.0 200 L 1052.0 200" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="1050.0" y="170" width="237.33333333333331" height="60" rx="10" ry="10" fill="#fef3e7" stroke="#d97706" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1168.6666666666667" y="205.625" text-anchor="middle" font-size="15" font-weight="600" fill="#7c2d12">Pay</text>
+<rect x="1050.0" y="240" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1168.6666666666667" y="274.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">OTP login → Razorpay UPI or COD</text>
+<path d="M 1287.3333333333333 200 L 1319.3333333333333 200" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="1317.3333333333333" y="170" width="237.33333333333331" height="60" rx="10" ry="10" fill="#fef3e7" stroke="#d97706" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1436.0" y="205.625" text-anchor="middle" font-size="15" font-weight="600" fill="#7c2d12">Track</text>
+<rect x="1317.3333333333333" y="240" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1436.0" y="274.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">SSE status · rider GPS pin · delivery OTP</text>
+<path d="M 1554.6666666666665 200 L 1586.6666666666665 200" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="1584.6666666666665" y="170" width="237.33333333333331" height="60" rx="10" ry="10" fill="#fef3e7" stroke="#d97706" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1703.3333333333333" y="205.625" text-anchor="middle" font-size="15" font-weight="600" fill="#7c2d12">Feedback</text>
+<rect x="1584.6666666666665" y="240" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1703.3333333333333" y="274.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">48h CTA · stars · tags · optional photo</text>
+<rect x="48" y="420" width="180" height="110" rx="10" ry="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="138.0" y="482.5" text-anchor="middle" font-size="20" font-weight="600" fill="#064e3b">Rider</text>
+<rect x="248.0" y="410" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="366.66666666666663" y="445.625" text-anchor="middle" font-size="15" font-weight="600" fill="#064e3b">Onboard</text>
+<rect x="248.0" y="480" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="366.66666666666663" y="514.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Self-register + KYC · super-admin approval</text>
+<path d="M 485.33333333333326 440 L 517.3333333333333 440" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="515.3333333333333" y="410" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="633.9999999999999" y="445.625" text-anchor="middle" font-size="15" font-weight="600" fill="#064e3b">Start shift</text>
+<rect x="515.3333333333333" y="480" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="633.9999999999999" y="514.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Go ONLINE on home screen</text>
+<path d="M 752.6666666666665 440 L 784.6666666666665 440" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="782.6666666666666" y="410" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="901.3333333333333" y="445.625" text-anchor="middle" font-size="15" font-weight="600" fill="#064e3b">Claim</text>
+<rect x="782.6666666666666" y="480" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="901.3333333333333" y="514.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Order pool with payout preview</text>
+<path d="M 1020.0 440 L 1052.0 440" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="1050.0" y="410" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1168.6666666666667" y="445.625" text-anchor="middle" font-size="15" font-weight="600" fill="#064e3b">Pickup</text>
+<rect x="1050.0" y="480" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1168.6666666666667" y="514.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Navigate · mark reached · photo proof</text>
+<path d="M 1287.3333333333333 440 L 1319.3333333333333 440" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="1317.3333333333333" y="410" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1436.0" y="445.625" text-anchor="middle" font-size="15" font-weight="600" fill="#064e3b">Deliver</text>
+<rect x="1317.3333333333333" y="480" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1436.0" y="514.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">GPS pings · geofence · OTP delivered</text>
+<path d="M 1554.6666666666665 440 L 1586.6666666666665 440" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="1584.6666666666665" y="410" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1703.3333333333333" y="445.625" text-anchor="middle" font-size="15" font-weight="600" fill="#064e3b">Earn</text>
+<rect x="1584.6666666666665" y="480" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1703.3333333333333" y="514.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Earnings card updates · EOD payout</text>
+<rect x="48" y="660" width="180" height="110" rx="10" ry="10" fill="#eef2ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="138.0" y="722.5" text-anchor="middle" font-size="20" font-weight="600" fill="#1e1b4b">Restaurant</text>
+<rect x="248.0" y="650" width="237.33333333333331" height="60" rx="10" ry="10" fill="#eef2ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="366.66666666666663" y="685.625" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">Receive</text>
+<rect x="248.0" y="720" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="366.66666666666663" y="754.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">SSE new-order tile</text>
+<path d="M 485.33333333333326 680 L 517.3333333333333 680" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="515.3333333333333" y="650" width="237.33333333333331" height="60" rx="10" ry="10" fill="#eef2ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="633.9999999999999" y="685.625" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">Review</text>
+<rect x="515.3333333333333" y="720" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="633.9999999999999" y="754.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Items + customer notes</text>
+<path d="M 752.6666666666665 680 L 784.6666666666665 680" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="782.6666666666666" y="650" width="237.33333333333331" height="60" rx="10" ry="10" fill="#eef2ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="901.3333333333333" y="685.625" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">Prepare</text>
+<rect x="782.6666666666666" y="720" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="901.3333333333333" y="754.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">KOT with combo breakdown · mark prepared</text>
+<path d="M 1020.0 680 L 1052.0 680" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="1050.0" y="650" width="237.33333333333331" height="60" rx="10" ry="10" fill="#eef2ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1168.6666666666667" y="685.625" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">Ready</text>
+<rect x="1050.0" y="720" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1168.6666666666667" y="754.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Pool publishes to riders</text>
+<path d="M 1287.3333333333333 680 L 1319.3333333333333 680" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="1317.3333333333333" y="650" width="237.33333333333331" height="60" rx="10" ry="10" fill="#eef2ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1436.0" y="685.625" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">Handoff</text>
+<rect x="1317.3333333333333" y="720" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1436.0" y="754.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Rider arrives · picks up</text>
+<path d="M 1554.6666666666665 680 L 1586.6666666666665 680" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="1584.6666666666665" y="650" width="237.33333333333331" height="60" rx="10" ry="10" fill="#eef2ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1703.3333333333333" y="685.625" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">Reflect</text>
+<rect x="1584.6666666666665" y="720" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1703.3333333333333" y="754.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Feedback in drawer · low-rated drilldown</text>
+<rect x="48" y="900" width="180" height="110" rx="10" ry="10" fill="#fdf4ff" stroke="#a21caf" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="138.0" y="962.5" text-anchor="middle" font-size="20" font-weight="600" fill="#581c87">Super-admin</text>
+<rect x="248.0" y="890" width="237.33333333333331" height="60" rx="10" ry="10" fill="#fdf4ff" stroke="#a21caf" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="366.66666666666663" y="925.625" text-anchor="middle" font-size="15" font-weight="600" fill="#581c87">Monitor</text>
+<rect x="248.0" y="960" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="366.66666666666663" y="994.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Live ops dashboard · KYC queue</text>
+<path d="M 485.33333333333326 920 L 517.3333333333333 920" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="515.3333333333333" y="890" width="237.33333333333331" height="60" rx="10" ry="10" fill="#fdf4ff" stroke="#a21caf" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="633.9999999999999" y="925.625" text-anchor="middle" font-size="15" font-weight="600" fill="#581c87">Manage</text>
+<rect x="515.3333333333333" y="960" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="633.9999999999999" y="994.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Live map · payout overrides</text>
+<path d="M 752.6666666666665 920 L 784.6666666666665 920" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="782.6666666666666" y="890" width="237.33333333333331" height="60" rx="10" ry="10" fill="#fdf4ff" stroke="#a21caf" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="901.3333333333333" y="925.625" text-anchor="middle" font-size="15" font-weight="600" fill="#581c87">Govern</text>
+<rect x="782.6666666666666" y="960" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="901.3333333333333" y="994.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Pause restaurant · approve riders</text>
+<path d="M 1020.0 920 L 1052.0 920" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="1050.0" y="890" width="237.33333333333331" height="60" rx="10" ry="10" fill="#fdf4ff" stroke="#a21caf" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1168.6666666666667" y="925.625" text-anchor="middle" font-size="15" font-weight="600" fill="#581c87">Promote</text>
+<rect x="1050.0" y="960" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1168.6666666666667" y="994.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Coupon campaigns · QR posters</text>
+<path d="M 1287.3333333333333 920 L 1319.3333333333333 920" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="1317.3333333333333" y="890" width="237.33333333333331" height="60" rx="10" ry="10" fill="#fdf4ff" stroke="#a21caf" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1436.0" y="925.625" text-anchor="middle" font-size="15" font-weight="600" fill="#581c87">Configure</text>
+<rect x="1317.3333333333333" y="960" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1436.0" y="994.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Signup bonus · challenges</text>
+<path d="M 1554.6666666666665 920 L 1586.6666666666665 920" stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="1584.6666666666665" y="890" width="237.33333333333331" height="60" rx="10" ry="10" fill="#fdf4ff" stroke="#a21caf" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1703.3333333333333" y="925.625" text-anchor="middle" font-size="15" font-weight="600" fill="#581c87">Reflect</text>
+<rect x="1584.6666666666665" y="960" width="237.33333333333331" height="60" rx="10" ry="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1703.3333333333333" y="994.125" text-anchor="middle" font-size="11" font-weight="600" fill="#334155">Brand rollups · feedback heatmap · audit</text>
+</svg>

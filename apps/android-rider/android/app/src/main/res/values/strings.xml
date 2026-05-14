@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FoodHub Rider</string>
+    <string name="title_activity_main">FoodHub Rider</string>
+    <string name="package_name">app.foodhub.rider</string>
+    <string name="custom_url_scheme">app.foodhub.rider</string>
+</resources>

@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deploy Artifacts | Restaurant Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Highlight.js for code blocks -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        dark: {
+                            bg: '#050505',
+                            card: '#0a0a0a',
+                            border: '#1f1f1f',
+                            text: '#888888',
+                            heading: '#ffffff',
+                        },
+                        accent: {
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            glow: 'rgba(59, 130, 246, 0.5)'
+                        }
+                    },
+                    animation: {
+                        'gradient-x': 'gradient-x 15s ease infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        'gradient-x': {
+                            '0%, 100%': {
+                                'background-size': '200% 200%',
+                                'background-position': 'left center'
+                            },
+                            '50%': {
+                                'background-size': '200% 200%',
+                                'background-position': 'right center'
+                            },
+                        },
+                        'float': {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #050505;
+            color: #888888;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(168, 85, 247, 0.08) 0%, transparent 25%);
+            background-attachment: fixed;
+        }
+
+        /* Grid Background */
+        .bg-grid {
+            background-size: 40px 40px;
+            background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+        }
+
+        .glass-card {
+            background: rgba(10, 10, 10, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(59, 130, 246, 0.1);
+        }
+
+        .text-gradient {
+            background: linear-gradient(to right, #fff, #a5b4fc, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Animated border wrapper */
+        .animated-border {
+            position: relative;
+            background: rgba(10, 10, 10, 0.8);
+            border-radius: 1rem;
+            z-index: 1;
+        }
+        
+        .animated-border::before {
+            content: "";
+            position: absolute;
+            inset: -1px;
+            border-radius: 1.1rem;
+            background: linear-gradient(45deg, rgba(59,130,246,0.5), transparent 40%, transparent 60%, rgba(168,85,247,0.5));
+            z-index: -1;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .animated-border:hover::before {
+            opacity: 1;
+        }
+
+        /* Table styling */
+        tbody tr {
+            transition: background-color 0.2s ease, transform 0.2s ease;
+        }
+        tbody tr:hover {
+            background-color: rgba(255, 255, 255, 0.03);
+            transform: scale(1.002);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1); 
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2); 
+        }
+
+        /* Code Block overrides */
+        pre code.hljs {
+            background: transparent !important;
+            padding: 0 !important;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.125rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            font-family: 'JetBrains Mono', monospace;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.03);
+            color: #d1d5db;
+        }
+    </style>
+</head>
+<body class="min-h-screen relative font-sans antialiased selection:bg-accent-500 selection:text-white pb-20">
+
+    <!-- Background effects -->
+    <div class="fixed inset-0 z-[-1] bg-grid pointer-events-none"></div>
+    <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[300px] bg-accent-500/20 blur-[120px] rounded-full pointer-events-none -z-10"></div>
+
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 space-y-12">
+        
+        <!-- Header Section -->
+        <header class="flex flex-col items-center justify-center text-center space-y-6 relative animate-float">
+            <div class="inline-flex items-center justify-center p-3 glass-card rounded-2xl mb-2">
+                <svg class="w-8 h-8 text-accent-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                </svg>
+            </div>
+            <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight text-white mb-2">
+                <span class="text-gradient animate-gradient-x">Deploy Artifacts</span>
+            </h1>
+            <p class="text-lg md:text-xl text-dark-text max-w-2xl font-light leading-relaxed">
+                Drop-in files used by the production runbook in 
+                <a href="../docs/PRODUCTION-DEPLOY.md" class="inline-flex items-center gap-1 text-accent-500 hover:text-accent-400 transition-colors bg-accent-500/10 px-2 py-0.5 rounded-md border border-accent-500/20 font-mono text-sm ml-1">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    PRODUCTION-DEPLOY.md
+                </a>
+            </p>
+        </header>
+
+        <!-- Main Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start mt-12">
+            
+            <!-- Left Column: File Directory Table -->
+            <div class="lg:col-span-8 space-y-6">
+                <div class="animated-border">
+                    <div class="glass-card rounded-2xl overflow-hidden relative">
+                        <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                        
+                        <div class="p-5 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+                            <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                                File Directory
+                            </h2>
+                        </div>
+                        
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm border-collapse">
+                                <thead>
+                                    <tr class="border-b border-white/5 bg-white/[0.01]">
+                                        <th class="px-5 py-4 font-medium text-gray-400 uppercase tracking-wider text-xs">Artifact</th>
+                                        <th class="px-5 py-4 font-medium text-gray-400 uppercase tracking-wider text-xs">Destination</th>
+                                        <th class="px-5 py-4 font-medium text-gray-400 uppercase tracking-wider text-xs">Purpose</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-white/5">
+                                    <tr class="group cursor-default">
+                                        <td class="px-5 py-4">
+                                            <div class="flex items-center gap-2">
+                                                <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                                <span class="font-mono text-white group-hover:text-emerald-400 transition-colors">nginx.conf</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-5 py-4">
+                                            <div class="flex flex-col gap-1">
+                                                <span class="badge">/etc/nginx/sites-available/...</span>
+                                                <span class="text-xs text-gray-500 italic">symlinked to sites-enabled</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-5 py-4 text-gray-400 leading-relaxed">
+                                            Reverse proxy, SSE no-buffering, uploads serving, & Cloudflare real-IP.
+                                        </td>
+                                    </tr>
+
+                                    <tr class="group cursor-default">
+                                        <td class="px-5 py-4">
+                                            <div class="flex items-center gap-2">
+                                                <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                                <span class="font-mono text-white group-hover:text-blue-400 transition-colors">ecosystem.config.cjs</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-5 py-4">
+                                            <span class="badge">/opt/restaurant-manager/deploy/</span>
+                                        </td>
+                                        <td class="px-5 py-4 text-gray-400 leading-relaxed">
+                                            PM2 process definitions: <span class="text-white">rm-web</span> (Next.js) & <span class="text-white">rm-worker</span> (cron + escalations).
+                                        </td>
+                                    </tr>
+
+                                    <tr class="group cursor-default">
+                                        <td class="px-5 py-4">
+                                            <div class="flex items-center gap-2">
+                                                <svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                                <span class="font-mono text-white group-hover:text-purple-400 transition-colors">backup.sh</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-5 py-4">
+                                            <span class="badge">/opt/restaurant-manager/deploy/</span>
+                                        </td>
+                                        <td class="px-5 py-4 text-gray-400 leading-relaxed">
+                                            Daily <code class="text-white font-mono text-xs bg-white/5 px-1 py-0.5 rounded">pg_dump</code> rotation & optional rclone push to Backblaze B2.
+                                        </td>
+                                    </tr>
+
+                                    <tr class="group cursor-default">
+                                        <td class="px-5 py-4">
+                                            <div class="flex items-center gap-2">
+                                                <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                                <span class="font-mono text-white group-hover:text-amber-400 transition-colors">deploy.sh</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-5 py-4">
+                                            <span class="badge">/opt/restaurant-manager/deploy/</span>
+                                        </td>
+                                        <td class="px-5 py-4 text-gray-400 leading-relaxed">
+                                            Automation script with rollback capability:
+                                            <div class="flex flex-wrap gap-1.5 mt-2">
+                                                <span class="badge !text-[10px] !bg-amber-500/10 !text-amber-200 !border-amber-500/20">git pull</span>
+                                                <span class="badge !text-[10px] !bg-amber-500/10 !text-amber-200 !border-amber-500/20">npm ci</span>
+                                                <span class="badge !text-[10px] !bg-amber-500/10 !text-amber-200 !border-amber-500/20">prisma migrate</span>
+                                                <span class="badge !text-[10px] !bg-amber-500/10 !text-amber-200 !border-amber-500/20">build</span>
+                                                <span class="badge !text-[10px] !bg-amber-500/10 !text-amber-200 !border-amber-500/20">pm2 reload</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+
+                                    <tr class="group cursor-default">
+                                        <td class="px-5 py-4">
+                                            <div class="flex items-center gap-2">
+                                                <svg class="w-4 h-4 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                                <span class="font-mono text-white group-hover:text-rose-400 transition-colors">build-apk.sh</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-5 py-4">
+                                            <span class="badge !bg-rose-500/10 !text-rose-300 !border-rose-500/20">Dev Machine</span>
+                                        </td>
+                                        <td class="px-5 py-4 text-gray-400 leading-relaxed">
+                                            Signed APK build with <code class="text-white font-mono text-xs bg-white/5 px-1 py-0.5 rounded">FOODHUB_URL</code> baked in.
+                                        </td>
+                                    </tr>
+
+                                    <tr class="group cursor-default">
+                                        <td class="px-5 py-4">
+                                            <div class="flex items-center gap-2">
+                                                <svg class="w-4 h-4 text-cyan-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                                <span class="font-mono text-white group-hover:text-cyan-400 transition-colors">.env.example</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-5 py-4">
+                                            <div class="flex items-center gap-1.5 text-xs">
+                                                <span class="text-gray-500">Copy to</span>
+                                                <span class="badge">apps/web/.env</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-5 py-4 text-gray-400 leading-relaxed">
+                                            Fully documented environment variables template.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Info Alert -->
+                <div class="relative overflow-hidden rounded-xl bg-gradient-to-r from-blue-500/10 to-purple-500/10 p-5 border border-white/10 flex gap-4 items-start shadow-inner">
+                    <div class="absolute -left-10 -top-10 w-32 h-32 bg-blue-500/20 blur-3xl rounded-full pointer-events-none"></div>
+                    <div class="flex-shrink-0 bg-blue-500/20 p-2 rounded-lg border border-blue-500/30">
+                        <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <div>
+                        <h3 class="text-white font-medium mb-1 text-sm">Deployment Documentation</h3>
+                        <p class="text-sm text-gray-400">
+                            For the master guide covering order-of-operations, gotchas, and the pre-demo checklist, refer to 
+                            <a href="../docs/PRODUCTION-DEPLOY.md" class="text-blue-400 hover:text-blue-300 transition-colors font-mono hover:underline underline-offset-4">../docs/PRODUCTION-DEPLOY.md</a>.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right Column: Cheat Sheet / Terminal -->
+            <div class="lg:col-span-4 space-y-6 relative lg:sticky lg:top-8">
+                
+                <div class="animated-border">
+                    <div class="glass-card rounded-2xl overflow-hidden shadow-2xl flex flex-col h-full bg-[#0d1117] border border-white/10">
+                        
+                        <!-- MacOS-like Terminal Header -->
+                        <div class="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#161b22]">
+                            <div class="flex gap-2">
+                                <div class="w-3 h-3 rounded-full bg-red-500/80 shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div>
+                                <div class="w-3 h-3 rounded-full bg-yellow-500/80 shadow-[0_0_8px_rgba(234,179,8,0.5)]"></div>
+                                <div class="w-3 h-3 rounded-full bg-green-500/80 shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
+                            </div>
+                            <span class="text-xs font-mono text-gray-500 flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                deploy-commands
+                            </span>
+                            <button onclick="copyAllCode()" class="text-gray-400 hover:text-white transition-colors relative group" title="Copy All">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                                <span id="copy-tooltip" class="absolute -top-8 -left-1/2 transform -translate-x-1/2 bg-white text-black text-[10px] py-1 px-2 rounded opacity-0 transition-all font-sans whitespace-nowrap shadow-lg shadow-white/20 translate-y-1">Copied!</span>
+                            </button>
+                        </div>
+                        
+                        <div class="p-5 space-y-6 text-sm overflow-y-auto flex-1">
+                            
+                            <!-- Command Group -->
+                            <div class="space-y-2 group">
+                                <div class="flex items-center justify-between text-xs text-gray-400 font-mono">
+                                    <span class="text-emerald-400"># Initial bootstrap (VPS)</span>
+                                </div>
+                                <div class="relative bg-black/40 rounded-lg p-3 border border-white/5 font-mono text-[13px] leading-relaxed overflow-x-auto shadow-inner group-hover:border-white/10 transition-colors">
+                                    <pre><code class="language-bash">cp deploy/.env.production.example apps/web/.env
+nano apps/web/.env
+cd apps/web && npm ci && npx prisma migrate deploy && npm run build
+pm2 start /opt/restaurant-manager/deploy/ecosystem.config.cjs --env production
+pm2 save</code></pre>
+                                </div>
+                            </div>
+
+                            <!-- Command Group -->
+                            <div class="space-y-2 group">
+                                <div class="flex items-center justify-between text-xs text-gray-400 font-mono">
+                                    <span class="text-blue-400"># Ship a new release (VPS)</span>
+                                </div>
+                                <div class="relative bg-black/40 rounded-lg p-3 border border-white/5 font-mono text-[13px] leading-relaxed overflow-x-auto shadow-inner group-hover:border-white/10 transition-colors">
+                                    <pre><code class="language-bash">cd /opt/restaurant-manager && ./deploy/deploy.sh</code></pre>
+                                </div>
+                            </div>
+
+                            <!-- Command Group -->
+                            <div class="space-y-2 group">
+                                <div class="flex items-center justify-between text-xs text-gray-400 font-mono">
+                                    <span class="text-amber-400"># Roll back (VPS)</span>
+                                </div>
+                                <div class="relative bg-black/40 rounded-lg p-3 border border-white/5 font-mono text-[13px] leading-relaxed overflow-x-auto shadow-inner group-hover:border-white/10 transition-colors">
+                                    <pre><code class="language-bash">./deploy/deploy.sh rollback</code></pre>
+                                </div>
+                            </div>
+
+                            <!-- Command Group -->
+                            <div class="space-y-2 group">
+                                <div class="flex items-center justify-between text-xs text-gray-400 font-mono">
+                                    <span class="text-purple-400"># Build the rider APK (Dev)</span>
+                                </div>
+                                <div class="relative bg-black/40 rounded-lg p-3 border border-white/5 font-mono text-[13px] leading-relaxed overflow-x-auto shadow-inner group-hover:border-white/10 transition-colors">
+                                    <pre><code class="language-bash">./deploy/build-apk.sh https://yourdomain.in</code></pre>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize highlight.js
+        hljs.highlightAll();
+
+        function copyAllCode() {
+            const codeBlocks = document.querySelectorAll('code.language-bash');
+            let allText = '';
+            
+            const titles = [
+                "# Initial bootstrap (VPS, as deploy)",
+                "# Ship a new release (VPS, as deploy)",
+                "# Roll back (VPS, as deploy)",
+                "# Build the rider APK (dev machine, after the website is live)"
+            ];
+
+            codeBlocks.forEach((block, index) => {
+                allText += titles[index] + "\n";
+                allText += block.textContent + "\n\n";
+            });
+
+            navigator.clipboard.writeText(allText.trim()).then(() => {
+                const tooltip = document.getElementById('copy-tooltip');
+                tooltip.classList.remove('opacity-0', 'translate-y-1');
+                tooltip.classList.add('opacity-100', 'translate-y-0');
+                
+                setTimeout(() => {
+                    tooltip.classList.remove('opacity-100', 'translate-y-0');
+                    tooltip.classList.add('opacity-0', 'translate-y-1');
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

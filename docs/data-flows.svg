@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1900" viewBox="0 0 2400 1900" font-family="Inter, Helvetica Neue, Arial, sans-serif">
+<defs>
+<marker id="arrow-161b21" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#161b21"/></marker>
+<marker id="arrow-1f3a73" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#1f3a73"/></marker>
+<marker id="arrow-a35e1d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#a35e1d"/></marker>
+<marker id="arrow-2f6b3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2f6b3a"/></marker>
+<marker id="arrow-4a3a6a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#4a3a6a"/></marker>
+<marker id="arrow-a06a1c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#a06a1c"/></marker>
+</defs>
+<rect x="0" y="0" width="2400" height="1900" fill="#f5f1e8" rx="0" ry="0" opacity="1"/>
+<text x="160" y="60" font-size="20" fill="#8c8780" font-weight="500" text-anchor="start" letter-spacing="8">FOODHUB · DATA FLOW DIAGRAMS</text>
+<text x="160" y="158" font-size="78" fill="#161b21" font-weight="600" text-anchor="start" letter-spacing="-1.5">How data moves through the system.</text>
+<line x1="160" y1="182" x2="300" y2="182" stroke="#161b21" stroke-width="3" opacity="1"/>
+<text x="160" y="218" font-size="22" fill="#3a4148" font-weight="400" text-anchor="start" letter-spacing="0.3">Four representative flows: ordering, restaurant onboarding, rider pool claim, real-time fan-out.</text>
+<text x="160" y="246" font-size="22" fill="#3a4148" font-weight="400" text-anchor="start" letter-spacing="0.3">Each step is one network call. Arrow colour matches the role initiating the call.</text>
+<rect x="160" y="340" width="2080" height="38" fill="#1f3a73" rx="10" ry="10" opacity="1"/>
+<text x="182" y="366" font-size="18" fill="#fff" font-weight="700" text-anchor="start" letter-spacing="2">FLOW 01 — Customer places an order  ·  initiated by customer</text>
+<rect x="160" y="378" width="2080" height="252" fill="#ffffff" rx="10" ry="10" opacity="1" stroke="#cfc8b9" stroke-width="0.8"/>
+<circle cx="366.66666666666663" cy="496.0" r="26" fill="white" opacity="1" stroke="#1f3a73" stroke-width="5"/>
+<text x="366.66666666666663" y="502.0" font-size="18" fill="#1f3a73" font-weight="700" text-anchor="middle" letter-spacing="0.0">1</text>
+<text x="366.66666666666663" y="552.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Browse</text>
+<text x="366.66666666666663" y="572.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Customer opens /r/[slug]</text>
+<line x1="396.66666666666663" y1="496.0" x2="669.9999999999999" y2="496.0" stroke="#1f3a73" stroke-width="2.5" marker-end="url(#arrow-1f3a73)"/>
+<circle cx="699.9999999999999" cy="496.0" r="26" fill="white" opacity="1" stroke="#1f3a73" stroke-width="5"/>
+<text x="699.9999999999999" y="502.0" font-size="18" fill="#1f3a73" font-weight="700" text-anchor="middle" letter-spacing="0.0">2</text>
+<text x="699.9999999999999" y="552.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Add to cart</text>
+<text x="699.9999999999999" y="572.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Items stored client-side</text>
+<line x1="729.9999999999999" y1="496.0" x2="1003.3333333333333" y2="496.0" stroke="#1f3a73" stroke-width="2.5" marker-end="url(#arrow-1f3a73)"/>
+<circle cx="1033.3333333333333" cy="496.0" r="26" fill="white" opacity="1" stroke="#1f3a73" stroke-width="5"/>
+<text x="1033.3333333333333" y="502.0" font-size="18" fill="#1f3a73" font-weight="700" text-anchor="middle" letter-spacing="0.0">3</text>
+<text x="1033.3333333333333" y="552.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Checkout quote</text>
+<text x="1033.3333333333333" y="572.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">POST /api/checkout/quote →</text>
+<text x="1033.3333333333333" y="588.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">price</text>
+<line x1="1063.3333333333333" y1="496.0" x2="1336.6666666666667" y2="496.0" stroke="#1f3a73" stroke-width="2.5" marker-end="url(#arrow-1f3a73)"/>
+<circle cx="1366.6666666666667" cy="496.0" r="26" fill="white" opacity="1" stroke="#1f3a73" stroke-width="5"/>
+<text x="1366.6666666666667" y="502.0" font-size="18" fill="#1f3a73" font-weight="700" text-anchor="middle" letter-spacing="0.0">4</text>
+<text x="1366.6666666666667" y="552.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Place order</text>
+<text x="1366.6666666666667" y="572.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">POST /api/orders creates</text>
+<text x="1366.6666666666667" y="588.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Order</text>
+<line x1="1396.6666666666667" y1="496.0" x2="1670.0" y2="496.0" stroke="#1f3a73" stroke-width="2.5" marker-end="url(#arrow-1f3a73)"/>
+<circle cx="1700.0" cy="496.0" r="26" fill="white" opacity="1" stroke="#1f3a73" stroke-width="5"/>
+<text x="1700.0" y="502.0" font-size="18" fill="#1f3a73" font-weight="700" text-anchor="middle" letter-spacing="0.0">5</text>
+<text x="1700.0" y="552.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Razorpay verify</text>
+<text x="1700.0" y="572.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Client SDK → verify HMAC</text>
+<line x1="1730.0" y1="496.0" x2="2003.3333333333333" y2="496.0" stroke="#1f3a73" stroke-width="2.5" marker-end="url(#arrow-1f3a73)"/>
+<circle cx="2033.3333333333333" cy="496.0" r="26" fill="white" opacity="1" stroke="#1f3a73" stroke-width="5"/>
+<text x="2033.3333333333333" y="502.0" font-size="18" fill="#1f3a73" font-weight="700" text-anchor="middle" letter-spacing="0.0">6</text>
+<text x="2033.3333333333333" y="552.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">SSE confirm</text>
+<text x="2033.3333333333333" y="572.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">order:{id} streams RECEIVED</text>
+<text x="2033.3333333333333" y="588.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">→ ACCEPTED</text>
+<rect x="160" y="660" width="2080" height="38" fill="#a35e1d" rx="10" ry="10" opacity="1"/>
+<text x="182" y="686" font-size="18" fill="#fff" font-weight="700" text-anchor="start" letter-spacing="2">FLOW 02 — Restaurant onboarding  ·  initiated by restaurant owner, approved by platform</text>
+<rect x="160" y="698" width="2080" height="252" fill="#ffffff" rx="10" ry="10" opacity="1" stroke="#cfc8b9" stroke-width="0.8"/>
+<circle cx="366.66666666666663" cy="816.0" r="26" fill="white" opacity="1" stroke="#a35e1d" stroke-width="5"/>
+<text x="366.66666666666663" y="822.0" font-size="18" fill="#a35e1d" font-weight="700" text-anchor="middle" letter-spacing="0.0">1</text>
+<text x="366.66666666666663" y="872.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Signup</text>
+<text x="366.66666666666663" y="892.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Owner submits</text>
+<text x="366.66666666666663" y="908.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">/signup/restaurant</text>
+<line x1="396.66666666666663" y1="816.0" x2="669.9999999999999" y2="816.0" stroke="#a35e1d" stroke-width="2.5" marker-end="url(#arrow-a35e1d)"/>
+<circle cx="699.9999999999999" cy="816.0" r="26" fill="white" opacity="1" stroke="#a35e1d" stroke-width="5"/>
+<text x="699.9999999999999" y="822.0" font-size="18" fill="#a35e1d" font-weight="700" text-anchor="middle" letter-spacing="0.0">2</text>
+<text x="699.9999999999999" y="872.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Pending row</text>
+<text x="699.9999999999999" y="892.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Restaurant created</text>
+<text x="699.9999999999999" y="908.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">status=PENDING</text>
+<line x1="729.9999999999999" y1="816.0" x2="1003.3333333333333" y2="816.0" stroke="#a35e1d" stroke-width="2.5" marker-end="url(#arrow-a35e1d)"/>
+<circle cx="1033.3333333333333" cy="816.0" r="26" fill="white" opacity="1" stroke="#a35e1d" stroke-width="5"/>
+<text x="1033.3333333333333" y="822.0" font-size="18" fill="#a35e1d" font-weight="700" text-anchor="middle" letter-spacing="0.0">3</text>
+<text x="1033.3333333333333" y="872.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Super-admin review</text>
+<text x="1033.3333333333333" y="892.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2"></text>
+<text x="1033.3333333333333" y="908.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">/platform/restaurants?status=PENDING</text>
+<line x1="1063.3333333333333" y1="816.0" x2="1336.6666666666667" y2="816.0" stroke="#a35e1d" stroke-width="2.5" marker-end="url(#arrow-a35e1d)"/>
+<circle cx="1366.6666666666667" cy="816.0" r="26" fill="white" opacity="1" stroke="#a35e1d" stroke-width="5"/>
+<text x="1366.6666666666667" y="822.0" font-size="18" fill="#a35e1d" font-weight="700" text-anchor="middle" letter-spacing="0.0">4</text>
+<text x="1366.6666666666667" y="872.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Approve</text>
+<text x="1366.6666666666667" y="892.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">POST</text>
+<text x="1366.6666666666667" y="908.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">/api/platform/.../approve</text>
+<line x1="1396.6666666666667" y1="816.0" x2="1670.0" y2="816.0" stroke="#a35e1d" stroke-width="2.5" marker-end="url(#arrow-a35e1d)"/>
+<circle cx="1700.0" cy="816.0" r="26" fill="white" opacity="1" stroke="#a35e1d" stroke-width="5"/>
+<text x="1700.0" y="822.0" font-size="18" fill="#a35e1d" font-weight="700" text-anchor="middle" letter-spacing="0.0">5</text>
+<text x="1700.0" y="872.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Goes live</text>
+<text x="1700.0" y="892.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Restaurant becomes</text>
+<text x="1700.0" y="908.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">browsable at /r/[slug]</text>
+<line x1="1730.0" y1="816.0" x2="2003.3333333333333" y2="816.0" stroke="#a35e1d" stroke-width="2.5" marker-end="url(#arrow-a35e1d)"/>
+<circle cx="2033.3333333333333" cy="816.0" r="26" fill="white" opacity="1" stroke="#a35e1d" stroke-width="5"/>
+<text x="2033.3333333333333" y="822.0" font-size="18" fill="#a35e1d" font-weight="700" text-anchor="middle" letter-spacing="0.0">6</text>
+<text x="2033.3333333333333" y="872.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Menu + Branch</text>
+<text x="2033.3333333333333" y="892.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Owner adds items, sets</text>
+<text x="2033.3333333333333" y="908.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">hours, opens branches</text>
+<rect x="160" y="980" width="2080" height="38" fill="#2f6b3a" rx="10" ry="10" opacity="1"/>
+<text x="182" y="1006" font-size="18" fill="#fff" font-weight="700" text-anchor="start" letter-spacing="2">FLOW 03 — Rider claims an order from the pool  ·  initiated by rider</text>
+<rect x="160" y="1018" width="2080" height="252" fill="#ffffff" rx="10" ry="10" opacity="1" stroke="#cfc8b9" stroke-width="0.8"/>
+<circle cx="366.66666666666663" cy="1136.0" r="26" fill="white" opacity="1" stroke="#2f6b3a" stroke-width="5"/>
+<text x="366.66666666666663" y="1142.0" font-size="18" fill="#2f6b3a" font-weight="700" text-anchor="middle" letter-spacing="0.0">1</text>
+<text x="366.66666666666663" y="1192.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Order READY</text>
+<text x="366.66666666666663" y="1212.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Restaurant marks order</text>
+<text x="366.66666666666663" y="1228.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">ready</text>
+<line x1="396.66666666666663" y1="1136.0" x2="669.9999999999999" y2="1136.0" stroke="#2f6b3a" stroke-width="2.5" marker-end="url(#arrow-2f6b3a)"/>
+<circle cx="699.9999999999999" cy="1136.0" r="26" fill="white" opacity="1" stroke="#2f6b3a" stroke-width="5"/>
+<text x="699.9999999999999" y="1142.0" font-size="18" fill="#2f6b3a" font-weight="700" text-anchor="middle" letter-spacing="0.0">2</text>
+<text x="699.9999999999999" y="1192.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Publish to pool</text>
+<text x="699.9999999999999" y="1212.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Server pushes rider:pool</text>
+<text x="699.9999999999999" y="1228.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">SSE event</text>
+<line x1="729.9999999999999" y1="1136.0" x2="1003.3333333333333" y2="1136.0" stroke="#2f6b3a" stroke-width="2.5" marker-end="url(#arrow-2f6b3a)"/>
+<circle cx="1033.3333333333333" cy="1136.0" r="26" fill="white" opacity="1" stroke="#2f6b3a" stroke-width="5"/>
+<text x="1033.3333333333333" y="1142.0" font-size="18" fill="#2f6b3a" font-weight="700" text-anchor="middle" letter-spacing="0.0">3</text>
+<text x="1033.3333333333333" y="1192.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Rider sees offer</text>
+<text x="1033.3333333333333" y="1212.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Online riders see it in</text>
+<text x="1033.3333333333333" y="1228.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">/rider/pool</text>
+<line x1="1063.3333333333333" y1="1136.0" x2="1336.6666666666667" y2="1136.0" stroke="#2f6b3a" stroke-width="2.5" marker-end="url(#arrow-2f6b3a)"/>
+<circle cx="1366.6666666666667" cy="1136.0" r="26" fill="white" opacity="1" stroke="#2f6b3a" stroke-width="5"/>
+<text x="1366.6666666666667" y="1142.0" font-size="18" fill="#2f6b3a" font-weight="700" text-anchor="middle" letter-spacing="0.0">4</text>
+<text x="1366.6666666666667" y="1192.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Claim (atomic)</text>
+<text x="1366.6666666666667" y="1212.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">POST</text>
+<text x="1366.6666666666667" y="1228.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">/api/rider/pool/[id]/claim — first wins</text>
+<line x1="1396.6666666666667" y1="1136.0" x2="1670.0" y2="1136.0" stroke="#2f6b3a" stroke-width="2.5" marker-end="url(#arrow-2f6b3a)"/>
+<circle cx="1700.0" cy="1136.0" r="26" fill="white" opacity="1" stroke="#2f6b3a" stroke-width="5"/>
+<text x="1700.0" y="1142.0" font-size="18" fill="#2f6b3a" font-weight="700" text-anchor="middle" letter-spacing="0.0">5</text>
+<text x="1700.0" y="1192.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Pick up + GPS</text>
+<text x="1700.0" y="1212.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Photo proof uploaded ·</text>
+<text x="1700.0" y="1228.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">location stream</text>
+<line x1="1730.0" y1="1136.0" x2="2003.3333333333333" y2="1136.0" stroke="#2f6b3a" stroke-width="2.5" marker-end="url(#arrow-2f6b3a)"/>
+<circle cx="2033.3333333333333" cy="1136.0" r="26" fill="white" opacity="1" stroke="#2f6b3a" stroke-width="5"/>
+<text x="2033.3333333333333" y="1142.0" font-size="18" fill="#2f6b3a" font-weight="700" text-anchor="middle" letter-spacing="0.0">6</text>
+<text x="2033.3333333333333" y="1192.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Verify OTP → DELIVERED</text>
+<text x="2033.3333333333333" y="1212.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Earnings = base + bonus +</text>
+<text x="2033.3333333333333" y="1228.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">tips</text>
+<rect x="160" y="1300" width="2080" height="38" fill="#4a3a6a" rx="10" ry="10" opacity="1"/>
+<text x="182" y="1326" font-size="18" fill="#fff" font-weight="700" text-anchor="start" letter-spacing="2">FLOW 04 — Real-time fan-out  ·  any status change is pushed to every interested screen</text>
+<rect x="160" y="1338" width="2080" height="252" fill="#ffffff" rx="10" ry="10" opacity="1" stroke="#cfc8b9" stroke-width="0.8"/>
+<circle cx="366.66666666666663" cy="1456.0" r="26" fill="white" opacity="1" stroke="#4a3a6a" stroke-width="5"/>
+<text x="366.66666666666663" y="1462.0" font-size="18" fill="#4a3a6a" font-weight="700" text-anchor="middle" letter-spacing="0.0">1</text>
+<text x="366.66666666666663" y="1512.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">transitionOrder()</text>
+<text x="366.66666666666663" y="1532.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">server/orders.ts updates DB</text>
+<line x1="396.66666666666663" y1="1456.0" x2="669.9999999999999" y2="1456.0" stroke="#4a3a6a" stroke-width="2.5" marker-end="url(#arrow-4a3a6a)"/>
+<circle cx="699.9999999999999" cy="1456.0" r="26" fill="white" opacity="1" stroke="#4a3a6a" stroke-width="5"/>
+<text x="699.9999999999999" y="1462.0" font-size="18" fill="#4a3a6a" font-weight="700" text-anchor="middle" letter-spacing="0.0">2</text>
+<text x="699.9999999999999" y="1512.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">publish() → bus</text>
+<text x="699.9999999999999" y="1532.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">EventEmitter on the</text>
+<text x="699.9999999999999" y="1548.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">order:{id}, branch:{id}, rider:pool channels</text>
+<line x1="729.9999999999999" y1="1456.0" x2="1003.3333333333333" y2="1456.0" stroke="#4a3a6a" stroke-width="2.5" marker-end="url(#arrow-4a3a6a)"/>
+<circle cx="1033.3333333333333" cy="1456.0" r="26" fill="white" opacity="1" stroke="#4a3a6a" stroke-width="5"/>
+<text x="1033.3333333333333" y="1462.0" font-size="18" fill="#4a3a6a" font-weight="700" text-anchor="middle" letter-spacing="0.0">3</text>
+<text x="1033.3333333333333" y="1512.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">SSE handlers</text>
+<text x="1033.3333333333333" y="1532.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">/api/events?channel=… opens</text>
+<text x="1033.3333333333333" y="1548.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">streams</text>
+<line x1="1063.3333333333333" y1="1456.0" x2="1336.6666666666667" y2="1456.0" stroke="#4a3a6a" stroke-width="2.5" marker-end="url(#arrow-4a3a6a)"/>
+<circle cx="1366.6666666666667" cy="1456.0" r="26" fill="white" opacity="1" stroke="#4a3a6a" stroke-width="5"/>
+<text x="1366.6666666666667" y="1462.0" font-size="18" fill="#4a3a6a" font-weight="700" text-anchor="middle" letter-spacing="0.0">4</text>
+<text x="1366.6666666666667" y="1512.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Customer tracker</text>
+<text x="1366.6666666666667" y="1532.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Live status pills + map</text>
+<text x="1366.6666666666667" y="1548.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">updates</text>
+<line x1="1396.6666666666667" y1="1456.0" x2="1670.0" y2="1456.0" stroke="#4a3a6a" stroke-width="2.5" marker-end="url(#arrow-4a3a6a)"/>
+<circle cx="1700.0" cy="1456.0" r="26" fill="white" opacity="1" stroke="#4a3a6a" stroke-width="5"/>
+<text x="1700.0" y="1462.0" font-size="18" fill="#4a3a6a" font-weight="700" text-anchor="middle" letter-spacing="0.0">5</text>
+<text x="1700.0" y="1512.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Kitchen + admin</text>
+<text x="1700.0" y="1532.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Boards re-render the</text>
+<text x="1700.0" y="1548.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">changed order</text>
+<line x1="1730.0" y1="1456.0" x2="2003.3333333333333" y2="1456.0" stroke="#4a3a6a" stroke-width="2.5" marker-end="url(#arrow-4a3a6a)"/>
+<circle cx="2033.3333333333333" cy="1456.0" r="26" fill="white" opacity="1" stroke="#4a3a6a" stroke-width="5"/>
+<text x="2033.3333333333333" y="1462.0" font-size="18" fill="#4a3a6a" font-weight="700" text-anchor="middle" letter-spacing="0.0">6</text>
+<text x="2033.3333333333333" y="1512.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="middle" letter-spacing="0.0">Rider pool refresh</text>
+<text x="2033.3333333333333" y="1532.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">Available list reloads on</text>
+<text x="2033.3333333333333" y="1548.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="middle" letter-spacing="0.2">order:new</text>
+<rect x="160" y="1620" width="2080" height="90" fill="#fff8e1" rx="10" ry="10" opacity="1" stroke="#a06a1c" stroke-width="1"/>
+<text x="182" y="1650" font-size="13" fill="#a06a1c" font-weight="700" text-anchor="start" letter-spacing="4">READING THE FLOWS</text>
+<text x="182" y="1680" font-size="14" fill="#161b21" font-weight="400" text-anchor="start" letter-spacing="0.0">Each circle is one network call (HTTP or SSE).  Colour = role that initiated the call.  Arrows show the order in time, not the size of the data.  </text>
+<text x="182" y="1698" font-size="12" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.0">All four flows share the same realtime fan-out: every state change is published to a channel, every screen subscribed to that channel updates within ~50 ms.</text>
+<line x1="160" y1="1820" x2="2240" y2="1820" stroke="#161b21" stroke-width="1" opacity="1"/>
+<text x="160" y="1850" font-size="13" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="4">FOODHUB · DATA FLOW DIAGRAMS · ED. 1</text>
+<text x="2240" y="1850" font-size="13" fill="#8c8780" font-weight="400" text-anchor="end" letter-spacing="4">FOUR CALLS · FOUR ROLES · ONE STATE MACHINE</text>
+</svg>

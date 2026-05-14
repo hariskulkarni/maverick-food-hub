@@ -1,0 +1,64 @@
+flowchart LR
+    classDef center fill:#fbbf24,stroke:#92400e,stroke-width:3px,color:#451a03
+    classDef spoke fill:#ffffff,stroke:#374151,stroke-width:1.5px,color:#111827
+
+    HUB[("Maverick's<br/>Food Hub")]
+
+    subgraph CUSTOMER[Customer]
+        E1[QR scan]
+        E2[Mobile PWA]
+        E3[Auto-apply offers]
+        E4[OTP login]
+        E5[Live tracking]
+        E6[48h feedback]
+    end
+
+    subgraph RESTAURANT[Restaurant]
+        R1[Menu · combos]
+        R2[Offers · happy hours]
+        R3[Kitchen KOT]
+        R4[Reports + ratings]
+        R5[Coupon campaigns]
+    end
+
+    subgraph RIDERECO[Rider]
+        D1[Capacitor Android]
+        D2[KYC]
+        D3[Order pool]
+        D4[GPS service]
+        D5[Earnings + overrides]
+        D6[COD]
+    end
+
+    subgraph ADMINECO[Admin]
+        A1[Super-admin portal]
+        A2[KYC approvals]
+        A3[Brand umbrellas]
+        A4[Challenges]
+        A5[Signup bonus config]
+        A6[Live ops]
+    end
+
+    subgraph PAY[Payments]
+        P1[Razorpay]
+        P2[COD]
+        P3[Wallet + loyalty]
+        P4[Refunds]
+    end
+
+    subgraph NOTIF[Notifications]
+        N1[SMS]
+        N2[Email]
+        N3[Menu toggle alerts]
+        N4[Integration alerts]
+    end
+
+    HUB --- CUSTOMER
+    HUB --- RESTAURANT
+    HUB --- RIDERECO
+    HUB --- ADMINECO
+    HUB --- PAY
+    HUB --- NOTIF
+
+    class HUB center
+    class E1,E2,E3,E4,E5,E6,R1,R2,R3,R4,R5,D1,D2,D3,D4,D5,D6,A1,A2,A3,A4,A5,A6,P1,P2,P3,P4,N1,N2,N3,N4 spoke

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1100" width="1800" height="1100" font-family='system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+  </marker>
+  <marker id="arrow-dash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+  </marker>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.08"/>
+  </filter>
+</defs>
+<rect width="1800" height="1100" fill="#ffffff"/>
+<text x="48" y="56" font-size="32" font-weight="700" fill="#0f172a">Infrastructure &amp; Scaling Roadmap</text>
+<text x="48" y="84" font-size="15" fill="#475569">Phase 1-4 evolution · single VPS today, horizontal scale only when revenue demands it.</text>
+<rect x="48" y="130" width="405" height="920" rx="14" ry="14" fill="none" stroke="#059669" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="64" y="154" font-size="13" font-weight="700" fill="#059669" letter-spacing="1.5">PHASE 1 · CURRENT · SINGLE VPS</text>
+<text x="64" y="168" font-size="15" fill="#059669">Day 1 · 20 restaurants · 5k DAU · ~₹4 000/mo</text>
+<rect x="72" y="200" width="357" height="110" rx="10" ry="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="250.5" y="251.5" text-anchor="middle" font-size="14" font-weight="600" fill="#064e3b">Cloudflare</text>
+<text x="250.5" y="269.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">DNS · TLS · WAF</text>
+<rect x="72" y="330" width="357" height="110" rx="10" ry="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="250.5" y="381.5" text-anchor="middle" font-size="14" font-weight="600" fill="#064e3b">nginx</text>
+<text x="250.5" y="399.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">TLS · static · gzip</text>
+<rect x="72" y="460" width="357" height="110" rx="10" ry="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="250.5" y="511.5" text-anchor="middle" font-size="14" font-weight="600" fill="#064e3b">Next.js + PM2</text>
+<text x="250.5" y="529.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">4 vCPU · 8 GB</text>
+<rect x="72" y="590" width="357" height="110" rx="10" ry="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="250.5" y="641.5" text-anchor="middle" font-size="14" font-weight="600" fill="#064e3b">PostgreSQL 16</text>
+<text x="250.5" y="659.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">WAL archive</text>
+<rect x="72" y="720" width="357" height="110" rx="10" ry="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="250.5" y="771.5" text-anchor="middle" font-size="14" font-weight="600" fill="#064e3b">Local FS</text>
+<text x="250.5" y="789.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">/var/uploads</text>
+<rect x="72" y="850" width="357" height="110" rx="10" ry="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="250.5" y="901.5" text-anchor="middle" font-size="14" font-weight="600" fill="#064e3b">pg_dump cron</text>
+<text x="250.5" y="919.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">Encrypted off-site</text>
+<path d="M 457 600 L 465 600" stroke="#2563eb" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="468" y="130" width="405" height="920" rx="14" ry="14" fill="none" stroke="#2563eb" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="484" y="154" font-size="13" font-weight="700" fill="#2563eb" letter-spacing="1.5">PHASE 2 · GROWTH</text>
+<text x="484" y="168" font-size="15" fill="#2563eb">100 restaurants · 50k DAU · ~₹12 000/mo</text>
+<rect x="492" y="200" width="357" height="110" rx="10" ry="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="670.5" y="251.5" text-anchor="middle" font-size="14" font-weight="600" fill="#1e3a8a">Cloudflare R2</text>
+<text x="670.5" y="269.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">S3-compat · zero egress</text>
+<rect x="492" y="330" width="357" height="110" rx="10" ry="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="670.5" y="381.5" text-anchor="middle" font-size="14" font-weight="600" fill="#1e3a8a">Redis</text>
+<text x="670.5" y="399.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">Session · rate-limit · SSE backplane</text>
+<rect x="492" y="460" width="357" height="110" rx="10" ry="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="670.5" y="511.5" text-anchor="middle" font-size="14" font-weight="600" fill="#1e3a8a">Next.js + R2</text>
+<text x="670.5" y="529.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">Adapter swap</text>
+<rect x="492" y="590" width="357" height="110" rx="10" ry="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="670.5" y="641.5" text-anchor="middle" font-size="14" font-weight="600" fill="#1e3a8a">CDN</text>
+<text x="670.5" y="659.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">Image transforms</text>
+<path d="M 877 600 L 885 600" stroke="#d97706" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="888" y="130" width="405" height="920" rx="14" ry="14" fill="none" stroke="#d97706" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="904" y="154" font-size="13" font-weight="700" fill="#d97706" letter-spacing="1.5">PHASE 3 · SCALE</text>
+<text x="904" y="168" font-size="15" fill="#d97706">1000 restaurants · 500k DAU · ~₹35 000/mo</text>
+<rect x="912" y="200" width="357" height="110" rx="10" ry="10" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1090.5" y="251.5" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f">Load balancer</text>
+<text x="1090.5" y="269.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">nginx / Cloudflare LB</text>
+<rect x="912" y="330" width="357" height="110" rx="10" ry="10" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1090.5" y="381.5" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f">2-3× Next.js boxes</text>
+<text x="1090.5" y="399.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">Stateless · session in Redis</text>
+<rect x="912" y="460" width="357" height="110" rx="10" ry="10" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1090.5" y="511.5" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f">PgBouncer</text>
+<text x="1090.5" y="529.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">Connection pooling</text>
+<rect x="912" y="590" width="357" height="110" rx="10" ry="10" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1090.5" y="641.5" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f">PG primary + replica</text>
+<text x="1090.5" y="659.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">Dedicated box</text>
+<path d="M 1297 600 L 1305 600" stroke="#be185d" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="1308" y="130" width="405" height="920" rx="14" ry="14" fill="none" stroke="#be185d" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="1324" y="154" font-size="13" font-weight="700" fill="#be185d" letter-spacing="1.5">PHASE 4 · INTELLIGENCE</text>
+<text x="1324" y="168" font-size="15" fill="#be185d">50k orders/day · ~₹85 000/mo</text>
+<rect x="1332" y="200" width="357" height="110" rx="10" ry="10" fill="#fce7f3" stroke="#be185d" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1510.5" y="251.5" text-anchor="middle" font-size="14" font-weight="600" fill="#831843">ML dispatch service</text>
+<text x="1510.5" y="269.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">Lifted from monolith</text>
+<rect x="1332" y="330" width="357" height="110" rx="10" ry="10" fill="#fce7f3" stroke="#be185d" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1510.5" y="381.5" text-anchor="middle" font-size="14" font-weight="600" fill="#831843">Analytics warehouse</text>
+<text x="1510.5" y="399.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">ClickHouse / BigQuery</text>
+<rect x="1332" y="460" width="357" height="110" rx="10" ry="10" fill="#fce7f3" stroke="#be185d" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1510.5" y="511.5" text-anchor="middle" font-size="14" font-weight="600" fill="#831843">Feature pipeline</text>
+<text x="1510.5" y="529.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">Cron → warehouse</text>
+<rect x="1332" y="590" width="357" height="110" rx="10" ry="10" fill="#fce7f3" stroke="#be185d" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1510.5" y="641.5" text-anchor="middle" font-size="14" font-weight="600" fill="#831843">Smart routing</text>
+<text x="1510.5" y="659.0" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">Multi-stop optimizer</text>
+</svg>

@@ -1,0 +1,51 @@
+sequenceDiagram
+    autonumber
+    participant C as Customer (PWA)
+    participant N as Next.js server
+    participant DB as PostgreSQL
+    participant SSE as SSE fan-out
+    participant RZ as Razorpay
+    participant SMS as SMS
+    participant K as Kitchen Panel
+    participant R as Rider Android
+
+    C->>N: GET /r/[slug] (QR scan)
+    N->>DB: SELECT restaurant + menu + offers
+    N-->>C: SSR HTML
+
+    C->>N: POST /api/auth/otp
+    N->>SMS: send 6-digit code
+    C->>N: signIn with phone+code
+    N->>DB: upsert User · grant signup bonus
+
+    C->>N: POST /api/orders
+    N->>DB: BEGIN TX
+    N->>DB: apply happy-hour · resolve offers · hold bonus
+    N->>DB: INSERT Order + OrderItems
+    N->>DB: COMMIT
+    alt UPI / Card
+        N->>RZ: create intent
+        C->>RZ: pay
+        RZ->>N: webhook (signed)
+    else COD
+        N-->>C: status RECEIVED
+    end
+    N->>SSE: branch:X:orders new
+    SSE-->>K: order:new
+
+    K->>N: transition ACCEPTED → PREPARING → READY
+    N->>SSE: order:Y status
+
+    R->>N: claim order
+    N->>DB: RiderAssignment + payout (override-aware)
+    loop GPS pings
+        R->>N: POST /api/rider/ping
+        N->>SSE: order:Y gps
+    end
+
+    R->>N: verify-otp
+    N->>DB: DELIVERED · commit bonus · refresh challenges
+    SSE-->>C: feedback CTA
+
+    C->>N: POST /api/customer/orders/:id/feedback
+    N->>DB: INSERT OrderFeedback (windowEndsAt = +48h)

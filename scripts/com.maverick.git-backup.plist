@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hourly safety-net backup to GitHub.
+
+  This launchd plist runs scripts/auto-backup.sh every hour (and on every Mac
+  wake-from-sleep, via StartCalendarInterval). It runs as your user, with your
+  shell environment + git credentials.
+
+  Installed to ~/Library/LaunchAgents/com.maverick.git-backup.plist by
+  scripts/install-auto-backup.sh — that script substitutes __REPO_ROOT__ with
+  the actual repo path on your machine.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.maverick.git-backup</string>
+
+    <!-- The script we run. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-lc</string>
+        <string>__REPO_ROOT__/scripts/auto-backup.sh</string>
+    </array>
+
+    <!-- Run every hour, 7 days a week. -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Minute</key><integer>0</integer></dict>
+    </array>
+
+    <!-- Also run ~30 s after launchd loads us (handy after a reboot). -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Don't restart on success; let it sleep until the next hourly tick. -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- Where to log stdout/stderr (the script also writes its own log). -->
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/maverick-git-backup.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/maverick-git-backup.stderr.log</string>
+
+    <!-- Working directory. -->
+    <key>WorkingDirectory</key>
+    <string>__REPO_ROOT__</string>
+
+    <!-- Be a good citizen — low CPU + I/O priority. -->
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>Nice</key>
+    <integer>5</integer>
+</dict>
+</plist>

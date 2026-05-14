@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1100" width="1800" height="1100" font-family='system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+  </marker>
+  <marker id="arrow-dash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+  </marker>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.08"/>
+  </filter>
+</defs>
+<rect width="1800" height="1100" fill="#ffffff"/>
+<text x="48" y="56" font-size="32" font-weight="700" fill="#0f172a">Live Operations Dashboard — Signals → tiles → escalation</text>
+<text x="48" y="84" font-size="15" fill="#475569">In-process detection engine · 30-second scan · SSE-pushed alerts arrive before phones buzz.</text>
+<rect x="48" y="130" width="350" height="880" rx="14" ry="14" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="64" y="154" font-size="13" font-weight="700" fill="#94a3b8" letter-spacing="1.5">SIGNAL SOURCES</text>
+<rect x="80" y="180" width="290" height="80" rx="10" ry="10" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="225.0" y="225.625" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">Order state machine</text>
+<rect x="80" y="290" width="290" height="80" rx="10" ry="10" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="225.0" y="335.625" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">Rider heartbeat</text>
+<rect x="80" y="400" width="290" height="80" rx="10" ry="10" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="225.0" y="445.625" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">Payment webhook</text>
+<rect x="80" y="510" width="290" height="80" rx="10" ry="10" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="225.0" y="555.625" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">KYC pipeline</text>
+<rect x="80" y="620" width="290" height="80" rx="10" ry="10" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="225.0" y="665.625" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">COD ledger</text>
+<rect x="80" y="730" width="290" height="80" rx="10" ry="10" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="225.0" y="775.625" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">Support tickets</text>
+<rect x="80" y="840" width="290" height="80" rx="10" ry="10" fill="#e0e7ff" stroke="#4338ca" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="225.0" y="885.625" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">Kitchen panel</text>
+<rect x="430" y="130" width="360" height="880" rx="14" ry="14" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="446" y="154" font-size="13" font-weight="700" fill="#94a3b8" letter-spacing="1.5">DETECTION ENGINE</text>
+<polygon points="610,180.0 750.0,230 610,280.0 470.0,230" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="610" y="234.0" text-anchor="middle" font-size="12" font-weight="600" fill="#581c87">Stuck-order &gt;20m</text>
+<polygon points="610,380.0 750.0,430 610,480.0 470.0,430" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="610" y="434.0" text-anchor="middle" font-size="12" font-weight="600" fill="#581c87">Rider silent &gt;60s</text>
+<polygon points="610,580.0 750.0,630 610,680.0 470.0,630" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="610" y="634.0" text-anchor="middle" font-size="12" font-weight="600" fill="#581c87">Payment failure spike</text>
+<polygon points="610,780.0 750.0,830 610,880.0 470.0,830" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="610" y="834.0" text-anchor="middle" font-size="12" font-weight="600" fill="#581c87">Restaurant pause auto-detect</text>
+<rect x="820" y="130" width="480" height="880" rx="14" ry="14" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="836" y="154" font-size="13" font-weight="700" fill="#94a3b8" letter-spacing="1.5">LIVE OPS DASHBOARD TILES</text>
+<rect x="850" y="180" width="200" height="170" rx="10" ry="10" fill="#fee2e2" stroke="#b91c1c" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="950.0" y="252.75" text-anchor="middle" font-size="14" font-weight="600" fill="#7f1d1d">Delayed orders</text>
+<text x="950.0" y="270.25" text-anchor="middle" font-size="14" font-weight="600" fill="#7f1d1d"></text>
+<text x="950.0" y="287.75" text-anchor="middle" font-size="14" font-weight="600" fill="#7f1d1d">13</text>
+<rect x="1070" y="180" width="200" height="170" rx="10" ry="10" fill="#fef3c7" stroke="#b45309" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1170.0" y="252.75" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f">Riders online</text>
+<text x="1170.0" y="270.25" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f"></text>
+<text x="1170.0" y="287.75" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f">87/120</text>
+<rect x="850" y="380" width="200" height="170" rx="10" ry="10" fill="#fee2e2" stroke="#b91c1c" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="950.0" y="452.75" text-anchor="middle" font-size="14" font-weight="600" fill="#7f1d1d">No rider assigned</text>
+<text x="950.0" y="470.25" text-anchor="middle" font-size="14" font-weight="600" fill="#7f1d1d"></text>
+<text x="950.0" y="487.75" text-anchor="middle" font-size="14" font-weight="600" fill="#7f1d1d">4</text>
+<rect x="1070" y="380" width="200" height="170" rx="10" ry="10" fill="#fef3c7" stroke="#b45309" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1170.0" y="452.75" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f">COD pending</text>
+<text x="1170.0" y="470.25" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f"></text>
+<text x="1170.0" y="487.75" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f">₹12,400</text>
+<rect x="850" y="580" width="200" height="170" rx="10" ry="10" fill="#fee2e2" stroke="#b91c1c" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="950.0" y="652.75" text-anchor="middle" font-size="14" font-weight="600" fill="#7f1d1d">Payment failures</text>
+<text x="950.0" y="670.25" text-anchor="middle" font-size="14" font-weight="600" fill="#7f1d1d"></text>
+<text x="950.0" y="687.75" text-anchor="middle" font-size="14" font-weight="600" fill="#7f1d1d">2</text>
+<rect x="1070" y="580" width="200" height="170" rx="10" ry="10" fill="#fee2e2" stroke="#b91c1c" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1170.0" y="652.75" text-anchor="middle" font-size="14" font-weight="600" fill="#7f1d1d">Restaurants paused</text>
+<text x="1170.0" y="670.25" text-anchor="middle" font-size="14" font-weight="600" fill="#7f1d1d"></text>
+<text x="1170.0" y="687.75" text-anchor="middle" font-size="14" font-weight="600" fill="#7f1d1d">1</text>
+<rect x="850" y="780" width="200" height="170" rx="10" ry="10" fill="#fef3c7" stroke="#b45309" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="950.0" y="852.75" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f">Support tickets</text>
+<text x="950.0" y="870.25" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f"></text>
+<text x="950.0" y="887.75" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f">6</text>
+<rect x="1070" y="780" width="200" height="170" rx="10" ry="10" fill="#fef3c7" stroke="#b45309" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1170.0" y="852.75" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f">Kitchen delays</text>
+<text x="1170.0" y="870.25" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f"></text>
+<text x="1170.0" y="887.75" text-anchor="middle" font-size="14" font-weight="600" fill="#78350f">3</text>
+<rect x="1330" y="130" width="420" height="880" rx="14" ry="14" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="6,4" opacity="0.45"/><text x="1346" y="154" font-size="13" font-weight="700" fill="#94a3b8" letter-spacing="1.5">ESCALATION ENGINE</text>
+<rect x="1360" y="250" width="360" height="110" rx="10" ry="10" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1540.0" y="311.0" text-anchor="middle" font-size="16" font-weight="600" fill="#581c87">Auto-reassign rider</text>
+<rect x="1360" y="430" width="360" height="110" rx="10" ry="10" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1540.0" y="491.0" text-anchor="middle" font-size="16" font-weight="600" fill="#581c87">Page on-call admin</text>
+<rect x="1360" y="610" width="360" height="110" rx="10" ry="10" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1540.0" y="671.0" text-anchor="middle" font-size="16" font-weight="600" fill="#581c87">Email super admin</text>
+<rect x="1360" y="790" width="360" height="110" rx="10" ry="10" fill="#f3e8ff" stroke="#7c3aed" stroke-width="1.5" filter="url(#shadow)"/>
+<text x="1540.0" y="851.0" text-anchor="middle" font-size="16" font-weight="600" fill="#581c87">Slack webhook</text>
+<path d="M 370 220 L 470 280" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<path d="M 370 330 L 470 280" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<path d="M 370 440 L 470 280" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<path d="M 370 550 L 470 280" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<path d="M 370 660 L 470 280" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<path d="M 370 770 L 470 280" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<path d="M 370 880 L 470 280" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<path d="M 750 230 L 850 400" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<path d="M 750 430 L 850 400" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<path d="M 750 630 L 850 400" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<path d="M 750 830 L 850 400" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<path d="M 1300 500 L 1360 500" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+</svg>

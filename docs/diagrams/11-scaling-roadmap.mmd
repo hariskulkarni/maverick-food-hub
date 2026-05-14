@@ -1,0 +1,25 @@
+gantt
+    title Maverick's Food Hub · scaling roadmap
+    dateFormat  YYYY-MM
+    axisFormat  %b %Y
+
+    section Phase 1 · Single VPS
+    Modular monolith on VPS         :done, p1a, 2026-01, 6M
+    SSE realtime + local FS         :done, p1b, 2026-01, 6M
+    20 restaurants · 5k DAU         :crit, p1c, 2026-04, 3M
+
+    section Phase 2 · Storage split
+    R2 object storage adapter swap  :p2a, after p1c, 1M
+    Redis session + rate-limit      :p2b, after p1c, 1M
+    Cloudflare CDN image transform  :p2c, after p1c, 1M
+    100 restaurants · 50k DAU       :p2d, after p2c, 4M
+
+    section Phase 3 · DB + horizontal
+    PgBouncer + read replica        :p3a, after p2d, 2M
+    Multi-app box load balancing    :p3b, after p2d, 2M
+    1000 restaurants · 500k DAU     :p3c, after p3b, 6M
+
+    section Phase 4 · Intelligence
+    ML rider dispatch service       :p4a, after p3c, 3M
+    Warehouse + feature pipeline    :p4b, after p3c, 3M
+    Smart multi-stop routing        :p4c, after p4a, 2M

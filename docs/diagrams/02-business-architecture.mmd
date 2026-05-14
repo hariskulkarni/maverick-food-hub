@@ -1,0 +1,61 @@
+flowchart LR
+    classDef actor fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#7c2d12
+    classDef cap fill:#eef2ff,stroke:#4338ca,stroke-width:1.5px,color:#1e1b4b
+    classDef growth fill:#ecfdf5,stroke:#059669,stroke-width:1.5px,color:#064e3b
+    classDef ops fill:#fdf4ff,stroke:#a21caf,stroke-width:1.5px,color:#581c87
+
+    subgraph ACTORS[Business actors]
+        A1((Customer))
+        A2((Restaurant Owner))
+        A3((Kitchen Staff))
+        A4((Rider))
+        A5((Super Admin))
+        A6((Platform Operator))
+    end
+
+    subgraph CORE[Core capabilities]
+        CORE1[Ordering & Checkout]
+        CORE2[Kitchen Operations]
+        CORE3[Delivery Operations]
+        CORE4[Payments & COD]
+    end
+
+    subgraph GROW[Growth capabilities]
+        G1[Offers & Coupons]
+        G2[Happy Hour Pricing]
+        G3[Cross-channel Campaigns]
+        G4[Challenges & Gamification]
+        G5[Signup Bonus & Loyalty]
+        G6[Cross-sell & Combos]
+    end
+
+    subgraph OPSCAP[Operational capabilities]
+        O1[Rider Management + KYC]
+        O2[Multi-cuisine Umbrella]
+        O3[Feedback & Quality]
+        O4[Analytics & Reporting]
+        O5[Support & Reconciliation]
+    end
+
+    A1 -- places orders --> CORE1
+    A1 -- pays via --> CORE4
+    A1 -- redeems --> G1
+    A1 -- earns --> G4
+    A1 -- earns --> G5
+    A1 -- rates --> O3
+    A2 -- configures --> CORE1 & G1 & G2 & G3 & G6
+    A2 -- monitors --> CORE2
+    A3 -- prepares --> CORE2
+    A4 -- onboards via --> O1
+    A4 -- claims orders --> CORE3
+    A4 -- collects --> CORE4
+    A5 -- approves --> O1
+    A5 -- governs --> O2
+    A5 -- configures --> G3 & G5
+    A5 -- reconciles --> O5
+    A6 -- supports --> O5
+
+    class A1,A2,A3,A4,A5,A6 actor
+    class CORE1,CORE2,CORE3,CORE4 cap
+    class G1,G2,G3,G4,G5,G6 growth
+    class O1,O2,O3,O4,O5 ops

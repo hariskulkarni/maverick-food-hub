@@ -1,0 +1,73 @@
+flowchart TB
+    classDef client fill:#fef3e7,stroke:#d97706,stroke-width:1.5px,color:#7c2d12
+    classDef edge fill:#eef2ff,stroke:#4338ca,stroke-width:1.5px,color:#1e1b4b
+    classDef app fill:#ecfdf5,stroke:#059669,stroke-width:1.5px,color:#064e3b
+    classDef data fill:#f1f5f9,stroke:#475569,stroke-width:1.5px,color:#0f172a
+    classDef ext fill:#fdf4ff,stroke:#a21caf,stroke-width:1.5px,color:#581c87
+    classDef ops fill:#fefce8,stroke:#a16207,stroke-width:1.5px,color:#713f12
+
+    subgraph CLI[Client tier]
+        direction LR
+        C1[Customer PWA]
+        C2[Rider Android App]
+        C3[Restaurant Admin]
+        C4[Kitchen Panel]
+        C5[Super Admin Portal]
+    end
+
+    subgraph EDGE[Edge tier]
+        CF[Cloudflare]
+        NX[nginx]
+    end
+
+    subgraph APP[Next.js 15 modular monolith]
+        WEB[Next.js server]
+        API[API routes /api/*]
+        AUTH[NextAuth v5]
+        ORD[Order machine]
+        OFF[Offer + Happy Hour engines]
+        SSE[SSE fan-out]
+        ALR[Alerts + Audit]
+        STO[Storage adapter]
+    end
+
+    subgraph DAT[Data tier]
+        PRI[Prisma ORM]
+        PG[(PostgreSQL)]
+        BAK[Nightly backups]
+    end
+
+    subgraph EXT[External providers]
+        RZP[Razorpay]
+        SMS[SMS · MSG91 / Fast2SMS]
+        EML[Email · Zoho / Brevo]
+        MAP[OSM tiles + Nominatim]
+    end
+
+    subgraph OPS[Operations]
+        PM2[PM2]
+        MON[Pino + UptimeRobot]
+        UBN[Ubuntu VPS]
+    end
+
+    C1 & C2 & C3 & C4 & C5 -- HTTPS --> CF
+    CF --> NX --> WEB
+    WEB --> API & AUTH
+    API --> ORD & OFF & ALR & STO
+    AUTH & API & ORD & OFF --> PRI
+    PRI --> PG --> BAK
+    API --> RZP
+    ALR --> EML & SMS
+    C1 & C2 -. tiles .-> MAP
+    SSE --> C1 & C2 & C3 & C4 & C5
+    ORD --> SSE
+    PM2 -.-> WEB
+    MON -.-> PG
+    UBN -.-> WEB & PG
+
+    class C1,C2,C3,C4,C5 client
+    class CF,NX edge
+    class WEB,API,AUTH,ORD,OFF,SSE,ALR,STO app
+    class PRI,PG,BAK data
+    class RZP,SMS,EML,MAP ext
+    class PM2,MON,UBN ops

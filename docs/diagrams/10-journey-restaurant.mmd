@@ -1,0 +1,17 @@
+journey
+    title Restaurant journey — Order to handoff
+    section Receive
+      SSE new order tile: 5: Restaurant
+      Review items: 4: Restaurant
+      Accept: 4: Restaurant
+    section Prepare
+      KOT with combo breakdown: 5: Kitchen
+      Mark prepared: 4: Kitchen
+      Mark READY: 5: Kitchen
+    section Handoff
+      Pool publishes: 5: Restaurant
+      Rider picks up: 4: Restaurant
+      Kitchen capacity restored: 5: Kitchen
+    section After
+      Feedback in drawer: 4: Restaurant
+      Low-rated drilldown: 3: Restaurant

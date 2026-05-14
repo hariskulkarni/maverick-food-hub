@@ -1,0 +1,55 @@
+flowchart TB
+    classDef shared fill:#f1f5f9,stroke:#475569,stroke-width:2px,color:#0f172a
+    classDef brand fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f
+    classDef cuisine fill:#dcfce7,stroke:#15803d,stroke-width:1.5px,color:#14532d
+    classDef branch fill:#e0e7ff,stroke:#4338ca,stroke-width:1.5px,color:#1e1b4b
+    classDef leaf fill:#fff,stroke:#94a3b8,stroke-width:1px,color:#334155
+
+    subgraph SHARED[Shared platform]
+        SP1[Next.js · Postgres · SSE · payments · SMS · auth]
+        SP2[Super admin portal]
+        SP3[Audit + notification + error logs]
+    end
+
+    subgraph TENANT[Brand: Maverick Hospitality]
+        B[Brand row]
+        subgraph CUISINES[Cuisine concepts]
+            R1[Italia Pizza]
+            R2[Biryani Zone]
+            R3[Bowl and Barbeque]
+            R4[Hotel Siddhartha]
+            R5[Wok and Sizzler]
+            R6[Party Place]
+            R7[Cuisine of Andhra]
+        end
+        subgraph BRANCHES[Branches]
+            BR1[Koramangala]
+            BR2[Indiranagar]
+            BR3[HSR Layout]
+        end
+        subgraph DATA[Tenant-scoped data]
+            M1[Menus + combos]
+            M2[Offers + happy hours]
+            M3[KYC riders]
+            M4[Orders + COD]
+            M5[Feedback]
+        end
+    end
+
+    subgraph SOLO[Solo restaurants · brandId NULL]
+        S1[Solo restaurant A]
+        S2[Solo restaurant B]
+    end
+
+    B --> R1 & R2 & R3 & R4 & R5 & R6 & R7
+    R1 & R2 & R3 & R4 & R5 & R6 & R7 --> BR1 & BR2 & BR3
+    BR1 & BR2 & BR3 --> M1 & M2 & M3 & M4 & M5
+    SHARED --- B
+    SHARED --- S1
+    SHARED --- S2
+
+    class SP1,SP2,SP3 shared
+    class B brand
+    class R1,R2,R3,R4,R5,R6,R7,S1,S2 cuisine
+    class BR1,BR2,BR3 branch
+    class M1,M2,M3,M4,M5 leaf

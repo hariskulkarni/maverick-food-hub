@@ -1,0 +1,48 @@
+flowchart LR
+    classDef pub fill:#fef3c7,stroke:#b45309,stroke-width:1.5px,color:#78350f
+    classDef bus fill:#ede9fe,stroke:#5b21b6,stroke-width:2px,color:#3c1361
+    classDef sub fill:#ecfeff,stroke:#0e7490,stroke-width:1.5px,color:#164e63
+    classDef fb fill:#fee2e2,stroke:#b91c1c,stroke-width:1.5px,color:#7f1d1d
+
+    subgraph PUB[Publishers]
+        PUB1[placeOrder]
+        PUB2[transitionOrder]
+        PUB3[rider/ping]
+        PUB4[rider/pool/claim]
+        PUB5[admin/orders/cancel]
+    end
+
+    subgraph BUS[EventEmitter bus]
+        EM{{src/server/realtime.ts}}
+        CH1[branch:X:orders]
+        CH2[order:Y]
+        CH3[rider:pool]
+        CH4[platform:riders]
+        CH5[admin:live]
+    end
+
+    subgraph SUB[SSE subscribers]
+        S1[Kitchen Panel]
+        S2[Customer tracker]
+        S3[Rider order list]
+        S4[Super-admin live map]
+        S5[Admin live orders]
+    end
+
+    subgraph FB[Polling fallback]
+        POLL[GET /api/orders/:id/poll]
+    end
+
+    PUB1 & PUB2 & PUB3 & PUB4 & PUB5 --> EM
+    EM --> CH1 --> S1
+    EM --> CH2 --> S2
+    EM --> CH3 --> S3
+    EM --> CH4 --> S4
+    EM --> CH5 --> S5
+    S2 -. on disconnect .-> POLL
+    S3 -. on disconnect .-> POLL
+
+    class PUB1,PUB2,PUB3,PUB4,PUB5 pub
+    class EM,CH1,CH2,CH3,CH4,CH5 bus
+    class S1,S2,S3,S4,S5 sub
+    class POLL fb

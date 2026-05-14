@@ -1,0 +1,249 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Saffron-warm but timeless. Tuned for accessibility (AA on white). */
+    --background: 36 33% 98%;
+    --foreground: 20 14% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 20 14% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 20 14% 12%;
+
+    --primary: 16 86% 52%;          /* saffron-cinnabar */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 35 92% 96%;
+    --secondary-foreground: 20 25% 18%;
+
+    --accent: 35 92% 90%;
+    --accent-foreground: 20 25% 18%;
+
+    --muted: 30 8% 94%;
+    --muted-foreground: 20 8% 40%;
+
+    --destructive: 0 75% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 60% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 20 25% 12%;
+
+    --border: 30 10% 90%;
+    --input: 30 10% 90%;
+    --ring: 16 86% 52%;
+
+    --radius: 0.75rem;
+
+    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Fraunces', ui-serif, Georgia, serif;
+  }
+
+  .dark {
+    --background: 20 14% 8%;
+    --foreground: 36 30% 96%;
+    --card: 20 14% 11%;
+    --card-foreground: 36 30% 96%;
+    --popover: 20 14% 11%;
+    --popover-foreground: 36 30% 96%;
+    --primary: 16 86% 56%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 20 14% 18%;
+    --secondary-foreground: 36 30% 96%;
+    --accent: 20 14% 22%;
+    --accent-foreground: 36 30% 96%;
+    --muted: 20 14% 18%;
+    --muted-foreground: 36 12% 65%;
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 50% 42%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 80% 50%;
+    --warning-foreground: 20 25% 12%;
+    --border: 20 14% 22%;
+    --input: 20 14% 22%;
+    --ring: 16 86% 56%;
+  }
+
+  * { @apply border-border; }
+  html, body { @apply bg-background text-foreground; }
+  body { font-family: var(--font-sans); }
+  h1, h2, h3, .display { font-family: var(--font-display); letter-spacing: -0.01em; }
+}
+
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  .text-balance { text-wrap: balance; }
+
+  /* Reveal animations */
+  .reveal { animation: reveal-up 0.6s cubic-bezier(0.2,0.7,0.3,1) both; }
+  .reveal-stagger > * { animation: reveal-up 0.6s cubic-bezier(0.2,0.7,0.3,1) both; }
+  .reveal-stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .reveal-stagger > *:nth-child(2) { animation-delay: 60ms; }
+  .reveal-stagger > *:nth-child(3) { animation-delay: 120ms; }
+  .reveal-stagger > *:nth-child(4) { animation-delay: 180ms; }
+  .reveal-stagger > *:nth-child(5) { animation-delay: 240ms; }
+  .reveal-stagger > *:nth-child(6) { animation-delay: 300ms; }
+  .reveal-stagger > *:nth-child(7) { animation-delay: 360ms; }
+  .reveal-stagger > *:nth-child(8) { animation-delay: 420ms; }
+  @keyframes reveal-up {
+    0%   { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Soft float — used on hero badges and floating accents */
+  .float-soft { animation: float-soft 5s ease-in-out infinite; }
+  @keyframes float-soft {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+
+  /* Slow pulse — used on live status indicators */
+  .pulse-soft { animation: pulse-soft 2.4s ease-in-out infinite; }
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(0.96); }
+  }
+
+  /* Marquee for restaurant cuisines / promotions */
+  .marquee { animation: marquee 30s linear infinite; }
+  @keyframes marquee {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  /* Celebration burst — fired on order delivered */
+  .burst { animation: burst 0.8s cubic-bezier(0.2,0.7,0.3,1.4) both; }
+  @keyframes burst {
+    0%   { opacity: 0; transform: scale(0.6); }
+    50%  { opacity: 1; transform: scale(1.08); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+
+  /* Confetti rain for big celebrations */
+  .confetti-piece {
+    position: absolute;
+    width: 8px; height: 14px;
+    opacity: 0;
+    animation: confetti-fall 2.4s cubic-bezier(0.2,0.7,0.3,1) forwards;
+  }
+  @keyframes confetti-fall {
+    0%   { opacity: 0; transform: translate(0, -30vh) rotate(0); }
+    10%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--dx, 60px), 70vh) rotate(720deg); }
+  }
+
+  /* Shimmer skeleton — for loading states */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--accent)) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Glass-morphism — for sticky bars over hero images */
+  .glass {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid rgba(255,255,255,0.55);
+  }
+  .glass-dark {
+    background: rgba(28, 22, 18, 0.72);
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    color: white;
+  }
+
+  /* Card lift — refined with softer shadow + ring */
+  .card-lift { transition: transform 280ms cubic-bezier(0.2,0.7,0.3,1), box-shadow 280ms ease, border-color 280ms ease; }
+  .card-lift:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 18px 40px -16px rgba(186, 100, 30, 0.25), 0 4px 12px -8px rgba(0,0,0,0.08);
+  }
+
+  /* Pressed state for tappable cards */
+  .tap-press { transition: transform 120ms ease; }
+  .tap-press:active { transform: scale(0.97); }
+
+  /* Animated gradient — hero backdrop */
+  .gradient-hero {
+    background:
+      radial-gradient(60% 50% at 20% 10%, rgba(234, 91, 31, 0.20), transparent 60%),
+      radial-gradient(50% 40% at 90% 20%, rgba(248, 160, 74, 0.22), transparent 60%),
+      radial-gradient(60% 50% at 50% 90%, rgba(91, 140, 90, 0.12), transparent 65%);
+    background-color: hsl(var(--background));
+  }
+
+  /* Saffron glow — for active step rings */
+  .ring-saffron {
+    box-shadow: 0 0 0 4px rgba(234, 91, 31, 0.18), 0 0 0 10px rgba(234, 91, 31, 0.08);
+  }
+
+  /* Text gradient — for marketing hero numbers */
+  .text-gradient-saffron {
+    background: linear-gradient(135deg, #ea5b1f 0%, #f8a04a 60%, #d97706 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Smooth scroll for in-page anchors */
+  html { scroll-behavior: smooth; }
+
+  /* Nicer focus rings */
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(234, 91, 31, 0.22), 0 0 0 5px rgba(234, 91, 31, 0.06);
+    border-radius: 6px;
+  }
+
+  /* Safe-area-inset helpers for iOS notches / home indicator.
+     Paired with `viewport-fit=cover` in app/layout.tsx. Apply to any fixed
+     element that sits at the very top or very bottom of the viewport. */
+  @supports (padding: max(0px)) {
+    .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
+    .safe-top    { padding-top:    max(env(safe-area-inset-top),    0px); }
+  }
+
+  /* Sticky place-order CTA on the mobile cart sits ABOVE the 56px bottom-nav.
+     Uses calc() inside an inset shorthand so it respects iOS safe-area too. */
+  .cart-cta-bottom {
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Tabular numerals for quantity counters in the cart — keeps the digit
+     column from jitter-jumping when going from 9 → 10. */
+  .font-tabular-nums { font-variant-numeric: tabular-nums; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal, .reveal-stagger > *, .float-soft, .pulse-soft, .marquee, .burst,
+    .confetti-piece, .shimmer { animation: none !important; }
+    .card-lift, .tap-press { transition: none; }
+    html { scroll-behavior: auto; }
+  }
+}
+
+/* Print: KOT + invoice friendly */
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; color: black; }
+  .print-page { page-break-after: always; }
+}

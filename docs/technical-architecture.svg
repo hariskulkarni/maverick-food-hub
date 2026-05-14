@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1900" viewBox="0 0 2400 1900" font-family="Inter, Helvetica Neue, Arial, sans-serif">
+<defs>
+<marker id="arrow-161b21" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#161b21"/></marker>
+<marker id="arrow-666" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#666"/></marker>
+</defs>
+<rect x="0" y="0" width="2400" height="1900" fill="#f5f1e8" rx="0" ry="0" opacity="1"/>
+<text x="160" y="60" font-size="20" fill="#8c8780" font-weight="500" text-anchor="start" letter-spacing="8">FOODHUB · TECHNICAL ARCHITECTURE</text>
+<text x="160" y="158" font-size="78" fill="#161b21" font-weight="600" text-anchor="start" letter-spacing="-1.5">One Next.js app.</text>
+<text x="160" y="242" font-size="78" fill="#161b21" font-weight="600" text-anchor="start" letter-spacing="-1.5">Six layers, type-safe end to end.</text>
+<line x1="160" y1="266" x2="300" y2="266" stroke="#161b21" stroke-width="3" opacity="1"/>
+<text x="160" y="302" font-size="22" fill="#3a4148" font-weight="400" text-anchor="start" letter-spacing="0.3">TypeScript everywhere · Postgres + Prisma · Server Actions + SSE · NextAuth v5 · Tailwind · Docker.</text>
+<text x="160" y="330" font-size="22" fill="#3a4148" font-weight="400" text-anchor="start" letter-spacing="0.3">Multi-tenant data access scoped through a single tenancy module. Realtime via in-process EventEmitter, swappable for Postgres LISTEN/NOTIFY.</text>
+<rect x="160" y="480" width="2080" height="175" fill="#dde4ef" rx="14" ry="14" opacity="1" stroke="#1f3a73" stroke-width="1.2"/>
+<rect x="160" y="480" width="6" height="175" fill="#1f3a73" rx="3" ry="3" opacity="1"/>
+<text x="184" y="508" font-size="14" fill="#1f3a73" font-weight="700" text-anchor="start" letter-spacing="4">CLIENT TIER</text>
+<text x="190.0" y="536.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Customer web / PWA</text>
+<text x="190.0" y="554.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">browsers · install-prompt</text>
+<text x="856.6666666666666" y="536.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Restaurant admin</text>
+<text x="856.6666666666666" y="554.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">desktop / tablet</text>
+<text x="1523.3333333333333" y="536.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Kitchen tablet</text>
+<text x="1523.3333333333333" y="554.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">touch-first board</text>
+<text x="190.0" y="598.5" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Rider mobile (PWA + Capacitor Android)</text>
+<text x="190.0" y="616.5" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">browser · Play-Store APK</text>
+<text x="856.6666666666666" y="598.5" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Platform super-admin</text>
+<text x="856.6666666666666" y="616.5" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">desktop</text>
+<line x1="1200.0" y1="657" x2="1200.0" y2="663" stroke="#666" stroke-width="2" marker-end="url(#arrow-666)"/>
+<rect x="160" y="665" width="2080" height="175" fill="#dfd9ea" rx="14" ry="14" opacity="1" stroke="#4a3a6a" stroke-width="1.2"/>
+<rect x="160" y="665" width="6" height="175" fill="#4a3a6a" rx="3" ry="3" opacity="1"/>
+<text x="184" y="693" font-size="14" fill="#4a3a6a" font-weight="700" text-anchor="start" letter-spacing="4">EDGE</text>
+<text x="190.0" y="721.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">middleware.ts</text>
+<text x="190.0" y="739.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">RBAC gating — /platform → SUPER_ADMIN · /admin → ADMIN · /kitchen → KITCHEN+ADMIN · /rider → RIDER</text>
+<text x="1190.0" y="721.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">auth.config.ts (edge-safe)</text>
+<text x="1190.0" y="739.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">NextAuth Edge config used by middleware — no Node-only imports</text>
+<line x1="1200.0" y1="842" x2="1200.0" y2="848" stroke="#666" stroke-width="2" marker-end="url(#arrow-666)"/>
+<rect x="160" y="850" width="2080" height="175" fill="#f0dfca" rx="14" ry="14" opacity="1" stroke="#a35e1d" stroke-width="1.2"/>
+<rect x="160" y="850" width="6" height="175" fill="#a35e1d" rx="3" ry="3" opacity="1"/>
+<text x="184" y="878" font-size="14" fill="#a35e1d" font-weight="700" text-anchor="start" letter-spacing="4">APP ROUTER</text>
+<text x="190.0" y="906.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">src/app/(customer)/...</text>
+<text x="190.0" y="924.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">/, /restaurants, /r/[slug], /cart, /checkout, /orders/[id], /signup/{restaurant,rider}, /login, /profile/*</text>
+<text x="856.6666666666666" y="906.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">src/app/admin/...</text>
+<text x="856.6666666666666" y="924.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">Restaurant admin dashboard, orders, menu, coupons, branches, reports, settings</text>
+<text x="1523.3333333333333" y="906.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">src/app/kitchen/</text>
+<text x="1523.3333333333333" y="924.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">Touch order board</text>
+<text x="190.0" y="968.5" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">src/app/rider/...</text>
+<text x="190.0" y="986.5" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">Active · Pool · History · Earnings + Service Worker for PWA</text>
+<text x="856.6666666666666" y="968.5" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">src/app/platform/...</text>
+<text x="856.6666666666666" y="986.5" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">Super-admin dashboard, restaurants, riders, payouts, analytics, orders, users</text>
+<line x1="1200.0" y1="1027" x2="1200.0" y2="1033" stroke="#666" stroke-width="2" marker-end="url(#arrow-666)"/>
+<rect x="160" y="1035" width="2080" height="175" fill="#dcecdf" rx="14" ry="14" opacity="1" stroke="#2f6b3a" stroke-width="1.2"/>
+<rect x="160" y="1035" width="6" height="175" fill="#2f6b3a" rx="3" ry="3" opacity="1"/>
+<text x="184" y="1063" font-size="14" fill="#2f6b3a" font-weight="700" text-anchor="start" letter-spacing="4">API ROUTES</text>
+<text x="190.0" y="1091.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">/api/auth/{[...nextauth],otp}, /api/me</text>
+<text x="190.0" y="1109.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">NextAuth handler + OTP issue + session probe</text>
+<text x="856.6666666666666" y="1091.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">/api/orders/*, /api/checkout/quote, /api/orders/[id]/tip</text>
+<text x="856.6666666666666" y="1109.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">Customer order lifecycle + tipping</text>
+<text x="1523.3333333333333" y="1091.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">/api/rider/{pool,assignments,location,online}</text>
+<text x="1523.3333333333333" y="1109.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">Pool listing + atomic claim + photo upload + GPS streaming</text>
+<text x="190.0" y="1132.6666666666667" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">/api/admin/{orders,menu,coupons,branches,reports}</text>
+<text x="190.0" y="1150.6666666666667" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">Restaurant-scoped admin operations</text>
+<text x="856.6666666666666" y="1132.6666666666667" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">/api/platform/{restaurants,rider-applications,payouts}</text>
+<text x="856.6666666666666" y="1150.6666666666667" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">Super-admin operations</text>
+<text x="1523.3333333333333" y="1132.6666666666667" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">/api/events?channel=...</text>
+<text x="1523.3333333333333" y="1150.6666666666667" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">SSE stream (order:* · branch:*:orders · rider:* · rider:pool)</text>
+<text x="190.0" y="1174.3333333333333" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">/api/payments/{verify,webhook}</text>
+<text x="190.0" y="1192.3333333333333" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">Razorpay client-side verify + HMAC-signed webhook</text>
+<line x1="1200.0" y1="1212" x2="1200.0" y2="1218" stroke="#666" stroke-width="2" marker-end="url(#arrow-666)"/>
+<rect x="160" y="1220" width="2080" height="175" fill="#fff0d8" rx="14" ry="14" opacity="1" stroke="#a06a1c" stroke-width="1.2"/>
+<rect x="160" y="1220" width="6" height="175" fill="#a06a1c" rx="3" ry="3" opacity="1"/>
+<text x="184" y="1248" font-size="14" fill="#a06a1c" font-weight="700" text-anchor="start" letter-spacing="4">SERVER MODULES (business logic)</text>
+<text x="190.0" y="1276.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">orders.ts</text>
+<text x="190.0" y="1294.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">state machine, transitions, side effects (notify, realtime, loyalty)</text>
+<text x="856.6666666666666" y="1276.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">pricing.ts</text>
+<text x="856.6666666666666" y="1294.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">subtotal · tax · delivery · coupon · wallet · loyalty</text>
+<text x="1523.3333333333333" y="1276.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">payouts.ts</text>
+<text x="1523.3333333333333" y="1294.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">haversine distance · DeliveryPayoutRule lookup · peak bonus</text>
+<text x="190.0" y="1307.25" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">rider-allocator.ts</text>
+<text x="190.0" y="1325.25" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">scorer (distance · load · rating) — still used for suggestions but pool model is primary</text>
+<text x="856.6666666666666" y="1307.25" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">payments/{index,mock,razorpay}.ts</text>
+<text x="856.6666666666666" y="1325.25" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">PaymentProvider interface with mock + real adapter</text>
+<text x="1523.3333333333333" y="1307.25" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">notifications.ts</text>
+<text x="1523.3333333333333" y="1325.25" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">SMS · WhatsApp · Email adapters (Twilio + SMTP), journaled</text>
+<text x="190.0" y="1338.5" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">realtime.ts</text>
+<text x="190.0" y="1356.5" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">in-process EventEmitter · SSE fan-out · pluggable for Redis/PG LISTEN</text>
+<text x="856.6666666666666" y="1338.5" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">storage.ts</text>
+<text x="856.6666666666666" y="1356.5" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">local FS (dev) or S3 driver for delivery photos</text>
+<text x="1523.3333333333333" y="1338.5" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">analytics.ts + platform-analytics.ts</text>
+<text x="1523.3333333333333" y="1356.5" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">per-tenant + cross-tenant queries</text>
+<text x="190.0" y="1369.75" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">auth.ts · otp.ts · tenancy.ts</text>
+<text x="190.0" y="1387.75" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">session, OTP issue/verify (Argon2 hash), currentRestaurant() helper</text>
+<line x1="1200.0" y1="1397" x2="1200.0" y2="1403" stroke="#666" stroke-width="2" marker-end="url(#arrow-666)"/>
+<rect x="160" y="1405" width="2080" height="175" fill="#e3e0e8" rx="14" ry="14" opacity="1" stroke="#6a6580" stroke-width="1.2"/>
+<rect x="160" y="1405" width="6" height="175" fill="#6a6580" rx="3" ry="3" opacity="1"/>
+<text x="184" y="1433" font-size="14" fill="#6a6580" font-weight="700" text-anchor="start" letter-spacing="4">PERSISTENCE</text>
+<text x="190.0" y="1461.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Postgres via Prisma — 33 models</text>
+<text x="190.0" y="1479.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">Identity · Tenant · Catalog · Orders · Payments · Delivery · Engagement · Inventory · Notifications · Payout rules</text>
+<text x="1190.0" y="1461.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Hot-path indexes</text>
+<text x="1190.0" y="1479.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">Order(branchId,status,placedAt) · MenuItem(branchId,isAvailable) · RiderAssignment(status,claimedAt)</text>
+<line x1="1200.0" y1="1582" x2="1200.0" y2="1588" stroke="#666" stroke-width="2" marker-end="url(#arrow-666)"/>
+<rect x="160" y="1590" width="2080" height="175" fill="#fae5e3" rx="14" ry="14" opacity="1" stroke="#b85450" stroke-width="1.2"/>
+<rect x="160" y="1590" width="6" height="175" fill="#b85450" rx="3" ry="3" opacity="1"/>
+<text x="184" y="1618" font-size="14" fill="#b85450" font-weight="700" text-anchor="start" letter-spacing="4">EXTERNAL</text>
+<text x="190.0" y="1646.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Razorpay</text>
+<text x="190.0" y="1664.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">payments + webhooks</text>
+<text x="856.6666666666666" y="1646.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Twilio</text>
+<text x="856.6666666666666" y="1664.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">SMS + WhatsApp Business</text>
+<text x="1523.3333333333333" y="1646.0" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">SMTP / Nodemailer</text>
+<text x="1523.3333333333333" y="1664.0" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">email (optional)</text>
+<text x="190.0" y="1708.5" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">OpenStreetMap + Leaflet</text>
+<text x="190.0" y="1726.5" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">free map tiles</text>
+<text x="856.6666666666666" y="1708.5" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">S3-compatible bucket</text>
+<text x="856.6666666666666" y="1726.5" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">delivery photos in prod</text>
+<text x="1523.3333333333333" y="1708.5" font-size="14" fill="#161b21" font-weight="700" text-anchor="start" letter-spacing="0.0">Capacitor</text>
+<text x="1523.3333333333333" y="1726.5" font-size="11" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="0.2">rider PWA → Android APK</text>
+<rect x="160" y="1785" width="2080" height="100" fill="#fff8e1" rx="10" ry="10" opacity="1" stroke="#a06a1c" stroke-width="1"/>
+<text x="182" y="1817" font-size="12" fill="#a06a1c" font-weight="700" text-anchor="start" letter-spacing="4">CROSS-CUTTING</text>
+<text x="182" y="1847" font-size="14" fill="#161b21" font-weight="400" text-anchor="start" letter-spacing="0.0">Auth (NextAuth v5 split: edge + node)  ·  Tenancy (currentRestaurant + requireSuperAdmin)  ·  Realtime SSE (rider:pool · order:* · branch:* · rider:*)  ·  Logging (Pino)  ·  Validation (Zod at every API boundary)  ·  Type-safety (Prisma-generated types end to end).</text>
+<line x1="160" y1="1820" x2="2240" y2="1820" stroke="#161b21" stroke-width="1" opacity="1"/>
+<text x="160" y="1850" font-size="13" fill="#8c8780" font-weight="400" text-anchor="start" letter-spacing="4">FOODHUB · TECHNICAL ARCHITECTURE · ED. 2</text>
+<text x="2240" y="1850" font-size="13" fill="#8c8780" font-weight="400" text-anchor="end" letter-spacing="4">POOL · MULTI-TENANT · STATELESS WEB TIER · POSTGRES SOT</text>
+</svg>

@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: restaurant
+    ports:
+      - '${POSTGRES_HOST_PORT:-5432}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d restaurant']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/restaurant?schema=public
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev-only-secret-change-me-please-32-bytes!}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-mock}
+      NOTIFIER_SMS: ${NOTIFIER_SMS:-mock}
+      NOTIFIER_WHATSAPP: ${NOTIFIER_WHATSAPP:-mock}
+      NOTIFIER_EMAIL: ${NOTIFIER_EMAIL:-mock}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      NEXT_PUBLIC_BRAND_NAME: ${NEXT_PUBLIC_BRAND_NAME:-Saffron & Smoke}
+      NEXT_PUBLIC_BRAND_TAGLINE: ${NEXT_PUBLIC_BRAND_TAGLINE:-Modern kitchen, classic cravings.}
+      NEXT_PUBLIC_SUPPORT_PHONE: ${NEXT_PUBLIC_SUPPORT_PHONE:-+919999999999}
+      NEXT_PUBLIC_SUPPORT_WHATSAPP: ${NEXT_PUBLIC_SUPPORT_WHATSAPP:-+919999999999}
+      NEXT_PUBLIC_CURRENCY: ${NEXT_PUBLIC_CURRENCY:-INR}
+    ports:
+      - '3000:3000'
+    command: >
+      sh -c "cd apps/web && npx prisma migrate deploy && npx tsx prisma/seed.ts || true && cd / && node /app/apps/web/server.js"
+
+volumes:
+  postgres_data:

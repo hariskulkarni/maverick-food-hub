@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hosting Decision — Maverick's Food Hub Phase 1</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --container-bg: rgba(30, 41, 59, 0.7);
+            --text-main: #cbd5e1;
+            --text-heading: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.5);
+            --accent-hover: #7dd3fc;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --code-bg: #1e293b;
+            --table-header: rgba(15, 23, 42, 0.8);
+            --table-row: rgba(30, 41, 59, 0.5);
+            --table-row-hover: rgba(56, 189, 248, 0.1);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(168, 85, 247, 0.08), transparent 25%);
+            color: var(--text-main);
+            line-height: 1.6;
+            margin: 0;
+            padding: 2rem 1rem;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: var(--container-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 3rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        h1, h2, h3, h4 {
+            color: var(--text-heading);
+            font-weight: 600;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            line-height: 1.3;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-top: 0;
+            background: linear-gradient(135deg, #38bdf8, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+            margin-top: 3rem;
+        }
+
+        h3 {
+            font-size: 1.4rem;
+            color: #e2e8f0;
+        }
+
+        p {
+            margin-bottom: 1.5rem;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+            transition: color 0.2s, text-shadow 0.2s;
+        }
+
+        a:hover {
+            color: var(--accent-hover);
+            text-shadow: 0 0 8px var(--accent-glow);
+        }
+
+        strong {
+            color: #f1f5f9;
+            font-weight: 600;
+        }
+
+        hr {
+            border: 0;
+            height: 1px;
+            background: linear-gradient(to right, transparent, var(--border-color), transparent);
+            margin: 3rem 0;
+        }
+
+        ul, ol {
+            margin-bottom: 1.5rem;
+            padding-left: 1.5rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+        }
+
+        code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            background-color: var(--code-bg);
+            padding: 0.2em 0.4em;
+            border-radius: 4px;
+            font-size: 0.9em;
+            color: #6ee7b7;
+        }
+
+        pre {
+            background-color: var(--code-bg);
+            padding: 1.25rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            margin-bottom: 1.5rem;
+        }
+
+        pre code {
+            background-color: transparent;
+            padding: 0;
+            color: #e2e8f0;
+            font-size: 0.9em;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background-color: var(--table-header);
+            font-weight: 600;
+            color: var(--text-heading);
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.05em;
+        }
+
+        tr {
+            background-color: var(--table-row);
+            transition: background-color 0.2s;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover {
+            background-color: var(--table-row-hover);
+        }
+
+        blockquote {
+            margin: 2rem 0;
+            padding: 1.5rem;
+            background: rgba(56, 189, 248, 0.05);
+            border-left: 4px solid var(--accent);
+            border-radius: 0 8px 8px 0;
+            font-size: 1.05rem;
+            color: #e2e8f0;
+        }
+
+        blockquote p:last-child {
+            margin-bottom: 0;
+        }
+
+        .meta {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+            display: inline-block;
+            background: rgba(15, 23, 42, 0.5);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1.5rem;
+            }
+            h1 {
+                font-size: 2rem;
+            }
+            table {
+                display: block;
+                overflow-x: auto;
+                white-space: nowrap;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Hosting Decision — Maverick's Food Hub Phase 1</h1>
+        
+        <div class="meta">
+            <strong>Researched:</strong> May 2026 &middot; <strong>Target spec:</strong> 4 vCPU &middot; 8 GB RAM &middot; 100+ GB NVMe &middot; 5+ TB bandwidth &middot; Mumbai/Bangalore region &middot; ~₹4,000/mo budget &middot; production SLA &middot; INR billing with GST.
+        </div>
+
+        <p>The decision below is calibrated to <strong>Phase 1 of the architecture roadmap</strong> in <code>ARCHITECTURE-V2.md</code> — single VPS hosting the Next.js monolith, PostgreSQL, nginx, PM2, and local FS uploads, fronted by Cloudflare.</p>
+
+        <hr>
+
+        <h2>TL;DR — recommendation</h2>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Provider</th>
+                    <th>Why</th>
+                    <th>Plan</th>
+                    <th>Monthly cost (incl. GST)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>1 ✅</strong></td>
+                    <td><strong>Hostinger KVM 4 (Mumbai)</strong></td>
+                    <td>Best value in the market for our spec; native INR billing; GST invoicing; Mumbai DC; well-reviewed reliability</td>
+                    <td>KVM 4 &middot; 4 vCPU &middot; 16 GB RAM &middot; 200 GB NVMe &middot; 16 TB bandwidth</td>
+                    <td><strong>₹849–₹1,099</strong></td>
+                </tr>
+                <tr>
+                    <td><strong>2</strong></td>
+                    <td><strong>DigitalOcean Bangalore</strong></td>
+                    <td>Best developer experience and tooling; API + Terraform first-class; great docs; easy snapshots and floating IPs; pay-as-you-go</td>
+                    <td>Premium AMD &middot; 4 vCPU &middot; 8 GB &middot; 160 GB NVMe &middot; 5 TB</td>
+                    <td>~₹3,400 ($40) + 18% GST</td>
+                </tr>
+                <tr>
+                    <td><strong>3</strong></td>
+                    <td><strong>E2E Networks (Mumbai/Delhi/Bangalore)</strong></td>
+                    <td>Indian company; INR-native; GST automatic; strong local support; data residency story</td>
+                    <td>C2.8GB or C2.16GB plan</td>
+                    <td>~₹2,500–₹3,500</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>The strong recommendation is <strong>Hostinger KVM 4</strong> for Phase 1. It's the lowest cost, fits the spec with headroom (16 GB RAM vs. our 8 GB target), invoices in INR with GST, and runs from a Mumbai DC for low customer-side latency. If you ever need to migrate, the Phase 2 transition to S3-compatible storage (Cloudflare R2 or Vultr Object Storage) is provider-agnostic and the move from Hostinger &rarr; DigitalOcean Bangalore is a one-day operation.</p>
+
+        <hr>
+
+        <h2>Why not the other obvious options</h2>
+
+        <h3>AWS Mumbai (EC2 / Lightsail)</h3>
+        <ul>
+            <li><strong>Cost:</strong> ~₹5,500–₹8,000/mo for an equivalent <code>t3.large</code> instance. The Mumbai region carries a ~15–20% premium over <code>us-east-1</code>, and Lightsail's bandwidth allowance is <strong>halved</strong> in Mumbai (1.5 TB vs 3 TB in US for the same dollar price).</li>
+            <li><strong>Complexity:</strong> IAM, VPC, security groups, EBS, ELB — you'd burn 2 weeks on networking before deploying.</li>
+            <li><strong>Verdict:</strong> Save AWS for Phase 3+ when you legitimately need the regional spread.</li>
+        </ul>
+
+        <h3>Azure / GCP</h3>
+        <ul>
+            <li>Same story as AWS — billing complexity, INR conversion lag, no real Phase 1 advantage.</li>
+        </ul>
+
+        <h3>Hetzner (Germany / Singapore)</h3>
+        <ul>
+            <li>World-class price-performance — but <strong>no India data center</strong>.</li>
+            <li>Singapore route adds <strong>40–60 ms latency</strong> to Indian metros. Acceptable for APIs and dashboards. Unacceptable for our SSE-heavy realtime tracking flow (rider GPS pings need ~250 ms end-to-end to feel "live").</li>
+            <li><strong>Verdict:</strong> Disqualified for customer-facing Phase 1. Worth revisiting only if you set up edge POPs in front.</li>
+        </ul>
+
+        <h3>Vercel / Railway / Render (PaaS)</h3>
+        <ul>
+            <li><strong>Vercel:</strong> Brilliant for static and edge functions, but our Next.js server uses long-lived SSE connections and a single-process EventEmitter for fan-out. Serverless cold starts will kill rider GPS pings and SSE channels. The free tier is 100 GB bandwidth (we'd burn that in week 1 at production scale). Real-world cost for our workload: $100–$300/mo on Pro + Postgres add-on.</li>
+            <li><strong>Railway:</strong> No permanent free tier — new accounts get a one-time $5 credit, then $1/mo credit, then services pause. Production workload would land at $40–$80/mo for the app + $20+ for Postgres = <strong>$60–100/mo (~₹5,000–₹8,500/mo)</strong>. Reasonable, but you give up SSH and PM2 control.</li>
+            <li><strong>Render:</strong> Free tier has a 1 GB Postgres that <strong>expires after 30 days</strong>. Paid Postgres starts at $19/mo. App service for our spec is ~$25/mo. Total ~$50/mo (~₹4,200/mo) — within budget but no Mumbai region (closest is Singapore).</li>
+        </ul>
+        <p><strong>Verdict on PaaS:</strong> All three are great for solo developers and prototypes. For Phase 1 of a production India-first business with SSE + cron + KOT printing + signup-bonus state machines, you want a real Linux box you can SSH into. Once we're at Phase 4 and split out the ML dispatch service, PaaS for that one service becomes attractive.</p>
+
+        <h3>Cloudways / managed wrappers</h3>
+        <ul>
+            <li>Adds ~50–100% markup over raw DigitalOcean or Vultr (managed-DO 8 GB plan at Cloudways = <strong>$88/mo</strong>, raw DigitalOcean = <strong>$40/mo</strong>).</li>
+            <li>You're paying for a control panel and a server-side LAMP stack we don't use.</li>
+            <li><strong>Verdict:</strong> Skip. We already have PM2 + nginx + Postgres muscle memory from the deploy docs.</li>
+        </ul>
+
+        <h3>Indian players we considered but didn't pick</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Provider</th>
+                    <th>Why not (yet)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>MilesWeb</strong></td>
+                    <td>Good INR/GST coverage, NVMe, 99.9% SLA, but pricing for our exact spec is similar to Hostinger with less mature self-service UX</td>
+                </tr>
+                <tr>
+                    <td><strong>Cantech</strong></td>
+                    <td>99.97% uptime claim is great; comparable pricing; slightly weaker public benchmarks</td>
+                </tr>
+                <tr>
+                    <td><strong>YouStable / DomainRacer / HostingRaja / BigRock</strong></td>
+                    <td>Older shared-hosting heritage; weaker SLAs; less suitable for a production Node app</td>
+                </tr>
+                <tr>
+                    <td><strong>CtrlS / Tata Communications</strong></td>
+                    <td>Enterprise tier — overkill cost for Phase 1 (₹15k+/mo)</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <hr>
+
+        <h2>Phase-by-phase host strategy</h2>
+        <p>Aligned with the scaling roadmap in <code>ARCHITECTURE-V2.md</code>:</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Phase</th>
+                    <th>Workload</th>
+                    <th>Host</th>
+                    <th>Approx monthly cost</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>1</strong></td>
+                    <td>1 VPS &middot; 20 restaurants &middot; 5k DAU</td>
+                    <td><strong>Hostinger KVM 4 (Mumbai)</strong> + Cloudflare Free</td>
+                    <td><strong>₹1,000–₹1,200</strong></td>
+                </tr>
+                <tr>
+                    <td><strong>2</strong></td>
+                    <td>+ object storage + Redis + CDN</td>
+                    <td>Hostinger KVM 4 + Cloudflare R2 + Hostinger Redis (or Upstash free tier)</td>
+                    <td>₹2,000–₹3,000</td>
+                </tr>
+                <tr>
+                    <td><strong>3</strong></td>
+                    <td>DB split + multi-app</td>
+                    <td>DigitalOcean Bangalore (2&times; app boxes) + DigitalOcean Managed Postgres + PgBouncer</td>
+                    <td>₹25,000–₹40,000</td>
+                </tr>
+                <tr>
+                    <td><strong>4</strong></td>
+                    <td>ML dispatch + warehouse</td>
+                    <td>Above + GCP <code>ap-south-1</code> for the warehouse + a small Render service for the dispatch ML</td>
+                    <td>₹70,000–₹1,00,000</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>The Phase 1 &rarr; Phase 2 jump is just adding services; no migration. The Phase 2 &rarr; Phase 3 jump is a one-day DNS swap because the storage adapter and SSE backplane are already abstracted in the codebase.</p>
+
+        <hr>
+
+        <h2>The Hostinger KVM 4 + Cloudflare setup (recommended)</h2>
+        <p>If you go with the recommendation, here's the concrete day-1 setup:</p>
+
+        <h3>Order</h3>
+        <ol>
+            <li>Buy <strong>Hostinger VPS &rarr; KVM 4</strong> plan in their <strong>India / Mumbai</strong> data center. Pick a 12-month term for the best per-month price; you can extend later.</li>
+            <li>Operating system: <strong>Ubuntu 24.04 LTS</strong> (minimal) — matches the deploy docs in <code>DEPLOY-INDIA.md</code>.</li>
+            <li>Tick "GST invoice" on the order form and add your business GSTIN.</li>
+        </ol>
+
+        <h3>Lock down</h3>
+        <ol start="4">
+            <li>Set up SSH key auth; disable password login (<code>PasswordAuthentication no</code> in <code>/etc/ssh/sshd_config</code>).</li>
+            <li>UFW firewall: allow 22 (SSH), 80, 443. Deny everything else by default.</li>
+            <li>Install fail2ban with the default Ubuntu profile.</li>
+        </ol>
+
+        <h3>Install the stack</h3>
+        <ol start="7">
+            <li><code>sudo apt install -y nodejs npm postgresql nginx certbot python3-certbot-nginx</code></li>
+            <li><code>sudo npm install -g pm2</code> and <code>pm2 startup systemd</code>.</li>
+            <li>Postgres: <code>sudo -u postgres createuser maverick &amp;&amp; createdb maverick_prod -O maverick</code>.</li>
+            <li>Clone the repo, <code>npm ci &amp;&amp; npm run build</code>, then <code>pm2 start npm --name maverick -- start</code>.</li>
+        </ol>
+
+        <h3>Front it</h3>
+        <ol start="11">
+            <li>Cloudflare Free: add your domain, change name servers, set "Proxied" on the A record pointing to the VPS IP.</li>
+            <li>Set SSL/TLS mode to <strong>Full (strict)</strong> in Cloudflare.</li>
+            <li>Use <code>certbot --nginx -d yourdomain.com</code> for the origin cert.</li>
+            <li>Enable Cloudflare's "Auto Minify" off (Next.js handles its own minification) but turn ON "Brotli" and "Always Use HTTPS".</li>
+        </ol>
+
+        <h3>Backups</h3>
+        <ol start="15">
+            <li><code>crontab -e</code> and add <br><code>0 3 * * * /usr/bin/pg_dump -U maverick maverick_prod | gzip | aws s3 cp - s3://your-bucket/backup-$(date +\%F).sql.gz</code><br> — point at Cloudflare R2 or a Backblaze B2 bucket (both essentially free at our scale).</li>
+            <li>Snapshot the whole VPS weekly in the Hostinger control panel.</li>
+        </ol>
+
+        <h3>Monitoring</h3>
+        <ol start="17">
+            <li>UptimeRobot free tier — set up HTTPS checks on <code>/</code>, <code>/api/health</code>, and the SSE endpoint.</li>
+            <li>Pino logs already write to <code>~/.pm2/logs/*.log</code>; rotate weekly via <code>pm2-logrotate</code>.</li>
+        </ol>
+
+        <p>Total stand-up time: <strong>about 4 hours</strong> once you have an SSH key and a domain.</p>
+
+        <hr>
+
+        <h2>Migration safety net</h2>
+        <p>If Hostinger ever underperforms (rare per current reviews, but possible), the <strong>escape hatch</strong> is a same-day rebuild on DigitalOcean Bangalore:</p>
+
+        <ol>
+            <li>Spin up a $40/mo Premium AMD 4vCPU/8GB droplet.</li>
+            <li><code>pg_restore</code> the latest nightly backup.</li>
+            <li>Pull the same repo and <code>pm2 start</code>.</li>
+            <li>Switch the Cloudflare A record.</li>
+        </ol>
+
+        <p>Because Cloudflare proxies the DNS, the cutover is <strong>DNS-instant</strong> with no propagation delay. Total downtime: ~10 minutes for the DB warm-up.</p>
+
+        <hr>
+
+        <h2>Decision</h2>
+
+        <blockquote>
+            <p><strong>Go with Hostinger KVM 4 (Mumbai) + Cloudflare Free for Phase 1.</strong></p>
+            <p>Budget: ₹1,000–₹1,200/month all-in (with GST). Headroom: 2&times; our spec target on RAM, 2&times; on bandwidth. Migration path to DigitalOcean is pre-engineered into the architecture and validated by the storage adapter + SSE abstraction in the codebase.</p>
+        </blockquote>
+
+        <p>The single biggest reason to choose this over DigitalOcean for Phase 1: at ~₹1,000/mo it costs <strong>3&times; less than DO</strong> for a strictly larger machine, INR-billed with GST, no FX volatility, and Mumbai-resident. If you grow into the larger problems DO solves better (managed databases, snapshots, Terraform-managed infra), we move in Phase 3.</p>
+
+        <hr>
+
+        <h2>Sources</h2>
+        <ul>
+            <li><a href="https://www.hostinger.com/in/vps-hosting" target="_blank">Hostinger India VPS Mumbai data center</a></li>
+            <li><a href="https://www.vpsbenchmarks.com/hosters/hostinger/plans/kvm-4" target="_blank">Hostinger KVM 4 plan benchmarks (vpsbenchmarks.com)</a></li>
+            <li><a href="https://hostadvice.com/hosting-company/hostinger-reviews/hostinger-vps-hosting-review/" target="_blank">Hostinger VPS 2026 review (HostAdvice)</a></li>
+            <li><a href="https://www.hostingcharges.in/reviews/hostinger-india" target="_blank">Hostinger pricing — India (hostingcharges.in)</a></li>
+            <li><a href="https://www.digitalocean.com/pricing" target="_blank">DigitalOcean pricing</a></li>
+            <li><a href="https://betterstack.com/community/guides/web-servers/digitalocean-vs-linode/" target="_blank">DigitalOcean Bangalore region details (BetterStack)</a></li>
+            <li><a href="https://calculator.e2enetworks.com/" target="_blank">E2E Networks pricing calculator</a></li>
+            <li><a href="https://www.websiteplanet.com/web-hosting/e2e-networks/" target="_blank">E2E Networks 2026 review (WebsitePlanet)</a></li>
+            <li><a href="https://www.vultr.com/pricing/" target="_blank">Vultr pricing</a></li>
+            <li><a href="https://www.vpsbenchmarks.com/compare/docean_vs_vultr" target="_blank">Vultr vs DigitalOcean comparison (VPSBenchmarks)</a></li>
+            <li><a href="https://hetzner-latency.sliplane.io/" target="_blank">Hetzner latency to India test</a></li>
+            <li><a href="https://betterstack.com/community/guides/web-servers/hetzner-cloud-review/" target="_blank">Hetzner 2026 review and trade-offs (BetterStack)</a></li>
+            <li><a href="https://zenocloud.io/blog/zenocloud-vs-hetzner/" target="_blank">ZenoCloud vs Hetzner — Indian managed vs Europe budget</a></li>
+            <li><a href="https://aws.amazon.com/lightsail/pricing/" target="_blank">AWS Lightsail pricing</a></li>
+            <li><a href="https://cloudburn.io/blog/amazon-lightsail-pricing" target="_blank">AWS Lightsail Mumbai true-cost breakdown (CloudBurn)</a></li>
+            <li><a href="https://www.cloudways.com/en/pricing.php" target="_blank">Cloudways pricing</a></li>
+            <li><a href="https://railway.com/pricing" target="_blank">Railway pricing 2026</a></li>
+            <li><a href="https://render.com/articles/platforms-with-a-real-free-tier-for-developers-in-2026" target="_blank">Render free tier review 2026</a></li>
+            <li><a href="https://vercel.com/pricing" target="_blank">Vercel pricing</a></li>
+            <li><a href="https://www.techplained.com/cheapest-vps-india" target="_blank">Cheapest VPS in India 2026: pricing with GST (TechPlained)</a></li>
+            <li><a href="https://www.youstable.com/blog/best-vps-hosting-providers-in-india" target="_blank">Top 10 VPS hosting providers India 2026 (YouStable)</a></li>
+            <li><a href="https://hostadvice.com/hosting-company/milesweb-reviews/" target="_blank">MilesWeb 2026 review (HostAdvice)</a></li>
+            <li><a href="https://www.cantech.in/blog/best-vps-hosting-providers/" target="_blank">Cantech best VPS providers 2026</a></li>
+        </ul>
+    </div>
+</body>
+</html>

@@ -1,0 +1,312 @@
+'use client';
+import Link from 'next/link';
+import { useState } from 'react';
+import { signIn } from 'next-auth/react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
+import { User, Bike, ChefHat, ShieldCheck, Sparkles } from 'lucide-react';
+import { RoleTile } from '@/components/auth/role-tile';
+import { MarketingPanel } from '@/components/auth/marketing-panel';
+
+export type LoginRole = 'customer' | 'rider' | 'staff' | 'super';
+
+type RoleSpec = {
+  id: LoginRole;
+  label: string;
+  tagline: string;
+  Icon: typeof User;
+  auth: 'phone' | 'email';
+};
+
+const ROLES: RoleSpec[] = [
+  { id: 'customer', label: 'Customer',         tagline: 'Order from anywhere',   Icon: User,        auth: 'phone' },
+  { id: 'rider',    label: 'Rider',            tagline: 'Earn on your schedule', Icon: Bike,        auth: 'phone' },
+  { id: 'staff',    label: 'Restaurant Staff', tagline: 'Manage orders & menu',  Icon: ChefHat,     auth: 'email' },
+  { id: 'super',    label: 'Super Admin',      tagline: 'Platform operations',   Icon: ShieldCheck, auth: 'email' }
+];
+
+/**
+ * Central /login experience. Renders as a premium two-column split on
+ * desktop:
+ *   - Left ~45%: <MarketingPanel> with gradient backdrop, brand wordmark,
+ *     rotating value-prop line, and a 2x2 stat grid.
+ *   - Right ~55%: role-picker tiles + the matching sign-in form.
+ *
+ * On mobile the columns collapse — the marketing panel becomes a compact
+ * hero strip on top, then the role tiles and form stack below it.
+ *
+ * Routing is unchanged from the previous version: an explicit `?next=`
+ * always wins; otherwise `routeByRole` hits /api/me and redirects to the
+ * canonical home for the user's actual role (rider → /rider, super → /platform,
+ * admin/kitchen → /admin or /kitchen, anyone else → the role-specific fallback).
+ */
+export function LoginClient({
+  next,
+  initialRole = 'customer',
+  restaurantsLive,
+  cuisinesCount
+}: {
+  next?: string;
+  initialRole?: LoginRole;
+  restaurantsLive: number;
+  cuisinesCount: number;
+}) {
+  const [role, setRole] = useState<LoginRole>(initialRole);
+
+  // Phone OTP state
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [devCode, setDevCode] = useState<string | null>(null);
+
+  // Email/password state
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const [busy, setBusy] = useState(false);
+
+  const activeSpec = ROLES.find((r) => r.id === role)!;
+
+  function switchRole(next: LoginRole) {
+    setRole(next);
+    // Reset transient form state when switching, but keep typed identifiers.
+    setOtpSent(false);
+    setDevCode(null);
+    setCode('');
+  }
+
+  async function sendOtp() {
+    if (!/^\+?\d{10,15}$/.test(phone)) return toast.error('Enter a valid phone number with country code (e.g. +9198…)');
+    setBusy(true);
+    try {
+      const r = await fetch('/api/auth/otp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error || 'Failed');
+      setOtpSent(true);
+      if (data.devCode) {
+        setDevCode(data.devCode);
+        toast.success(`OTP sent (dev: ${data.devCode})`);
+      } else {
+        toast.success('OTP sent');
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally { setBusy(false); }
+  }
+
+  /**
+   * Resolve where the signed-in user belongs. Honours an explicit `next`,
+   * otherwise routes by role so a rider lands on /rider, a customer on /,
+   * etc. Uses a hard navigation so the new layout (rider header / customer
+   * header) loads cleanly — critical inside the Capacitor WebView where the
+   * router.push cache can show the wrong header.
+   */
+  async function routeByRole(fallback: string) {
+    if (next) { window.location.href = next; return; }
+    try {
+      const me = await (await fetch('/api/me', { cache: 'no-store' })).json();
+      const r = me?.role;
+      const target =
+          r === 'RIDER'       ? '/rider'
+        : r === 'SUPER_ADMIN' ? '/platform'
+        : r === 'ADMIN'       ? '/admin'
+        : r === 'KITCHEN'     ? '/kitchen'
+        : fallback;
+      window.location.href = target;
+    } catch {
+      window.location.href = fallback;
+    }
+  }
+
+  async function verifyOtp() {
+    setBusy(true);
+    const r = await signIn('phone-otp', { phone, code, purpose: 'login', redirect: false });
+    setBusy(false);
+    if (r?.error) return toast.error('Invalid or expired code');
+    await routeByRole(role === 'rider' ? '/rider' : '/');
+  }
+
+  async function loginEmail() {
+    setBusy(true);
+    const r = await signIn('email-password', { email, password, redirect: false });
+    setBusy(false);
+    if (r?.error) return toast.error('Invalid credentials');
+    await routeByRole(role === 'super' ? '/platform' : '/admin');
+  }
+
+  return (
+    <div className="container py-8 md:py-12">
+      <div className="grid gap-6 md:grid-cols-[45fr_55fr] md:gap-10">
+        {/* ── Left: marketing panel (mobile: compact hero strip) ── */}
+        <div className="md:hidden">
+          <MarketingPanel
+            restaurantsLive={restaurantsLive}
+            cuisinesCount={cuisinesCount}
+            compact
+          />
+        </div>
+        <div className="hidden md:block">
+          <MarketingPanel
+            restaurantsLive={restaurantsLive}
+            cuisinesCount={cuisinesCount}
+          />
+        </div>
+
+        {/* ── Right: role tiles + form ── */}
+        <div className="flex flex-col">
+          <div className="rounded-3xl border border-border/60 bg-card p-6 shadow-sm md:p-8">
+            {/* Role tiles */}
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                I&apos;m signing in as
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {ROLES.map((r) => (
+                  <RoleTile
+                    key={r.id}
+                    Icon={r.Icon}
+                    label={r.label}
+                    tagline={r.tagline}
+                    active={r.id === role}
+                    onClick={() => switchRole(r.id)}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Form */}
+            <div className="mt-8">
+              <div className="mb-5 flex items-center gap-2">
+                <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <activeSpec.Icon className="size-4" />
+                </span>
+                <div className="text-base font-semibold">
+                  Sign in as <span className="text-primary">{activeSpec.label}</span>
+                </div>
+              </div>
+
+              {activeSpec.auth === 'phone' ? (
+                !otpSent ? (
+                  <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); sendOtp(); }}>
+                    <div>
+                      <Label htmlFor="phone">Mobile number</Label>
+                      <Input
+                        id="phone"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="+919876500001"
+                        autoComplete="tel"
+                        required
+                      />
+                    </div>
+                    <Button className="w-full gap-2" size="lg" disabled={busy} type="submit">
+                      <Sparkles className="size-4" />
+                      {busy ? 'Sending…' : 'Send OTP'}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      We&apos;ll text a 6-digit code. Standard SMS rates may apply.
+                    </p>
+                  </form>
+                ) : (
+                  <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); verifyOtp(); }}>
+                    <div className="text-sm text-muted-foreground">
+                      We sent a code to {phone}.{devCode && <> Dev code: <span className="font-mono">{devCode}</span></>}
+                    </div>
+                    <div>
+                      <Label htmlFor="otp">6-digit code</Label>
+                      <Input
+                        id="otp"
+                        value={code}
+                        onChange={(e) => setCode(e.target.value)}
+                        inputMode="numeric"
+                        pattern="[0-9]{6}"
+                        maxLength={6}
+                        required
+                      />
+                    </div>
+                    <Button className="w-full gap-2" size="lg" disabled={busy} type="submit">
+                      <Sparkles className="size-4" />
+                      {busy ? 'Verifying…' : 'Verify & sign in'}
+                    </Button>
+                    <button
+                      type="button"
+                      className="w-full text-sm text-muted-foreground hover:text-foreground"
+                      onClick={() => setOtpSent(false)}
+                    >
+                      ← change number
+                    </button>
+                  </form>
+                )
+              ) : (
+                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); loginEmail(); }}>
+                  <div>
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      autoComplete="email"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="password">Password</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      autoComplete="current-password"
+                      required
+                    />
+                  </div>
+                  <Button className="w-full gap-2" size="lg" disabled={busy} type="submit">
+                    <Sparkles className="size-4" />
+                    {busy ? 'Signing in…' : 'Sign in'}
+                  </Button>
+                  {role === 'staff' && (
+                    <p className="text-xs text-muted-foreground">Demo · admin@restaurant.local / Admin@12345</p>
+                  )}
+                  {role === 'super' && (
+                    <p className="text-xs text-muted-foreground">Restricted to platform operators.</p>
+                  )}
+                </form>
+              )}
+
+              <p className="mt-5 border-t border-border/60 pt-5 text-xs text-muted-foreground">
+                Use phone OTP for customers and riders, email + password for
+                restaurant staff and platform admins.
+              </p>
+            </div>
+          </div>
+
+          {/* Footer links */}
+          <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
+            <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+              <div className="font-medium">New customer?</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                You can sign up automatically after your first order — no separate
+                form needed.
+              </div>
+            </div>
+            <Link
+              href="/signup/restaurant"
+              className="group rounded-2xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-primary/40 hover:bg-primary/5"
+            >
+              <div className="font-medium">
+                Restaurant owner?{' '}
+                <span className="text-primary group-hover:underline">Open your kitchen →</span>
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Set up your storefront in minutes — menu, branches, payments.
+              </div>
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

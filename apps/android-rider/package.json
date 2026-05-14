@@ -1,0 +1,25 @@
+{
+  "name": "foodhub-rider-android",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "find node_modules/@capacitor -name '*.gradle' -print0 2>/dev/null | xargs -0 sed -i.bak \"s/proguard-android\\.txt/proguard-android-optimize.txt/g\" 2>/dev/null || true",
+    "sync": "cap sync android",
+    "open": "cap open android",
+    "run": "cap run android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/camera": "^6.0.3",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/geolocation": "^6.0.1",
+    "@capacitor/push-notifications": "^6.0.2",
+    "@capacitor/splash-screen": "^6.0.2",
+    "@capacitor/status-bar": "^6.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.3.3",
+    "dotenv": "^17.4.2",
+    "typescript": "^5.9.3"
+  }
+}

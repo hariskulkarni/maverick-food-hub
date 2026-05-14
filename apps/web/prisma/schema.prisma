@@ -1,0 +1,2192 @@
+// Restaurant Manager — full schema
+// Covers MVP plus every "future enhancement" from the spec:
+//   loyalty, wallet, referrals, multi-branch, inventory, GPS streaming,
+//   distance-based rider allocation (with hooks for ML).
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum Role {
+  CUSTOMER
+  ADMIN // restaurant owner / staff (scoped to one Restaurant)
+  KITCHEN
+  RIDER
+  SUPER_ADMIN // platform owner — sees every restaurant
+}
+
+enum RestaurantStatus {
+  PENDING // awaiting super-admin approval
+  ACTIVE // live, accepts orders
+  SUSPENDED // temporarily blocked
+  REJECTED // declined by super-admin
+}
+
+enum RiderApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum OrderStatus {
+  // Pre-payment / payment funnel
+  PAYMENT_PENDING            // Order created, waiting for payment to land
+  PAYMENT_FAILED             // Provider rejected the payment
+  // Restaurant funnel
+  RECEIVED                   // Paid (or COD) and waiting for restaurant accept
+  ACCEPTED
+  PREPARING
+  READY                      // Ready for pickup — published to rider pool
+  // Rider funnel
+  RIDER_ASSIGNED             // Specific rider on the way to pickup
+  RIDER_REACHED_RESTAURANT   // Rider arrived at the kitchen
+  PICKED_UP                  // Rider has the food
+  OUT_FOR_DELIVERY           // Same as PICKED_UP from customer's POV
+  RIDER_REACHED_CUSTOMER     // At the door
+  // Delivery failure paths
+  DELIVERY_OTP_FAILED        // OTP entered too many times incorrectly
+  CUSTOMER_UNREACHABLE       // Rider could not contact the customer
+  DELIVERY_FAILED            // Terminal — couldn't be handed over
+  // Happy ending
+  DELIVERED
+  // Cancellation paths
+  CANCELLED                  // Generic — legacy column. Use CANCELLED_BY_* for new code
+  CANCELLED_BY_CUSTOMER
+  CANCELLED_BY_RESTAURANT
+  CANCELLED_BY_ADMIN
+  // Refund funnel
+  REFUND_PENDING
+  REFUND_INITIATED
+  REFUNDED
+}
+
+enum CancellationReason {
+  CUSTOMER_CHANGED_MIND
+  CUSTOMER_WRONG_ADDRESS
+  RESTAURANT_TOO_BUSY
+  RESTAURANT_OUT_OF_STOCK
+  RESTAURANT_KITCHEN_CLOSED
+  RIDER_VEHICLE_ISSUE
+  RIDER_PERSONAL_EMERGENCY
+  CUSTOMER_UNREACHABLE
+  PAYMENT_FAILED
+  FRAUD_SUSPECTED
+  OTHER
+}
+
+enum PaymentMethod {
+  RAZORPAY
+  COD
+  WALLET
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+enum AssignmentStatus {
+  PENDING
+  ACCEPTED
+  PICKED_UP
+  DELIVERED
+  REJECTED
+  CANCELLED
+}
+
+enum NotificationChannel {
+  SMS
+  WHATSAPP
+  EMAIL
+  PUSH
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum IntegrationProvider {
+  RAZORPAY
+  TWILIO_SMS
+  TWILIO_WHATSAPP
+  SMTP
+  S3
+  // Synthetic provider holding super-admin platform security blob (TOTP + IP allowlist + lockout).
+  // Stored under restaurantId = '__platform__' which is a sentinel, not a real Restaurant row.
+  // NOTE: foreign-key check on Restaurant means rows for this provider live in a separate code path
+  // that bypasses Prisma's restaurant relation; see `src/server/2fa.ts`.
+  PLATFORM_2FA
+}
+
+enum IntegrationStatus {
+  DISCONNECTED
+  CONNECTED
+  FAILED
+}
+
+// ─── Phase 1 hardening enums ───────────────────────────────────────────────
+enum OtpPurpose {
+  LOGIN
+  PHONE_VERIFY
+  RESET_PASSWORD
+}
+
+enum EscalationType {
+  ORDER_NOT_ACCEPTED
+  KITCHEN_DELAY
+  NO_RIDER_AVAILABLE
+  RIDER_NOT_MOVING
+  CUSTOMER_UNREACHABLE
+  PAYMENT_WEBHOOK_DELAY
+  COD_NOT_RECONCILED
+}
+
+enum EscalationSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum EscalationStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  IGNORED
+}
+
+enum CodStatus {
+  PENDING_COLLECTION
+  COLLECTED
+  PARTIAL_COLLECTED
+  MISMATCH
+  DEPOSIT_PENDING
+  RECONCILED
+  WAIVED
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum WalletTxnType {
+  TOPUP
+  ORDER_DEBIT
+  REFUND
+  REFERRAL_REWARD
+  ADJUSTMENT
+}
+
+enum LoyaltyTxnType {
+  EARN
+  REDEEM
+  EXPIRE
+  ADJUSTMENT
+}
+
+enum InventoryMovementType {
+  RESTOCK
+  CONSUME
+  WASTE
+  ADJUSTMENT
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Identity & RBAC
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  role         Role      @default(CUSTOMER)
+  name         String?
+  phone        String?   @unique
+  email        String?   @unique
+  passwordHash String? // only set for ADMIN/KITCHEN
+  avatarUrl    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  addresses             Address[]
+  orders                Order[]           @relation("CustomerOrders")
+  otpTokens             OtpToken[]
+  riderProfile          RiderProfile?
+  walletAccount         Wallet?
+  loyaltyAccount        LoyaltyAccount?
+  referralsMade         Referral[]        @relation("Referrer")
+  referralsRedeemed     Referral[]        @relation("Referred")
+  notifications         NotificationLog[]
+  branchMemberships     BranchUser[] // for ADMIN/KITCHEN scoped to branch(es)
+  restaurantMemberships RestaurantUser[]
+  ownedRestaurants      Restaurant[]      @relation("RestaurantOwner")
+  ownedBrands           Brand[]           @relation("BrandOwner")
+  challengeProgress     ChallengeProgress[]
+  challengeRewards      ChallengeReward[]
+  signupBonusGrant      SignupBonusGrant?
+  orderFeedback         OrderFeedback[]   @relation("CustomerFeedback")
+  favoriteRestaurants   FavoriteRestaurant[]
+  favoriteItems         FavoriteItem[]
+
+  @@index([role])
+  @@index([phone])
+  @@index([email])
+}
+
+model OtpToken {
+  id         String    @id @default(cuid())
+  userId     String?
+  phone      String
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  purpose    String // login | delivery_verify | etc
+  createdAt  DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([phone, purpose])
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  userId     String
+  label      String   @default("Home")
+  line1      String
+  line2      String?
+  city       String
+  state      String?
+  postalCode String
+  country    String   @default("IN")
+  latitude   Float?
+  longitude  Float?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Restaurant (top-level tenant; one Restaurant has many Branches)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Brand — umbrella entity above Restaurant
+// ─────────────────────────────────────────────────────────────────────────────
+// A Brand groups multiple Restaurant rows together as "cuisine concepts" of a
+// single hospitality client. Each Restaurant under the brand keeps its own
+// menu, branches, offers, happy hours, KYC riders, etc. — Brand is purely a
+// rollup layer that powers:
+//
+//   - the customer-facing `/brand/[slug]` umbrella landing (cuisine browser)
+//   - the super-admin brand reports (brand / cuisine / branch / item levels)
+//   - "Part of [Brand]" attribution on individual cuisine pages
+//
+// `Restaurant.brandId` is intentionally nullable so all existing solo
+// restaurants (the bulk of the platform's tenants) remain unchanged. A
+// Restaurant can also be moved between brands without data migration —
+// reports use the *current* brand assignment.
+model Brand {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  tagline       String?
+  description   String?
+  logoUrl       String?
+  coverImageUrl String?
+  contactEmail  String?
+  contactPhone  String?
+  ownerUserId   String? // optional umbrella admin (e.g. group MD)
+  status        RestaurantStatus @default(ACTIVE)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  owner       User?        @relation("BrandOwner", fields: [ownerUserId], references: [id])
+  restaurants Restaurant[]
+  challenges  Challenge[]
+
+  @@index([status])
+}
+
+model Restaurant {
+  id             String           @id @default(cuid())
+  slug           String           @unique
+  name           String
+  tagline        String?
+  description    String?
+  cuisine        String? // "Indian", "Italian", "Multi-cuisine"
+  logoUrl        String?
+  coverImageUrl  String?
+  contactEmail   String?
+  contactPhone   String?
+  status         RestaurantStatus @default(PENDING)
+  ownerUserId    String // primary owner — User.role=ADMIN
+  approvedAt     DateTime?
+  rejectedReason String?
+  commissionPct  Float            @default(15.0) // platform's cut
+  // Optional umbrella brand. NULL ⇒ solo restaurant (existing behaviour).
+  brandId        String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  owner             User                    @relation("RestaurantOwner", fields: [ownerUserId], references: [id])
+  brand             Brand?                  @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  branches          Branch[]
+  members           RestaurantUser[]
+  riderApplications RiderApplication[]
+  integrations      IntegrationCredential[]
+  qrCodes           QrCode[]
+  favoritedBy       FavoriteRestaurant[]
+  offers            Offer[]
+  happyHourRules    HappyHourRule[]
+  challenges        Challenge[]
+  couponCampaigns   CouponCampaign[]
+
+  @@index([status])
+  @@index([brandId])
+}
+
+model RestaurantUser {
+  id           String   @id @default(cuid())
+  restaurantId String
+  userId       String
+  role         Role // ADMIN or KITCHEN — scoped to this restaurant
+  createdAt    DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, userId])
+  @@index([userId])
+}
+
+// RiderApplication is platform-level now (super-admin approves).
+// restaurantId is kept optional for backwards compat / "I want to ride for this restaurant" hint.
+model RiderApplication {
+  id             String                 @id @default(cuid())
+  restaurantId   String?
+  name           String
+  phone          String                 @unique
+  vehicleType    String                 @default("BIKE")
+  vehicleNumber  String?
+  preferredZone  String?
+  notes          String?
+  status         RiderApplicationStatus @default(PENDING)
+  reviewedById   String?
+  reviewedAt     DateTime?
+  rejectedReason String?
+  createdAt      DateTime               @default(now())
+
+  restaurant Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+}
+
+// Super-admin sets the delivery payout schedule. One row is "active" at a time.
+model DeliveryPayoutRule {
+  id            String    @id @default(cuid())
+  name          String
+  notes         String?
+  isActive      Boolean   @default(true)
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // ── Base & distance ────────────────────────────────────────────────────
+  baseAmount              Decimal @default(30.00) @db.Decimal(10, 2)
+  perKmAmount             Decimal @default(5.00)  @db.Decimal(10, 2)
+  firstKmIncluded         Decimal @default(1.0)   @db.Decimal(6, 2)  // km included in base
+  longDistanceThresholdKm Decimal @default(5.0)   @db.Decimal(6, 2)
+  longDistanceBonusPerKm  Decimal @default(0)     @db.Decimal(10, 2) // extra ₹/km beyond threshold
+
+  // ── Time-based ─────────────────────────────────────────────────────────
+  perMinuteAmount         Decimal @default(0)     @db.Decimal(10, 2) // pay per active minute
+  lunchPeakStartMin       Int     @default(720)   // 12:00
+  lunchPeakEndMin         Int     @default(870)   // 14:30
+  lunchPeakBonus          Decimal @default(10.00) @db.Decimal(10, 2)
+  dinnerPeakStartMin      Int     @default(1140)  // 19:00
+  dinnerPeakEndMin        Int     @default(1380)  // 23:00
+  dinnerPeakBonus         Decimal @default(10.00) @db.Decimal(10, 2)
+  lateNightStartMin       Int     @default(1320)  // 22:00
+  lateNightBonus          Decimal @default(0)     @db.Decimal(10, 2)
+  weekendBonus            Decimal @default(0)     @db.Decimal(10, 2)
+
+  // Legacy field kept for back-compat (UIs preferred lunch/dinner now)
+  peakHourBonus           Decimal @default(10.00) @db.Decimal(10, 2)
+
+  // ── Conditions ─────────────────────────────────────────────────────────
+  rainBonus               Decimal @default(15.00) @db.Decimal(10, 2)
+  codHandlingFee          Decimal @default(0)     @db.Decimal(10, 2) // ₹ paid for cash-on-delivery
+  orderValueSharePct      Float   @default(0)                        // % of subtotal added to payout
+
+  // ── Performance & quality ──────────────────────────────────────────────
+  dailyTripBonusThreshold  Int     @default(0)
+  dailyTripBonusAmount     Decimal @default(0) @db.Decimal(10, 2)
+  weeklyTripBonusThreshold Int     @default(0)
+  weeklyTripBonusAmount    Decimal @default(0) @db.Decimal(10, 2)
+  ratingBonusThreshold     Float   @default(0)                       // e.g. 4.5
+  ratingBonusAmount        Decimal @default(0) @db.Decimal(10, 2)
+
+  // ── Wait time & exceptions ─────────────────────────────────────────────
+  waitTimeStartMin        Int     @default(10)
+  waitTimePerMin          Decimal @default(1) @db.Decimal(10, 2)
+  cancellationPayPct      Int     @default(50)                        // % of base if cancelled post-pickup
+
+  // ── Caps ───────────────────────────────────────────────────────────────
+  minimumPerDelivery      Decimal @default(0) @db.Decimal(10, 2)
+  maxPerDelivery          Decimal @default(0) @db.Decimal(10, 2)      // 0 = uncapped
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  RiderPayoutOverride
+//  ----------------------------------------------------------------------------
+//  Optional per-rider override of the platform-wide DeliveryPayoutRule. Only
+//  the five "headline" earning levers are overridable; every other component
+//  (peak bonuses, milestones, wait-time, etc.) continues to come from the
+//  active DeliveryPayoutRule. A field left NULL means "inherit from platform
+//  default". The resolver in src/server/payouts.ts merges the override on top
+//  of the active rule at calculation time.
+//
+//  Only one row per rider may be isActive=true at a time. Disabling an
+//  override (or letting it expire via effectiveTo) instantly reverts the rider
+//  back to the platform default — past payouts are not retroactively changed.
+// ─────────────────────────────────────────────────────────────────────────────
+model RiderPayoutOverride {
+  id            String    @id @default(cuid())
+  riderId       String
+  isActive      Boolean   @default(true)
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  notes         String?
+
+  // Override knobs. NULL = inherit from platform DeliveryPayoutRule.
+  basePay        Decimal? @db.Decimal(10, 2) // overrides baseAmount
+  perKmRate      Decimal? @db.Decimal(10, 2) // overrides perKmAmount
+  minPayout      Decimal? @db.Decimal(10, 2) // overrides minimumPerDelivery
+  maxPayout      Decimal? @db.Decimal(10, 2) // overrides maxPerDelivery (0 = uncapped)
+  codHandlingFee Decimal? @db.Decimal(10, 2) // overrides codHandlingFee
+
+  // Audit trail metadata
+  createdById String? // SUPER_ADMIN id who created this override
+  updatedById String? // SUPER_ADMIN id who last edited it
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, isActive])
+  @@index([isActive, effectiveFrom])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Branch (now belongs to a Restaurant)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Branch {
+  id               String   @id @default(cuid())
+  restaurantId     String
+  name             String
+  slug             String   @unique
+  phone            String?
+  email            String?
+  line1            String
+  city             String
+  state            String?
+  postalCode       String
+  country          String   @default("IN")
+  latitude         Float?
+  longitude        Float?
+  serviceRadiusKm  Float    @default(7)
+  taxRatePct       Float    @default(5.0)
+  baseDeliveryFee  Decimal  @default(40.00) @db.Decimal(10, 2)
+  perKmDeliveryFee Decimal  @default(8.00) @db.Decimal(10, 2)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Restrict)
+
+  hours          OperatingHours[]
+  categories     Category[]
+  menuItems      MenuItem[]
+  combos         Combo[]
+  orders         Order[]
+  riders         RiderProfile[]
+  members        BranchUser[]
+  inventoryItems InventoryItem[]
+  coupons        Coupon[]
+  offers         Offer[]
+
+  @@index([isActive])
+}
+
+model BranchUser {
+  id        String   @id @default(cuid())
+  branchId  String
+  userId    String
+  role      Role
+  createdAt DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, userId])
+}
+
+model OperatingHours {
+  id        String @id @default(cuid())
+  branchId  String
+  dayOfWeek Int // 0=Sun
+  openMin   Int // minutes from midnight
+  closeMin  Int
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, dayOfWeek])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Catalog
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Category {
+  id        String   @id @default(cuid())
+  branchId  String
+  name      String
+  slug      String
+  imageUrl  String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ── Scheduling ────────────────────────────────────────────────────────
+  // `scheduleEnabled = false` (the default) means the category obeys only
+  // `isActive` — no time/day windowing. When `scheduleEnabled = true`, the
+  // category is only orderable if *now* falls inside at least one
+  // CategoryAvailability row. Mirrors how MenuItem + MenuItemAvailability
+  // already work, so the customer/admin/kitchen surfaces share the same
+  // availability resolver.
+  //
+  // Examples enabled by this design:
+  //   Breakfast       → 07:00–11:00 Mon–Sun
+  //   Lunch           → 12:00–15:00 Mon–Sun
+  //   Dinner          → 18:00–23:00 Mon–Sun
+  //   Weekend Specials → 11:00–22:00 Sat + Sun
+  scheduleEnabled Boolean @default(false)
+
+  branch         Branch                 @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  menuItems      MenuItem[]
+  availabilities CategoryAvailability[]
+  offerScopes    OfferCategoryScope[]
+  happyHourRules HappyHourRule[]
+
+  @@unique([branchId, slug])
+  @@index([branchId])
+  @@index([branchId, isActive, scheduleEnabled])
+}
+
+// One row per (day, window) the category is orderable. A category with no
+// rows AND `scheduleEnabled = true` is effectively off-hours all the time —
+// the editor UI guards against that by requiring at least one row when the
+// schedule is enabled. Minutes are local-time wall-clock (0–1440) to mirror
+// MenuItemAvailability so the same helper can format both.
+model CategoryAvailability {
+  id         String @id @default(cuid())
+  categoryId String
+  dayOfWeek  Int    // 0 = Sun … 6 = Sat (matches JS Date.getDay)
+  startMin   Int    // inclusive, e.g. 7*60 = 420 for 07:00
+  endMin     Int    // exclusive, e.g. 11*60 = 660 for 11:00
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([categoryId])
+  @@index([categoryId, dayOfWeek])
+}
+
+model MenuItem {
+  id              String   @id @default(cuid())
+  branchId        String
+  categoryId      String
+  name            String
+  slug            String
+  description     String?
+  price           Decimal  @db.Decimal(10, 2)
+  isVeg           Boolean  @default(true)
+  spicyLevel      Int      @default(0)
+  prepTimeMin     Int      @default(20)
+  imageUrl        String?
+  isAvailable     Boolean  @default(true)
+  isPopular       Boolean  @default(false)
+  isRecommended   Boolean  @default(false)
+  sortOrder       Int      @default(0)
+  inventoryItemId String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  branch         Branch                 @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  category       Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  availabilities MenuItemAvailability[]
+  comboItems     ComboItem[]
+  orderItems     OrderItem[]
+  inventoryItem  InventoryItem?         @relation(fields: [inventoryItemId], references: [id])
+  favoritedBy    FavoriteItem[]
+  offerScopes        OfferItemScope[]
+  crossSellAsParent  CrossSell[] @relation("CrossSellParent")
+  crossSellAsTarget  CrossSell[] @relation("CrossSellSuggested")
+  happyHourRules     HappyHourRule[]
+
+  @@unique([branchId, slug])
+  @@index([branchId, categoryId])
+  @@index([branchId, isAvailable])
+}
+
+model MenuItemAvailability {
+  id         String @id @default(cuid())
+  menuItemId String
+  dayOfWeek  Int // 0..6
+  startMin   Int
+  endMin     Int
+
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@index([menuItemId])
+}
+
+model Combo {
+  id          String   @id @default(cuid())
+  branchId    String
+  name        String
+  slug        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  imageUrl    String?
+  isAvailable Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branch         Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  items          ComboItem[]
+  orderItems     OrderItem[]
+  happyHourRules HappyHourRule[]
+
+  @@unique([branchId, slug])
+}
+
+model ComboItem {
+  id         String @id @default(cuid())
+  comboId    String
+  menuItemId String
+  quantity   Int    @default(1)
+
+  combo    Combo    @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  @@unique([comboId, menuItemId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Orders
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Order {
+  id         String      @id @default(cuid())
+  code       String      @unique // e.g. ORD-AB12CD
+  branchId   String
+  customerId String
+  addressId  String?
+  status     OrderStatus @default(RECEIVED)
+
+  subtotal       Decimal @db.Decimal(10, 2)
+  taxAmount      Decimal @default(0.00) @db.Decimal(10, 2)
+  deliveryFee    Decimal @default(0.00) @db.Decimal(10, 2)
+  discountAmount Decimal @default(0.00) @db.Decimal(10, 2)
+  walletApplied  Decimal @default(0.00) @db.Decimal(10, 2)
+  loyaltyApplied Decimal @default(0.00) @db.Decimal(10, 2)
+  // Snapshot of the signup-bonus discount applied at order time. Separate from
+  // discountAmount so reports can attribute promo spend vs new-customer credit.
+  signupBonusApplied Decimal @default(0.00) @db.Decimal(10, 2)
+  total          Decimal @db.Decimal(10, 2)
+  currency       String  @default("INR")
+
+  paymentMethod       PaymentMethod
+  customerNotes       String?
+  isPriority          Boolean       @default(false)
+  estimatedReadyAt    DateTime?
+  estimatedDeliveryAt DateTime?
+
+  placedAt         DateTime  @default(now())
+  acceptedAt       DateTime?
+  preparingAt      DateTime?
+  readyAt          DateTime?
+  outForDeliveryAt DateTime?
+  deliveredAt      DateTime?
+  cancelledAt      DateTime?
+  cancelReason     String?
+  cancellationReason CancellationReason?
+  cancelledBy      String? // userId who triggered cancel
+
+  deliveryOtp         String? // 4-digit verification code
+  deliveryOtpVerified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch           Branch               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  customer         User                 @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Restrict)
+  address          Address?             @relation(fields: [addressId], references: [id])
+  items            OrderItem[]
+  statusEvents     OrderStatusEvent[]
+  payments         Payment[]
+  refunds          Refund[]
+  assignment       RiderAssignment?
+  couponRedemption CouponRedemption?
+  offerRedemptions OfferRedemption[]
+  signupBonusLedger SignupBonusLedger[]
+  loyaltyTxns      LoyaltyTransaction[]
+  walletTxns       WalletTransaction[]
+  escalations      OrderEscalation[]
+  codCollection    CodCollection?
+  feedback         OrderFeedback?
+
+  @@index([branchId, status])
+  @@index([branchId, status, createdAt])
+  @@index([customerId, createdAt])
+  @@index([customerId, placedAt])
+  @@index([status, placedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  OrderFeedback — post-delivery customer feedback (48-hour edit window)
+// ─────────────────────────────────────────────────────────────────────────────
+// One row per delivered order. Customers can submit/edit within 48 hours of
+// DELIVERED status; after the window the row becomes read-only at the API
+// layer. Distinct from `RiderAssignment.customerRating`/`.customerComment`
+// (which exist as a quick legacy 1-tap rating during delivery confirmation)
+// because OrderFeedback is the richer post-delivery survey with:
+//   - separate food / delivery / overall ratings (1..5)
+//   - structured issue tags (multi-select)
+//   - optional photo proof
+//   - admin-attributable role-based visibility
+//
+// Role visibility (enforced at the API):
+//   Customer    — sees and edits their own feedback
+//   Rider       — sees only delivery rating + a redacted comment (no PII)
+//   Restaurant  — sees food rating + food-related issue tags + the comment
+//   Super Admin — sees everything
+enum FeedbackIssueTag {
+  LATE_DELIVERY
+  MISSING_ITEM
+  WRONG_ITEM
+  COLD_FOOD
+  PACKAGING_ISSUE
+  RIDER_BEHAVIOR
+  FOOD_QUALITY
+}
+
+model OrderFeedback {
+  id            String   @id @default(cuid())
+  orderId       String   @unique
+  customerId    String
+  // 1..5 each; null means "customer didn't rate that axis".
+  foodRating    Int?
+  deliveryRating Int?
+  overallRating Int?
+  comment       String?
+  // Stored as an array column — Postgres-native, no JSON parsing for filters.
+  issueTags     FeedbackIssueTag[] @default([])
+  imageUrl      String?
+  // Customer can opt-in to share their (already-public) comment with the rider.
+  // Default: rider sees ratings + redacted comment only.
+  shareCommentWithRider Boolean @default(false)
+  // Snapshotted at create so the 48h window survives clock drift on the order.
+  windowEndsAt  DateTime
+  // Audit
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  editedAt      DateTime?
+
+  order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customer User  @relation("CustomerFeedback", fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, createdAt])
+  // Reports: low-rated orders by restaurant / rider — join through Order.
+  @@index([foodRating])
+  @@index([deliveryRating])
+  @@index([overallRating])
+}
+
+model OrderItem {
+  id         String  @id @default(cuid())
+  orderId    String
+  menuItemId String?
+  comboId    String?
+  name       String // snapshot for invoice
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(10, 2)
+  notes      String?
+
+  order    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem MenuItem? @relation(fields: [menuItemId], references: [id])
+  combo    Combo?    @relation(fields: [comboId], references: [id])
+
+  @@index([orderId])
+}
+
+model OrderStatusEvent {
+  id        String      @id @default(cuid())
+  orderId   String
+  status    OrderStatus
+  actorId   String? // user who triggered (admin/rider/system)
+  note      String?
+  createdAt DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+model Coupon {
+  id             String    @id @default(cuid())
+  branchId       String?
+  code           String    @unique
+  description    String?
+  percentOff     Float?
+  flatOff        Decimal?  @db.Decimal(10, 2)
+  minOrderAmount Decimal?  @db.Decimal(10, 2)
+  maxDiscount    Decimal?  @db.Decimal(10, 2)
+  usageLimit     Int?
+  usedCount      Int       @default(0)
+  perUserLimit   Int       @default(1)
+  validFrom      DateTime  @default(now())
+  validTo        DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+
+  branch      Branch?            @relation(fields: [branchId], references: [id])
+  redemptions CouponRedemption[]
+}
+
+model CouponRedemption {
+  id        String   @id @default(cuid())
+  couponId  String
+  orderId   String   @unique
+  userId    String
+  amountOff Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Offers — rich promotion engine (richer superset of Coupon)
+// ─────────────────────────────────────────────────────────────────────────────
+// `Coupon` is preserved unchanged for back-compat — existing seeds and the old
+// /admin/coupons screen continue to work. New "campaigns" should be modelled
+// as `Offer` rows, which support all 9 promotion types, scoping (restaurant /
+// branch / category / item), channel cross-pollination (dine-in ↔ online),
+// usage caps, and auto-apply with priority ordering. Both systems contribute
+// to the same final `discountAmount` on an order — the pricing layer prefers
+// the highest-value combination.
+
+enum OfferType {
+  PERCENTAGE                 // X% off (with optional max cap)
+  FIXED                      // Flat ₹ off
+  BUY_X_GET_Y                // Buy N of item A, get M of item B free/discounted
+  COMBO_DISCOUNT             // Bundle-of-items discount (slash combined price)
+  FREE_ITEM_ABOVE            // Free menu item when subtotal ≥ threshold
+  FIRST_ORDER                // Only redeemable on the customer's 1st order
+  REPEAT_CUSTOMER            // Eligible after N completed orders
+  DINE_IN_TO_ONLINE          // Issued from a dine-in receipt, redeemable online
+  ONLINE_TO_DINE_IN          // Issued from an online order, redeemable in-restaurant
+}
+
+// Where the offer is allowed to be redeemed. Lets a single Offer row cover the
+// dine-in-to-online flow: `issuedChannel = DINE_IN`, `redeemChannel = ONLINE`.
+enum ChannelScope {
+  ANY
+  ONLINE
+  DINE_IN
+}
+
+model Offer {
+  id          String   @id @default(cuid())
+  // ── Identity ──────────────────────────────────────────────────────────
+  name        String          // Internal admin label
+  description String?         // Customer-facing copy ("Get 20% off, max ₹100")
+  type        OfferType
+  // Optional promo code. NULL = auto-apply only (no code entry needed).
+  // Unique when present so customers can type one in at checkout.
+  code        String?  @unique
+
+  // ── Reward parameters ─────────────────────────────────────────────────
+  // Not every type uses every field — the resolver picks the relevant ones
+  // based on `type`. We keep them all on the model so the admin form can be
+  // type-switched without a polymorphic table. JSON columns avoid extra
+  // round-trips when a type-specific structure is needed (e.g. BUY_X_GET_Y).
+  percentOff       Float?                          // PERCENTAGE
+  flatOff          Decimal? @db.Decimal(10, 2)     // FIXED + caps for others
+  maxDiscount      Decimal? @db.Decimal(10, 2)     // ceiling on % types
+  minOrderAmount   Decimal? @db.Decimal(10, 2)     // gate by cart subtotal
+  // BUY_X_GET_Y: { buyItemId, buyQty, getItemId, getQty, getDiscountPct }
+  // COMBO_DISCOUNT: { items: [{id, qty}], comboPrice }
+  // FREE_ITEM_ABOVE: { itemId, threshold }
+  rewardConfig     Json?
+
+  // ── Scope ─────────────────────────────────────────────────────────────
+  // restaurantId NULL ⇒ platform-wide offer (e.g. ONLINE_TO_DINE_IN incentives
+  // from corporate). branchId NULL ⇒ all branches of the restaurant.
+  restaurantId   String?
+  branchId       String?
+  // Many-to-many to categories / items via join tables so a single offer can
+  // target a subset of menu — e.g. "20% off Desserts category".
+  appliesToCategories OfferCategoryScope[]
+  appliesToItems      OfferItemScope[]
+
+  // ── Channel cross-pollination ─────────────────────────────────────────
+  issuedChannel ChannelScope @default(ANY)
+  redeemChannel ChannelScope @default(ANY)
+
+  // ── Customer eligibility ──────────────────────────────────────────────
+  // For REPEAT_CUSTOMER: must have completed ≥ minCustomerOrders. For
+  // FIRST_ORDER: requires customer has placed zero prior orders.
+  minCustomerOrders Int @default(0)
+
+  // ── Validity & caps ───────────────────────────────────────────────────
+  validFrom    DateTime  @default(now())
+  validTo      DateTime?
+  usageLimit   Int?      // Global cap — null = unlimited
+  usedCount    Int       @default(0)
+  perUserLimit Int       @default(1) // Per-customer cap
+
+  // ── Lifecycle & ordering ──────────────────────────────────────────────
+  isActive   Boolean @default(true)
+  // Higher priority wins when multiple offers could auto-apply. Ties broken
+  // by `discountAmount DESC` then `createdAt DESC`.
+  priority   Int     @default(0)
+  // When true, the resolver may auto-apply this offer (no code required) on
+  // any eligible cart. False = code-only.
+  autoApply  Boolean @default(false)
+  // Stackable with other offers? Default false — the resolver picks one best
+  // offer per cart unless `stackable` is true on every involved offer.
+  stackable  Boolean @default(false)
+
+  // ── Audit ─────────────────────────────────────────────────────────────
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  restaurant  Restaurant?       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  // Optional link back to a CouponCampaign — set when the Offer was auto-
+  // generated by a campaign issuance. The campaign owns the cross-channel
+  // metadata (issued count, distribution count, conversion rate); the Offer
+  // does the actual cart-level redemption math.
+  campaignId String?
+
+  branch          Branch?            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  campaign        CouponCampaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  redemptions     OfferRedemption[]
+  challengeReward ChallengeReward?
+
+  @@index([restaurantId, isActive, validFrom, validTo])
+  @@index([campaignId])
+  @@index([branchId, isActive])
+  @@index([autoApply, isActive])
+  @@index([type, isActive])
+}
+
+// Scope helper rows — keep the offer-side cardinality small (most offers
+// target 0–3 categories or items) while letting us index by category for fast
+// item-level lookups ("does any active offer target this category?").
+model OfferCategoryScope {
+  id         String @id @default(cuid())
+  offerId    String
+  categoryId String
+
+  offer    Offer    @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([offerId, categoryId])
+  @@index([categoryId])
+}
+
+model OfferItemScope {
+  id         String @id @default(cuid())
+  offerId    String
+  menuItemId String
+
+  offer    Offer    @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@unique([offerId, menuItemId])
+  @@index([menuItemId])
+}
+
+// Append-only redemption log. One row per (offer, order). The per-user cap is
+// enforced by counting prior redemptions for `userId`. We snapshot
+// `amountOff` and `breakdown` so post-hoc analytics work even if the parent
+// offer changes its reward parameters later.
+model OfferRedemption {
+  id        String   @id @default(cuid())
+  offerId   String
+  orderId   String
+  userId    String
+  amountOff Decimal  @db.Decimal(10, 2)
+  // Type-specific snapshot — e.g. for BUY_X_GET_Y: { buyItemId, freeQty, savedAmt }
+  breakdown Json?
+  // Channel the redemption fired on (lets us count dine-in vs online conversion)
+  channel   ChannelScope @default(ONLINE)
+  createdAt DateTime @default(now())
+
+  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([offerId, orderId])
+  @@index([offerId, userId])
+  @@index([userId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  CouponCampaign — cross-channel coupon promotions
+// ─────────────────────────────────────────────────────────────────────────────
+// A CouponCampaign owns one shared Offer row whose code carries the campaign's
+// prefix. The campaign captures the cross-channel intent (DINE_IN_TO_ONLINE
+// or ONLINE_TO_DINE_IN), and the linked Offer does the cart-side redemption
+// math (using the existing engine). Use cases:
+//   - Print "EATIN20" on a dine-in receipt → customer types it at online
+//     checkout next time → redeemChannel=ONLINE on the Offer.
+//   - Email "COMEIN15" after an online delivery → customer scans the QR in-
+//     restaurant → redeemChannel=DINE_IN.
+// Campaigns track admin-side `distributedCount` (number of receipts / emails
+// printed) so the report layer can compute conversion rate without an extra
+// table.
+enum CampaignChannel {
+  DINE_IN_TO_ONLINE
+  ONLINE_TO_DINE_IN
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  EXPIRED
+}
+
+model CouponCampaign {
+  id           String  @id @default(cuid())
+  restaurantId String?
+  name         String
+  description  String?
+  codePrefix   String  @unique // e.g. "EATIN" — actual code becomes EATIN20 or similar
+  channel      CampaignChannel
+
+  // Discount config (cloned onto the linked Offer at issuance).
+  discountType   String  // "PERCENTAGE" | "FIXED" — kept as string so a future
+                         // discount type can be added without an enum migration.
+  discountValue  Decimal @db.Decimal(10, 2)
+  maxDiscount    Decimal? @db.Decimal(10, 2)
+  minOrderAmount Decimal? @db.Decimal(10, 2)
+
+  // Caps
+  maxUses      Int?    // global redemption cap (NULL = unlimited)
+  perUserLimit Int     @default(1)
+
+  // Schedule
+  validFrom DateTime @default(now())
+  expiresAt DateTime?
+
+  // Reporting metadata — admin manually bumps `distributedCount` after a
+  // print/email run so the conversion-rate report has a denominator.
+  distributedCount Int @default(0)
+  status           CampaignStatus @default(DRAFT)
+
+  // Audit columns
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  restaurant Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  offers     Offer[]
+
+  @@index([restaurantId, status])
+  @@index([channel, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  HappyHourRule — time-of-day pricing
+// ─────────────────────────────────────────────────────────────────────────────
+// Distinct from Offer because Happy Hours change the *displayed unit price*
+// of an item before the cart-level offer engine runs. That keeps the math
+// simple ("you see ₹150 on the menu, that's what you pay per piece") and lets
+// us snapshot the effective unit price on `OrderItem` at order time, which
+// gives us price-locking for free: whatever price was active at checkout is
+// what the order ledger records.
+//
+// Conflicts (multiple rules target the same item, e.g. a restaurant-wide 15%
+// off and an item-specific ₹50 off): the resolver picks by (priority DESC,
+// effective discount DESC, specificity DESC). Specificity ranking is
+// MENU_ITEM/COMBO > CATEGORY > RESTAURANT, so admins can rely on a sane
+// default without setting priorities.
+
+enum HappyHourScope {
+  RESTAURANT // applies to every item + combo at the restaurant
+  CATEGORY   // every item in a single category
+  MENU_ITEM  // one specific menu item
+  COMBO      // one specific combo
+}
+
+enum HappyHourDiscountType {
+  PERCENTAGE          // X% off original price
+  FIXED_PRICE         // explicit new price, e.g. "every cocktail is ₹199"
+  FIXED_AMOUNT_OFF    // flat ₹ off original
+}
+
+model HappyHourRule {
+  id           String @id @default(cuid())
+  restaurantId String
+  name         String
+  description  String?
+
+  // ── Scope ──────────────────────────────────────────────────────────────
+  // `scope` is the discriminator. Exactly one of categoryId / menuItemId /
+  // comboId is set when scope is CATEGORY / MENU_ITEM / COMBO; all three are
+  // null for RESTAURANT scope. Validated server-side.
+  scope      HappyHourScope
+  categoryId String?
+  menuItemId String?
+  comboId    String?
+
+  // ── Discount ───────────────────────────────────────────────────────────
+  discountType HappyHourDiscountType
+  // Only one of these is read at calc time based on `discountType`.
+  percentOff  Float?
+  fixedPrice  Decimal? @db.Decimal(10, 2) // FIXED_PRICE: the new unit price
+  amountOff   Decimal? @db.Decimal(10, 2) // FIXED_AMOUNT_OFF
+  // Optional floor for safety so a 50% rule can't ever drop a ₹500 item below ₹100.
+  minPrice    Decimal? @db.Decimal(10, 2)
+
+  // ── Validity range ─────────────────────────────────────────────────────
+  validFrom DateTime  @default(now())
+  validTo   DateTime?
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────
+  isActive Boolean @default(true)
+  priority Int     @default(0)
+
+  // ── Audit ──────────────────────────────────────────────────────────────
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  category   Category?  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  menuItem   MenuItem?  @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  combo      Combo?     @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  schedules  HappyHourSchedule[]
+
+  @@index([restaurantId, isActive, validFrom, validTo])
+  @@index([categoryId, isActive])
+  @@index([menuItemId, isActive])
+  @@index([comboId, isActive])
+}
+
+// One row per (day, window). Same shape as MenuItemAvailability so the
+// time-of-day helper can be reused. A rule with no schedule rows is "always
+// in window" (within its validFrom/validTo range) — the editor surfaces this
+// as a warning so admins don't accidentally make a 24/7 happy hour.
+model HappyHourSchedule {
+  id        String @id @default(cuid())
+  ruleId    String
+  dayOfWeek Int    // 0..6 (Sun..Sat, matches Date.getDay)
+  startMin  Int    // 0..1440 inclusive
+  endMin    Int    // 0..1440 exclusive
+
+  rule HappyHourRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId])
+  @@index([ruleId, dayOfWeek])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  CrossSell — manually configured "Frequently ordered together" suggestions
+// ─────────────────────────────────────────────────────────────────────────────
+// A simple parent → suggestion mapping. Admins curate which items to suggest
+// alongside a given parent item (PDP) or alongside a cart that contains a
+// trigger item (Cart). Phase 2 will add auto-mining from order history, but
+// that derivation will write into the same table so consumers don't need to
+// change.
+model CrossSell {
+  id         String @id @default(cuid())
+  // Trigger item — the one the customer is viewing or has in cart.
+  parentItemId  String
+  // Suggested item shown as the cross-sell.
+  suggestedItemId String
+  // Optional position to control rendering order.
+  sortOrder  Int     @default(0)
+  // Surface where this should appear — comma-separated to keep schema simple:
+  // 'pdp' (product detail page), 'cart', or 'pdp,cart'.
+  surface    String  @default("pdp,cart")
+  // Group/kind for sectioned rendering on the customer PDP. Each parent item
+  // can have one strip per kind, so admins can curate "Add drink",
+  // "Add dessert", "Complete your meal", and the generic "frequently_together"
+  // separately. Stored as a string (not enum) so adding a new section like
+  // "Add a side" later doesn't require a migration. Defaults to the legacy
+  // catch-all so existing rows keep rendering in the generic strip.
+  kind       String  @default("frequently_together") // frequently_together | complete_meal | add_drink | add_dessert | add_side
+  // Optional note to the admin so they remember the reason.
+  note       String?
+  // Whether this row is admin-curated ('manual') or system-derived ('auto').
+  // The auto rows can be safely overwritten by a recompute job; manual rows
+  // are sacrosanct.
+  source     String  @default("manual")
+  isActive   Boolean @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  parentItem    MenuItem @relation("CrossSellParent",    fields: [parentItemId],    references: [id], onDelete: Cascade)
+  suggestedItem MenuItem @relation("CrossSellSuggested", fields: [suggestedItemId], references: [id], onDelete: Cascade)
+
+  @@unique([parentItemId, suggestedItemId, kind])
+  @@index([parentItemId, isActive])
+  @@index([parentItemId, kind, isActive])
+  @@index([suggestedItemId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Challenges — gamified offers that encourage repeat orders
+// ─────────────────────────────────────────────────────────────────────────────
+// Examples in production:
+//   - "Order 3 times, get ₹100 off"          → ORDER_COUNT, target=3, reward fixed ₹100
+//   - "Spend ₹1000 this month, unlock 10% off" → SPEND_THRESHOLD, target=1000, window=monthly, reward 10%
+//   - "Try 3 different cuisines, get bonus"  → CUISINE_VARIETY, target=3
+//   - "Weekend challenge — 2 weekends in a row" → WEEKEND_STREAK, target=2
+//   - "First 5 orders reward"                 → FIRST_N_ORDERS, target=5
+//
+// `Challenge` is the admin-configured template; `ChallengeProgress` is the
+// per-customer state machine ticked on every DELIVERED order. When progress
+// hits the target the resolver emits a `ChallengeReward` row AND inserts an
+// auto-generated Offer with a unique code that surfaces in the existing
+// cart-offer flow. This means the existing Offer engine takes care of code
+// validation, per-customer caps, and expiry — Challenges just generate the
+// coupon and hand it off.
+//
+// Fraud prevention:
+//   - Cancelled / refunded / payment-failed orders are excluded from progress.
+//     The hook in orders.ts only fires on DELIVERED transitions.
+//   - `perCustomerLimit` (default 1) on the parent Challenge.
+//   - `phoneVerifiedOnly` flag rejects progress updates from customers whose
+//     phone hasn't been OTP-verified.
+//   - Per-phone counter (`ChallengeReward.phoneSnapshot`) catches multi-account
+//     abuse where the same phone is reused across accounts.
+
+enum ChallengeType {
+  ORDER_COUNT       // place N orders within window
+  SPEND_THRESHOLD   // spend ≥ ₹X within window
+  CUISINE_VARIETY   // order from N distinct cuisines (different Restaurant or Brand cuisines)
+  WEEKEND_STREAK    // place ≥1 order on N consecutive weekends
+  FIRST_N_ORDERS    // any first N orders (per customer)
+}
+
+enum ChallengeWindow {
+  LIFETIME    // never resets — counts the customer's whole history
+  MONTHLY     // calendar month
+  WEEKLY      // calendar week (Mon–Sun)
+  CUSTOM      // bounded by Challenge.validFrom/validTo
+}
+
+enum ChallengeRewardType {
+  FIXED_OFF       // ₹X off the next order
+  PERCENT_OFF     // X% off the next order
+  FREE_DELIVERY   // skip delivery fee on next order
+}
+
+model Challenge {
+  id          String @id @default(cuid())
+  // ── Identity ─────────────────────────────────────────────────────────
+  name        String                          // "First 5 Orders Reward"
+  description String?                         // customer-facing copy
+  // Optional brand or restaurant scope — NULL = platform-wide.
+  brandId      String?
+  restaurantId String?
+
+  // ── Rule ─────────────────────────────────────────────────────────────
+  type        ChallengeType
+  target      Int                             // N orders / N cuisines / ₹X spend
+  window      ChallengeWindow @default(LIFETIME)
+  // Required minimum order value for an order to *count* toward this challenge
+  // (lets admins say "spend ₹1000 in qualifying orders ≥ ₹200").
+  minOrderValue Decimal? @db.Decimal(10, 2)
+
+  // ── Reward ───────────────────────────────────────────────────────────
+  rewardType  ChallengeRewardType
+  rewardValue Decimal @db.Decimal(10, 2)     // ₹100 for FIXED, 10 for PERCENT, ignored for FREE_DELIVERY
+  rewardMaxDiscount Decimal? @db.Decimal(10, 2) // optional cap for PERCENT_OFF
+  rewardValidityDays Int @default(30)        // generated coupon expires in N days
+
+  // ── Validity & lifecycle ─────────────────────────────────────────────
+  validFrom DateTime @default(now())
+  validTo   DateTime?
+  isActive  Boolean  @default(true)
+  // Higher priority surfaces first on the /rewards page.
+  priority  Int      @default(0)
+
+  // ── Fraud prevention ─────────────────────────────────────────────────
+  perCustomerLimit  Int     @default(1)       // one reward per customer
+  phoneVerifiedOnly Boolean @default(true)    // must have a verified phone
+  // Maximum number of rewards across all customers (cost cap).
+  totalLimit        Int?
+  totalIssued       Int     @default(0)
+
+  // ── Audit ────────────────────────────────────────────────────────────
+  createdById String?
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  brand       Brand?      @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  restaurant  Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
+  progress    ChallengeProgress[]
+  rewards     ChallengeReward[]
+
+  @@index([isActive, validFrom, validTo])
+  @@index([brandId, isActive])
+  @@index([restaurantId, isActive])
+}
+
+// One row per (challenge, customer). `value` is the type-specific counter:
+//   ORDER_COUNT     → number of qualifying orders so far
+//   SPEND_THRESHOLD → ₹ spent so far (stored as integer paise? No — Decimal)
+//   CUISINE_VARIETY → number of distinct cuisines (we de-dupe in metadata.cuisineIds)
+//   WEEKEND_STREAK  → number of consecutive qualifying weekends
+//   FIRST_N_ORDERS  → number of orders (same as ORDER_COUNT but capped at challenge.target)
+// `metadata` JSON column holds type-specific state (set of cuisine IDs,
+// last-qualifying-weekend ISO date, etc.) so the resolver can be stateless.
+model ChallengeProgress {
+  id          String   @id @default(cuid())
+  challengeId String
+  userId      String
+  value       Decimal  @default(0) @db.Decimal(12, 2)
+  // Type-specific state (cuisine ID set, last weekend ISO, etc.)
+  metadata    Json?
+  completed   Boolean  @default(false)
+  completedAt DateTime?
+  lastOrderId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId])
+  @@index([userId, completed])
+}
+
+// One row per (challenge, customer, reward) emission. Linked to the auto-
+// generated Offer that the customer can then redeem at checkout. We snapshot
+// the customer's phone number at issue time so phone-based fraud checks work
+// even after the customer changes their number later.
+model ChallengeReward {
+  id           String   @id @default(cuid())
+  challengeId  String
+  userId       String
+  // The generated Offer (with unique code) the customer can redeem.
+  offerId      String   @unique
+  // Phone snapshot — used to enforce per-phone limits across multi-account abuse.
+  phoneSnapshot String?
+  triggerOrderId String?
+  issuedAt     DateTime @default(now())
+  // Optimistic flag — flipped when the customer actually redeems the offer.
+  redeemed     Boolean  @default(false)
+  redeemedAt   DateTime?
+
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer     Offer     @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@index([userId, issuedAt])
+  @@index([challengeId, issuedAt])
+  @@index([phoneSnapshot])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Payments
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Payment {
+  id           String        @id @default(cuid())
+  orderId      String
+  method       PaymentMethod
+  status       PaymentStatus @default(PENDING)
+  amount       Decimal       @db.Decimal(10, 2)
+  currency     String        @default("INR")
+  providerName String? // razorpay | mock | cod
+  providerRef  String? // razorpay order/payment id
+  providerData Json?
+  errorMessage String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  refunds Refund[]
+
+  @@index([orderId])
+  @@index([providerRef])
+}
+
+model Refund {
+  id           String   @id @default(cuid())
+  paymentId    String
+  orderId      String
+  amount       Decimal  @db.Decimal(10, 2)
+  reason       String?
+  providerRef  String?
+  providerData Json?
+  createdAt    DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Delivery
+// ─────────────────────────────────────────────────────────────────────────────
+
+// RiderProfile is now PLATFORM-managed. branchId is optional and represents
+// a "home base" hint only (e.g. for matching nearby orders), not exclusivity.
+model RiderProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  branchId        String? // optional home base, nullable now
+  vehicleType     String    @default("BIKE")
+  vehicleNumber   String?
+  isOnline        Boolean   @default(false)
+  currentLat      Float?
+  currentLng      Float?
+  currentLoad     Int       @default(0)
+  rating          Float     @default(5.0)
+  totalDeliveries Int       @default(0)
+  totalEarnings   Decimal   @default(0.00) @db.Decimal(12, 2)
+  totalTips       Decimal   @default(0.00) @db.Decimal(12, 2)
+  approvedById    String? // SUPER_ADMIN id who approved this rider
+  approvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch      Branch?                @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  assignments RiderAssignment[]
+  pings       DeliveryLocationPing[]
+  codCollections CodCollection[]
+  kycDocuments   RiderKycDocument[]
+  payoutOverrides RiderPayoutOverride[]
+
+  @@index([isOnline])
+  @@index([branchId, isOnline])
+}
+
+model RiderAssignment {
+  id               String           @id @default(cuid())
+  orderId          String           @unique
+  riderId          String
+  status           AssignmentStatus @default(PENDING)
+  // claimedAt = rider picked from pool (replaces assignedAt for pool model)
+  claimedAt        DateTime?
+  assignedAt       DateTime         @default(now())
+  acceptedAt       DateTime?
+  pickedUpAt       DateTime?
+  deliveredAt      DateTime?
+  // Earnings breakdown set by super-admin DeliveryPayoutRule + customer tip
+  baseEarningsAmt  Decimal          @default(0.00) @db.Decimal(10, 2)
+  bonusAmt         Decimal          @default(0.00) @db.Decimal(10, 2) // peak/rain/incentive
+  tipAmt           Decimal          @default(0.00) @db.Decimal(10, 2) // from customer
+  earningsAmt      Decimal          @default(0.00) @db.Decimal(10, 2) // total to rider = base + bonus + tip
+  // Proof of delivery
+  deliveryPhotoUrl String?
+  deliveryNote     String?
+  // Rating from customer (1-5)
+  customerRating   Int?
+  customerComment  String?
+  notes            String?
+
+  order Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Restrict)
+
+  @@index([riderId, status])
+  @@index([status, claimedAt])
+}
+
+model DeliveryLocationPing {
+  id        String   @id @default(cuid())
+  riderId   String
+  orderId   String?
+  lat       Float
+  lng       Float
+  speedKph  Float?
+  createdAt DateTime @default(now())
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, createdAt])
+  @@index([orderId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Engagement: Loyalty, Wallet, Referrals
+// ─────────────────────────────────────────────────────────────────────────────
+
+model LoyaltyAccount {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  pointsBalance  Int      @default(0)
+  lifetimeEarn   Int      @default(0)
+  lifetimeRedeem Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  txns LoyaltyTransaction[]
+}
+
+model LoyaltyTransaction {
+  id        String         @id @default(cuid())
+  accountId String
+  orderId   String?
+  type      LoyaltyTxnType
+  points    Int
+  note      String?
+  createdAt DateTime       @default(now())
+
+  account LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  order   Order?         @relation(fields: [orderId], references: [id])
+
+  @@index([accountId, createdAt])
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  balance   Decimal  @default(0.00) @db.Decimal(10, 2)
+  currency  String   @default("INR")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  txns WalletTransaction[]
+}
+
+model WalletTransaction {
+  id        String        @id @default(cuid())
+  walletId  String
+  orderId   String?
+  type      WalletTxnType
+  amount    Decimal       @db.Decimal(10, 2)
+  note      String?
+  createdAt DateTime      @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  order  Order? @relation(fields: [orderId], references: [id])
+
+  @@index([walletId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Signup bonus — staggered redemption credit for new customers
+// ─────────────────────────────────────────────────────────────────────────────
+// Super Admin defines a single global rule (the `SignupBonusConfig` singleton)
+// like "₹100 bonus, split across 5 delivered orders". Each new customer gets a
+// `SignupBonusGrant` at sign-up with `totalAmount` and `remainingOrders` set
+// from the config. On checkout we auto-apply min(perOrderCap, remainingAmount)
+// as a discount, but only *commit* the consumption once the order transitions
+// to DELIVERED. Cancellations or refunds restore the consumed amount + order
+// counter, so a customer who tries-and-cancels can still use their full bonus.
+//
+// Abuse prevention: we snapshot phone, IP, and (optional) device fingerprint
+// at grant time. The grant API refuses to issue when any of those already
+// have an active grant against them. Only delivered orders move the counter.
+
+model SignupBonusConfig {
+  id            String  @id @default("singleton") // forces a single row
+  isActive      Boolean @default(false)
+  totalAmount   Decimal @default(100.00) @db.Decimal(10, 2)
+  splitCount    Int     @default(5)                // total bonus / splitCount = per-order cap
+  // Per-order ceiling expressed directly so admins can decouple ratio when
+  // they want (e.g. ₹100 grant but only ₹15 per order, expires after 5 orders).
+  perOrderCap   Decimal? @db.Decimal(10, 2)
+  minOrderValue Decimal? @db.Decimal(10, 2)        // minimum cart subtotal to be eligible
+  // Abuse-prevention toggles
+  phoneCheckEnabled  Boolean @default(true)
+  ipCheckEnabled     Boolean @default(true)
+  deviceCheckEnabled Boolean @default(false)
+  // Optional expiry — grants older than this are no longer usable.
+  validityDays  Int     @default(90)
+  updatedById   String?
+  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now())
+}
+
+// One row per customer. `usedAmount` only increments when an order moves to
+// DELIVERED; `pendingAmount` tracks "this amount is locked because the order
+// is in flight". `remainingOrders` decrements at DELIVERED and re-increments
+// at CANCELLED/REFUNDED.
+model SignupBonusGrant {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  totalAmount     Decimal  @db.Decimal(10, 2)
+  perOrderCap     Decimal  @db.Decimal(10, 2)
+  // Used + pending are kept separate so the UI can distinguish "credited" vs
+  // "tentatively allocated to an in-flight order".
+  usedAmount      Decimal  @default(0) @db.Decimal(10, 2)
+  pendingAmount   Decimal  @default(0) @db.Decimal(10, 2)
+  remainingOrders Int      // starts at SignupBonusConfig.splitCount
+  // Abuse snapshots — null on legacy data; never reused for matching after grant.
+  phoneSnapshot  String?
+  ipSnapshot     String?
+  deviceSnapshot String?
+  // Lifecycle
+  expiresAt DateTime?
+  // Revocations (e.g. admin invalidates due to abuse) are soft.
+  revokedAt DateTime?
+  revokedReason String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledger    SignupBonusLedger[]
+
+  @@index([phoneSnapshot])
+  @@index([ipSnapshot])
+}
+
+// Append-only event log of every bonus interaction so the customer-facing
+// "X of ₹100 used" math is auditable and the order machine's restore-on-cancel
+// path doesn't lose precision. `delta` is positive on consumption, negative
+// on restoration.
+model SignupBonusLedger {
+  id        String   @id @default(cuid())
+  grantId   String
+  orderId   String?
+  // 'APPLY' (pending hold at checkout), 'COMMIT' (delivered), 'RESTORE' (cancel/refund),
+  // 'EXPIRE' (validity passed), 'REVOKE' (admin action), 'GRANT' (initial issuance).
+  kind      String
+  delta     Decimal  @db.Decimal(10, 2)
+  note      String?
+  createdAt DateTime @default(now())
+
+  grant SignupBonusGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  order Order?           @relation(fields: [orderId], references: [id])
+
+  @@index([grantId, createdAt])
+  @@index([orderId])
+}
+
+model Referral {
+  id                String    @id @default(cuid())
+  referrerId        String
+  referredId        String? // null until claimed
+  code              String    @unique
+  rewardForReferrer Decimal   @default(100.00) @db.Decimal(10, 2)
+  rewardForReferred Decimal   @default(50.00) @db.Decimal(10, 2)
+  fulfilledAt       DateTime?
+  createdAt         DateTime  @default(now())
+
+  referrer User  @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referred User? @relation("Referred", fields: [referredId], references: [id])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Inventory (future feature)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model InventoryItem {
+  id           String   @id @default(cuid())
+  branchId     String
+  name         String
+  unit         String   @default("pcs") // pcs, g, ml...
+  stock        Decimal  @default(0) @db.Decimal(12, 3)
+  reorderLevel Decimal  @default(0) @db.Decimal(12, 3)
+  costPerUnit  Decimal? @db.Decimal(10, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  branch    Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  movements InventoryMovement[]
+  menuItem  MenuItem?
+
+  @@unique([branchId, name])
+}
+
+model InventoryMovement {
+  id         String                @id @default(cuid())
+  itemId     String
+  type       InventoryMovementType
+  quantity   Decimal               @db.Decimal(12, 3)
+  note       String?
+  refOrderId String?
+  createdAt  DateTime              @default(now())
+
+  item InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Notifications log
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Integration credentials are encrypted at rest (AES-256-GCM) and scoped to a
+// restaurant. The dispatcher consults this table before falling back to env.
+model IntegrationCredential {
+  id              String              @id @default(cuid())
+  restaurantId    String
+  provider        IntegrationProvider
+  status          IntegrationStatus   @default(DISCONNECTED)
+  // configEncrypted is base64(iv ‖ authTag ‖ ciphertext) — JSON of provider keys
+  configEncrypted String
+  // public summary, safe to show in the UI (masked key tails, account names…)
+  summary         Json?
+  lastTestedAt    DateTime?
+  lastError       String?
+  createdById     String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, provider])
+  @@index([provider, status])
+}
+
+model NotificationLog {
+  id        String              @id @default(cuid())
+  userId    String?
+  channel   NotificationChannel
+  status    NotificationStatus  @default(QUEUED)
+  to        String // phone or email
+  subject   String?
+  body      String
+  template  String?
+  meta      Json?
+  error     String?
+  sentAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([channel, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  AlertDebounce — short-window suppression for repeated menu/integration alerts
+// ─────────────────────────────────────────────────────────────────────────────
+// Stores the last time we fired a given (entityType, entityId, kind) alert so
+// repeated toggles within a debounce window don't spam admin inboxes. Examples
+// of `kind`:
+//   - "menu.item.toggle"
+//   - "menu.category.toggle"
+//   - "menu.combo.toggle"
+//   - "menu.bulk_toggle"
+//   - "integration.update"
+//   - "integration.test"
+// The resolver upserts on every successful send. A background job (later) can
+// prune rows older than the debounce window.
+model AlertDebounce {
+  id         String   @id @default(cuid())
+  entityType String   // e.g. "MenuItem" / "Category" / "Combo" / "IntegrationCredential"
+  entityId   String
+  kind       String
+  lastSentAt DateTime
+  payload    Json?    // snapshot of the last alert content for diagnostics
+
+  @@unique([entityType, entityId, kind])
+  @@index([lastSentAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Phase 1 hardening — production survival logic
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Per-phone OTP attempt tracking. Powers rate-limit logic so SMS cost stays
+// bounded even under abuse. Read at request-otp time, updated on send/verify.
+model OtpAttempt {
+  id          String     @id @default(cuid())
+  phone       String
+  ipAddress   String?
+  deviceHash  String?
+  purpose     OtpPurpose @default(LOGIN)
+  // Number of failed verify attempts on the most recent code
+  attempts    Int        @default(0)
+  // Total OTPs issued to this phone/ip in the current window
+  sentCount   Int        @default(0)
+  lockedUntil DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([phone, createdAt])
+  @@index([ipAddress, createdAt])
+}
+
+// Stuck-order detector writes here. The /platform/live-ops dashboard shows
+// open escalations as cards; admins acknowledge or resolve.
+model OrderEscalation {
+  id         String              @id @default(cuid())
+  orderId    String
+  type       EscalationType
+  severity   EscalationSeverity  @default(MEDIUM)
+  status     EscalationStatus    @default(OPEN)
+  message    String
+  resolvedBy String?
+  resolvedAt DateTime?
+  createdAt  DateTime            @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([orderId, createdAt])
+}
+
+// Cash-on-delivery collection state. One row per COD order; lifecycle moves
+// from PENDING_COLLECTION → COLLECTED → DEPOSIT_PENDING → RECONCILED.
+model CodCollection {
+  id              String    @id @default(cuid())
+  orderId         String    @unique
+  riderId         String
+  amountToCollect Decimal   @db.Decimal(10, 2)
+  amountCollected Decimal?  @db.Decimal(10, 2)
+  status          CodStatus @default(PENDING_COLLECTION)
+  collectedAt     DateTime?
+  reconciledAt    DateTime?
+  reconciledBy    String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  order Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Restrict)
+
+  @@index([riderId, status])
+  @@index([status, createdAt])
+}
+
+// Raw payment webhook payloads. Persisting ensures idempotency (we never
+// process the same webhook twice) and gives us a forensic trail.
+model PaymentWebhookEvent {
+  id         String   @id @default(cuid())
+  provider   String
+  eventType  String
+  paymentId  String?
+  orderId    String?
+  // Provider's unique event ID — used for idempotency lookup
+  providerEventId String? @unique
+  signature  String?
+  rawPayload Json
+  processed  Boolean  @default(false)
+  error      String?
+  createdAt  DateTime @default(now())
+  processedAt DateTime?
+
+  @@index([provider, eventType, createdAt])
+  @@index([orderId])
+}
+
+// Append-only audit log for sensitive admin actions. Never updated, never
+// deleted. Indexed for "show me everything actor X did in the last week"
+// and "show me everything that happened to restaurant Y".
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorId      String?
+  actorRole    String?
+  restaurantId String?
+  action       String   // e.g. "restaurant.approve", "payout.adjust"
+  entityType   String   // e.g. "Restaurant", "Order"
+  entityId     String?
+  before       Json?
+  after        Json?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([restaurantId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+}
+
+// Database-backed job queue. Cheap alternative to Redis/BullMQ for Phase 1.
+// A small worker process polls runAt <= now() and status=PENDING.
+model Job {
+  id        String    @id @default(cuid())
+  type      String
+  payload   Json
+  status    JobStatus @default(PENDING)
+  attempts  Int       @default(0)
+  maxAttempts Int     @default(5)
+  runAt     DateTime  @default(now())
+  lockedAt  DateTime?
+  lockedBy  String?
+  lastError String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([status, runAt])
+  @@index([type, status])
+}
+
+// Application error log. Cheap alternative to Sentry — admin /platform/system-health
+// lists recent rows. Useful for triage on a single-VPS deployment.
+model ErrorLog {
+  id        String   @id @default(cuid())
+  level     String   // "error" | "warn" | "info"
+  source    String   // module/file name
+  message   String
+  stack     String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([level, createdAt])
+  @@index([source, createdAt])
+}
+
+// ─── Phase 3/4 feature surface ──────────────────────────────────────────────
+
+enum QrType {
+  RESTAURANT
+  BRANCH
+  TABLE
+  CAMPAIGN
+  TAKEAWAY
+}
+
+// QR codes are how customers reach the storefront in Phase 1 (no customer app).
+// `code` is the short slug used in the URL: /qr/<code>.
+model QrCode {
+  id           String   @id @default(cuid())
+  restaurantId String
+  branchId     String?
+  tableId      String?
+  code         String   @unique
+  type         QrType   @default(RESTAURANT)
+  campaignName String?
+  scanCount    Int      @default(0)
+  // Conversion tracking: orders placed from sessions originating with this QR
+  orderCount   Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, isActive])
+  @@index([code])
+}
+
+// Customer retention — favorite restaurants and items.
+model FavoriteRestaurant {
+  id           String     @id @default(cuid())
+  userId       String
+  restaurantId String
+  createdAt    DateTime   @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, restaurantId])
+  @@index([userId])
+}
+
+model FavoriteItem {
+  id          String   @id @default(cuid())
+  userId      String
+  menuItemId  String
+  createdAt   DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, menuItemId])
+  @@index([userId])
+}
+
+// Rider liveness — set every 30s while the rider app is online. Used by the
+// auto-offline sweep to flip riders to offline if they go dark.
+// (Fields here would normally live on RiderProfile; using a separate model
+// keeps the migration additive without touching existing rider columns.)
+model RiderHeartbeat {
+  id          String   @id @default(cuid())
+  riderId     String   @unique
+  lastSeenAt  DateTime @default(now())
+  lastLocationAt DateTime?
+  batteryLevel Int?
+  gpsEnabled  Boolean  @default(true)
+  appVersion  String?
+  updatedAt   DateTime @updatedAt
+
+  @@index([lastSeenAt])
+}
+
+enum AppPlatform {
+  ANDROID_RIDER
+  IOS_RIDER
+  WEB
+}
+
+// Force-update / min-version control for the Capacitor rider app.
+model AppVersion {
+  id            String      @id @default(cuid())
+  platform      AppPlatform
+  minVersion    String
+  latestVersion String
+  forceUpdate   Boolean     @default(false)
+  updateUrl     String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([platform])
+}
+
+enum TicketType {
+  ORDER_DELAY
+  WRONG_ITEM
+  MISSING_ITEM
+  PAYMENT_ISSUE
+  REFUND_REQUEST
+  RIDER_ISSUE
+  FOOD_QUALITY
+  DELIVERY_NOT_RECEIVED
+  OTHER
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model SupportTicket {
+  id           String         @id @default(cuid())
+  orderId      String?
+  customerId   String?
+  restaurantId String?
+  riderId      String?
+  type         TicketType
+  status       TicketStatus   @default(OPEN)
+  priority     TicketPriority @default(NORMAL)
+  message      String
+  assignedTo   String?
+  resolution   String?
+  resolvedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([status, priority, createdAt])
+  @@index([orderId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Rider KYC — Aadhaar / DL / RC / Insurance / PAN document collection
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum KycDocumentType {
+  AADHAAR
+  DRIVING_LICENSE
+  VEHICLE_INSURANCE
+  VEHICLE_RC
+  PAN_CARD
+}
+
+enum KycDocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+/// One current document per (rider, type). On replace we either overwrite the
+/// row or move the old one to a history table — for Phase 1 we overwrite and
+/// rely on AuditLog for the trail. Sensitive numbers are encrypted at rest;
+/// only the last 4 chars are stored in plaintext for masked UI display.
+model RiderKycDocument {
+  id                      String            @id @default(cuid())
+  riderId                 String
+  type                    KycDocumentType
+  status                  KycDocumentStatus @default(PENDING)
+
+  // Document number — encrypted blob using existing src/server/crypto.ts helpers
+  // (AES-256-GCM, base64 of iv ‖ authTag ‖ ciphertext). `numberLast4` is the
+  // only plaintext fragment ever shown back to the rider or admin in the UI.
+  numberEncrypted         String?
+  numberLast4             String?
+
+  // File metadata — actual file lives behind storage() driver
+  fileUrl                 String
+  fileName                String?
+  fileSize                Int?
+  fileMimeType            String?
+
+  // Document dates
+  issuedOn                DateTime?
+  expiresOn               DateTime?
+
+  // Review workflow
+  submittedAt             DateTime          @default(now())
+  reviewedAt              DateTime?
+  reviewedBy              String?
+  rejectionReason         String?
+
+  // Audit trail signal
+  uploadedFromIp          String?
+  updatedAt               DateTime          @updatedAt
+
+  // Live-verification metadata. Populated when an external verifier runs.
+  // Null `verifierProvider` means we never attempted live verification
+  // (e.g. format-only mock or pre-paid-API state).
+  verifierProvider        String?    // 'mock' | 'karza' | 'surepass' | 'signzy'
+  verifierStatus          String?    // 'PENDING' | 'PASS' | 'FAIL' | 'ERROR' | 'UNSUPPORTED'
+  verifierMessage         String?    // human-readable explanation
+  verifierResponse        Json?      // raw vendor payload (for forensics + admin review)
+  verifierExternalRef     String?    // vendor's transaction id
+  verifiedAt              DateTime?
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@unique([riderId, type])
+  @@index([status, submittedAt])
+  @@index([expiresOn])
+}
