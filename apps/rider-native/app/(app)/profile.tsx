@@ -15,11 +15,45 @@ import {
   SafeAreaView,
   Alert,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api, ApiError, type KycDoc } from '../../lib/api';
+import { growth, type TierName } from '../../lib/api-growth';
 import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
+import { DocumentViewer, type ViewableDoc } from '../../components/document-viewer';
+import { TierBadge } from '../../components/tier-badge';
+
+/** A tappable navigation row into one of the rider-tool screens. */
+function ToolRow({
+  icon,
+  label,
+  hint,
+  route,
+  tint,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  hint: string;
+  route: string;
+  tint?: string;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.toolRow, pressed && styles.toolRowPressed]}
+      onPress={() => router.push(route as never)}
+    >
+      <View style={[styles.toolIcon, { backgroundColor: (tint ?? colors.primary) + '1a' }]}>
+        <Ionicons name={icon} size={20} color={tint ?? colors.primary} />
+      </View>
+      <View style={styles.toolText}>
+        <Text style={styles.toolLabel}>{label}</Text>
+        <Text style={styles.toolHint}>{hint}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+    </Pressable>
+  );
+}
 
 function statusColor(status: string): { bg: string; fg: string } {
   const s = status.toUpperCase();
@@ -43,6 +77,8 @@ export default function ProfileScreen() {
   const [editing, setEditing] = useState(false);
   const [nameInput, setNameInput] = useState(rider?.name ?? '');
   const [savingName, setSavingName] = useState(false);
+  const [viewerDoc, setViewerDoc] = useState<ViewableDoc | null>(null);
+  const [tier, setTier] = useState<TierName | null>(null);
 
   const loadKyc = useCallback(async () => {
     try {
@@ -53,17 +89,26 @@ export default function ProfileScreen() {
     }
   }, []);
 
+  const loadTier = useCallback(async () => {
+    try {
+      const res = await growth.tier();
+      setTier(res.current.name);
+    } catch {
+      setTier(null);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
-        await loadKyc();
+        await Promise.all([loadKyc(), loadTier()]);
         if (!cancelled) setKycLoading(false);
       })();
       return () => {
         cancelled = true;
       };
-    }, [loadKyc])
+    }, [loadKyc, loadTier])
   );
 
   async function saveName() {
@@ -124,8 +169,11 @@ export default function ProfileScreen() {
               )}
               <Text style={styles.phone}>{rider?.phone ?? 'No phone on file'}</Text>
             </View>
-            <View style={styles.riderPill}>
-              <Text style={styles.riderPillText}>RIDER</Text>
+            <View style={styles.identityBadges}>
+              <View style={styles.riderPill}>
+                <Text style={styles.riderPillText}>RIDER</Text>
+              </View>
+              {tier ? <TierBadge tier={tier} size="sm" /> : null}
             </View>
           </View>
 
@@ -169,7 +217,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* KYC */}
-        <Text style={styles.sectionLabel}>VERIFICATION</Text>
+        <Text style={styles.sectionLabel}>MY DOCUMENTS</Text>
         {kycLoading ? (
           <View style={styles.kycLoading}>
             <ActivityIndicator color={colors.primary} />
@@ -182,27 +230,115 @@ export default function ProfileScreen() {
             </Text>
           </View>
         ) : (
-          <View style={styles.kycList}>
-            {docs.map((d) => {
-              const c = statusColor(d.status);
-              return (
-                <View key={d.id} style={styles.kycRow}>
-                  <View style={styles.kycLeft}>
-                    <Text style={styles.kycType}>{prettyType(d.type)}</Text>
-                    {d.numberLast4 ? (
-                      <Text style={styles.kycMeta}>•••• {d.numberLast4}</Text>
+          <>
+            <View style={styles.kycList}>
+              {docs.map((d) => {
+                const c = statusColor(d.status);
+                const canView = !!d.fileUrl;
+                return (
+                  <Pressable
+                    key={d.id}
+                    style={({ pressed }) => [
+                      styles.kycRow,
+                      pressed && canView && styles.kycRowPressed,
+                    ]}
+                    onPress={() =>
+                      canView &&
+                      setViewerDoc({
+                        type: d.type,
+                        fileUrl: d.fileUrl,
+                        fileMimeType: d.fileMimeType,
+                        fileName: d.fileName,
+                      })
+                    }
+                    disabled={!canView}
+                  >
+                    <View style={styles.kycLeft}>
+                      <Text style={styles.kycType}>{prettyType(d.type)}</Text>
+                      {d.numberLast4 ? (
+                        <Text style={styles.kycMeta}>•••• {d.numberLast4}</Text>
+                      ) : d.numberMasked ? (
+                        <Text style={styles.kycMeta}>{d.numberMasked}</Text>
+                      ) : null}
+                    </View>
+                    <View style={[styles.kycBadge, { backgroundColor: c.bg }]}>
+                      <Text style={[styles.kycBadgeText, { color: c.fg }]}>
+                        {d.status}
+                      </Text>
+                    </View>
+                    {canView ? (
+                      <Ionicons
+                        name="eye-outline"
+                        size={20}
+                        color={colors.primary}
+                        style={styles.kycViewIcon}
+                      />
                     ) : null}
-                  </View>
-                  <View style={[styles.kycBadge, { backgroundColor: c.bg }]}>
-                    <Text style={[styles.kycBadgeText, { color: c.fg }]}>
-                      {d.status}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.kycHint}>
+              Tap a document to open it full-screen — show it to traffic police
+              or building security without leaving the app.
+            </Text>
+          </>
         )}
+
+        {/* Rider tools — safety & work */}
+        <Text style={styles.sectionLabel}>SAFETY & WORK</Text>
+        <View style={styles.toolList}>
+          <ToolRow
+            icon="shield-checkmark-outline"
+            label="Safety Centre"
+            hint="SOS, emergency contacts, report an incident"
+            route="/safety"
+            tint={colors.danger}
+          />
+          <ToolRow
+            icon="calendar-outline"
+            label="My Shifts"
+            hint="Book delivery slots in advance"
+            route="/shifts"
+          />
+          <ToolRow
+            icon="options-outline"
+            label="Delivery Preferences"
+            hint="Auto-accept, batch size, break mode"
+            route="/preferences"
+          />
+        </View>
+
+        {/* Rider tools — growth & support */}
+        <Text style={styles.sectionLabel}>GROWTH & SUPPORT</Text>
+        <View style={styles.toolList}>
+          <ToolRow
+            icon="trophy-outline"
+            label="My Tier"
+            hint="Your standing, perks and progress"
+            route="/tier"
+            tint={colors.warning}
+          />
+          <ToolRow
+            icon="gift-outline"
+            label="Refer & Earn"
+            hint="Invite riders, earn bonuses"
+            route="/refer"
+            tint={colors.success}
+          />
+          <ToolRow
+            icon="school-outline"
+            label="Training & Certification"
+            hint="Short modules to level up"
+            route="/training"
+          />
+          <ToolRow
+            icon="help-buoy-outline"
+            label="Help & Support"
+            hint="Raise a ticket, browse FAQs"
+            route="/support"
+          />
+        </View>
 
         {/* Sign out */}
         <Pressable style={styles.signOut} onPress={confirmSignOut}>
@@ -212,6 +348,8 @@ export default function ProfileScreen() {
 
         <Text style={styles.version}>Oak &amp; Sizzler Rider</Text>
       </ScrollView>
+
+      <DocumentViewer doc={viewerDoc} onClose={() => setViewerDoc(null)} />
     </SafeAreaView>
   );
 }
@@ -280,6 +418,43 @@ const styles = StyleSheet.create({
     fontWeight: font.weight.bold,
     letterSpacing: 1.5,
   },
+  identityBadges: { alignItems: 'flex-end', gap: 6 },
+
+  toolList: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  toolRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: spacing.md,
+  },
+  toolRowPressed: { backgroundColor: colors.primarySoft },
+  toolIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toolText: { flex: 1 },
+  toolLabel: {
+    fontSize: font.size.md,
+    fontWeight: font.weight.semibold,
+    color: colors.text,
+  },
+  toolHint: {
+    fontSize: font.size.xs,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
 
   editLink: {
     flexDirection: 'row',
@@ -344,6 +519,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  kycRowPressed: { backgroundColor: colors.primarySoft },
+  kycViewIcon: { marginLeft: spacing.sm },
+  kycHint: {
+    fontSize: font.size.xs,
+    color: colors.textMuted,
+    lineHeight: 17,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.xs,
   },
   kycLeft: { flex: 1 },
   kycType: {

@@ -30,7 +30,7 @@ export class ApiError extends Error {
   }
 }
 
-interface RequestOptions {
+export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   /** Skip the Authorization header (used by the login endpoints). */
@@ -79,6 +79,23 @@ async function request<T = unknown>(path: string, opts: RequestOptions = {}): Pr
   }
 
   return body as T;
+}
+
+/**
+ * Authenticated request helper for the feature-bundle API modules
+ * (`lib/api-payments.ts`, `lib/api-safety.ts`, `lib/api-dispatch.ts`,
+ * `lib/api-growth.ts`). Behaves exactly like the internal `request`: the Bearer
+ * token is attached automatically, JSON is parsed in/out, and a failed response
+ * throws `ApiError`. Keeping this one shared entry point means feature modules
+ * never need to re-implement auth-header plumbing.
+ */
+export function apiRequest<T = unknown>(path: string, opts?: RequestOptions): Promise<T> {
+  return request<T>(path, opts);
+}
+
+/** Current Bearer token (for modules that build their own fetch, e.g. uploads). */
+export function getAuthToken(): string | null {
+  return authToken;
 }
 
 // ─── Typed response shapes ───────────────────────────────────────────────────
@@ -211,7 +228,12 @@ export interface KycDoc {
   id: string;
   type: string;
   status: string;
+  numberMasked?: string | null;
   numberLast4?: string | null;
+  fileUrl: string; // relative to API_BASE for local storage, or absolute for S3
+  fileName?: string | null;
+  fileMimeType?: string | null;
+  issuedOn?: string | null;
   expiresOn?: string | null;
 }
 
@@ -334,4 +356,18 @@ export const api = {
       '/api/rider/profile',
       { method: 'PATCH', body: patch }
     ),
+
+  /** Raw CSV text of the rider's earnings statement, for in-app export/sharing. */
+  fetchStatementText: async (): Promise<string> => {
+    const headers: Record<string, string> = {};
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    const res = await fetch(`${API_BASE}/api/rider/reports/statement?format=csv`, {
+      headers,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new ApiError(text || `Could not fetch statement (${res.status})`, res.status, text);
+    }
+    return res.text();
+  },
 };

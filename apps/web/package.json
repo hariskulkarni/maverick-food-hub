@@ -15,6 +15,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:cuisines": "tsx prisma/seed-brand-mavericks.ts",
+    "db:seed:rider-features": "tsx prisma/seed-rider-features.ts",
     "db:studio": "prisma studio",
     "test": "vitest run",
     "test:watch": "vitest",

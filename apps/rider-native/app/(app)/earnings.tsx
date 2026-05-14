@@ -16,11 +16,41 @@ import {
   RefreshControl,
   ActivityIndicator,
   SafeAreaView,
+  Pressable,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { api, ApiError, type EarningsSummary } from '../../lib/api';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 import { ProgressRing } from '../../components/progress-ring';
+import { SurgeBanner } from '../../components/surge-banner';
+import { exportEarningsStatement } from '../../lib/export-statement';
+
+/** Compact navigation tile into a payments sub-screen. */
+function PayTile({
+  icon,
+  label,
+  hint,
+  route,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  hint: string;
+  route: string;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.payTile, pressed && styles.payTilePressed]}
+      onPress={() => router.push(route as never)}
+    >
+      <View style={styles.payTileIcon}>
+        <Ionicons name={icon} size={20} color={colors.primary} />
+      </View>
+      <Text style={styles.payTileLabel}>{label}</Text>
+      <Text style={styles.payTileHint}>{hint}</Text>
+    </Pressable>
+  );
+}
 
 const DAILY_GOAL = 1500;
 const WEEKLY_GOAL = 9000;
@@ -164,8 +194,25 @@ export default function EarningsScreen() {
           />
         }
       >
-        <Text style={styles.title}>Earnings</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Earnings</Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.exportBtn,
+              pressed && styles.exportBtnPressed,
+            ]}
+            onPress={exportEarningsStatement}
+            hitSlop={8}
+          >
+            <Ionicons name="share-outline" size={16} color={colors.primary} />
+            <Text style={styles.exportBtnText}>Export</Text>
+          </Pressable>
+        </View>
         {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+
+        <View style={styles.surgeSlot}>
+          <SurgeBanner />
+        </View>
 
         {/* Today hero */}
         <View style={styles.hero}>
@@ -174,6 +221,29 @@ export default function EarningsScreen() {
           <Text style={styles.heroSub}>
             {todayCount} deliver{todayCount === 1 ? 'y' : 'ies'} completed today
           </Text>
+        </View>
+
+        {/* Payments — instant payout, cash in hand, incentives */}
+        <Text style={styles.sectionLabel}>PAYMENTS</Text>
+        <View style={styles.payRow}>
+          <PayTile
+            icon="flash-outline"
+            label="Instant Payout"
+            hint="Withdraw to UPI"
+            route="/payouts"
+          />
+          <PayTile
+            icon="wallet-outline"
+            label="Cash in Hand"
+            hint="COD to deposit"
+            route="/cod-tracker"
+          />
+          <PayTile
+            icon="gift-outline"
+            label="Incentives"
+            hint="Bonus targets"
+            route="/incentives"
+          />
         </View>
 
         {/* Goal rings */}
@@ -338,11 +408,65 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
   title: {
     fontSize: font.size.xl,
     fontWeight: font.weight.bold,
     color: colors.text,
-    marginBottom: spacing.md,
+  },
+  exportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  exportBtnPressed: { opacity: 0.6 },
+  exportBtnText: {
+    fontSize: font.size.sm,
+    color: colors.primary,
+    fontWeight: font.weight.semibold,
+  },
+
+  surgeSlot: { marginBottom: spacing.md },
+
+  payRow: { flexDirection: 'row', gap: spacing.sm },
+  payTile: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: 2,
+  },
+  payTilePressed: { backgroundColor: colors.primarySoft },
+  payTileIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  payTileLabel: {
+    fontSize: font.size.sm,
+    fontWeight: font.weight.bold,
+    color: colors.text,
+  },
+  payTileHint: {
+    fontSize: 11,
+    color: colors.textMuted,
   },
   errorBanner: {
     backgroundColor: colors.dangerSoft,

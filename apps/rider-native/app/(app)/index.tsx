@@ -23,12 +23,40 @@ import {
   SafeAreaView,
   Alert,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter, router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { api, ApiError, type Assignment, type AssignmentStatus } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 import { OnboardingTour, useTourSeen } from '../../components/onboarding-tour';
+import { SurgeBanner } from '../../components/surge-banner';
+import { BreakModeCard } from '../../components/break-mode-card';
+
+/** A square quick-action tile on the dashboard. */
+function QuickAction({
+  icon,
+  label,
+  route,
+  tint,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  route: string;
+  tint: string;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.quickAction, pressed && styles.quickActionPressed]}
+      onPress={() => router.push(route as never)}
+    >
+      <View style={[styles.quickIcon, { backgroundColor: tint + '1a' }]}>
+        <Ionicons name={icon} size={22} color={tint} />
+      </View>
+      <Text style={styles.quickLabel}>{label}</Text>
+    </Pressable>
+  );
+}
 
 const HEARTBEAT_MS = 30_000;
 
@@ -253,6 +281,11 @@ export default function DashboardScreen() {
           </View>
         </View>
 
+        {/* Surge — renders nothing when there's no live surge */}
+        <View style={styles.surgeSlot}>
+          <SurgeBanner />
+        </View>
+
         {/* Online toggle */}
         <View
           style={[
@@ -301,6 +334,11 @@ export default function DashboardScreen() {
 
         {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
 
+        {/* Break mode — pause pings without going offline */}
+        <View style={styles.breakSlot}>
+          <BreakModeCard />
+        </View>
+
         {/* Current delivery */}
         <Text style={styles.sectionLabel}>CURRENT DELIVERY</Text>
         {active ? (
@@ -321,6 +359,35 @@ export default function DashboardScreen() {
             </Text>
           </View>
         )}
+
+        {/* Quick actions */}
+        <Text style={styles.sectionLabel}>QUICK ACTIONS</Text>
+        <View style={styles.quickRow}>
+          <QuickAction
+            icon="map-outline"
+            label="Demand Map"
+            route="/heatmap"
+            tint={colors.primary}
+          />
+          <QuickAction
+            icon="shield-checkmark-outline"
+            label="Safety"
+            route="/safety"
+            tint={colors.danger}
+          />
+          <QuickAction
+            icon="calendar-outline"
+            label="Shifts"
+            route="/shifts"
+            tint={colors.success}
+          />
+          <QuickAction
+            icon="gift-outline"
+            label="Incentives"
+            route="/incentives"
+            tint={colors.warning}
+          />
+        </View>
 
         <Pressable onPress={signOut} style={styles.signOut} hitSlop={8}>
           <Text style={styles.signOutText}>Sign out</Text>
@@ -420,6 +487,39 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radius.md,
     overflow: 'hidden',
+  },
+
+  surgeSlot: { marginBottom: spacing.md },
+  breakSlot: { marginTop: spacing.md },
+
+  quickRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  quickAction: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xs,
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  quickActionPressed: { backgroundColor: colors.primarySoft },
+  quickIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickLabel: {
+    fontSize: 11,
+    fontWeight: font.weight.semibold,
+    color: colors.text,
+    textAlign: 'center',
   },
 
   sectionLabel: {

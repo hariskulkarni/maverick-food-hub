@@ -1510,6 +1510,19 @@ model RiderProfile {
   kycDocuments   RiderKycDocument[]
   payoutOverrides RiderPayoutOverride[]
 
+  // Competitor-feature bundles (2026-05-14)
+  payouts             RiderPayout[]
+  incentiveProgress   RiderIncentiveProgress[]
+  emergencyContacts   RiderEmergencyContact[]
+  sosAlerts           SosAlert[]
+  incidentReports     RiderIncidentReport[]
+  tripShares          TripShare[]
+  shifts              RiderShift[]
+  preferences         RiderPreferences?
+  referralsMade       RiderReferral[]
+  trainingProgress    RiderTrainingProgress[]
+  supportTickets      RiderSupportTicket[]
+
   @@index([isOnline])
   @@index([branchId, isOnline])
 }
@@ -2190,4 +2203,366 @@ model RiderKycDocument {
   @@unique([riderId, type])
   @@index([status, submittedAt])
   @@index([expiresOn])
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Rider competitor-feature bundles (2026-05-14) — bringing the native rider
+//  app to parity with the leading India delivery-partner apps.
+//  Bundle A: Earnings & Payments   Bundle B: Safety & SOS
+//  Bundle C: Smart dispatch        Bundle D: Growth & support
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ─── Bundle A · Earnings & Payments ──────────────────────────────────────────
+
+enum RiderPayoutStatus {
+  REQUESTED
+  PROCESSING
+  PAID
+  FAILED
+}
+
+/// An instant-withdrawal request — rider pulls their available balance to UPI
+/// / bank. Demo settles via a mock processor; status walks REQUESTED→PAID.
+model RiderPayout {
+  id          String            @id @default(cuid())
+  riderId     String
+  amount      Decimal           @db.Decimal(10, 2)
+  status      RiderPayoutStatus @default(REQUESTED)
+  method      String            @default("UPI") // UPI | BANK
+  upiId       String?
+  reference   String?           // mock processor txn id
+  note        String?
+  requestedAt DateTime          @default(now())
+  processedAt DateTime?
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, status])
+  @@index([status, requestedAt])
+}
+
+enum IncentivePeriod {
+  DAILY
+  WEEKLY
+}
+
+/// Super-admin-defined incentive slabs: "complete N deliveries in a period →
+/// flat bonus". Riders see live progress; achieved slabs feed bonus payouts.
+model RiderIncentive {
+  id               String          @id @default(cuid())
+  title            String
+  description      String?
+  period           IncentivePeriod @default(DAILY)
+  targetDeliveries Int
+  bonusAmount      Decimal         @db.Decimal(10, 2)
+  startsAt         DateTime        @default(now())
+  endsAt           DateTime?
+  isActive         Boolean         @default(true)
+  createdAt        DateTime        @default(now())
+
+  progress RiderIncentiveProgress[]
+
+  @@index([isActive])
+}
+
+/// Per-rider, per-period progress against an incentive slab. `periodKey` is the
+/// local day ("2026-05-14") or ISO week ("2026-W20") the progress belongs to.
+model RiderIncentiveProgress {
+  id             String    @id @default(cuid())
+  incentiveId    String
+  riderId        String
+  periodKey      String
+  deliveriesDone Int       @default(0)
+  achieved       Boolean   @default(false)
+  achievedAt     DateTime?
+  bonusPaid      Boolean   @default(false)
+  updatedAt      DateTime  @updatedAt
+
+  incentive RiderIncentive @relation(fields: [incentiveId], references: [id], onDelete: Cascade)
+  rider     RiderProfile   @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@unique([incentiveId, riderId, periodKey])
+  @@index([riderId])
+}
+
+/// A geofenced area with a pay multiplier active for a window — "surge". The
+/// app shows riders where (and how much) extra they'll earn right now.
+model SurgeZone {
+  id         String    @id @default(cuid())
+  name       String
+  label      String    @default("Busy area")
+  centerLat  Float
+  centerLng  Float
+  radiusKm   Float     @default(2.0)
+  multiplier Float     @default(1.5)
+  isActive   Boolean   @default(true)
+  activeFrom DateTime?
+  activeTo   DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([isActive])
+}
+
+// ─── Bundle B · Safety & SOS ─────────────────────────────────────────────────
+
+/// A trusted contact the rider can loop in during an emergency or live-trip
+/// share. The primary contact is auto-notified on SOS.
+model RiderEmergencyContact {
+  id        String   @id @default(cuid())
+  riderId   String
+  name      String
+  phone     String
+  relation  String?
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId])
+}
+
+enum SosStatus {
+  ACTIVE
+  RESOLVED
+  CANCELLED
+}
+
+/// A panic-button event. Captures the rider's location at trigger time so
+/// support / emergency contacts can respond. Lifecycle: ACTIVE→RESOLVED.
+model SosAlert {
+  id           String    @id @default(cuid())
+  riderId      String
+  assignmentId String?
+  lat          Float?
+  lng          Float?
+  status       SosStatus @default(ACTIVE)
+  note         String?
+  triggeredAt  DateTime  @default(now())
+  resolvedAt   DateTime?
+  resolvedNote String?
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, status])
+  @@index([status, triggeredAt])
+}
+
+enum IncidentType {
+  ACCIDENT
+  HARASSMENT
+  VEHICLE_BREAKDOWN
+  THEFT
+  UNSAFE_LOCATION
+  CUSTOMER_DISPUTE
+  OTHER
+}
+
+enum IncidentStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+/// A rider-filed incident report (accident, harassment, breakdown…). Optional
+/// photo + geotag. Reviewed by platform safety ops.
+model RiderIncidentReport {
+  id           String         @id @default(cuid())
+  riderId      String
+  assignmentId String?
+  type         IncidentType
+  status       IncidentStatus @default(OPEN)
+  description  String
+  lat          Float?
+  lng          Float?
+  photoUrl     String?
+  resolution   String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, status])
+  @@index([status, createdAt])
+}
+
+/// A shareable live-trip link. The `token` resolves to a public read-only page
+/// that shows the rider's live location until `expiresAt`.
+model TripShare {
+  id           String   @id @default(cuid())
+  riderId      String
+  assignmentId String?
+  token        String   @unique
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, isActive])
+}
+
+// ─── Bundle C · Smart dispatch & navigation ──────────────────────────────────
+
+enum ShiftStatus {
+  BOOKED
+  STARTED
+  COMPLETED
+  MISSED
+  CANCELLED
+}
+
+/// A booked work slot. Riders reserve high-demand windows in advance; ops use
+/// it for supply planning. `zoneName` is a free-text preferred area.
+model RiderShift {
+  id        String      @id @default(cuid())
+  riderId   String
+  date      DateTime    @db.Date
+  startTime String      // "HH:MM" local
+  endTime   String      // "HH:MM" local
+  zoneName  String?
+  status    ShiftStatus @default(BOOKED)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, date])
+  @@index([date, status])
+}
+
+/// Per-rider dispatch preferences + break mode. One row per rider.
+model RiderPreferences {
+  id             String    @id @default(cuid())
+  riderId        String    @unique
+  autoAccept     Boolean   @default(false)
+  maxBatchSize   Int       @default(1)
+  notifyRadiusKm Float     @default(5.0)
+  preferredZones String[]  @default([])
+  breakMode      Boolean   @default(false)
+  breakUntil     DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+}
+
+// ─── Bundle D · Growth & support ─────────────────────────────────────────────
+
+enum RiderReferralStatus {
+  PENDING
+  SIGNED_UP
+  QUALIFIED
+  REWARDED
+}
+
+/// Refer-a-rider. The referrer shares their `code`; when the referee signs up
+/// and completes qualifying deliveries the referrer earns `bonusAmount`.
+model RiderReferral {
+  id           String              @id @default(cuid())
+  referrerId   String
+  code         String              @unique
+  refereePhone String?
+  refereeName  String?
+  status       RiderReferralStatus @default(PENDING)
+  bonusAmount  Decimal             @default(0.00) @db.Decimal(10, 2)
+  createdAt    DateTime            @default(now())
+  qualifiedAt  DateTime?
+  rewardedAt   DateTime?
+
+  referrer RiderProfile @relation(fields: [referrerId], references: [id], onDelete: Cascade)
+
+  @@index([referrerId, status])
+}
+
+enum TrainingCategory {
+  ONBOARDING
+  SAFETY
+  CUSTOMER_SERVICE
+  EARNINGS
+  APP_GUIDE
+}
+
+/// A bite-sized training/certification module. `contentBody` is markdown shown
+/// in-app; `quizQuestions` is optional JSON for a short check.
+model TrainingModule {
+  id            String           @id @default(cuid())
+  title         String
+  summary       String?
+  category      TrainingCategory @default(ONBOARDING)
+  contentBody   String
+  quizQuestions Json?
+  durationMin   Int              @default(5)
+  order         Int              @default(0)
+  isRequired    Boolean          @default(false)
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+
+  progress RiderTrainingProgress[]
+
+  @@index([isActive, order])
+}
+
+model RiderTrainingProgress {
+  id          String    @id @default(cuid())
+  moduleId    String
+  riderId     String
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  quizScore   Int?
+  updatedAt   DateTime  @updatedAt
+
+  module TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  rider  RiderProfile   @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@unique([moduleId, riderId])
+  @@index([riderId])
+}
+
+enum RiderTicketCategory {
+  PAYMENT
+  APP_BUG
+  ORDER_ISSUE
+  KYC
+  ACCOUNT
+  SAFETY
+  OTHER
+}
+
+enum RiderTicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_RIDER
+  RESOLVED
+  CLOSED
+}
+
+/// An in-app support ticket raised by a rider, with a threaded message log.
+/// Distinct from the customer-facing SupportTicket model.
+model RiderSupportTicket {
+  id        String              @id @default(cuid())
+  riderId   String
+  subject   String
+  category  RiderTicketCategory @default(OTHER)
+  status    RiderTicketStatus   @default(OPEN)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  rider    RiderProfile         @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  messages RiderSupportMessage[]
+
+  @@index([riderId, status])
+  @@index([status, updatedAt])
+}
+
+model RiderSupportMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  fromRider Boolean  @default(true)
+  authorName String?
+  body      String
+  createdAt DateTime @default(now())
+
+  ticket RiderSupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
 }
