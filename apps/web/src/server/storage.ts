@@ -24,8 +24,11 @@ class LocalStorage implements StorageDriver {
 
 class S3Storage implements StorageDriver {
   async put(file: { name: string; type: string; data: Buffer }, opts: { folder?: string } = {}) {
-    // @ts-expect-error optional dependency — installed only when STORAGE_DRIVER=s3
-    const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3').catch(() => ({ S3Client: null, PutObjectCommand: null }) as any);
+    // @ts-expect-error optional dependency — installed only when STORAGE_DRIVER=s3.
+    // webpackIgnore keeps `next build` from trying to resolve/bundle the SDK when
+    // it isn't installed (local-storage deployments). The .catch() below handles
+    // the runtime case where STORAGE_DRIVER=s3 but the package is genuinely missing.
+    const { S3Client, PutObjectCommand } = await import(/* webpackIgnore: true */ '@aws-sdk/client-s3').catch(() => ({ S3Client: null, PutObjectCommand: null }) as any);
     if (!S3Client) throw new Error('@aws-sdk/client-s3 not installed; run npm i @aws-sdk/client-s3 or set STORAGE_DRIVER=local');
     const client = new S3Client({
       region: process.env.S3_REGION!,

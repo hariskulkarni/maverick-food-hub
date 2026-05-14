@@ -81,27 +81,35 @@ delivery tracking, payments, SMS/email, and the Capacitor rider APK shell.
 fi
 
 # ── create + push ────────────────────────────────────────────────────────
+EXPECTED_URL="https://github.com/$GH_USER/$REPO_NAME.git"
+
 if gh repo view "$GH_USER/$REPO_NAME" >/dev/null 2>&1; then
   echo "→ Repo $GH_USER/$REPO_NAME already exists on GitHub"
-  # Make sure origin is set
-  if ! git remote get-url origin >/dev/null 2>&1; then
-    git remote add origin "https://github.com/$GH_USER/$REPO_NAME.git"
-  fi
 else
   echo "→ Creating PRIVATE repo $GH_USER/$REPO_NAME"
-  gh repo create "$REPO_NAME" \
+  # Pass OWNER/NAME explicitly — some gh versions print broken templated output
+  # when given just a name, which can lead to a malformed `origin` URL.
+  gh repo create "$GH_USER/$REPO_NAME" \
     --private \
-    --description "Maverick's Food Hub — multi-tenant food ordering platform" \
-    --source=. \
-    --remote=origin \
-    --push
+    --description "Maverick's Food Hub — multi-tenant food ordering platform"
 fi
 
-# Push main if not already pushed by `gh repo create --push`
-if ! git rev-parse --verify "origin/main" >/dev/null 2>&1; then
-  echo "→ Pushing main"
-  git push -u origin main
+# Reset origin to the known-correct URL no matter what (idempotent + recovers
+# from prior runs where `gh repo create --source=. --remote=origin` set a
+# broken URL like https://github.com//.git).
+if git remote get-url origin >/dev/null 2>&1; then
+  CURRENT_URL="$(git remote get-url origin)"
+  if [[ "$CURRENT_URL" != "$EXPECTED_URL" ]]; then
+    echo "→ Fixing origin URL ($CURRENT_URL → $EXPECTED_URL)"
+    git remote set-url origin "$EXPECTED_URL"
+  fi
+else
+  git remote add origin "$EXPECTED_URL"
 fi
+
+# Push main
+echo "→ Pushing main → $EXPECTED_URL"
+git push -u origin main
 
 # ── prime backup/auto branch ─────────────────────────────────────────────
 echo "→ Priming backup/auto branch"
