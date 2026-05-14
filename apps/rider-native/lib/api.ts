@@ -130,6 +130,7 @@ export interface AssignmentOrder {
   total: string; // Prisma Decimal → JSON string
   currency: string;
   customerNotes: string | null;
+  deliveryOtp: string | null; // customer's hand-over code, checked by /deliver
   placedAt: string;
   items: { id: string; quantity: number }[];
   customer: { id: string; name: string | null; phone: string | null } | null;
@@ -153,6 +154,7 @@ export interface Assignment {
   assignedAt: string;
   acceptedAt: string | null;
   pickedUpAt: string | null;
+  notes: string | null; // carries [reached-restaurant ...] / [reached-customer ...] markers
   order: AssignmentOrder;
 }
 
@@ -217,4 +219,24 @@ export const api = {
   /** Claim a pool order — 409 if another rider grabbed it first, 400 if offline. */
   claimOrder: (orderId: string) =>
     request<ClaimResult>(`/api/rider/pool/${orderId}/claim`, { method: 'POST' }),
+
+  // ── Active delivery flow ──────────────────────────────────────────────────
+  /** Confirm acceptance (pool claims arrive ACCEPTED already; dispatcher pushes don't). */
+  acceptAssignment: (id: string) =>
+    request<unknown>(`/api/rider/assignments/${id}/accept`, { method: 'POST' }),
+  /** "I'm at the restaurant." Stamps a marker; status stays ACCEPTED. */
+  reachRestaurant: (id: string) =>
+    request<unknown>(`/api/rider/assignments/${id}/reach-restaurant`, { method: 'POST' }),
+  /** "I have the food." → assignment PICKED_UP, order OUT_FOR_DELIVERY. */
+  pickup: (id: string) =>
+    request<unknown>(`/api/rider/assignments/${id}/pickup`, { method: 'POST' }),
+  /** "I'm at the customer's door." Stamps a marker; status stays PICKED_UP. */
+  reachCustomer: (id: string) =>
+    request<unknown>(`/api/rider/assignments/${id}/reach-customer`, { method: 'POST' }),
+  /** Hand-over — verifies the customer's OTP. 400 on mismatch. */
+  deliver: (id: string, otp: string) =>
+    request<unknown>(`/api/rider/assignments/${id}/deliver`, {
+      method: 'POST',
+      body: { otp },
+    }),
 };

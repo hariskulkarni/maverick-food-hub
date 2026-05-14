@@ -23,7 +23,7 @@ import {
   SafeAreaView,
   Alert,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { api, ApiError, type Assignment, type AssignmentStatus } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
@@ -102,6 +102,7 @@ function AssignmentCard({ a }: { a: Assignment }) {
 
 export default function DashboardScreen() {
   const { rider, signOut } = useAuth();
+  const router = useRouter();
   const [online, setOnline] = useState(false);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -248,7 +249,13 @@ export default function DashboardScreen() {
         {/* Current delivery */}
         <Text style={styles.sectionLabel}>CURRENT DELIVERY</Text>
         {active ? (
-          <AssignmentCard a={active} />
+          <Pressable
+            onPress={() =>
+              router.push({ pathname: '/delivery/[id]', params: { id: active.id } })
+            }
+          >
+            <AssignmentCard a={active} />
+          </Pressable>
         ) : (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No active delivery</Text>
