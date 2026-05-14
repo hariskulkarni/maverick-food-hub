@@ -31,6 +31,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { api, ApiError, type Assignment } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRiderLocation } from '../../lib/use-rider-location';
@@ -179,6 +180,8 @@ export default function DeliveryScreen() {
   const [delivered, setDelivered] = useState(false);
   const [otp, setOtp] = useState('');
   const [otpError, setOtpError] = useState<string | null>(null);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -246,6 +249,34 @@ export default function DeliveryScreen() {
       }
     } finally {
       setActing(false);
+    }
+  }
+
+  async function capturePhoto() {
+    if (uploadingPhoto || !assignment) return;
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        'Camera permission needed',
+        'Enable camera access in Settings to attach a proof-of-delivery photo.'
+      );
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.6,
+      allowsEditing: false,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const uri = result.assets[0].uri;
+    setUploadingPhoto(true);
+    try {
+      await api.uploadDeliveryPhoto(assignment.id, uri);
+      setPhotoUri(uri);
+    } catch (e) {
+      Alert.alert('Upload failed', e instanceof ApiError ? e.message : 'Please try again.');
+    } finally {
+      setUploadingPhoto(false);
     }
   }
 
@@ -359,6 +390,27 @@ export default function DeliveryScreen() {
           {/* Final step: OTP entry */}
           {step === 'at_customer' ? (
             <View style={styles.otpBlock}>
+              {/* Proof-of-delivery photo (optional) */}
+              <Pressable
+                style={styles.photoButton}
+                onPress={capturePhoto}
+                disabled={uploadingPhoto}
+              >
+                {uploadingPhoto ? (
+                  <ActivityIndicator color={colors.primary} />
+                ) : photoUri ? (
+                  <>
+                    <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                    <Text style={styles.photoButtonText}>Proof photo attached — retake</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="camera-outline" size={18} color={colors.primary} />
+                    <Text style={styles.photoButtonText}>Add proof-of-delivery photo</Text>
+                  </>
+                )}
+              </Pressable>
+
               <Text style={styles.otpTitle}>Confirm hand-over</Text>
               <Text style={styles.otpHint}>
                 Ask the customer for their delivery code and enter it below.
@@ -594,6 +646,23 @@ const styles = StyleSheet.create({
 
   // OTP
   otpBlock: { marginTop: spacing.lg },
+  photoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    height: 48,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderStyle: 'dashed',
+    marginBottom: spacing.lg,
+  },
+  photoButtonText: {
+    fontSize: font.size.sm,
+    fontWeight: font.weight.semibold,
+    color: colors.primary,
+  },
   otpTitle: {
     fontSize: font.size.lg,
     fontWeight: font.weight.bold,

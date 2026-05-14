@@ -1491,6 +1491,7 @@ model RiderProfile {
   isOnline        Boolean   @default(false)
   currentLat      Float?
   currentLng      Float?
+  expoPushToken   String?   // Expo push token from the native rider app (FCM under the hood)
   currentLoad     Int       @default(0)
   rating          Float     @default(5.0)
   totalDeliveries Int       @default(0)

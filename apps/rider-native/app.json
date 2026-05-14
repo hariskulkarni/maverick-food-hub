@@ -1,25 +1,37 @@
 {
   "expo": {
-    "name": "rider-native",
+    "name": "Oak & Sizzler Rider",
     "slug": "rider-native",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "ridernative",
-    "userInterfaceStyle": "automatic",
+    "scheme": "oakandsizzlerrider",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.oakandsizzler.rider"
     },
     "android": {
+      "package": "com.oakandsizzler.rider",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#ea5b1f",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "REPLACE_WITH_GOOGLE_MAPS_ANDROID_KEY"
+        }
+      }
     },
     "web": {
       "output": "static",
@@ -33,13 +45,26 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#f5f1e8",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#1f1b16"
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Oak & Sizzler Rider uses your location to share live delivery tracking with customers while you're on a run."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Oak & Sizzler Rider uses the camera to capture proof-of-delivery photos at hand-over."
+        }
+      ],
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,

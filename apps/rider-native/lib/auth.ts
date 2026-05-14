@@ -19,6 +19,7 @@ interface AuthState {
   loading: boolean;
   signIn: (token: string, rider: Rider) => Promise<void>;
   signOut: () => Promise<void>;
+  updateRider: (patch: Partial<Rider>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -73,9 +74,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setRider(null);
   }, []);
 
+  const updateRider = useCallback(async (patch: Partial<Rider>) => {
+    setRider((prev) => {
+      const next: Rider = {
+        id: prev?.id ?? '',
+        name: prev?.name ?? null,
+        phone: prev?.phone ?? null,
+        ...patch,
+      };
+      SecureStore.setItemAsync(RIDER_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
   return React.createElement(
     AuthContext.Provider,
-    { value: { token, rider, loading, signIn, signOut } },
+    { value: { token, rider, loading, signIn, signOut, updateRider } },
     children
   );
 }

@@ -18,6 +18,7 @@ import { log } from './log';
 import { brand } from '@/lib/brand';
 import { loadAndApplyOffers, loadOfferByCode, recordRedemption, type OfferCartLine } from './offers';
 import { audit } from './audit';
+import { notifyRidersOfNewOrder } from './rider-push';
 import { clampTwo } from '@/lib/utils';
 import { loadRulesForRestaurant, priceForItem, priceForCombo } from './happy-hours';
 import { refreshChallengeProgressForOrder } from './challenges';
@@ -484,6 +485,9 @@ export async function transitionOrder(orderId: string, next: OrderStatus, opts: 
   // When an order is ready, push to the platform-wide rider pool channel.
   if (next === OrderStatus.READY) {
     publish('rider:pool', { kind: 'order:new', orderId, branchId: order.branchId });
+    // Push-notify online riders who have a registered device token. Best-effort
+    // — a push failure must never roll back or block the transition.
+    notifyRidersOfNewOrder(orderId).catch(() => {});
   }
   // Challenge progress refresh fires AFTER the order transition commits so a
   // challenge-update failure never rolls back a delivered order. The function

@@ -187,6 +187,39 @@ export interface ClaimResult {
   status: AssignmentStatus;
 }
 
+/** GET /api/rider/earnings — in-app earnings summary. */
+export interface EarningsSummary {
+  lifetime: {
+    totalEarnings: number;
+    totalTips: number;
+    totalDeliveries: number;
+    rating: number;
+  };
+  today: { earnings: number; deliveries: number };
+  recent: {
+    id: string;
+    orderCode: string;
+    deliveredAt: string | null;
+    earnings: number;
+    base: number;
+    tip: number;
+  }[];
+}
+
+/** A KYC document as returned by GET /api/rider/kyc (numbers are masked). */
+export interface KycDoc {
+  id: string;
+  type: string;
+  status: string;
+  numberLast4?: string | null;
+  expiresOn?: string | null;
+}
+
+export interface KycResponse {
+  documents: KycDoc[];
+  summary: unknown; // shape varies server-side — the app just lists documents
+}
+
 // ─── Endpoints ───────────────────────────────────────────────────────────────
 
 export const api = {
@@ -259,4 +292,46 @@ export const api = {
         ...(speedKph != null ? { speedKph } : {}),
       },
     }),
+
+  // ── Earnings, push, proof-of-delivery ─────────────────────────────────────
+  /** Lifetime + today's earnings and recent delivered runs. */
+  earnings: () => request<EarningsSummary>('/api/rider/earnings'),
+
+  /** Register this device's Expo push token so new-order pings reach the rider. */
+  registerPushToken: (token: string) =>
+    request<{ ok: true }>('/api/rider/push-token', { method: 'POST', body: { token } }),
+
+  /** Multipart upload of the proof-of-delivery photo for an assignment. */
+  uploadDeliveryPhoto: async (
+    assignmentId: string,
+    fileUri: string
+  ): Promise<{ url: string }> => {
+    const form = new FormData();
+    // React Native's FormData accepts this {uri,name,type} shape for file parts.
+    form.append('photo', { uri: fileUri, name: 'delivery.jpg', type: 'image/jpeg' } as any);
+    const headers: Record<string, string> = {};
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    // No Content-Type header — fetch sets the multipart boundary itself.
+    const res = await fetch(`${API_BASE}/api/rider/assignments/${assignmentId}/photo`, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new ApiError(text || `Photo upload failed (${res.status})`, res.status, text);
+    }
+    return res.json();
+  },
+
+  // ── Profile & KYC ─────────────────────────────────────────────────────────
+  /** Rider's KYC documents (masked) + status summary. */
+  kyc: () => request<KycResponse>('/api/rider/kyc'),
+
+  /** Self-service profile edit — name / email. */
+  updateProfile: (patch: { name?: string; email?: string | null }) =>
+    request<{ ok: true; profile: { name: string | null; email: string | null } }>(
+      '/api/rider/profile',
+      { method: 'PATCH', body: patch }
+    ),
 };
