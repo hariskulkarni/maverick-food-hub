@@ -100,6 +100,57 @@ export interface RiderMe {
   lastSeenAt: string | null;
 }
 
+/** What POST /api/rider/online returns — the updated rider profile row. */
+export interface RiderProfileRow {
+  id: string;
+  isOnline: boolean;
+  currentLoad: number;
+  rating: number;
+  totalDeliveries: number;
+}
+
+export type AssignmentStatus =
+  | 'PENDING'
+  | 'ACCEPTED'
+  | 'PICKED_UP'
+  | 'DELIVERED'
+  | 'REJECTED'
+  | 'CANCELLED';
+
+/** The order attached to an assignment — only the fields the app reads. */
+export interface AssignmentOrder {
+  id: string;
+  code: string;
+  status: string;
+  total: string; // Prisma Decimal → JSON string
+  currency: string;
+  customerNotes: string | null;
+  placedAt: string;
+  items: { id: string; quantity: number }[];
+  customer: { id: string; name: string | null; phone: string | null } | null;
+  address: {
+    line1: string;
+    line2: string | null;
+    city: string;
+    latitude: number | null;
+    longitude: number | null;
+  } | null;
+  branch: { id: string; name: string } | null;
+}
+
+export interface Assignment {
+  id: string;
+  orderId: string;
+  status: AssignmentStatus;
+  earningsAmt: string; // Prisma Decimal → JSON string
+  baseEarningsAmt: string;
+  tipAmt: string;
+  assignedAt: string;
+  acceptedAt: string | null;
+  pickedUpAt: string | null;
+  order: AssignmentOrder;
+}
+
 // ─── Endpoints ───────────────────────────────────────────────────────────────
 
 export const api = {
@@ -119,6 +170,17 @@ export const api = {
       noAuth: true,
     }),
 
-  /** Lightweight self-status — proves the Bearer token works. */
+  /** Lightweight self-status — online flag + last heartbeat. */
   me: () => request<RiderMe>('/api/rider/me'),
+
+  /** Flip the rider online / offline. */
+  setOnline: (online: boolean) =>
+    request<RiderProfileRow>('/api/rider/online', { method: 'POST', body: { online } }),
+
+  /** Active assignments (PENDING / ACCEPTED / PICKED_UP) with full order detail. */
+  assignments: () => request<Assignment[]>('/api/rider/assignments'),
+
+  /** Liveness ping — sent every ~30s while online so the server doesn't auto-offline us. */
+  heartbeat: () =>
+    request<null>('/api/rider/heartbeat', { method: 'POST', body: { gpsEnabled: true } }),
 };

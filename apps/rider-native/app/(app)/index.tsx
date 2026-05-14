@@ -1,54 +1,199 @@
 /**
- * Dashboard — placeholder for now. It proves the authenticated state end to
- * end: the rider profile comes from the stored login, and the "connection
- * check" calls /api/rider/me with the Bearer token to confirm the session
- * works against the live backend.
+ * Dashboard — the rider's home screen.
  *
- * The real dashboard (online/offline toggle, current assignment, stats) lands
- * in the next task.
+ *   - Online / offline toggle (POST /api/rider/online). While online we ping
+ *     /api/rider/heartbeat every 30s so the server's auto-offline sweep keeps
+ *     us live.
+ *   - Current delivery card — the active assignment, if any.
+ *   - Pull-to-refresh.
+ *
+ * The accept / pickup / deliver action buttons live on the dedicated delivery
+ * screen (next task) — this screen just surfaces status at a glance.
  */
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
-  Pressable,
   StyleSheet,
+  ScrollView,
+  RefreshControl,
+  Pressable,
+  Switch,
   ActivityIndicator,
   SafeAreaView,
+  Alert,
 } from 'react-native';
-import { api, ApiError } from '../../lib/api';
+import { api, ApiError, type Assignment, type AssignmentStatus } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 
+const HEARTBEAT_MS = 30_000;
+
+function rupees(decimalString: string): string {
+  const n = Number.parseFloat(decimalString);
+  return Number.isFinite(n) ? `₹${Math.round(n)}` : '₹0';
+}
+
+const STATUS_META: Record<
+  AssignmentStatus,
+  { label: string; bg: string; fg: string }
+> = {
+  PENDING: { label: 'New request', bg: '#fdf0e0', fg: colors.warning },
+  ACCEPTED: { label: 'Heading to pickup', bg: colors.primarySoft, fg: colors.primaryDark },
+  PICKED_UP: { label: 'Out for delivery', bg: colors.successSoft, fg: colors.success },
+  DELIVERED: { label: 'Delivered', bg: colors.successSoft, fg: colors.success },
+  REJECTED: { label: 'Rejected', bg: colors.dangerSoft, fg: colors.danger },
+  CANCELLED: { label: 'Cancelled', bg: colors.dangerSoft, fg: colors.danger },
+};
+
+function StatusBadge({ status }: { status: AssignmentStatus }) {
+  const meta = STATUS_META[status];
+  return (
+    <View style={[styles.badge, { backgroundColor: meta.bg }]}>
+      <Text style={[styles.badgeText, { color: meta.fg }]}>{meta.label}</Text>
+    </View>
+  );
+}
+
+function AssignmentCard({ a }: { a: Assignment }) {
+  const o = a.order;
+  const itemCount = o.items.reduce((sum, it) => sum + (it.quantity ?? 1), 0);
+  const drop = o.address ? `${o.address.line1}, ${o.address.city}` : 'Customer address';
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardTop}>
+        <Text style={styles.orderCode}>{o.code}</Text>
+        <StatusBadge status={a.status} />
+      </View>
+
+      <View style={styles.route}>
+        <View style={styles.routeRow}>
+          <View style={[styles.routeDot, { backgroundColor: colors.primary }]} />
+          <View style={styles.routeText}>
+            <Text style={styles.routeLabel}>PICKUP</Text>
+            <Text style={styles.routeValue} numberOfLines={1}>
+              {o.branch?.name ?? 'Restaurant'}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.routeConnector} />
+        <View style={styles.routeRow}>
+          <View style={[styles.routeDot, { backgroundColor: colors.success }]} />
+          <View style={styles.routeText}>
+            <Text style={styles.routeLabel}>DROP</Text>
+            <Text style={styles.routeValue} numberOfLines={1}>
+              {drop}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.cardFooter}>
+        <Text style={styles.metaText}>
+          {itemCount} item{itemCount === 1 ? '' : 's'} · {rupees(o.total)}
+        </Text>
+        <Text style={styles.earnings}>You earn {rupees(a.earningsAmt)}</Text>
+      </View>
+    </View>
+  );
+}
+
 export default function DashboardScreen() {
   const { rider, signOut } = useAuth();
-  const [checking, setChecking] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  const [online, setOnline] = useState(false);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  async function checkConnection() {
-    setChecking(true);
-    setResult(null);
+  const load = useCallback(async () => {
+    setError(null);
     try {
-      const me = await api.me();
-      setResult(
-        `✓ Authenticated. Status: ${me.online ? 'online' : 'offline'}.`
-      );
+      const [me, list] = await Promise.all([api.me(), api.assignments()]);
+      setOnline(me.online);
+      setAssignments(list);
     } catch (e) {
-      if (e instanceof ApiError) {
-        setResult(`✗ ${e.message} (HTTP ${e.status})`);
-      } else {
-        setResult('✗ Connection failed.');
+      setError(e instanceof ApiError ? e.message : 'Could not load your dashboard.');
+    }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      await load();
+      setLoading(false);
+    })();
+  }, [load]);
+
+  // Heartbeat — runs only while online.
+  useEffect(() => {
+    if (online) {
+      api.heartbeat().catch(() => {});
+      heartbeatRef.current = setInterval(() => {
+        api.heartbeat().catch(() => {});
+      }, HEARTBEAT_MS);
+    }
+    return () => {
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
       }
+    };
+  }, [online]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
+
+  async function toggleOnline(next: boolean) {
+    if (toggling) return;
+    setToggling(true);
+    setOnline(next); // optimistic
+    try {
+      await api.setOnline(next);
+    } catch (e) {
+      setOnline(!next); // revert on failure
+      Alert.alert(
+        'Could not update status',
+        e instanceof ApiError ? e.message : 'Please try again.'
+      );
     } finally {
-      setChecking(false);
+      setToggling(false);
     }
   }
 
+  const active = assignments[0];
   const firstName = (rider?.name ?? 'Rider').split(' ')[0];
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
+        {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Welcome back,</Text>
@@ -59,66 +204,76 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>You're signed in</Text>
-          <Text style={styles.cardBody}>
-            {rider?.phone ?? 'Unknown number'}
-          </Text>
-          <Text style={styles.cardHint}>
-            The full dashboard — online toggle, your current delivery, and the
-            order pool — is coming next. For now, confirm the app is talking to
-            the server:
-          </Text>
-
-          <Pressable
-            onPress={checkConnection}
-            disabled={checking}
-            style={({ pressed }) => [
-              styles.checkButton,
-              pressed && styles.checkButtonPressed,
-              checking && styles.checkButtonDisabled,
-            ]}
-          >
-            {checking ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <Text style={styles.checkButtonText}>Check connection</Text>
-            )}
-          </Pressable>
-
-          {result ? (
-            <Text
-              style={[
-                styles.result,
-                result.startsWith('✓') ? styles.resultOk : styles.resultErr,
-              ]}
-            >
-              {result}
-            </Text>
-          ) : null}
+        {/* Online toggle */}
+        <View
+          style={[
+            styles.statusCard,
+            online ? styles.statusCardOnline : styles.statusCardOffline,
+          ]}
+        >
+          <View style={styles.statusLeft}>
+            <View
+              style={[styles.dot, online ? styles.dotOnline : styles.dotOffline]}
+            />
+            <View style={styles.statusTextWrap}>
+              <Text style={styles.statusTitle}>
+                {online ? "You're online" : "You're offline"}
+              </Text>
+              <Text style={styles.statusSubtitle}>
+                {online
+                  ? 'Receiving delivery requests'
+                  : 'Go online to start receiving orders'}
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={online}
+            onValueChange={toggleOnline}
+            disabled={toggling}
+            trackColor={{ false: colors.border, true: colors.success }}
+            thumbColor={colors.white}
+          />
         </View>
+
+        {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+
+        {/* Current delivery */}
+        <Text style={styles.sectionLabel}>CURRENT DELIVERY</Text>
+        {active ? (
+          <AssignmentCard a={active} />
+        ) : (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No active delivery</Text>
+            <Text style={styles.emptyBody}>
+              {online
+                ? "You're all caught up. New orders will show up here as they come in."
+                : 'Go online above to start receiving delivery requests.'}
+            </Text>
+          </View>
+        )}
 
         <Pressable onPress={signOut} style={styles.signOut} hitSlop={8}>
           <Text style={styles.signOutText}>Sign out</Text>
         </Pressable>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  container: {
-    flex: 1,
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  scroll: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.lg,
+    paddingBottom: spacing.xl,
   },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   greeting: { fontSize: font.size.md, color: colors.textMuted },
   name: {
@@ -138,6 +293,53 @@ const styles = StyleSheet.create({
     fontWeight: font.weight.bold,
     letterSpacing: 1.5,
   },
+
+  statusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    ...shadow.card,
+  },
+  statusCardOnline: { backgroundColor: colors.successSoft, borderColor: colors.success },
+  statusCardOffline: { backgroundColor: colors.card, borderColor: colors.border },
+  statusLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  dot: { width: 12, height: 12, borderRadius: 6, marginRight: spacing.md },
+  dotOnline: { backgroundColor: colors.success },
+  dotOffline: { backgroundColor: colors.textMuted },
+  statusTextWrap: { flex: 1 },
+  statusTitle: {
+    fontSize: font.size.md,
+    fontWeight: font.weight.bold,
+    color: colors.text,
+  },
+  statusSubtitle: {
+    fontSize: font.size.sm,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+
+  errorBanner: {
+    marginTop: spacing.md,
+    backgroundColor: colors.dangerSoft,
+    color: colors.danger,
+    fontSize: font.size.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+
+  sectionLabel: {
+    marginTop: spacing.xl,
+    marginBottom: spacing.sm,
+    fontSize: font.size.xs,
+    fontWeight: font.weight.bold,
+    color: colors.textMuted,
+    letterSpacing: 1.2,
+  },
+
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,
@@ -146,47 +348,88 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     ...shadow.card,
   },
-  cardTitle: {
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  orderCode: {
     fontSize: font.size.lg,
     fontWeight: font.weight.bold,
     color: colors.text,
   },
-  cardBody: {
-    marginTop: spacing.xs,
-    fontSize: font.size.md,
-    color: colors.textMuted,
+  badge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
   },
-  cardHint: {
-    marginTop: spacing.md,
+  badgeText: {
+    fontSize: font.size.xs,
+    fontWeight: font.weight.bold,
+  },
+
+  route: { marginTop: spacing.lg },
+  routeRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  routeDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4, marginRight: spacing.md },
+  routeText: { flex: 1 },
+  routeLabel: {
+    fontSize: 10,
+    fontWeight: font.weight.bold,
+    color: colors.textMuted,
+    letterSpacing: 1,
+  },
+  routeValue: {
+    fontSize: font.size.md,
+    color: colors.text,
+    fontWeight: font.weight.medium,
+    marginTop: 1,
+  },
+  routeConnector: {
+    width: 1,
+    height: 16,
+    backgroundColor: colors.border,
+    marginLeft: 4,
+    marginVertical: 2,
+  },
+
+  cardFooter: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  metaText: { fontSize: font.size.sm, color: colors.textMuted },
+  earnings: {
+    fontSize: font.size.md,
+    fontWeight: font.weight.bold,
+    color: colors.success,
+  },
+
+  emptyCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+  },
+  emptyTitle: {
+    fontSize: font.size.md,
+    fontWeight: font.weight.bold,
+    color: colors.text,
+  },
+  emptyBody: {
+    marginTop: spacing.xs,
     fontSize: font.size.sm,
     color: colors.textMuted,
     lineHeight: 20,
   },
-  checkButton: {
-    marginTop: spacing.lg,
-    height: 48,
-    borderRadius: radius.md,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkButtonPressed: { backgroundColor: colors.primarySoft },
-  checkButtonDisabled: { opacity: 0.6 },
-  checkButtonText: {
-    color: colors.primary,
-    fontSize: font.size.md,
-    fontWeight: font.weight.bold,
-  },
-  result: {
-    marginTop: spacing.md,
-    fontSize: font.size.sm,
-    fontWeight: font.weight.medium,
-  },
-  resultOk: { color: colors.success },
-  resultErr: { color: colors.danger },
+
   signOut: {
-    marginTop: 'auto',
+    marginTop: spacing.xxl,
     alignItems: 'center',
     paddingVertical: spacing.md,
   },
