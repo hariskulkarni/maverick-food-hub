@@ -10,29 +10,12 @@ import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
+import { serializeModule } from './_serializers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const CATEGORIES = ['ONBOARDING', 'SAFETY', 'CUSTOMER_SERVICE', 'EARNINGS', 'APP_GUIDE'] as const;
-
-export function serializeModule(m: any, stats?: { completed: number; total: number }) {
-  return {
-    id: m.id,
-    title: m.title,
-    summary: m.summary ?? null,
-    category: m.category,
-    contentBody: m.contentBody,
-    quizQuestions: m.quizQuestions ?? null,
-    durationMin: m.durationMin,
-    order: m.order,
-    isRequired: m.isRequired,
-    isActive: m.isActive,
-    createdAt: m.createdAt.toISOString(),
-    completedCount: stats?.completed ?? 0,
-    progressCount: stats?.total ?? 0,
-  };
-}
 
 export async function GET() {
   await requireSuperAdmin();

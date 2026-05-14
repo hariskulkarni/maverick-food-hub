@@ -3,7 +3,7 @@ import { prisma } from '@/server/db';
 import { Card, CardContent } from '@/components/ui/card';
 import { LifeBuoy, Inbox, MessageSquare, CheckCircle2 } from 'lucide-react';
 import { RiderSupportClient } from './rider-support-client';
-import { serializeTicket } from '@/app/api/platform/rider-support/route';
+import { serializeTicket } from '@/app/api/platform/rider-support/_serializers';
 
 export const metadata = { title: 'Platform · Rider Support' };
 export const dynamic = 'force-dynamic';

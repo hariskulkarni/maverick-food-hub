@@ -11,7 +11,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
-import { serializeTicket } from '../route';
+import { serializeTicket } from '../_serializers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

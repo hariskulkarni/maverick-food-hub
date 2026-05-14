@@ -3,7 +3,7 @@ import { prisma } from '@/server/db';
 import { Card, CardContent } from '@/components/ui/card';
 import { GraduationCap, BookOpen, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { TrainingModulesClient } from './training-modules-client';
-import { serializeModule } from '@/app/api/platform/training-modules/route';
+import { serializeModule } from '@/app/api/platform/training-modules/_serializers';
 
 export const metadata = { title: 'Platform · Training Modules' };
 export const dynamic = 'force-dynamic';

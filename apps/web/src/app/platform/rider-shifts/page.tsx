@@ -3,7 +3,7 @@ import { prisma } from '@/server/db';
 import { Card, CardContent } from '@/components/ui/card';
 import { CalendarClock, CalendarCheck, CalendarX, Clock } from 'lucide-react';
 import { RiderShiftsClient } from './rider-shifts-client';
-import { serializeShift } from '@/app/api/platform/rider-shifts/route';
+import { serializeShift } from '@/app/api/platform/rider-shifts/_serializers';
 
 export const metadata = { title: 'Platform · Rider Shifts' };
 export const dynamic = 'force-dynamic';

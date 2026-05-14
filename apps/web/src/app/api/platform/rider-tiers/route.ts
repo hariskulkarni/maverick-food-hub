@@ -11,18 +11,10 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
+import { computeTier, type RiderTier } from './_tiers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-export type RiderTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
-
-export function computeTier(totalDeliveries: number, rating: number): RiderTier {
-  if (totalDeliveries >= 500 && rating >= 4.6) return 'PLATINUM';
-  if (totalDeliveries >= 200 && rating >= 4.3) return 'GOLD';
-  if (totalDeliveries >= 50 && rating >= 4.0) return 'SILVER';
-  return 'BRONZE';
-}
 
 export async function GET(_req: NextRequest) {
   await requireSuperAdmin();

@@ -3,7 +3,7 @@ import { prisma } from '@/server/db';
 import { Card, CardContent } from '@/components/ui/card';
 import { Siren, AlertOctagon, CheckCircle2, Ban } from 'lucide-react';
 import { RiderSosClient } from './rider-sos-client';
-import { serializeSos } from '@/app/api/platform/rider-sos/route';
+import { serializeSos } from '@/app/api/platform/rider-sos/_serializers';
 
 export const metadata = { title: 'Platform · Rider SOS' };
 export const dynamic = 'force-dynamic';
