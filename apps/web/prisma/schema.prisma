@@ -331,6 +331,17 @@ model Brand {
   @@index([status])
 }
 
+/// How a restaurant's READY orders find a rider.
+///   FLEET_ONLY      — always goes to the platform-wide shared pool.
+///   DEDICATED_ONLY  — only this restaurant's dedicated riders may claim it.
+///   DEDICATED_FIRST — dedicated riders get first crack; after
+///                     `fleetFallbackMinutes` the order also opens to the fleet.
+enum RiderDispatchMode {
+  FLEET_ONLY
+  DEDICATED_ONLY
+  DEDICATED_FIRST
+}
+
 model Restaurant {
   id             String           @id @default(cuid())
   slug           String           @unique
@@ -347,6 +358,9 @@ model Restaurant {
   approvedAt     DateTime?
   rejectedReason String?
   commissionPct  Float            @default(15.0) // platform's cut
+  // Rider sourcing policy for this restaurant's orders.
+  riderDispatchMode    RiderDispatchMode @default(FLEET_ONLY)
+  fleetFallbackMinutes Int               @default(5) // DEDICATED_FIRST: wait before opening to fleet
   // Optional umbrella brand. NULL ⇒ solo restaurant (existing behaviour).
   brandId        String?
   createdAt      DateTime         @default(now())
@@ -357,6 +371,7 @@ model Restaurant {
   branches          Branch[]
   members           RestaurantUser[]
   riderApplications RiderApplication[]
+  dedicatedRiders   RiderProfile[]          @relation("DedicatedRiders")
   integrations      IntegrationCredential[]
   qrCodes           QrCode[]
   favoritedBy       FavoriteRestaurant[]
@@ -1482,10 +1497,21 @@ model Refund {
 
 // RiderProfile is now PLATFORM-managed. branchId is optional and represents
 // a "home base" hint only (e.g. for matching nearby orders), not exclusivity.
+/// How a rider is sourced. FLEET riders work the platform-wide shared pool;
+/// DEDICATED riders belong to one restaurant and only see that restaurant's
+/// orders (see Restaurant.riderDispatchMode for the per-restaurant policy).
+enum RiderType {
+  FLEET
+  DEDICATED
+}
+
 model RiderProfile {
   id              String    @id @default(cuid())
   userId          String    @unique
   branchId        String? // optional home base, nullable now
+  // Fleet vs. restaurant-dedicated. DEDICATED riders carry `dedicatedRestaurantId`.
+  riderType       RiderType @default(FLEET)
+  dedicatedRestaurantId String? // set when riderType = DEDICATED
   vehicleType     String    @default("BIKE")
   vehicleNumber   String?
   isOnline        Boolean   @default(false)
@@ -1504,6 +1530,7 @@ model RiderProfile {
 
   user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   branch      Branch?                @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  dedicatedRestaurant Restaurant?    @relation("DedicatedRiders", fields: [dedicatedRestaurantId], references: [id], onDelete: SetNull)
   assignments RiderAssignment[]
   pings       DeliveryLocationPing[]
   codCollections CodCollection[]
@@ -1525,6 +1552,8 @@ model RiderProfile {
 
   @@index([isOnline])
   @@index([branchId, isOnline])
+  @@index([riderType, isOnline])
+  @@index([dedicatedRestaurantId, isOnline])
 }
 
 model RiderAssignment {

@@ -19,14 +19,14 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useFocusEffect, router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -38,6 +38,7 @@ import {
 } from '../lib/api-safety';
 import { ApiError } from '../lib/api';
 import { colors, spacing, radius, font, shadow } from '../lib/theme';
+import { ScreenHeader } from '../components/screen-header';
 
 const INCIDENT_TYPES: { value: IncidentType; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { value: 'ACCIDENT', label: 'Accident', icon: 'medkit-outline' },
@@ -219,14 +220,8 @@ export default function ReportIncidentScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Report an Incident</Text>
-        <View style={styles.backBtn} />
-      </View>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <ScreenHeader title="Report an Incident" />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -357,20 +352,6 @@ export default function ReportIncidentScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-  },
-  backBtn: { width: 40, height: 40, justifyContent: 'center' },
-  headerTitle: {
-    fontSize: font.size.lg,
-    fontWeight: font.weight.bold,
-    color: colors.text,
-  },
   scroll: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,

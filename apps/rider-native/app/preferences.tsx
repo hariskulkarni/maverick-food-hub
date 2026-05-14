@@ -18,12 +18,12 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
-  SafeAreaView,
   Switch,
   TextInput,
   Alert,
 } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, font, shadow } from '../lib/theme';
 import {
@@ -33,6 +33,7 @@ import {
 } from '../lib/api-dispatch';
 import { ApiError } from '../lib/api';
 import { BreakModeCard } from '../components/break-mode-card';
+import { ScreenHeader } from '../components/screen-header';
 
 const RADIUS_OPTIONS = [2, 3, 5, 8, 12] as const;
 const BATCH_MIN = 1;
@@ -130,21 +131,11 @@ export default function PreferencesScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={10}
-          style={styles.backBtn}
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Delivery Preferences</Text>
-        <View style={styles.backBtn}>
-          {saving ? <ActivityIndicator size="small" color={colors.primary} /> : null}
-        </View>
-      </View>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <ScreenHeader
+        title="Delivery Preferences"
+        right={saving ? <ActivityIndicator size="small" color={colors.primary} /> : null}
+      />
 
       {loading ? (
         <View style={styles.center}>
@@ -313,22 +304,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xl,
-  },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: {
-    fontSize: font.size.md,
-    fontWeight: font.weight.semibold,
-    color: colors.text,
   },
 
   content: {

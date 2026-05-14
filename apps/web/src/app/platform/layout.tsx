@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
-import { Building2, ListOrdered, Users, Bike, BarChart3, Radio, Coins, AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet, History, BadgeCheck, Layers, Gift, MessageSquare } from 'lucide-react';
+import { Building2, ListOrdered, Users, Bike, BarChart3, Radio, Coins, AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet, History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones, GraduationCap } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
@@ -35,6 +35,18 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           <NavLink href="/platform/security" icon={Shield}>Security</NavLink>
           <NavLink href="/platform/audit-log" icon={History}>Audit log</NavLink>
           <NavLink href="/platform/system-health" icon={Activity}>System health</NavLink>
+
+          <NavSection>Rider operations</NavSection>
+          <NavLink href="/platform/rider-payouts" icon={Wallet}>Rider payouts</NavLink>
+          <NavLink href="/platform/rider-incentives" icon={Trophy}>Incentives</NavLink>
+          <NavLink href="/platform/surge-zones" icon={Flame}>Surge zones</NavLink>
+          <NavLink href="/platform/rider-tiers" icon={Award}>Rider tiers</NavLink>
+          <NavLink href="/platform/rider-referrals" icon={UserPlus}>Rider referrals</NavLink>
+          <NavLink href="/platform/rider-sos" icon={Siren}>SOS alerts</NavLink>
+          <NavLink href="/platform/rider-incidents" icon={ShieldAlert}>Incidents</NavLink>
+          <NavLink href="/platform/rider-shifts" icon={CalendarClock}>Rider shifts</NavLink>
+          <NavLink href="/platform/rider-support" icon={Headphones}>Rider support</NavLink>
+          <NavLink href="/platform/training-modules" icon={GraduationCap}>Training modules</NavLink>
         </nav>
         <div className="p-3 border-t">
           <div className="text-xs text-muted-foreground">{session.user.name ?? session.user.email}</div>
@@ -51,5 +63,13 @@ function NavLink({ href, icon: Icon, children }: { href: string; icon: any; chil
     <Link href={href} className="flex items-center gap-2 rounded-md px-3 py-2 hover:bg-accent">
       <Icon className="size-4" /> {children}
     </Link>
+  );
+}
+
+function NavSection({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      {children}
+    </div>
   );
 }

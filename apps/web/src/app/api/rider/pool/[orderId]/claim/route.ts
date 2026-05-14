@@ -10,6 +10,7 @@ import { AssignmentStatus, OrderStatus } from '@prisma/client';
 import { transitionOrder } from '@/server/orders';
 import { computeBasePayout } from '@/server/payouts';
 import { publish } from '@/server/realtime';
+import { riderCanClaimOrder } from '@/server/rider-sourcing';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
@@ -19,10 +20,22 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ or
   if (!profile || !profile.approvedAt) return new Response('Rider not approved', { status: 403 });
   if (!profile.isOnline) return new Response('Must be online to claim', { status: 400 });
 
-  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { assignment: true } });
+  // Include branch.restaurant so the dispatch engine can check whether this
+  // rider type is allowed to claim this restaurant's orders.
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { assignment: true, branch: { include: { restaurant: true } } }
+  });
   if (!order) return new Response('Order not found', { status: 404 });
   if (order.assignment) return new Response('Order already claimed', { status: 409 });
   if (order.status !== OrderStatus.READY) return new Response('Order not in pool yet', { status: 400 });
+
+  // Enforce the restaurant's rider-dispatch policy: a fleet rider can't grab a
+  // dedicated-only order, a dedicated rider can't grab a fleet-only order, and
+  // for DEDICATED_FIRST the fleet must wait out the fallback window.
+  if (!riderCanClaimOrder(profile, order)) {
+    return new Response('This order is not available to you', { status: 403 });
+  }
 
   // Pass riderId so any rider-specific RiderPayoutOverride is applied at the
   // moment of claim. Pool listings use the platform default so all riders see

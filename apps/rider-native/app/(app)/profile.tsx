@@ -12,12 +12,12 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { api, ApiError, type KycDoc } from '../../lib/api';
+import { api, ApiError, type KycDoc, type RiderMe } from '../../lib/api';
 import { growth, type TierName } from '../../lib/api-growth';
 import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
@@ -79,6 +79,7 @@ export default function ProfileScreen() {
   const [savingName, setSavingName] = useState(false);
   const [viewerDoc, setViewerDoc] = useState<ViewableDoc | null>(null);
   const [tier, setTier] = useState<TierName | null>(null);
+  const [me, setMe] = useState<RiderMe | null>(null);
 
   const loadKyc = useCallback(async () => {
     try {
@@ -98,17 +99,25 @@ export default function ProfileScreen() {
     }
   }, []);
 
+  const loadMe = useCallback(async () => {
+    try {
+      setMe(await api.me());
+    } catch {
+      setMe(null);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       (async () => {
-        await Promise.all([loadKyc(), loadTier()]);
+        await Promise.all([loadKyc(), loadTier(), loadMe()]);
         if (!cancelled) setKycLoading(false);
       })();
       return () => {
         cancelled = true;
       };
-    }, [loadKyc, loadTier])
+    }, [loadKyc, loadTier, loadMe])
   );
 
   async function saveName() {
@@ -143,7 +152,7 @@ export default function ProfileScreen() {
     .toUpperCase();
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>Profile</Text>
 
@@ -168,6 +177,20 @@ export default function ProfileScreen() {
                 <Text style={styles.name}>{name}</Text>
               )}
               <Text style={styles.phone}>{rider?.phone ?? 'No phone on file'}</Text>
+              {me ? (
+                <View style={styles.riderTypeRow}>
+                  <Ionicons
+                    name={me.riderType === 'DEDICATED' ? 'restaurant' : 'globe-outline'}
+                    size={13}
+                    color={colors.primary}
+                  />
+                  <Text style={styles.riderTypeText} numberOfLines={1}>
+                    {me.riderType === 'DEDICATED'
+                      ? `Dedicated rider · ${me.dedicatedRestaurant?.name ?? 'Restaurant'}`
+                      : 'Fleet rider'}
+                  </Text>
+                </View>
+              ) : null}
             </View>
             <View style={styles.identityBadges}>
               <View style={styles.riderPill}>
@@ -406,6 +429,18 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   phone: { fontSize: font.size.sm, color: colors.textMuted, marginTop: 2 },
+  riderTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  riderTypeText: {
+    flexShrink: 1,
+    fontSize: font.size.xs,
+    color: colors.primary,
+    fontWeight: font.weight.semibold,
+  },
   riderPill: {
     backgroundColor: colors.text,
     paddingHorizontal: spacing.sm,

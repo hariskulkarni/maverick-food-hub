@@ -13,7 +13,13 @@
  * Idempotent: clears and re-creates only these three config tables. Run with
  *   npm run db:seed:rider-features
  */
-import { PrismaClient, IncentivePeriod, TrainingCategory } from '@prisma/client';
+import {
+  PrismaClient,
+  IncentivePeriod,
+  TrainingCategory,
+  RiderType,
+  RiderDispatchMode,
+} from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -264,6 +270,46 @@ async function main() {
     await prisma.trainingModule.create({ data: { ...m, isActive: true } });
   }
   console.log(`  ✓ ${TRAINING_MODULES.length} training modules`);
+
+  // ── Rider types & restaurant dispatch mode (demo) ──────────────────────────
+  // Make one ACTIVE restaurant run "dedicated-first" with a couple of its own
+  // dedicated riders, so the FLEET vs DEDICATED split is visible in a demo.
+  // Idempotent: re-running just re-applies the same assignment.
+  const restaurant = await prisma.restaurant.findFirst({
+    where: { status: 'ACTIVE' },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (restaurant) {
+    await prisma.restaurant.update({
+      where: { id: restaurant.id },
+      data: { riderDispatchMode: RiderDispatchMode.DEDICATED_FIRST, fleetFallbackMinutes: 5 },
+    });
+    const approvedRiders = await prisma.riderProfile.findMany({
+      where: { approvedAt: { not: null } },
+      orderBy: { createdAt: 'asc' },
+      take: 10,
+    });
+    // First 2 approved riders → dedicated to this restaurant; the rest → fleet.
+    const dedicatedIds = approvedRiders.slice(0, 2).map((r) => r.id);
+    const fleetIds = approvedRiders.slice(2).map((r) => r.id);
+    if (dedicatedIds.length > 0) {
+      await prisma.riderProfile.updateMany({
+        where: { id: { in: dedicatedIds } },
+        data: { riderType: RiderType.DEDICATED, dedicatedRestaurantId: restaurant.id },
+      });
+    }
+    if (fleetIds.length > 0) {
+      await prisma.riderProfile.updateMany({
+        where: { id: { in: fleetIds } },
+        data: { riderType: RiderType.FLEET, dedicatedRestaurantId: null },
+      });
+    }
+    console.log(
+      `  ✓ ${restaurant.name} → DEDICATED_FIRST · ${dedicatedIds.length} dedicated, ${fleetIds.length} fleet riders`,
+    );
+  } else {
+    console.log('  • no ACTIVE restaurant found — skipped rider-type demo setup');
+  }
 
   console.log('Done.');
 }

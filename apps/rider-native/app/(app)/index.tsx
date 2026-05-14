@@ -20,13 +20,13 @@ import {
   Pressable,
   Switch,
   ActivityIndicator,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { api, ApiError, type Assignment, type AssignmentStatus } from '../../lib/api';
+import { api, ApiError, type Assignment, type AssignmentStatus, type RiderMe } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 import { OnboardingTour, useTourSeen } from '../../components/onboarding-tour';
@@ -147,6 +147,7 @@ export default function DashboardScreen() {
   const { rider, signOut } = useAuth();
   const router = useRouter();
   const [online, setOnline] = useState(false);
+  const [me, setMe] = useState<RiderMe | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -166,8 +167,9 @@ export default function DashboardScreen() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [me, list] = await Promise.all([api.me(), api.assignments()]);
-      setOnline(me.online);
+      const [meRes, list] = await Promise.all([api.me(), api.assignments()]);
+      setOnline(meRes.online);
+      setMe(meRes);
       setAssignments(list);
       setLastSyncedAt(Date.now());
     } catch (e) {
@@ -249,7 +251,7 @@ export default function DashboardScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -258,7 +260,7 @@ export default function DashboardScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         refreshControl={
@@ -272,9 +274,23 @@ export default function DashboardScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerText}>
             <Text style={styles.greeting}>Welcome back,</Text>
             <Text style={styles.name}>{firstName}</Text>
+            {me ? (
+              <View style={styles.riderTypeBadge}>
+                <Ionicons
+                  name={me.riderType === 'DEDICATED' ? 'restaurant' : 'globe-outline'}
+                  size={12}
+                  color={colors.primaryDark}
+                />
+                <Text style={styles.riderTypeText} numberOfLines={1}>
+                  {me.riderType === 'DEDICATED'
+                    ? `Dedicated · ${me.dedicatedRestaurant?.name ?? 'Restaurant'}`
+                    : 'Fleet rider'}
+                </Text>
+              </View>
+            ) : null}
           </View>
           <View style={styles.riderPill}>
             <Text style={styles.riderPillText}>RIDER</Text>
@@ -411,15 +427,33 @@ const styles = StyleSheet.create({
 
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: spacing.lg,
   },
+  headerText: { flex: 1, marginRight: spacing.md },
   greeting: { fontSize: font.size.md, color: colors.textMuted },
   name: {
     fontSize: font.size.xl,
     fontWeight: font.weight.bold,
     color: colors.text,
+  },
+  riderTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    marginTop: spacing.xs + 2,
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  riderTypeText: {
+    flexShrink: 1,
+    fontSize: font.size.xs,
+    fontWeight: font.weight.semibold,
+    color: colors.primaryDark,
   },
   riderPill: {
     backgroundColor: colors.text,

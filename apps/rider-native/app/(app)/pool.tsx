@@ -15,12 +15,12 @@ import {
   RefreshControl,
   Pressable,
   ActivityIndicator,
-  SafeAreaView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { api, ApiError, type PoolOrder } from '../../lib/api';
+import { api, ApiError, type PoolOrder, type RiderMe } from '../../lib/api';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 import { useOrderAlerts } from '../../lib/use-order-alerts';
 import { NewOrderBanner } from '../../components/new-order-banner';
@@ -103,6 +103,7 @@ function PoolCard({
 export default function PoolScreen() {
   const router = useRouter();
   const [orders, setOrders] = useState<PoolOrder[]>([]);
+  const [me, setMe] = useState<RiderMe | null>(null);
   const [online, setOnline] = useState(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -115,8 +116,9 @@ export default function PoolScreen() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [me, list] = await Promise.all([api.me(), api.pool()]);
-      setOnline(me.online);
+      const [meRes, list] = await Promise.all([api.me(), api.pool()]);
+      setOnline(meRes.online);
+      setMe(meRes);
       setOrders(list);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not load the order pool.');
@@ -176,7 +178,7 @@ export default function PoolScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -184,14 +186,23 @@ export default function PoolScreen() {
     );
   }
 
+  // DEDICATED riders only ever see their own restaurant's orders, so frame the
+  // whole screen as that restaurant's queue rather than the platform-wide pool.
+  const isDedicated = me?.riderType === 'DEDICATED';
+  const restaurantName = me?.dedicatedRestaurant?.name ?? 'your restaurant';
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Available orders</Text>
         <Text style={styles.subtitle}>
           {orders.length === 0
-            ? 'No orders in the pool right now'
-            : `${orders.length} order${orders.length === 1 ? '' : 's'} ready to claim`}
+            ? isDedicated
+              ? `No orders from ${restaurantName} right now`
+              : 'No orders in the pool right now'
+            : isDedicated
+              ? `${orders.length} order${orders.length === 1 ? '' : 's'} from ${restaurantName}`
+              : `${orders.length} order${orders.length === 1 ? '' : 's'} ready to claim`}
         </Text>
       </View>
 
@@ -232,10 +243,13 @@ export default function PoolScreen() {
         ListEmptyComponent={
           <View style={styles.emptyCard}>
             <Ionicons name="bicycle-outline" size={32} color={colors.textMuted} />
-            <Text style={styles.emptyTitle}>The pool is empty</Text>
+            <Text style={styles.emptyTitle}>
+              {isDedicated ? 'No orders right now' : 'The pool is empty'}
+            </Text>
             <Text style={styles.emptyBody}>
-              New orders appear here the moment a restaurant marks them ready.
-              Pull down to refresh.
+              {isDedicated
+                ? `There are no orders from ${restaurantName} right now. New orders appear here the moment they're marked ready. Pull down to refresh.`
+                : 'New orders appear here the moment a restaurant marks them ready. Pull down to refresh.'}
             </Text>
           </View>
         }

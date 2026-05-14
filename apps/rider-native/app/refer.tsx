@@ -16,15 +16,16 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
-  SafeAreaView,
   RefreshControl,
   TextInput,
   Share,
   Alert,
 } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ApiError } from '../lib/api';
+import { ScreenHeader } from '../components/screen-header';
 import {
   growth,
   type ReferralsResponse,
@@ -147,14 +148,8 @@ export default function ReferScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Refer a Rider</Text>
-        <View style={styles.backBtn} />
-      </View>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <ScreenHeader title="Refer a Rider" />
 
       {loading ? (
         <View style={styles.center}>
@@ -345,19 +340,6 @@ export default function ReferScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: {
-    fontSize: font.size.lg,
-    fontWeight: font.weight.bold,
-    color: colors.text,
-  },
   center: {
     flex: 1,
     alignItems: 'center',

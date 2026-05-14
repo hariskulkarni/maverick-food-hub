@@ -12,17 +12,16 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  Pressable,
   ActivityIndicator,
-  SafeAreaView,
 } from 'react-native';
-import { router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, font, shadow } from '../lib/theme';
 import { dispatch, type HeatmapPoint, type DemandIntensity } from '../lib/api-dispatch';
 import { ApiError } from '../lib/api';
 import { DemandHeatmap } from '../components/demand-heatmap';
+import { ScreenHeader } from '../components/screen-header';
 
 /** Chip colour treatment for each intensity band. */
 const INTENSITY_CHIP: Record<DemandIntensity, { bg: string; fg: string; label: string }> = {
@@ -97,19 +96,8 @@ export default function HeatmapScreen() {
   }, [load]);
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={10}
-          style={styles.backBtn}
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Demand Map</Text>
-        <View style={styles.backBtn} />
-      </View>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <ScreenHeader title="Demand Map" />
 
       {loading ? (
         <View style={styles.center}>
@@ -168,22 +156,6 @@ export default function HeatmapScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: {
-    fontSize: font.size.md,
-    fontWeight: font.weight.semibold,
-    color: colors.text,
-  },
 
   content: {
     paddingHorizontal: spacing.lg,

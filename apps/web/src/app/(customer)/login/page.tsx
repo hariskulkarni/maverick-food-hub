@@ -3,7 +3,7 @@ import { prisma } from '@/server/db';
 
 export const metadata = { title: 'Sign in' };
 
-const VALID_ROLES: LoginRole[] = ['customer', 'rider', 'staff', 'super'];
+const VALID_ROLES: LoginRole[] = ['customer', 'staff', 'super'];
 
 /**
  * Central /login page. Server component — fetches platform stats for the

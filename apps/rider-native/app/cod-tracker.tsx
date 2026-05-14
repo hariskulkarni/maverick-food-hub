@@ -12,12 +12,12 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
-  SafeAreaView,
-  Pressable,
 } from 'react-native';
-import { useFocusEffect, router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ApiError } from '../lib/api';
+import { ScreenHeader } from '../components/screen-header';
 import { payments, type CodResponse, type CodCollection, type CodStatus } from '../lib/api-payments';
 import { colors, spacing, radius, font, shadow } from '../lib/theme';
 
@@ -152,15 +152,8 @@ export default function CodTrackerScreen() {
   const cashInHand = data?.cashInHand ?? 0;
 
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Back header */}
-      <View style={styles.header}>
-        <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Cash in Hand</Text>
-        <View style={styles.backBtn} />
-      </View>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <ScreenHeader title="Cash in Hand" />
 
       {loading ? (
         <View style={styles.center}>
@@ -265,20 +258,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.xxl,
-  },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: {
-    fontSize: font.size.lg,
-    fontWeight: font.weight.bold,
-    color: colors.text,
   },
 
   errorBanner: {

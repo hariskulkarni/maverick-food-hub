@@ -7,21 +7,46 @@ import { NextRequest } from 'next/server';
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { computeBasePayout } from '@/server/payouts';
+import { filterOrdersForRider } from '@/server/rider-sourcing';
+import { RiderType } from '@prisma/client';
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (session?.user.role !== 'RIDER') return new Response('Forbidden', { status: 403 });
-  const profile = await prisma.riderProfile.findUnique({ where: { userId: session.user.id } });
+  // Need riderType + dedicatedRestaurantId so the dispatch engine can decide
+  // which orders this rider is actually eligible for.
+  const profile = await prisma.riderProfile.findUnique({
+    where: { userId: session.user.id },
+    select: {
+      id: true,
+      approvedAt: true,
+      riderType: true,
+      dedicatedRestaurantId: true
+    }
+  });
   if (!profile || !profile.approvedAt) return new Response('Rider not approved', { status: 403 });
 
-  const orders = await prisma.order.findMany({
+  // Fetch all candidate READY + unassigned orders WITH the restaurant's
+  // dispatch policy included, then filter to this rider's eligible subset.
+  // (We over-fetch a little and trim in app code so the dispatch rules live
+  // in exactly one place — see rider-sourcing.ts.)
+  const candidates = await prisma.order.findMany({
     where: { status: 'READY', assignment: null },
     include: { branch: { include: { restaurant: true } }, address: true, items: true, customer: true },
     orderBy: { readyAt: 'asc' },
-    take: 30
+    take: 60
   });
+  const orders = filterOrdersForRider(profile, candidates).slice(0, 30);
 
   const out = await Promise.all(orders.map(async (o) => {
+    // Tag each item so the native app can badge dedicated vs. fleet work.
+    // It's "DEDICATED" when this rider is claiming it as the restaurant's own
+    // dedicated rider; otherwise the rider is taking it as fleet.
+    const dispatchTag: 'DEDICATED' | 'FLEET' =
+      profile.riderType === RiderType.DEDICATED &&
+      profile.dedicatedRestaurantId === o.branch.restaurant.id
+        ? 'DEDICATED'
+        : 'FLEET';
     const payout = await computeBasePayout(o.id);
     return {
       orderId: o.id,
@@ -34,7 +59,8 @@ export async function GET(req: NextRequest) {
       total: Number(o.total),
       payout: payout.payout,
       distanceKm: payout.distanceKm,
-      readyAt: o.readyAt
+      readyAt: o.readyAt,
+      dispatchTag
     };
   }));
   return Response.json(out);

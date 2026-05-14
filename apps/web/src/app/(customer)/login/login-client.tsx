@@ -6,11 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { User, Bike, ChefHat, ShieldCheck, Sparkles } from 'lucide-react';
+import { User, ChefHat, ShieldCheck, Sparkles } from 'lucide-react';
 import { RoleTile } from '@/components/auth/role-tile';
 import { MarketingPanel } from '@/components/auth/marketing-panel';
 
-export type LoginRole = 'customer' | 'rider' | 'staff' | 'super';
+export type LoginRole = 'customer' | 'staff' | 'super';
+
+// Note: there is no rider tile — delivery riders use the separate native
+// Android app. The web /login surface only covers customer, staff, super.
 
 type RoleSpec = {
   id: LoginRole;
@@ -21,10 +24,9 @@ type RoleSpec = {
 };
 
 const ROLES: RoleSpec[] = [
-  { id: 'customer', label: 'Customer',         tagline: 'Order from anywhere',   Icon: User,        auth: 'phone' },
-  { id: 'rider',    label: 'Rider',            tagline: 'Earn on your schedule', Icon: Bike,        auth: 'phone' },
-  { id: 'staff',    label: 'Restaurant Staff', tagline: 'Manage orders & menu',  Icon: ChefHat,     auth: 'email' },
-  { id: 'super',    label: 'Super Admin',      tagline: 'Platform operations',   Icon: ShieldCheck, auth: 'email' }
+  { id: 'customer', label: 'Customer',         tagline: 'Order from anywhere',  Icon: User,        auth: 'phone' },
+  { id: 'staff',    label: 'Restaurant Staff', tagline: 'Manage orders & menu', Icon: ChefHat,     auth: 'email' },
+  { id: 'super',    label: 'Super Admin',      tagline: 'Platform operations',  Icon: ShieldCheck, auth: 'email' }
 ];
 
 /**
@@ -37,10 +39,11 @@ const ROLES: RoleSpec[] = [
  * On mobile the columns collapse — the marketing panel becomes a compact
  * hero strip on top, then the role tiles and form stack below it.
  *
- * Routing is unchanged from the previous version: an explicit `?next=`
- * always wins; otherwise `routeByRole` hits /api/me and redirects to the
- * canonical home for the user's actual role (rider → /rider, super → /platform,
- * admin/kitchen → /admin or /kitchen, anyone else → the role-specific fallback).
+ * An explicit `?next=` always wins; otherwise `routeByRole` hits /api/me
+ * and redirects to the canonical home for the user's actual role
+ * (super → /platform, admin → /admin, kitchen → /kitchen, customer → /).
+ * The role tile picked on the form is cosmetic — real routing is by the
+ * actual session role.
  */
 export function LoginClient({
   next,
@@ -98,21 +101,30 @@ export function LoginClient({
 
   /**
    * Resolve where the signed-in user belongs. Honours an explicit `next`,
-   * otherwise routes by role so a rider lands on /rider, a customer on /,
-   * etc. Uses a hard navigation so the new layout (rider header / customer
-   * header) loads cleanly — critical inside the Capacitor WebView where the
-   * router.push cache can show the wrong header.
+   * otherwise routes by the user's actual role so a customer lands on /,
+   * staff on /admin or /kitchen, etc. Uses a hard navigation so the new
+   * layout (customer / admin header) loads cleanly.
+   *
+   * Right after `signIn` the session cookie can take a beat to propagate,
+   * so `/api/me` occasionally returns `role: null` on the first read — when
+   * that happens we wait ~250ms and retry once before falling back.
    */
   async function routeByRole(fallback: string) {
     if (next) { window.location.href = next; return; }
     try {
-      const me = await (await fetch('/api/me', { cache: 'no-store' })).json();
+      let me = await (await fetch('/api/me', { cache: 'no-store' })).json();
+      if (!me?.role) {
+        // Known session-propagation race — give the cookie a moment, retry once.
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        me = await (await fetch('/api/me', { cache: 'no-store' })).json();
+      }
       const r = me?.role;
       const target =
-          r === 'RIDER'       ? '/rider'
-        : r === 'SUPER_ADMIN' ? '/platform'
+          r === 'SUPER_ADMIN' ? '/platform'
         : r === 'ADMIN'       ? '/admin'
         : r === 'KITCHEN'     ? '/kitchen'
+        : r === 'CUSTOMER'    ? '/'
+        : r === 'RIDER'       ? '/rider-app'
         : fallback;
       window.location.href = target;
     } catch {
@@ -125,7 +137,7 @@ export function LoginClient({
     const r = await signIn('phone-otp', { phone, code, purpose: 'login', redirect: false });
     setBusy(false);
     if (r?.error) return toast.error('Invalid or expired code');
-    await routeByRole(role === 'rider' ? '/rider' : '/');
+    await routeByRole('/');
   }
 
   async function loginEmail() {
@@ -277,8 +289,8 @@ export function LoginClient({
               )}
 
               <p className="mt-5 border-t border-border/60 pt-5 text-xs text-muted-foreground">
-                Use phone OTP for customers and riders, email + password for
-                restaurant staff and platform admins.
+                Use phone OTP for customers, email + password for restaurant
+                staff and platform admins.
               </p>
             </div>
           </div>

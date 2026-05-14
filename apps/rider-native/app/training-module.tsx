@@ -17,11 +17,12 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ApiError } from '../lib/api';
+import { ScreenHeader } from '../components/screen-header';
 import {
   growth,
   type TrainingModuleDetail,
@@ -171,16 +172,8 @@ export default function TrainingModuleScreen() {
   const isComplete = module?.progress.completed ?? false;
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {module?.title ?? 'Module'}
-        </Text>
-        <View style={styles.backBtn} />
-      </View>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <ScreenHeader title={module?.title ?? 'Module'} />
 
       {loading ? (
         <View style={styles.center}>
@@ -377,22 +370,6 @@ export default function TrainingModuleScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: font.size.md,
-    fontWeight: font.weight.bold,
-    color: colors.text,
-    marginHorizontal: spacing.sm,
-  },
   center: {
     flex: 1,
     alignItems: 'center',

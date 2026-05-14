@@ -16,14 +16,15 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  SafeAreaView,
   Share,
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SosButton } from '../components/sos-button';
+import { ScreenHeader } from '../components/screen-header';
 import { safety } from '../lib/api-safety';
 import { ApiError } from '../lib/api';
 import { colors, spacing, radius, font, shadow } from '../lib/theme';
@@ -90,15 +91,8 @@ export default function SafetyScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Back header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Safety Centre</Text>
-        <View style={styles.backBtn} />
-      </View>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <ScreenHeader title="Safety Centre" />
 
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.intro}>
@@ -162,20 +156,6 @@ export default function SafetyScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-  },
-  backBtn: { width: 40, height: 40, justifyContent: 'center' },
-  headerTitle: {
-    fontSize: font.size.lg,
-    fontWeight: font.weight.bold,
-    color: colors.text,
-  },
   scroll: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,

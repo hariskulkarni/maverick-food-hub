@@ -23,12 +23,12 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
-  SafeAreaView,
   Alert,
   Linking,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';

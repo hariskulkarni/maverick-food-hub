@@ -8,8 +8,8 @@
  *
  * Every send is best-effort: a failure here must never break the order flow.
  */
-import { prisma } from './db';
 import { log } from './log';
+import { targetRidersForNewOrder } from './rider-sourcing';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
@@ -37,17 +37,18 @@ async function sendExpoPush(messages: PushMessage[]): Promise<void> {
 }
 
 /**
- * Ping every online rider who has a registered push token. Called when a new
- * order lands in the pool. Best-effort — never throws.
+ * Ping the riders who should be told about a new order in the pool.
+ *
+ * Targeting is delegated to `targetRidersForNewOrder`, which applies the
+ * restaurant's `riderDispatchMode`: FLEET_ONLY pings the fleet, DEDICATED_ONLY
+ * and DEDICATED_FIRST ping only that restaurant's dedicated riders (fleet
+ * riders discover DEDICATED_FIRST orders later via pool polling). Best-effort
+ * — never throws.
  */
 export async function notifyRidersOfNewOrder(orderId: string): Promise<void> {
   try {
-    const riders = await prisma.riderProfile.findMany({
-      where: { isOnline: true, expoPushToken: { not: null } },
-      select: { expoPushToken: true },
-    });
+    const riders = await targetRidersForNewOrder(orderId);
     const messages: PushMessage[] = riders
-      .filter((r): r is { expoPushToken: string } => !!r.expoPushToken)
       .map((r) => ({
         to: r.expoPushToken,
         title: 'New order in the pool',

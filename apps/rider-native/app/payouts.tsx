@@ -15,15 +15,16 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
-  SafeAreaView,
   Pressable,
   Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ApiError } from '../lib/api';
+import { ScreenHeader } from '../components/screen-header';
 import {
   payments,
   type PayoutsResponse,
@@ -145,15 +146,8 @@ export default function PayoutsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Back header */}
-      <View style={styles.header}>
-        <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Instant Payout</Text>
-        <View style={styles.backBtn} />
-      </View>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <ScreenHeader title="Instant Payout" />
 
       {loading ? (
         <View style={styles.center}>
@@ -332,20 +326,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.xxl,
-  },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: {
-    fontSize: font.size.lg,
-    fontWeight: font.weight.bold,
-    color: colors.text,
   },
 
   errorBanner: {

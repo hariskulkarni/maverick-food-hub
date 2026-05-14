@@ -16,11 +16,11 @@ import {
   RefreshControl,
   Pressable,
   ActivityIndicator,
-  SafeAreaView,
   TextInput,
   Alert,
 } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, font, shadow } from '../lib/theme';
 import {
@@ -29,6 +29,7 @@ import {
   type ShiftStatus,
 } from '../lib/api-dispatch';
 import { ApiError } from '../lib/api';
+import { ScreenHeader } from '../components/screen-header';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -403,19 +404,8 @@ export default function ShiftsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={10}
-          style={styles.backBtn}
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>My Shifts</Text>
-        <View style={styles.backBtn} />
-      </View>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <ScreenHeader title="My Shifts" />
 
       {loading ? (
         <View style={styles.center}>
@@ -478,22 +468,6 @@ export default function ShiftsScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: {
-    fontSize: font.size.md,
-    fontWeight: font.weight.semibold,
-    color: colors.text,
-  },
 
   content: {
     paddingHorizontal: spacing.lg,

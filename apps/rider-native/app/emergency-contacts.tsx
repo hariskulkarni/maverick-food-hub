@@ -15,16 +15,17 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
   Switch,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useFocusEffect, router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { safety, type EmergencyContact, type ContactInput } from '../lib/api-safety';
+import { ScreenHeader } from '../components/screen-header';
 import { ApiError } from '../lib/api';
 import { colors, spacing, radius, font, shadow } from '../lib/theme';
 
@@ -147,14 +148,8 @@ export default function EmergencyContactsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Emergency Contacts</Text>
-        <View style={styles.backBtn} />
-      </View>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <ScreenHeader title="Emergency Contacts" />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -327,20 +322,6 @@ export default function EmergencyContactsScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
-  },
-  backBtn: { width: 40, height: 40, justifyContent: 'center' },
-  headerTitle: {
-    fontSize: font.size.lg,
-    fontWeight: font.weight.bold,
-    color: colors.text,
-  },
   scroll: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,

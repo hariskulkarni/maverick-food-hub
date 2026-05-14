@@ -120,6 +120,10 @@ export interface VerifyOtpResponse {
 export interface RiderMe {
   online: boolean;
   lastSeenAt: string | null;
+  /** FLEET riders work the platform-wide pool; DEDICATED belong to one restaurant. */
+  riderType: 'FLEET' | 'DEDICATED';
+  /** The restaurant a DEDICATED rider belongs to — null for FLEET riders. */
+  dedicatedRestaurant: { id: string; name: string } | null;
 }
 
 /** What POST /api/rider/online returns — the updated rider profile row. */
