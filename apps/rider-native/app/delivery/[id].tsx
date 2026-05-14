@@ -33,6 +33,8 @@ import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api, ApiError, type Assignment } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useRiderLocation } from '../../lib/use-rider-location';
+import { DeliveryMap } from '../../components/delivery-map';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 
 type Step =
@@ -200,6 +202,13 @@ export default function DeliveryScreen() {
     })();
   }, [load]);
 
+  // Stream GPS while this delivery is live — feeds the in-app map and the
+  // customer / admin trackers. Stops automatically once delivered.
+  const { position: riderPos, permissionDenied } = useRiderLocation({
+    orderId: assignment?.orderId ?? null,
+    enabled: !!assignment && !delivered && assignment.status !== 'DELIVERED',
+  });
+
   // Auth guard (this screen lives outside the (app) group's guard).
   if (authLoading) return null;
   if (!token) return <Redirect href="/login" />;
@@ -318,6 +327,25 @@ export default function DeliveryScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll}>
+          <DeliveryMap
+            pickup={
+              o.branch?.latitude != null && o.branch?.longitude != null
+                ? { lat: o.branch.latitude, lng: o.branch.longitude }
+                : null
+            }
+            drop={
+              o.address?.latitude != null && o.address?.longitude != null
+                ? { lat: o.address.latitude, lng: o.address.longitude }
+                : null
+            }
+            rider={riderPos}
+          />
+          {permissionDenied ? (
+            <Text style={styles.permWarning}>
+              Location permission is off — your live position won't show on the
+              customer's tracker. Enable it in your phone's settings.
+            </Text>
+          ) : null}
           <Stepper activeIndex={idx} />
           <RouteBlock a={assignment} />
 
@@ -665,5 +693,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: spacing.xl,
+  },
+  permWarning: {
+    backgroundColor: '#fdf4e3',
+    borderWidth: 1,
+    borderColor: '#f0e0bf',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    fontSize: font.size.sm,
+    color: colors.text,
+    lineHeight: 18,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
   },
 });

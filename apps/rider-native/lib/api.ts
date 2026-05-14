@@ -141,7 +141,14 @@ export interface AssignmentOrder {
     latitude: number | null;
     longitude: number | null;
   } | null;
-  branch: { id: string; name: string } | null;
+  branch: {
+    id: string;
+    name: string;
+    latitude: number | null;
+    longitude: number | null;
+    line1: string;
+    city: string;
+  } | null;
 }
 
 export interface Assignment {
@@ -238,5 +245,18 @@ export const api = {
     request<unknown>(`/api/rider/assignments/${id}/deliver`, {
       method: 'POST',
       body: { otp },
+    }),
+
+  // ── Live location ─────────────────────────────────────────────────────────
+  /** High-frequency GPS ping — fans out to customer + admin trackers via SSE. */
+  sendLocation: (lat: number, lng: number, orderId?: string, speedKph?: number) =>
+    request<{ ok: true }>('/api/rider/location', {
+      method: 'POST',
+      body: {
+        lat,
+        lng,
+        ...(orderId ? { orderId } : {}),
+        ...(speedKph != null ? { speedKph } : {}),
+      },
     }),
 };
