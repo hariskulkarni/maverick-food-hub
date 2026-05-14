@@ -176,8 +176,10 @@ const S3: ProviderDef = {
   buildSummary: (c) => ({ bucket: c.bucket, region: c.region, endpoint: c.endpoint || 'AWS S3', accessKey: maskSecret(c.accessKey) }),
   async test(c) {
     try {
-      // @ts-expect-error optional dependency — only resolves when STORAGE_DRIVER=s3
-      const { S3Client, HeadBucketCommand } = await import('@aws-sdk/client-s3');
+      // @ts-expect-error optional dependency — only resolves when STORAGE_DRIVER=s3.
+      // webpackIgnore stops `next build` from trying to resolve the SDK when it
+      // isn't installed; the surrounding try/catch handles the runtime case.
+      const { S3Client, HeadBucketCommand } = await import(/* webpackIgnore: true */ '@aws-sdk/client-s3');
       const client = new (S3Client as any)({
         region: c.region,
         endpoint: c.endpoint || undefined,

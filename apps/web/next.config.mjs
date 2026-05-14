@@ -2,6 +2,9 @@
 const nextConfig = {
   output: 'standalone',
   outputFileTracingRoot: new URL('.', import.meta.url).pathname,
+  // Lint runs in CI / local dev — it should not gate a production build.
+  // TypeScript errors still block the build (ignoreBuildErrors stays false).
+  eslint: { ignoreDuringBuilds: true },
   serverExternalPackages: ['twilio', 'nodemailer', 'pdfkit', 'argon2', 'razorpay', '@aws-sdk/client-s3'],
   experimental: {
     serverActions: { bodySizeLimit: '10mb' }

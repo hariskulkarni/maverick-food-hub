@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
   const body = CreateBody.parse(await req.json());
 
   // Derive slug if missing. On collision, append -2, -3… until unique.
-  let base = (body.slug ?? slugifyName(body.name)).trim() || slugifyName(body.name);
+  const base = (body.slug ?? slugifyName(body.name)).trim() || slugifyName(body.name);
   let slug = base;
   let n = 2;
   // Guard so we don't infinite-loop on a fully exhausted namespace
