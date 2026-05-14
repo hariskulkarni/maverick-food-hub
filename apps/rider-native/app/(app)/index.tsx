@@ -64,7 +64,9 @@ function AssignmentCard({ a }: { a: Assignment }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardTop}>
-        <Text style={styles.orderCode}>{o.code}</Text>
+        <Text style={styles.orderCode} numberOfLines={1}>
+          {o.code}
+        </Text>
         <StatusBadge status={a.status} />
       </View>
 
@@ -367,13 +369,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   orderCode: {
+    flexShrink: 1, // truncates instead of pushing the badge off-screen
     fontSize: font.size.lg,
     fontWeight: font.weight.bold,
     color: colors.text,
   },
   badge: {
+    flexShrink: 0, // never squash the status pill
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: radius.pill,
