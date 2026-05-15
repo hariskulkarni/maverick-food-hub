@@ -9,7 +9,7 @@
  *  the legacy "Maverick Hospitality" slug) plus seven cuisine concepts under
  *  it. Each cuisine is a fully demo-able Restaurant tenant with:
  *
- *     - 1 Branch (Bengaluru, spread across HSR/Indiranagar/Koramangala/...)
+ *     - 1 Branch (Andhra Pradesh, spread across Visakhapatnam/Vijayawada/Guntur/...)
  *     - 4-6 Categories
  *     - 25-40 MenuItems
  *     - 2-3 Combos
@@ -98,7 +98,8 @@ type CuisineSeed = {
   description: string;
   logoUrl: string;
   coverImageUrl: string;
-  area: string; // Bengaluru area
+  area: string; // Andhra Pradesh area
+  city: string; // Andhra Pradesh city
   line1: string;
   postalCode: string;
   latitude: number;
@@ -117,21 +118,22 @@ type CuisineSeed = {
 
 // ─── cuisine seed data ────────────────────────────────────────────────────
 const CUISINES: CuisineSeed[] = [
-  // ── Italia Pizza ────────────────────────────────────────────────────────
+  // ── Mozza Italia ────────────────────────────────────────────────────────
   {
     slug: 'italia-pizza',
-    name: 'Italia Pizza',
+    name: 'Mozza Italia',
     cuisine: 'Italian',
     tagline: 'Wood-fired. Hand-stretched. Unapologetically Italian.',
     description:
       'Thin-crust Neapolitan pizzas with imported San Marzano tomatoes, fior-di-latte mozzarella, and pastas made fresh every morning.',
     logoUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=300&auto=format&fit=crop&q=80',
     coverImageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=1600&auto=format&fit=crop&q=80',
-    area: 'Koramangala',
-    line1: '5th Block, 80 Feet Road, Koramangala',
-    postalCode: '560095',
-    latitude: 12.9352,
-    longitude: 77.6245,
+    area: 'Brodipet',
+    city: 'Guntur',
+    line1: '4/2, Brodipet, near Kothapet',
+    postalCode: '522002',
+    latitude: 16.3010,
+    longitude: 80.4360,
     categories: [
       { slug: 'pizzas', name: 'Pizzas' },
       { slug: 'pastas', name: 'Pastas' },
@@ -192,11 +194,12 @@ const CUISINES: CuisineSeed[] = [
       'Hyderabadi and Lucknowi biryanis layered with marinated meats and saffron-soaked basmati, sealed and slow-cooked for hours.',
     logoUrl: 'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=300&auto=format&fit=crop&q=80',
     coverImageUrl: 'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=1600&auto=format&fit=crop&q=80',
-    area: 'Indiranagar',
-    line1: '12, 100 Feet Road, Indiranagar',
-    postalCode: '560038',
-    latitude: 12.9784,
-    longitude: 77.6408,
+    area: 'Arundelpet',
+    city: 'Guntur',
+    line1: 'Arundelpet 6th Line',
+    postalCode: '522002',
+    latitude: 16.3050,
+    longitude: 80.4420,
     categories: [
       { slug: 'hyderabadi-biryani', name: 'Hyderabadi Biryani' },
       { slug: 'lucknowi-biryani', name: 'Lucknowi Biryani' },
@@ -263,11 +266,12 @@ const CUISINES: CuisineSeed[] = [
       'Charcoal-grilled kebabs, smoky tandoor classics and signature grain bowls that put the barbeque on the table.',
     logoUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=300&auto=format&fit=crop&q=80',
     coverImageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=1600&auto=format&fit=crop&q=80',
-    area: 'HSR Layout',
-    line1: '27th Main, Sector 1, HSR Layout',
-    postalCode: '560102',
-    latitude: 12.9116,
-    longitude: 77.6471,
+    area: 'Lakshmipuram',
+    city: 'Guntur',
+    line1: 'Lakshmipuram Main Road',
+    postalCode: '522007',
+    latitude: 16.3120,
+    longitude: 80.4290,
     categories: [
       { slug: 'starters', name: 'Starters' },
       { slug: 'soups', name: 'Soups' },
@@ -326,11 +330,12 @@ const CUISINES: CuisineSeed[] = [
       'A multi-cuisine veg-friendly classic — South Indian breakfasts, Indo-Chinese favourites, North Indian thalis, and the kind of chaat that turns a weekday around.',
     logoUrl: 'https://images.unsplash.com/photo-1567337710282-00832b415979?w=300&auto=format&fit=crop&q=80',
     coverImageUrl: 'https://images.unsplash.com/photo-1567337710282-00832b415979?w=1600&auto=format&fit=crop&q=80',
-    area: 'Jayanagar',
-    line1: '4th Block, Jayanagar',
-    postalCode: '560011',
-    latitude: 12.9250,
-    longitude: 77.5938,
+    area: 'Kothapet',
+    city: 'Guntur',
+    line1: 'Kothapet Bus Stand Road',
+    postalCode: '522001',
+    latitude: 16.2990,
+    longitude: 80.4480,
     categories: [
       { slug: 'south-indian', name: 'South Indian' },
       { slug: 'indo-chinese', name: 'Indo-Chinese' },
@@ -397,11 +402,12 @@ const CUISINES: CuisineSeed[] = [
       'Stir-fried noodles, hot-stone sizzlers, dimsum baskets and Thai curries — Pan-Asian small plates that arrive still crackling.',
     logoUrl: 'https://images.unsplash.com/photo-1552611052-33e04de081de?w=300&auto=format&fit=crop&q=80',
     coverImageUrl: 'https://images.unsplash.com/photo-1552611052-33e04de081de?w=1600&auto=format&fit=crop&q=80',
-    area: 'Whitefield',
-    line1: 'Forum Shantiniketan, ITPL Main Road',
-    postalCode: '560066',
-    latitude: 12.9698,
-    longitude: 77.7499,
+    area: 'Pattabhipuram',
+    city: 'Guntur',
+    line1: 'Pattabhipuram Main Road',
+    postalCode: '522006',
+    latitude: 16.3180,
+    longitude: 80.4530,
     categories: [
       { slug: 'dimsum', name: 'Dimsum' },
       { slug: 'soups', name: 'Soups' },
@@ -460,11 +466,12 @@ const CUISINES: CuisineSeed[] = [
       'Party trays, live counters and continental favourites designed for big tables and bigger occasions.',
     logoUrl: 'https://images.unsplash.com/photo-1555244162-803834f70033?w=300&auto=format&fit=crop&q=80',
     coverImageUrl: 'https://images.unsplash.com/photo-1555244162-803834f70033?w=1600&auto=format&fit=crop&q=80',
-    area: 'MG Road',
-    line1: 'Brigade Road, off MG Road',
-    postalCode: '560001',
-    latitude: 12.9750,
-    longitude: 77.6050,
+    area: 'Naaz Centre',
+    city: 'Guntur',
+    line1: 'Naaz Centre, Brodipet',
+    postalCode: '522004',
+    latitude: 16.3070,
+    longitude: 80.4400,
     categories: [
       { slug: 'party-trays', name: 'Party Trays' },
       { slug: 'live-tandoor', name: 'Live Tandoor' },
@@ -521,11 +528,12 @@ const CUISINES: CuisineSeed[] = [
       'Andhra-style spicy curries, ghee-rice meals, gunpowder dosas and the kind of pickles that make a meal a memory.',
     logoUrl: 'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=300&auto=format&fit=crop&q=80',
     coverImageUrl: 'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=1600&auto=format&fit=crop&q=80',
-    area: 'Banashankari',
-    line1: 'BDA Complex, Banashankari 2nd Stage',
-    postalCode: '560070',
-    latitude: 12.9279,
-    longitude: 77.5474,
+    area: 'Sri Nagar Colony',
+    city: 'Guntur',
+    line1: 'Sri Nagar Colony, Guntur',
+    postalCode: '522006',
+    latitude: 16.2950,
+    longitude: 80.4470,
     categories: [
       { slug: 'andhra-meals', name: 'Andhra Meals' },
       { slug: 'veg-curries', name: 'Veg Curries' },
@@ -729,8 +737,8 @@ async function seedCuisine(c: CuisineSeed, brandId: string, adminPass: string, k
       restaurantId: restaurant.id,
       name: `${c.name} — ${c.area}`,
       line1: c.line1,
-      city: 'Bengaluru',
-      state: 'KA',
+      city: c.city,
+      state: 'AP',
       postalCode: c.postalCode,
       country: 'IN',
       latitude: c.latitude,
@@ -746,8 +754,8 @@ async function seedCuisine(c: CuisineSeed, brandId: string, adminPass: string, k
       name: `${c.name} — ${c.area}`,
       slug: branchSlug,
       line1: c.line1,
-      city: 'Bengaluru',
-      state: 'KA',
+      city: c.city,
+      state: 'AP',
       postalCode: c.postalCode,
       country: 'IN',
       latitude: c.latitude,
@@ -909,8 +917,8 @@ async function seedCuisine(c: CuisineSeed, brandId: string, adminPass: string, k
         create: {
           label: 'Home',
           line1: `${c.area} home address`,
-          city: 'Bengaluru',
-          state: 'KA',
+          city: c.city,
+          state: 'AP',
           postalCode: c.postalCode,
           latitude: c.latitude + 0.005,
           longitude: c.longitude + 0.005,
@@ -931,8 +939,8 @@ async function seedCuisine(c: CuisineSeed, brandId: string, adminPass: string, k
         create: {
           label: 'Office',
           line1: `${c.area} office address`,
-          city: 'Bengaluru',
-          state: 'KA',
+          city: c.city,
+          state: 'AP',
           postalCode: c.postalCode,
           latitude: c.latitude - 0.005,
           longitude: c.longitude - 0.005,
@@ -952,8 +960,8 @@ async function seedCuisine(c: CuisineSeed, brandId: string, adminPass: string, k
         userId: customer1.id,
         label: 'Home',
         line1: `${c.area} home address`,
-        city: 'Bengaluru',
-        state: 'KA',
+        city: c.city,
+        state: 'AP',
         postalCode: c.postalCode,
         latitude: c.latitude + 0.005,
         longitude: c.longitude + 0.005,
@@ -974,11 +982,11 @@ async function seedCuisine(c: CuisineSeed, brandId: string, adminPass: string, k
     riderUserIds.push(riderUser.id);
 
     const vehicleType = r === 0 ? 'BIKE' : r === 1 ? 'SCOOTER' : 'BIKE';
-    // Build a plausible KA-registered vehicle number, e.g. "KA-01-AB-1234"
+    // Build a plausible AP-registered vehicle number, e.g. "AP-16-AB-1234"
     const seriesSeed = digitsOf(`${c.slug}-rider${r}`, 4);
     const letters = ['AB', 'CD', 'EF', 'GH', 'JK', 'LM', 'NP'];
     const letter = letters[(r + c.slug.length) % letters.length];
-    const vehicleNumber = `KA-01-${letter}-${seriesSeed}`;
+    const vehicleNumber = `AP-16-${letter}-${seriesSeed}`;
 
     const profile = await prisma.riderProfile.upsert({
       where: { userId: riderUser.id },

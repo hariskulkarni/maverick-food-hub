@@ -1,5 +1,5 @@
 /**
- * Seed: one branch ("Saffron & Smoke — Indiranagar"), full menu, an admin,
+ * Seed: one branch ("Combo Nation — Benz Circle"), full menu, an admin,
  * a kitchen user, two riders, two customers, and a handful of historic orders
  * so the dashboard isn't empty on first run.
  */
@@ -47,7 +47,7 @@ async function main() {
     }
   });
 
-  // ── Restaurant owner (Saffron & Smoke) ────────────────────────────────────
+  // ── Restaurant owner (Combo Nation) ────────────────────────────────────
   const admin = await prisma.user.upsert({
     where: { email: 'admin@restaurant.local' },
     update: { passwordHash: adminPass, role: Role.ADMIN },
@@ -65,7 +65,7 @@ async function main() {
     update: { status: RestaurantStatus.ACTIVE, approvedAt: new Date() },
     create: {
       slug: 'saffron-smoke',
-      name: 'Saffron & Smoke',
+      name: 'Combo Nation',
       tagline: 'Modern kitchen, classic cravings.',
       description: 'Slow-cooked biryanis, charcoal-grilled tikkas, and the kind of comfort food that turns a Tuesday around.',
       cuisine: 'Indian',
@@ -91,17 +91,17 @@ async function main() {
     update: { restaurantId: restaurant.id },
     create: {
       restaurantId: restaurant.id,
-      name: 'Saffron & Smoke — Indiranagar',
+      name: 'Combo Nation — Brodipet',
       slug: 'saffron-smoke-indiranagar',
       phone: '+918001234567',
-      email: 'indiranagar@saffronsmoke.local',
-      line1: '12, 100 Feet Road',
-      city: 'Bengaluru',
-      state: 'KA',
-      postalCode: '560038',
+      email: 'benzcircle@saffronsmoke.local',
+      line1: '12, Brodipet Main Road',
+      city: 'Guntur',
+      state: 'AP',
+      postalCode: '522002',
       country: 'IN',
-      latitude: 12.9784,
-      longitude: 77.6408,
+      latitude: 16.3010,
+      longitude: 80.4360,
       serviceRadiusKm: 8,
       taxRatePct: 5.0,
       baseDeliveryFee: 40 as any,
@@ -188,8 +188,8 @@ async function main() {
       name: 'Vikas T.',
       phone: '+919876500099',
       vehicleType: 'BIKE',
-      vehicleNumber: 'KA-01-XY-9999',
-      preferredZone: 'Indiranagar / HSR',
+      vehicleNumber: 'AP-16-XY-9999',
+      preferredZone: 'Brodipet / Arundelpet',
       notes: 'Available 7am–11pm.'
     }
   });
@@ -205,12 +205,12 @@ async function main() {
         create: {
           label: 'Home',
           line1: '402, Lotus Apartments',
-          line2: '5th Cross, Indiranagar',
-          city: 'Bengaluru',
-          state: 'KA',
-          postalCode: '560038',
-          latitude: 12.9756,
-          longitude: 77.6385,
+          line2: '5th Cross, Brodipet',
+          city: 'Guntur',
+          state: 'AP',
+          postalCode: '522002',
+          latitude: 16.3025,
+          longitude: 80.4375,
           isDefault: true
         }
       }
@@ -227,12 +227,12 @@ async function main() {
       addresses: {
         create: {
           label: 'Office',
-          line1: 'Building B, RMZ Ecospace',
-          city: 'Bengaluru',
-          state: 'KA',
-          postalCode: '560103',
-          latitude: 12.9279,
-          longitude: 77.6271,
+          line1: 'Building B, Arundelpet Tech Park',
+          city: 'Guntur',
+          state: 'AP',
+          postalCode: '522002',
+          latitude: 16.3055,
+          longitude: 80.4425,
           isDefault: true
         }
       }
@@ -254,12 +254,12 @@ async function main() {
   await prisma.riderProfile.upsert({
     where: { userId: riderUser1.id },
     update: { approvedAt: new Date() },
-    create: { userId: riderUser1.id, branchId: branch.id, vehicleType: 'BIKE', vehicleNumber: 'KA-01-AB-1234', isOnline: true, approvedAt: new Date() }
+    create: { userId: riderUser1.id, branchId: branch.id, vehicleType: 'BIKE', vehicleNumber: 'AP-16-AB-1234', isOnline: true, approvedAt: new Date() }
   });
   await prisma.riderProfile.upsert({
     where: { userId: riderUser2.id },
     update: { approvedAt: new Date() },
-    create: { userId: riderUser2.id, branchId: branch.id, vehicleType: 'BIKE', vehicleNumber: 'KA-01-CD-5678', isOnline: true, approvedAt: new Date() }
+    create: { userId: riderUser2.id, branchId: branch.id, vehicleType: 'BIKE', vehicleNumber: 'AP-16-CD-5678', isOnline: true, approvedAt: new Date() }
   });
 
   // wallet + loyalty for customers
@@ -377,7 +377,7 @@ async function main() {
     }
   });
 
-  // ── Sample orders for Saffron & Smoke (idempotent via known order codes) ──
+  // ── Sample orders for Combo Nation (idempotent via known order codes) ──
   // Re-running the seed will skip any code that already exists.
   const customer1Address = await prisma.address.findFirstOrThrow({ where: { userId: customer1.id } });
 
@@ -496,8 +496,8 @@ async function main() {
         data: {
           riderId: sandeepProfile.id,
           orderId: ofd.id,
-          lat: 12.9748,
-          lng: 77.6378,
+          lat: 16.3018,
+          lng: 80.4368,
           speedKph: 18,
           createdAt: new Date(Date.now() - 30 * 1000)
         }
@@ -618,7 +618,7 @@ async function main() {
     });
   }
 
-  // ── QR codes for Saffron & Smoke ─────────────────────────────────────────
+  // ── QR codes for Combo Nation ─────────────────────────────────────────
   await prisma.qrCode.upsert({
     where: { code: 'saffron-restaurant' },
     update: {},
@@ -655,14 +655,14 @@ async function main() {
     create: { userId: customer1.id, menuItemId: biryani.id }
   });
 
-  // ── Bistro Cinque (third restaurant, ACTIVE, Italian) ────────────────────
+  // ── Wrap n Roll (third restaurant, ACTIVE, Italian) ────────────────────
   const owner3 = await prisma.user.upsert({
     where: { email: 'admin@bistro-cinque.local' },
     update: { passwordHash: adminPass, role: Role.ADMIN },
     create: {
       email: 'admin@bistro-cinque.local',
       role: Role.ADMIN,
-      name: 'Luca (Bistro Cinque)',
+      name: 'Luca (Wrap n Roll)',
       passwordHash: adminPass
     }
   });
@@ -671,7 +671,7 @@ async function main() {
     update: { status: RestaurantStatus.ACTIVE, approvedAt: new Date() },
     create: {
       slug: 'bistro-cinque',
-      name: 'Bistro Cinque',
+      name: 'Wrap n Roll',
       tagline: 'Wood-fired pies, hand-rolled pasta, Italian comfort.',
       description: 'A neighborhood Italian kitchen — sourdough pizzas, slow-braised ragùs, and tiramisu the way nonna intended.',
       cuisine: 'Italian',
@@ -695,17 +695,17 @@ async function main() {
     update: { restaurantId: restaurant3.id },
     create: {
       restaurantId: restaurant3.id,
-      name: 'Bistro Cinque — Koramangala',
+      name: 'Wrap n Roll — AT Agraharam',
       slug: 'bistro-cinque-koramangala',
       phone: '+918009999500',
-      email: 'koramangala@bistro-cinque.local',
-      line1: '5th Block, 80 Feet Road',
-      city: 'Bengaluru',
-      state: 'KA',
-      postalCode: '560095',
+      email: 'beachroad@bistro-cinque.local',
+      line1: 'AT Agraharam Main Road',
+      city: 'Guntur',
+      state: 'AP',
+      postalCode: '522004',
       country: 'IN',
-      latitude: 12.9352,
-      longitude: 77.6245,
+      latitude: 16.3000,
+      longitude: 80.4320,
       serviceRadiusKm: 7,
       taxRatePct: 5.0,
       baseDeliveryFee: 40 as any,
@@ -799,21 +799,21 @@ async function main() {
 
   console.log('✓ Seed complete.');
   console.log('  Super admin:    super@platform.local / Super@12345  → /platform');
-  console.log('  Restaurant 1:   admin@restaurant.local / Admin@12345  → /admin   (Saffron & Smoke, ACTIVE, Indian — 17 items + 1 combo)');
+  console.log('  Restaurant 1:   admin@restaurant.local / Admin@12345  → /admin   (Combo Nation, ACTIVE, Indian — 17 items + 1 combo)');
   console.log('  Restaurant 2:   owner@spice-route.local / Admin@12345 → /admin   (Spice Route, PENDING — approve at /platform)');
-  console.log('  Restaurant 3:   admin@bistro-cinque.local / Admin@12345 → /admin (Bistro Cinque, ACTIVE, Italian — 12 items, Koramangala branch)');
+  console.log('  Restaurant 3:   admin@bistro-cinque.local / Admin@12345 → /admin (Wrap n Roll, ACTIVE, Italian — 12 items, AT Agraharam branch)');
   console.log('  Kitchen:        kitchen@restaurant.local / Kitchen@12345 → /kitchen');
-  console.log('  Customer:       +919876500001  (Priya — favorites Saffron & Smoke + Hyderabadi Biryani)');
+  console.log('  Customer:       +919876500001  (Priya — favorites Combo Nation + Hyderabadi Biryani)');
   console.log('  Customer:       +919876500002  (Rahul)');
   console.log('  Rider:          +919876500011  (Sandeep K. — has active OFD delivery + 2 pending COD reconciliations = ₹450)');
   console.log('  Rider:          +919876500012  (Imran S.)');
-  console.log('  Sample orders:  5 on Saffron & Smoke (codes ORD-SEED01..05) + 1 READY order ORD-SEED06 with open NO_RIDER_AVAILABLE escalation');
+  console.log('  Sample orders:  5 on Combo Nation (codes ORD-SEED01..05) + 1 READY order ORD-SEED06 with open NO_RIDER_AVAILABLE escalation');
   console.log('                  PAYMENT_PENDING / DELIVERED×2 (COD) / ACCEPTED / OUT_FOR_DELIVERY (rider claimed, GPS ping 30s ago)');
   console.log('  Escalations:    1 MEDIUM ORDER_NOT_ACCEPTED + 1 HIGH NO_RIDER_AVAILABLE — both OPEN');
   console.log('  Support ticket: 1 OPEN ORDER_DELAY (HIGH) from Priya');
   console.log('  COD pending:    ₹250 + ₹200 = ₹450 across Sandeep’s 2 delivered COD orders');
   console.log('  QR codes:       saffron-restaurant (RESTAURANT) + saffron-table-t12 (TABLE T-12)');
-  console.log('  Favorites:      Priya → Saffron & Smoke + Hyderabadi Chicken Biryani');
+  console.log('  Favorites:      Priya → Combo Nation + Hyderabadi Chicken Biryani');
   console.log('  Payout rule:    Default v1 (active)');
   console.log('  Coupon:         WELCOME50 (₹50 off, min order ₹250)');
 }

@@ -54,8 +54,8 @@ interface SearchHit {
   };
 }
 
-// Bengaluru as a sensible default — most of the platform's launch users.
-const DEFAULT_CENTER = { lat: 12.9716, lng: 77.5946 };
+// Guntur as a sensible default — most of the platform's launch users.
+const DEFAULT_CENTER = { lat: 16.3067, lng: 80.4365 };
 
 function pinIcon() {
   return L.divIcon({

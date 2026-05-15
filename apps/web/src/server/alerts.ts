@@ -134,7 +134,7 @@ export function formatAvailabilityEmail(ctx: MenuToggleAlertCtx): { subject: str
       ${row('Timestamp', ctx.timestamp.toISOString())}
     </table>
     ${ctx.detailUrl ? `<p style="margin-top:18px;"><a href="${escapeAttr(ctx.detailUrl)}" style="display:inline-block;padding:10px 16px;background:#b34a00;color:#fff;text-decoration:none;border-radius:6px;font-weight:500;">View in admin →</a></p>` : ''}
-    <p style="margin-top:18px;color:#888;font-size:11px;">You are receiving this because you administer this restaurant or are a Maverick Hospitality Super Admin. Repeated toggles within a ${DEBOUNCE_WINDOW_MIN}-minute window are bundled into a single alert to keep your inbox quiet.</p>
+    <p style="margin-top:18px;color:#888;font-size:11px;">You are receiving this because you administer this restaurant or are a Reshee Tech Super Admin. Repeated toggles within a ${DEBOUNCE_WINDOW_MIN}-minute window are bundled into a single alert to keep your inbox quiet.</p>
   </div>
 </div>`.trim();
 

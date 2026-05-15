@@ -54,13 +54,17 @@ export default async function CustomerLayout({ children }: { children: React.Rea
 
         {/* ─────────────── Footer (hidden on mobile, replaced by bottom nav) ─────────────── */}
         <footer role="contentinfo" className="hidden md:block border-t bg-muted/30 mt-12">
-          <div className="container grid gap-10 py-14 md:grid-cols-4">
+          <div className="container grid gap-10 py-14 lg:grid-cols-12">
             {/* Brand column */}
-            <div className="md:col-span-1">
+            <div className="lg:col-span-4">
               <BrandMark className="text-xl" />
               <p className="mt-3 text-sm text-muted-foreground max-w-xs">{brand.tagline}</p>
+              <p className="mt-3 text-sm text-muted-foreground max-w-xs">
+                A two-sided food marketplace — customers order, restaurants cook, our riders
+                deliver. Built and operated from Andhra Pradesh, India.
+              </p>
 
-              {/* Currency selector placeholder */}
+              {/* Currency selector */}
               <div className="mt-5">
                 <label className="text-xs font-medium text-muted-foreground" htmlFor="footer-currency">
                   Currency
@@ -100,38 +104,51 @@ export default async function CustomerLayout({ children }: { children: React.Rea
               </div>
             </div>
 
-            {/* Discover */}
-            <div className="text-sm">
-              <p className="font-semibold mb-3">Discover</p>
-              <ul className="space-y-2 text-muted-foreground">
-                <li><Link href="/restaurants" className="hover:text-foreground">All restaurants</Link></li>
-                <li><Link href="/restaurants?cuisine=Biryani" className="hover:text-foreground">Biryani</Link></li>
-                <li><Link href="/restaurants?cuisine=Pizza" className="hover:text-foreground">Pizza</Link></li>
-                <li><Link href="/track" className="hover:text-foreground">Track an order</Link></li>
-                <li><Link href="/orders" className="hover:text-foreground">My orders</Link></li>
-              </ul>
-            </div>
+            {/* Link columns */}
+            <div className="grid grid-cols-2 gap-10 lg:col-span-8 lg:grid-cols-4">
+              {/* Company */}
+              <div className="text-sm">
+                <p className="font-semibold mb-3">Company</p>
+                <ul className="space-y-2 text-muted-foreground">
+                  <li><Link href="/about" className="hover:text-foreground">About</Link></li>
+                  <li><Link href="/careers" className="hover:text-foreground">Careers</Link></li>
+                  <li><Link href="/contact" className="hover:text-foreground">Contact</Link></li>
+                  <li><a href="#" className="hover:text-foreground">Blog</a></li>
+                </ul>
+              </div>
 
-            {/* For partners */}
-            <div className="text-sm">
-              <p className="font-semibold mb-3">For partners</p>
-              <ul className="space-y-2 text-muted-foreground">
-                <li><Link href="/signup/restaurant" className="hover:text-foreground">List your restaurant</Link></li>
-                <li><Link href="/signup/rider" className="hover:text-foreground">Become a rider</Link></li>
-                <li><Link href="/#how-it-works" className="hover:text-foreground">How it works</Link></li>
-                <li><Link href="/#faq" className="hover:text-foreground">Partner FAQ</Link></li>
-              </ul>
-            </div>
+              {/* For partners */}
+              <div className="text-sm">
+                <p className="font-semibold mb-3">For partners</p>
+                <ul className="space-y-2 text-muted-foreground">
+                  <li><Link href="/signup/restaurant" className="hover:text-foreground">Add your restaurant</Link></li>
+                  <li><Link href="/signup/rider" className="hover:text-foreground">Become a rider</Link></li>
+                  <li><Link href="/#how-it-works" className="hover:text-foreground">How it works</Link></li>
+                  <li><Link href="/login?role=staff" className="hover:text-foreground">Restaurant login</Link></li>
+                </ul>
+              </div>
 
-            {/* Company */}
-            <div className="text-sm">
-              <p className="font-semibold mb-3">Company</p>
-              <ul className="space-y-2 text-muted-foreground">
-                <li><Link href="/about" className="hover:text-foreground">About</Link></li>
-                <li><Link href="/contact" className="hover:text-foreground">Contact</Link></li>
-                <li><Link href="/privacy" className="hover:text-foreground">Privacy</Link></li>
-                <li><Link href="/terms" className="hover:text-foreground">Terms</Link></li>
-              </ul>
+              {/* Support */}
+              <div className="text-sm">
+                <p className="font-semibold mb-3">Support</p>
+                <ul className="space-y-2 text-muted-foreground">
+                  <li><Link href="/faq" className="hover:text-foreground">Help &amp; FAQ</Link></li>
+                  <li><Link href="/contact" className="hover:text-foreground">Contact us</Link></li>
+                  <li><Link href="/track" className="hover:text-foreground">Track your order</Link></li>
+                  <li><Link href="/orders" className="hover:text-foreground">My orders</Link></li>
+                </ul>
+              </div>
+
+              {/* Legal */}
+              <div className="text-sm">
+                <p className="font-semibold mb-3">Legal</p>
+                <ul className="space-y-2 text-muted-foreground">
+                  <li><Link href="/privacy" className="hover:text-foreground">Privacy Policy</Link></li>
+                  <li><Link href="/terms" className="hover:text-foreground">Terms of Service</Link></li>
+                  <li><Link href="/refunds" className="hover:text-foreground">Refund &amp; Cancellation</Link></li>
+                  <li><Link href="/cookies" className="hover:text-foreground">Cookie Policy</Link></li>
+                </ul>
+              </div>
             </div>
           </div>
 

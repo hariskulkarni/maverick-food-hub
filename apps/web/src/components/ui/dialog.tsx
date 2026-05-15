@@ -48,9 +48,11 @@ export const DialogContent = React.forwardRef<
         'inset-x-0 bottom-0 w-full max-h-[90dvh] overflow-y-auto rounded-t-2xl p-5 pb-7 safe-bottom',
         'data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=open]:duration-200',
         'data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=closed]:duration-150',
-        // md+ centered modal
+        // md+ centered modal — keep a viewport-bounded height + internal scroll
+        // so tall dialogs (challenge editor, feedback form) never overflow the
+        // screen with their top/bottom cut off.
         'md:inset-x-auto md:bottom-auto md:left-[50%] md:top-[50%] md:w-full md:max-w-lg md:-translate-x-[50%] md:-translate-y-[50%]',
-        'md:max-h-none md:overflow-visible md:rounded-xl md:p-6 md:pb-6',
+        'md:max-h-[85vh] md:overflow-y-auto md:rounded-xl md:p-6 md:pb-6',
         'md:data-[state=open]:slide-in-from-bottom-0 md:animate-slide-up',
         className
       )}

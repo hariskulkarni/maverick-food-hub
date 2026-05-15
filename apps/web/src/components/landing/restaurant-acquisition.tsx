@@ -3,7 +3,7 @@ import { Wallet, Bike, BarChart3, ArrowRight, type LucideIcon } from 'lucide-rea
 import { Card, CardContent } from '@/components/ui/card';
 
 /**
- * "Why Maverick's" value-prop cards for restaurant owners.
+ * "Why Reshee Tech" value-prop cards for restaurant owners.
  *
  * Rendered as a three-up row on desktop, single column on mobile. Each card is
  * an icon tile + headline + body + a small inline "Learn more" anchor link to

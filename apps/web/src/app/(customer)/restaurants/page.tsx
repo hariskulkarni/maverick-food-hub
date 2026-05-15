@@ -73,10 +73,13 @@ export default async function RestaurantsListPage({
         <div className="text-xs font-semibold uppercase tracking-wider text-primary">All restaurants</div>
         <h1 className="display text-xl md:text-2xl lg:text-3xl font-semibold">Pick what you&apos;re hungry for</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Showing <span className="font-semibold text-foreground">{filtered.length}</span>{' '}
-          of {all.length} {all.length === 1 ? 'restaurant' : 'restaurants'}
-          {selectedCuisine ? <> in <span className="font-semibold text-foreground">{selectedCuisine}</span></> : null}
-          {' '}· sorted by{' '}
+          {selectedCuisine ? (
+            <>
+              <span className="font-semibold text-foreground">{selectedCuisine}</span>
+              {' · '}
+            </>
+          ) : null}
+          Sorted by{' '}
           <span className="font-semibold text-foreground">{sort === 'name' ? 'name' : 'newest'}</span>
         </p>
       </header>

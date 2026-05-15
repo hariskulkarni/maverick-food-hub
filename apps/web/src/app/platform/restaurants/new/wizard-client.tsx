@@ -530,7 +530,7 @@ function IdentityStep({ state, dispatch, issues }: { state: IdentityState; dispa
 
       <div className="md:col-span-2">
         <Label>Tagline</Label>
-        <Input value={state.tagline} onChange={(e) => dispatch({ type: 'identity', patch: { tagline: e.target.value } })} placeholder="Authentic wood-fired pizzas in Koramangala" />
+        <Input value={state.tagline} onChange={(e) => dispatch({ type: 'identity', patch: { tagline: e.target.value } })} placeholder="Authentic wood-fired pizzas in Benz Circle" />
       </div>
 
       <div className="md:col-span-2">
@@ -693,20 +693,20 @@ function BranchStep({ state, dispatch, issues }: { state: BranchState; dispatch:
 
       <div className="md:col-span-2">
         <Label>Address line 1 *</Label>
-        <Input value={state.line1} onChange={(e) => dispatch({ type: 'branch', patch: { line1: e.target.value } })} placeholder="123 80ft Road" />
+        <Input value={state.line1} onChange={(e) => dispatch({ type: 'branch', patch: { line1: e.target.value } })} placeholder="123 MG Road, Benz Circle" />
       </div>
 
       <div>
         <Label>City *</Label>
-        <Input value={state.city} onChange={(e) => dispatch({ type: 'branch', patch: { city: e.target.value } })} placeholder="Bengaluru" />
+        <Input value={state.city} onChange={(e) => dispatch({ type: 'branch', patch: { city: e.target.value } })} placeholder="Guntur" />
       </div>
       <div>
         <Label>State</Label>
-        <Input value={state.state} onChange={(e) => dispatch({ type: 'branch', patch: { state: e.target.value } })} placeholder="Karnataka" />
+        <Input value={state.state} onChange={(e) => dispatch({ type: 'branch', patch: { state: e.target.value } })} placeholder="Andhra Pradesh" />
       </div>
       <div>
         <Label>Postal code *</Label>
-        <Input value={state.postalCode} onChange={(e) => dispatch({ type: 'branch', patch: { postalCode: e.target.value } })} placeholder="560034" />
+        <Input value={state.postalCode} onChange={(e) => dispatch({ type: 'branch', patch: { postalCode: e.target.value } })} placeholder="522002" />
       </div>
       <div>
         <Label>Country</Label>
@@ -715,11 +715,11 @@ function BranchStep({ state, dispatch, issues }: { state: BranchState; dispatch:
 
       <div>
         <Label>Latitude *</Label>
-        <Input value={state.latitude} onChange={(e) => dispatch({ type: 'branch', patch: { latitude: e.target.value } })} placeholder="12.9352" inputMode="decimal" />
+        <Input value={state.latitude} onChange={(e) => dispatch({ type: 'branch', patch: { latitude: e.target.value } })} placeholder="16.3067" inputMode="decimal" />
       </div>
       <div>
         <Label>Longitude *</Label>
-        <Input value={state.longitude} onChange={(e) => dispatch({ type: 'branch', patch: { longitude: e.target.value } })} placeholder="77.6245" inputMode="decimal" />
+        <Input value={state.longitude} onChange={(e) => dispatch({ type: 'branch', patch: { longitude: e.target.value } })} placeholder="80.4365" inputMode="decimal" />
       </div>
       <div className="md:col-span-2 text-xs text-muted-foreground -mt-3">
         Tip: paste a Google Maps pin to populate both. A visual picker is on the roadmap.
@@ -871,7 +871,7 @@ function RidersStep({ rows, dispatch, issues }: { rows: RiderRow[]; dispatch: Re
               </div>
               <div>
                 <Label>Vehicle number</Label>
-                <Input value={row.vehicleNumber} onChange={(e) => dispatch({ type: 'rider:update', id: row.id, patch: { vehicleNumber: e.target.value } })} placeholder="KA01AB1234" />
+                <Input value={row.vehicleNumber} onChange={(e) => dispatch({ type: 'rider:update', id: row.id, patch: { vehicleNumber: e.target.value } })} placeholder="AP16AB1234" />
               </div>
               <div className="self-end">
                 <Button variant="ghost" size="icon" onClick={() => dispatch({ type: 'rider:remove', id: row.id })}>

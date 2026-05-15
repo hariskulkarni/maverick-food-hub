@@ -395,6 +395,30 @@ export const api = {
     return res.json();
   },
 
+  /**
+   * Multipart upload of the rider's profile photo. Updates User.avatarUrl
+   * server-side and returns the saved URL (relative for local storage,
+   * absolute for S3).
+   */
+  uploadAvatar: async (fileUri: string): Promise<{ avatarUrl: string }> => {
+    const form = new FormData();
+    // React Native's FormData accepts this {uri,name,type} shape for file parts.
+    form.append('photo', { uri: fileUri, name: 'avatar.jpg', type: 'image/jpeg' } as any);
+    const headers: Record<string, string> = {};
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    // No Content-Type header — fetch sets the multipart boundary itself.
+    const res = await fetch(`${API_BASE}/api/rider/avatar`, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new ApiError(text || `Avatar upload failed (${res.status})`, res.status, text);
+    }
+    return res.json();
+  },
+
   // ── Rider ⇄ staff messaging ───────────────────────────────────────────────
   /** All of the rider's conversations (with their restaurant admin and the platform team). */
   conversations: () =>

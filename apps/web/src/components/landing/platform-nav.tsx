@@ -68,7 +68,7 @@ function MarketingNav({
   return (
     // Mobile compresses py-2; desktop keeps the original h-16 rhythm.
     <div className="container flex items-center gap-4 h-12 py-2 md:h-16 md:py-3">
-      <Link href="/" className="flex items-center gap-2" aria-label="Maverick's Food Hub home">
+      <Link href="/" className="flex items-center gap-2" aria-label="Reshee Tech home">
         {/* Logo: smaller on mobile (text-base) so the slim header reads as
             chrome and not as a hero. */}
         <BrandMark className="text-base md:text-xl" />
@@ -84,8 +84,8 @@ function MarketingNav({
         <Link className="text-muted-foreground hover:text-foreground transition-colors" href="/signup/rider">
           Become a rider
         </Link>
-        <Link className="text-muted-foreground hover:text-foreground transition-colors" href="/#pricing">
-          Pricing
+        <Link className="text-muted-foreground hover:text-foreground transition-colors" href="/faq">
+          Help &amp; FAQ
         </Link>
       </nav>
 
@@ -156,8 +156,8 @@ function MarketingMobileSheet({ isAuthed }: { isAuthed: boolean }) {
             <Link href="/signup/rider" className={linkClass} onClick={close}>
               Become a rider
             </Link>
-            <Link href="/#pricing" className={linkClass} onClick={close}>
-              Pricing
+            <Link href="/faq" className={linkClass} onClick={close}>
+              Help &amp; FAQ
             </Link>
           </nav>
 
@@ -219,7 +219,7 @@ function TenantNav({
   return (
     // Slimmer mobile header (h-12, py-2). Desktop keeps h-16.
     <div className="container flex items-center gap-4 h-12 py-2 md:h-16 md:py-3">
-      <Link href="/" className="flex items-center gap-2" aria-label="Maverick's Food Hub home">
+      <Link href="/" className="flex items-center gap-2" aria-label="Reshee Tech home">
         <BrandMark className="text-base md:text-xl" />
       </Link>
 

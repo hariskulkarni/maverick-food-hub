@@ -2,7 +2,7 @@ import { brand } from '@/lib/brand';
 import { cn } from '@/lib/utils';
 
 /**
- * Platform wordmark for Maverick's Food Hub.
+ * Platform wordmark for Reshee Tech.
  *
  * Splits `brand.name` so the first token renders with the saffron gradient
  * and the remaining tokens render as muted-foreground at medium weight. This

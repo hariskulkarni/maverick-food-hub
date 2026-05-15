@@ -22,33 +22,35 @@ import {
   KycDocumentType,
   OrderStatus,
   PaymentMethod,
+  Role,
 } from '@prisma/client';
+import argon2 from 'argon2';
 
 const prisma = new PrismaClient();
 
-// Bengaluru anchor points — matches the sample tenant's city.
+// Guntur, Andhra Pradesh anchor points — matches the sample tenant's areas.
 const SURGE_ZONES = [
   {
-    name: 'Indiranagar',
+    name: 'Guntur Brodipet',
     label: 'Dinner rush',
-    centerLat: 12.9719,
-    centerLng: 77.6412,
+    centerLat: 16.3010,
+    centerLng: 80.4360,
     radiusKm: 2.5,
     multiplier: 1.6,
   },
   {
-    name: 'Koramangala',
+    name: 'Guntur Arundelpet',
     label: 'Busy area',
-    centerLat: 12.9352,
-    centerLng: 77.6245,
+    centerLat: 16.3050,
+    centerLng: 80.4420,
     radiusKm: 3.0,
     multiplier: 1.8,
   },
   {
-    name: 'HSR Layout',
+    name: 'Guntur Lakshmipuram',
     label: 'High demand',
-    centerLat: 12.9116,
-    centerLng: 77.6473,
+    centerLat: 16.3120,
+    centerLng: 80.4290,
     radiusKm: 2.0,
     multiplier: 1.4,
   },
@@ -396,11 +398,11 @@ async function main() {
     select: { id: true, slug: true, name: true },
   });
 
-  // Bengaluru drop-point spread: lat ~12.90–12.99 N, lng ~77.55–77.70 E.
-  const POOL_LAT_MIN = 12.9;
-  const POOL_LAT_MAX = 12.99;
-  const POOL_LNG_MIN = 77.55;
-  const POOL_LNG_MAX = 77.7;
+  // Guntur, Andhra Pradesh drop-point spread: lat ~16.28–16.34 N, lng ~80.41–80.48 E.
+  const POOL_LAT_MIN = 16.28;
+  const POOL_LAT_MAX = 16.34;
+  const POOL_LNG_MIN = 80.41;
+  const POOL_LNG_MAX = 80.48;
   const lerp = (min: number, max: number, t: number) =>
     +(min + (max - min) * t).toFixed(6);
 
@@ -439,7 +441,7 @@ async function main() {
     for (let n = 1; n <= 4; n++) {
       const code = `POOL-${slugTag}-${n}`;
 
-      // Vary the drop point deterministically across the Bengaluru box.
+      // Vary the drop point deterministically across the Guntur box.
       const latT = ((n * 17 + restaurant.slug.length * 7) % 100) / 100;
       const lngT = ((n * 31 + restaurant.slug.length * 13) % 100) / 100;
       const address = await prisma.address.create({
@@ -447,9 +449,9 @@ async function main() {
           userId: customer.id,
           label: 'Pool Drop',
           line1: `Pool delivery point ${n} for ${restaurant.name}`,
-          city: 'Bengaluru',
-          state: 'KA',
-          postalCode: '560001',
+          city: 'Guntur',
+          state: 'AP',
+          postalCode: '522002',
           latitude: lerp(POOL_LAT_MIN, POOL_LAT_MAX, latT),
           longitude: lerp(POOL_LNG_MIN, POOL_LNG_MAX, lngT),
           isDefault: false,
@@ -506,6 +508,66 @@ async function main() {
   console.log(
     `  ✓ ${poolOrders} live pool orders (READY, unassigned) across ${activeRestaurants.length} restaurants`,
   );
+
+  // ── Super-admin account ────────────────────────────────────────────────────
+  // The cuisines seed creates per-restaurant admins + kitchen users but no
+  // platform super-admin. Guarantee one here so the demo is self-contained.
+  const superPass = await argon2.hash('Super@12345');
+  await prisma.user.upsert({
+    where: { email: 'super@platform.local' },
+    update: { role: Role.SUPER_ADMIN, passwordHash: superPass },
+    create: {
+      email: 'super@platform.local',
+      name: 'Platform Super Admin',
+      role: Role.SUPER_ADMIN,
+      passwordHash: superPass,
+    },
+  });
+  console.log('  ✓ super-admin: super@platform.local / Super@12345');
+
+  // ── Print the full demo-account directory ──────────────────────────────────
+  // Queries the DB so the credentials list always reflects reality. Staff
+  // (admin/kitchen) come from RestaurantUser memberships; riders + customers
+  // are listed flat — the cuisines seed names them "<Restaurant> Rider N" /
+  // "<Restaurant> Patron A" so they stay grouped-readable.
+  console.log('\n────────────────────────────────────────────────────────');
+  console.log(' DEMO ACCOUNTS');
+  console.log('────────────────────────────────────────────────────────');
+  console.log(' SUPER ADMIN   super@platform.local   / Super@12345');
+  console.log('');
+  const restaurantsForTable = await prisma.restaurant.findMany({
+    orderBy: { createdAt: 'asc' },
+    select: {
+      name: true,
+      members: {
+        select: { role: true, user: { select: { name: true, email: true } } },
+      },
+    },
+  });
+  for (const r of restaurantsForTable) {
+    console.log(` ${r.name}`);
+    for (const m of r.members) {
+      if (!m.user.email) continue;
+      const pwd = m.role === 'KITCHEN' ? 'Kitchen@12345' : 'Admin@12345';
+      console.log(`   ${m.role.padEnd(8)} ${m.user.email}  / ${pwd}`);
+    }
+  }
+  const riders = await prisma.user.findMany({
+    where: { role: Role.RIDER, phone: { not: null } },
+    orderBy: { name: 'asc' },
+    select: { name: true, phone: true },
+  });
+  const customers = await prisma.user.findMany({
+    where: { role: Role.CUSTOMER, phone: { not: null } },
+    orderBy: { name: 'asc' },
+    select: { name: true, phone: true },
+  });
+  console.log(`\n RIDERS (${riders.length}) — phone + OTP, no password`);
+  for (const u of riders) console.log(`   ${u.phone}   ${u.name ?? ''}`);
+  console.log(`\n CUSTOMERS (${customers.length}) — phone + OTP, no password`);
+  for (const u of customers) console.log(`   ${u.phone}   ${u.name ?? ''}`);
+  console.log('\n With OTP_DEBUG_LOG=true the OTP is returned in the API response / PM2 logs.');
+  console.log('────────────────────────────────────────────────────────\n');
 
   console.log('Done.');
 }

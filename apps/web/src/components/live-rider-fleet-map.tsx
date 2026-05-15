@@ -61,7 +61,7 @@ interface Props {
   channel: string;
   /** initial set of rider positions to seed the map before SSE catches up */
   initial?: RiderPosition[];
-  /** Optional map center; default to the average of initial positions or Bangalore. */
+  /** Optional map center; default to the average of initial positions or Guntur. */
   center?: { lat: number; lng: number };
   /** Map height in px or any CSS length. */
   height?: string;
@@ -179,7 +179,7 @@ export function LiveRiderFleetMap({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const seedCenter = center
-      ?? (initial[0] ? { lat: initial[0].lat, lng: initial[0].lng } : { lat: 12.97, lng: 77.64 });
+      ?? (initial[0] ? { lat: initial[0].lat, lng: initial[0].lng } : { lat: 16.3067, lng: 80.4365 });
     const map = L.map(containerRef.current, {
       center: [seedCenter.lat, seedCenter.lng],
       zoom: 12,

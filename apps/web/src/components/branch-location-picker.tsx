@@ -48,7 +48,7 @@ const branchIcon = L.divIcon({
   iconAnchor: [19, 19]
 });
 
-const DEFAULT_CENTER = { lat: 12.97, lng: 77.64 }; // Bangalore
+const DEFAULT_CENTER = { lat: 16.3067, lng: 80.4365 }; // Guntur
 
 export function BranchLocationPicker({ initial, onChange, height = '360px' }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);

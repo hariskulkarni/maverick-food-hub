@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oak & Sizzler — Demo Accounts</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-base: #0f172a;
+            --bg-surface: rgba(30, 41, 59, 0.7);
+            --bg-surface-hover: rgba(51, 65, 85, 0.8);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-main: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.5);
+            --accent-success: #10b981;
+            --accent-warning: #f59e0b;
+            --border-light: rgba(255, 255, 255, 0.1);
+            --border-focus: rgba(59, 130, 246, 0.5);
+            
+            --font-sans: 'Inter', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            
+            --radius-sm: 8px;
+            --radius-md: 16px;
+            --radius-lg: 24px;
+            --radius-full: 9999px;
+            
+            --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.15), transparent 25%);
+            background-attachment: fixed;
+            min-height: 100vh;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: var(--bg-base); }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 3rem;
+        }
+
+        /* Header / Hero */
+        header {
+            text-align: center;
+            padding: 3rem 0 1rem;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        .brand-badge {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid var(--accent-main);
+            color: #93c5fd;
+            border-radius: var(--radius-full);
+            font-size: 0.875rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-bottom: 1.5rem;
+        }
+
+        h1 {
+            font-size: clamp(2.5rem, 5vw, 4rem);
+            font-weight: 800;
+            line-height: 1.2;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle {
+            font-size: 1.125rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Typography */
+        h2 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        h2 i { color: var(--accent-main); }
+
+        p { margin-bottom: 1rem; color: var(--text-secondary); }
+        strong { color: var(--text-primary); font-weight: 600; }
+
+        /* Code & Blocks */
+        code {
+            font-family: var(--font-mono);
+            background: rgba(0, 0, 0, 0.4);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.875em;
+            color: #bae6fd;
+            border: 1px solid var(--border-light);
+        }
+
+        pre {
+            background: #0b1120;
+            padding: 1.5rem;
+            border-radius: var(--radius-md);
+            overflow-x: auto;
+            border: 1px solid var(--border-light);
+            margin-bottom: 1.5rem;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+        }
+        
+        pre code {
+            background: transparent;
+            padding: 0;
+            border: none;
+            color: #e2e8f0;
+            font-size: 0.9em;
+        }
+
+        .comment { color: #64748b; }
+
+        blockquote {
+            background: linear-gradient(to right, rgba(59, 130, 246, 0.1), transparent);
+            border-left: 4px solid var(--accent-main);
+            padding: 1.5rem;
+            border-radius: 0 var(--radius-md) var(--radius-md) 0;
+            margin-bottom: 2rem;
+            font-size: 1.05rem;
+        }
+
+        /* Layout & Cards */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .glass-card {
+            background: var(--bg-surface);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-md);
+            padding: 1.5rem;
+            transition: var(--transition-smooth);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .glass-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--border-focus);
+            box-shadow: 0 10px 30px -10px var(--accent-glow);
+            background: var(--bg-surface-hover);
+        }
+
+        .glass-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 3px;
+            background: linear-gradient(90deg, var(--accent-main), var(--accent-success));
+            opacity: 0;
+            transition: var(--transition-smooth);
+        }
+
+        .glass-card:hover::before { opacity: 1; }
+
+        /* Credential Rows */
+        .cred-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-top: 1.25rem;
+        }
+
+        .cred-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            background: rgba(0,0,0,0.2);
+            border-radius: var(--radius-sm);
+            border: 1px solid transparent;
+            transition: var(--transition-smooth);
+        }
+
+        .cred-item:hover {
+            border-color: rgba(255,255,255,0.1);
+            background: rgba(0,0,0,0.3);
+        }
+
+        .cred-role {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .cred-role i {
+            width: 16px;
+            text-align: center;
+            color: #64748b;
+        }
+
+        .cred-value {
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Buttons & Actions */
+        .copy-btn {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: var(--text-secondary);
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            font-size: 0.8rem;
+        }
+
+        .copy-btn:hover {
+            background: rgba(59, 130, 246, 0.2);
+            color: #93c5fd;
+            border-color: var(--accent-main);
+        }
+
+        .copy-btn.success {
+            background: rgba(16, 185, 129, 0.2);
+            color: #6ee7b7;
+            border-color: var(--accent-success);
+        }
+
+        /* Tables (Responsive wrapper) */
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            background: var(--bg-surface);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-light);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th, td {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        th {
+            background: rgba(0, 0, 0, 0.2);
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+        }
+
+        tr:last-child td { border-bottom: none; }
+        
+        tbody tr { transition: background 0.2s; }
+        tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+
+        .method-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.35rem 0.75rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: var(--radius-full);
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        /* Search Filter */
+        .search-wrapper {
+            position: relative;
+            max-width: 400px;
+            margin-bottom: 2rem;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 1rem 1rem 1rem 3rem;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-full);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            font-size: 1rem;
+            transition: var(--transition-smooth);
+            backdrop-filter: blur(4px);
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-main);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 1.25rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+        }
+
+        /* Section dividers */
+        section {
+            scroll-margin-top: 2rem;
+            animation: fadeIn 1s ease-out forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        /* Notes list */
+        .notes-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .notes-list li {
+            background: rgba(0,0,0,0.2);
+            padding: 1.25rem 1.5rem;
+            border-radius: var(--radius-md);
+            border-left: 4px solid var(--accent-success);
+            display: flex;
+            gap: 1rem;
+        }
+
+        .notes-list li i {
+            color: var(--accent-success);
+            margin-top: 0.25rem;
+        }
+
+        /* Tags */
+        .tag {
+            font-size: 0.75rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            background: rgba(245, 158, 11, 0.15);
+            color: #fcd34d;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            margin-left: 0.5rem;
+            font-weight: 500;
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .delay-1 { animation-delay: 0.1s; }
+        .delay-2 { animation-delay: 0.2s; }
+        .delay-3 { animation-delay: 0.3s; }
+        .delay-4 { animation-delay: 0.4s; }
+
+        /* Toast */
+        #toast {
+            position: fixed;
+            bottom: -100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--text-primary);
+            color: var(--bg-base);
+            padding: 0.75rem 1.5rem;
+            border-radius: var(--radius-full);
+            font-weight: 600;
+            font-size: 0.9rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: bottom 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 1000;
+        }
+
+        #toast.show {
+            bottom: 2rem;
+        }
+
+        /* Mobile Adjustments */
+        @media (max-width: 768px) {
+            .container { padding: 1rem; }
+            h1 { font-size: 2rem; }
+            .grid-2 { grid-template-columns: 1fr; }
+            
+            /* Responsive table flip */
+            .table-responsive table, .table-responsive thead, .table-responsive tbody, .table-responsive th, .table-responsive td, .table-responsive tr {
+                display: block;
+            }
+            .table-responsive thead tr {
+                position: absolute;
+                top: -9999px;
+                left: -9999px;
+            }
+            .table-responsive tr { 
+                margin-bottom: 1rem; 
+                border-bottom: 2px solid var(--border-focus);
+            }
+            .table-responsive td {
+                border: none;
+                border-bottom: 1px solid rgba(255,255,255,0.05);
+                position: relative;
+                padding-left: 45%;
+                padding-top: 1rem;
+                padding-bottom: 1rem;
+            }
+            .table-responsive td::before {
+                position: absolute;
+                top: 1rem;
+                left: 1rem;
+                width: 40%;
+                white-space: nowrap;
+                font-weight: 600;
+                color: var(--text-secondary);
+            }
+            /* Table 1 Labels */
+            #roles-table td:nth-of-type(1)::before { content: "Role"; }
+            #roles-table td:nth-of-type(2)::before { content: "Where"; }
+            #roles-table td:nth-of-type(3)::before { content: "Method"; }
+            
+            /* Table 2 Labels */
+            #staff-table td:nth-of-type(1)::before { content: "Restaurant"; }
+            #staff-table td:nth-of-type(2)::before { content: "Admin Email"; }
+            #staff-table td:nth-of-type(3)::before { content: "Kitchen Email"; }
+
+            .cred-item { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+            .cred-value { width: 100%; justify-content: space-between; background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 4px;}
+        }
+
+        /* Global utility class for credentials */
+        .copy-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        
+        <header>
+            <div class="brand-badge"><i class="fa-solid fa-seedling mr-2"></i> System Seed Data</div>
+            <h1>Oak & Sizzler<br>Demo Accounts</h1>
+            <p class="subtitle">Comprehensive access guide for every role, restaurant, and feature in the seeded non-production environment.</p>
+        </header>
+
+        <section class="delay-1">
+            <blockquote class="glass-card" style="border: none;">
+                <p><i class="fa-solid fa-database text-accent mr-2" style="color: var(--accent-main); margin-right: 8px;"></i> <strong>To populate these on a fresh database</strong>, run the following from <code>apps/web</code>:</p>
+                <div class="mt-4" style="margin-top: 1rem;">
+                    <pre><code>npm run db:seed:cuisines        <span class="comment"># 7 restaurants, menus, orders, staff, riders, customers</span>
+npm run db:seed:rider-features  <span class="comment"># super-admin, rider avatars, KYC docs, live pool</span></code></pre>
+                </div>
+                <p style="font-size: 0.9rem; margin-bottom: 0;"><em>Note: <code>seed-rider-features.ts</code> prints this same directory to the console when it finishes.</em></p>
+            </blockquote>
+        </section>
+
+        <section class="delay-2">
+            <h2><i class="fa-solid fa-key"></i> Authentication Methods</h2>
+            <div class="table-responsive">
+                <table id="roles-table">
+                    <thead>
+                        <tr>
+                            <th>Role</th>
+                            <th>Where</th>
+                            <th>Method</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Super Admin</strong></td>
+                            <td>Web <code>/login</code> → "Super Admin" tile</td>
+                            <td><span class="method-badge"><i class="fa-solid fa-envelope"></i> Email + Password</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Restaurant Admin</strong></td>
+                            <td>Web <code>/login</code> → "Restaurant Staff" tile</td>
+                            <td><span class="method-badge"><i class="fa-solid fa-envelope"></i> Email + Password</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Kitchen</strong></td>
+                            <td>Web <code>/login</code> → "Restaurant Staff" tile</td>
+                            <td><span class="method-badge"><i class="fa-solid fa-envelope"></i> Email + Password</span> (routes to <code>/kitchen</code>)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Customer</strong></td>
+                            <td>Web <code>/login</code> → "Customer" tile</td>
+                            <td><span class="method-badge"><i class="fa-solid fa-mobile-screen"></i> Phone + OTP</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Rider</strong></td>
+                            <td><strong>Native Android app</strong> (Oak & Sizzler Rider)</td>
+                            <td><span class="method-badge"><i class="fa-solid fa-mobile-screen"></i> Phone + OTP</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="glass-card" style="margin-top: 1.5rem; border-left: 4px solid var(--accent-warning);">
+                <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fa-solid fa-unlock-keyhole" style="color: var(--accent-warning);"></i> OTP Bypass (Dev Mode)
+                </h3>
+                <p style="margin-bottom: 0.5rem;">The VPS runs with <code>OTP_DEBUG_LOG=true</code>. After clicking "Send code", the OTP is returned in the API response and logged: <code>pm2 logs rm-web</code> shows <code>OTP issued (dev) … code=######</code>.</p>
+                <p style="margin-bottom: 0;">Riders enter the <strong>10-digit</strong> number (the app prepends <code>+91</code>). Example: for <code>+919875294185</code>, type <code>9875294185</code>.</p>
+            </div>
+        </section>
+
+        <section class="delay-3">
+            <h2><i class="fa-solid fa-shield-halved"></i> Platform Admin</h2>
+            <div class="glass-card" style="border: 1px solid var(--accent-main); box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);">
+                <div class="cred-list" style="margin-top: 0;">
+                    <div class="cred-item">
+                        <span class="cred-role"><i class="fa-solid fa-user-shield"></i> Super Admin</span>
+                        <div class="cred-value">
+                            <div class="copy-group">
+                                <span>super@platform.local</span>
+                                <button class="copy-btn" onclick="copyText('super@platform.local', this)" title="Copy Email"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                            <span style="color: var(--border-light); margin: 0 0.5rem;">|</span>
+                            <div class="copy-group">
+                                <span>Super@12345</span>
+                                <button class="copy-btn" onclick="copyText('Super@12345', this)" title="Copy Password"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <p style="margin-top: 1rem; font-size: 0.9rem; margin-bottom: 0;">
+                    <strong>Sees:</strong> all 7 restaurants, every order, the full rider fleet, payouts, incentives, surge zones, tiers, referrals, SOS alerts, incidents, shifts, training modules, live tracking (<code>/platform/live</code>), and messaging (<code>/platform/messages</code>).
+                </p>
+            </div>
+        </section>
+
+        <section class="delay-4">
+            <div class="section-header">
+                <h2><i class="fa-solid fa-store"></i> Restaurant Accounts</h2>
+                <div class="search-wrapper" style="margin-bottom: 0; min-width: 300px;">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="searchInput" class="search-input" placeholder="Search restaurants or users...">
+                </div>
+            </div>
+
+            <p>Each restaurant has <strong>1 admin, 1 kitchen user, 2 customers, 3 riders</strong>. All staff passwords are: 
+                Admin: <code style="cursor:pointer;" onclick="copyText('Admin@12345', this)">Admin@12345</code> | 
+                Kitchen: <code style="cursor:pointer;" onclick="copyText('Kitchen@12345', this)">Kitchen@12345</code>
+            </p>
+
+            <div class="grid-2" id="restaurantGrid">
+                <!-- Italia Pizza -->
+                <div class="glass-card restaurant-card">
+                    <h3 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: var(--text-primary); display: flex; justify-content: space-between; align-items: center;">
+                        Italia Pizza <span class="tag">DEDICATED_FIRST</span>
+                    </h3>
+                    <div class="cred-list">
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user-tie"></i> Admin</span>
+                            <div class="cred-value copy-group">
+                                <span>admin@italia-pizza...</span>
+                                <button class="copy-btn" onclick="copyText('admin@italia-pizza.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-fire-burner"></i> Kitchen</span>
+                            <div class="cred-value copy-group">
+                                <span>kitchen@italia-pizza...</span>
+                                <button class="copy-btn" onclick="copyText('kitchen@italia-pizza.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user"></i> Customer A & B</span>
+                            <div class="cred-value copy-group">
+                                <span>+919870294185</span>
+                                <button class="copy-btn" onclick="copyText('+919870294185', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-motorcycle"></i> Riders (1-3)</span>
+                            <div class="cred-value copy-group">
+                                <span>+919875294185</span>
+                                <button class="copy-btn" onclick="copyText('+919875294185', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Biryani Zone -->
+                <div class="glass-card restaurant-card">
+                    <h3 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: var(--text-primary);">Biryani Zone</h3>
+                    <div class="cred-list">
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user-tie"></i> Admin</span>
+                            <div class="cred-value copy-group">
+                                <span>admin@biryani-zone...</span>
+                                <button class="copy-btn" onclick="copyText('admin@biryani-zone.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-fire-burner"></i> Kitchen</span>
+                            <div class="cred-value copy-group">
+                                <span>kitchen@biryani-zone...</span>
+                                <button class="copy-btn" onclick="copyText('kitchen@biryani-zone.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user"></i> Customer A & B</span>
+                            <div class="cred-value copy-group">
+                                <span>+919870910923</span>
+                                <button class="copy-btn" onclick="copyText('+919870910923', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-motorcycle"></i> Riders (1-3)</span>
+                            <div class="cred-value copy-group">
+                                <span>+919875910923</span>
+                                <button class="copy-btn" onclick="copyText('+919875910923', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bowl and Barbeque -->
+                <div class="glass-card restaurant-card">
+                    <h3 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: var(--text-primary);">Bowl and Barbeque</h3>
+                    <div class="cred-list">
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user-tie"></i> Admin</span>
+                            <div class="cred-value copy-group">
+                                <span>admin@bowl-and-barb...</span>
+                                <button class="copy-btn" onclick="copyText('admin@bowl-and-barbeque.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-fire-burner"></i> Kitchen</span>
+                            <div class="cred-value copy-group">
+                                <span>kitchen@bowl-and-barb...</span>
+                                <button class="copy-btn" onclick="copyText('kitchen@bowl-and-barbeque.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user"></i> Customer A & B</span>
+                            <div class="cred-value copy-group">
+                                <span>+919870657452</span>
+                                <button class="copy-btn" onclick="copyText('+919870657452', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-motorcycle"></i> Riders (1-3)</span>
+                            <div class="cred-value copy-group">
+                                <span>+919875657452</span>
+                                <button class="copy-btn" onclick="copyText('+919875657452', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hotel Siddhartha -->
+                <div class="glass-card restaurant-card">
+                    <h3 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: var(--text-primary);">Hotel Siddhartha</h3>
+                    <div class="cred-list">
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user-tie"></i> Admin</span>
+                            <div class="cred-value copy-group">
+                                <span>admin@hotel-siddha...</span>
+                                <button class="copy-btn" onclick="copyText('admin@hotel-siddhartha.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-fire-burner"></i> Kitchen</span>
+                            <div class="cred-value copy-group">
+                                <span>kitchen@hotel-siddha...</span>
+                                <button class="copy-btn" onclick="copyText('kitchen@hotel-siddhartha.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user"></i> Customer A & B</span>
+                            <div class="cred-value copy-group">
+                                <span>+919870534211</span>
+                                <button class="copy-btn" onclick="copyText('+919870534211', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-motorcycle"></i> Riders (1-3)</span>
+                            <div class="cred-value copy-group">
+                                <span>+919875534211</span>
+                                <button class="copy-btn" onclick="copyText('+919875534211', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Wok and Sizzler -->
+                <div class="glass-card restaurant-card">
+                    <h3 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: var(--text-primary);">Wok and Sizzler</h3>
+                    <div class="cred-list">
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user-tie"></i> Admin</span>
+                            <div class="cred-value copy-group">
+                                <span>admin@wok-and-sizz...</span>
+                                <button class="copy-btn" onclick="copyText('admin@wok-and-sizzler.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-fire-burner"></i> Kitchen</span>
+                            <div class="cred-value copy-group">
+                                <span>kitchen@wok-and-sizz...</span>
+                                <button class="copy-btn" onclick="copyText('kitchen@wok-and-sizzler.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user"></i> Customer A & B</span>
+                            <div class="cred-value copy-group">
+                                <span>+919870152979</span>
+                                <button class="copy-btn" onclick="copyText('+919870152979', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-motorcycle"></i> Riders (1-3)</span>
+                            <div class="cred-value copy-group">
+                                <span>+919875152979</span>
+                                <button class="copy-btn" onclick="copyText('+919875152979', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Party Place -->
+                <div class="glass-card restaurant-card">
+                    <h3 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: var(--text-primary);">Party Place</h3>
+                    <div class="cred-list">
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user-tie"></i> Admin</span>
+                            <div class="cred-value copy-group">
+                                <span>admin@party-place.m...</span>
+                                <button class="copy-btn" onclick="copyText('admin@party-place.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-fire-burner"></i> Kitchen</span>
+                            <div class="cred-value copy-group">
+                                <span>kitchen@party-place...</span>
+                                <button class="copy-btn" onclick="copyText('kitchen@party-place.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user"></i> Customer A & B</span>
+                            <div class="cred-value copy-group">
+                                <span>+919870950240</span>
+                                <button class="copy-btn" onclick="copyText('+919870950240', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-motorcycle"></i> Riders (1-3)</span>
+                            <div class="cred-value copy-group">
+                                <span>+919875950240</span>
+                                <button class="copy-btn" onclick="copyText('+919875950240', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cuisine of Andhra -->
+                <div class="glass-card restaurant-card">
+                    <h3 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: var(--text-primary);">Cuisine of Andhra</h3>
+                    <div class="cred-list">
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user-tie"></i> Admin</span>
+                            <div class="cred-value copy-group">
+                                <span>admin@cuisine-of-a...</span>
+                                <button class="copy-btn" onclick="copyText('admin@cuisine-of-andhra.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-fire-burner"></i> Kitchen</span>
+                            <div class="cred-value copy-group">
+                                <span>kitchen@cuisine-of...</span>
+                                <button class="copy-btn" onclick="copyText('kitchen@cuisine-of-andhra.maverickfoodhub.com', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-user"></i> Customer A & B</span>
+                            <div class="cred-value copy-group">
+                                <span>+919870921677</span>
+                                <button class="copy-btn" onclick="copyText('+919870921677', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="cred-item">
+                            <span class="cred-role"><i class="fa-solid fa-motorcycle"></i> Riders (1-3)</span>
+                            <div class="cred-value copy-group">
+                                <span>+919875921677</span>
+                                <button class="copy-btn" onclick="copyText('+919875921677', this)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <section class="delay-4">
+            <h2><i class="fa-solid fa-clipboard-list"></i> Quick Reference</h2>
+            <div class="table-responsive">
+                <table id="staff-table">
+                    <thead>
+                        <tr>
+                            <th>Restaurant</th>
+                            <th>Admin Email</th>
+                            <th>Kitchen Email</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Italia Pizza</td>
+                            <td><code>admin@italia-pizza...</code></td>
+                            <td><code>kitchen@italia-pizza...</code></td>
+                        </tr>
+                        <tr>
+                            <td>Biryani Zone</td>
+                            <td><code>admin@biryani-zone...</code></td>
+                            <td><code>kitchen@biryani-zone...</code></td>
+                        </tr>
+                        <tr>
+                            <td>Bowl and Barbeque</td>
+                            <td><code>admin@bowl-and-barbeque...</code></td>
+                            <td><code>kitchen@bowl-and-barbeque...</code></td>
+                        </tr>
+                        <tr>
+                            <td>Hotel Siddhartha</td>
+                            <td><code>admin@hotel-siddhartha...</code></td>
+                            <td><code>kitchen@hotel-siddhartha...</code></td>
+                        </tr>
+                        <tr>
+                            <td>Wok and Sizzler</td>
+                            <td><code>admin@wok-and-sizzler...</code></td>
+                            <td><code>kitchen@wok-and-sizzler...</code></td>
+                        </tr>
+                        <tr>
+                            <td>Party Place</td>
+                            <td><code>admin@party-place...</code></td>
+                            <td><code>kitchen@party-place...</code></td>
+                        </tr>
+                        <tr>
+                            <td>Cuisine of Andhra</td>
+                            <td><code>admin@cuisine-of-andhra...</code></td>
+                            <td><code>kitchen@cuisine-of-andhra...</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p style="text-align: center; margin-top: 1rem;">
+                <i class="fa-solid fa-info-circle text-accent mr-2"></i> All admin passwords: <code>Admin@12345</code> · All kitchen passwords: <code>Kitchen@12345</code>
+            </p>
+        </section>
+
+        <section class="delay-4">
+            <h2><i class="fa-solid fa-clipboard"></i> Notes</h2>
+            <ul class="notes-list">
+                <li>
+                    <i class="fa-solid fa-circle-check"></i>
+                    <div>
+                        <strong>Rider demo data:</strong> every rider has an AI-styled profile avatar and a full set of KYC documents (Aadhaar, Driving Licence, Vehicle RC, Vehicle Insurance, PAN) — mock specimen images, viewable in the app's Profile → My Documents.
+                    </div>
+                </li>
+                <li>
+                    <i class="fa-solid fa-circle-check"></i>
+                    <div>
+                        <strong>Live pool:</strong> <code>seed-rider-features.ts</code> seeds <code>READY</code> unassigned orders across all restaurants so the rider app's Orders pool is never empty.
+                    </div>
+                </li>
+                <li>
+                    <i class="fa-solid fa-circle-check"></i>
+                    <div>
+                        <strong>Customers:</strong> can browse and order at <code>/r/&lt;restaurant-slug&gt;</code> (e.g. <code>/r/italia-pizza</code>).
+                    </div>
+                </li>
+                <li>
+                    <i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-warning);"></i>
+                    <div>
+                        <strong>Security Warning:</strong> These are demo credentials for a non-production environment. Rotate or remove before any real launch.
+                    </div>
+                </li>
+            </ul>
+        </section>
+
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast"><i class="fa-solid fa-check-circle"></i> <span>Copied to clipboard!</span></div>
+
+    <script>
+        // Copy to clipboard functionality
+        function copyText(text, buttonElement) {
+            navigator.clipboard.writeText(text).then(() => {
+                const icon = buttonElement.querySelector('i');
+                const originalClass = icon.className;
+                
+                // Change style to success
+                buttonElement.classList.add('success');
+                icon.className = 'fa-solid fa-check';
+                
+                showToast(`Copied: ${text}`);
+                
+                // Revert after 2 seconds
+                setTimeout(() => {
+                    buttonElement.classList.remove('success');
+                    icon.className = originalClass;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                showToast('Failed to copy text', true);
+            });
+        }
+
+        // Toast Notification System
+        let toastTimeout;
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            const toastText = toast.querySelector('span');
+            const toastIcon = toast.querySelector('i');
+            
+            toastText.textContent = message;
+            
+            if (isError) {
+                toast.style.background = '#ef4444';
+                toastIcon.className = 'fa-solid fa-circle-xmark';
+            } else {
+                toast.style.background = 'var(--text-primary)';
+                toastIcon.className = 'fa-solid fa-check-circle';
+            }
+            
+            toast.classList.add('show');
+            
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // Search functionality
+        const searchInput = document.getElementById('searchInput');
+        const cards = document.querySelectorAll('.restaurant-card');
+        
+        searchInput.addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            
+            cards.forEach(card => {
+                const text = card.textContent.toLowerCase();
+                if (text.includes(term)) {
+                    card.style.display = 'block';
+                    card.style.animation = 'fadeIn 0.3s ease-out forwards';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -33,7 +33,7 @@ import {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const brand = await getBrandBySlug(slug);
-  return { title: `${brand?.name ?? 'Brand'} — Maverick's Food Hub` };
+  return { title: `${brand?.name ?? 'Brand'} — Reshee Tech` };
 }
 
 export default async function BrandPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -137,8 +137,8 @@ export default async function BrandPage({ params }: { params: Promise<{ slug: st
             Pick a cuisine, devour the rest later
           </h2>
           <p className="mt-2 text-sm text-muted-foreground max-w-xl">
-            Each kitchen below is a fully-fledged restaurant on Maverick&apos;s Food
-            Hub — its own menu, its own offers, its own happy hours. Same family,
+            Each kitchen below is a fully-fledged restaurant on Reshee Tech —
+            its own menu, its own offers, its own happy hours. Same family,
             different cravings.
           </p>
         </div>
@@ -149,7 +149,7 @@ export default async function BrandPage({ params }: { params: Promise<{ slug: st
               No active cuisines yet
             </div>
             <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
-              {brand.name} is setting up its kitchens on Maverick&apos;s Food Hub.
+              {brand.name} is setting up its kitchens on Reshee Tech.
               Check back soon — we&apos;re onboarding their cuisines now.
             </p>
             <div className="mt-5">

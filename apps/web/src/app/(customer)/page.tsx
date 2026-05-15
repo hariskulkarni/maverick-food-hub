@@ -14,22 +14,31 @@ import {
   ClipboardList,
   CheckCircle2,
   UtensilsCrossed,
-  PackageCheck
+  PackageCheck,
+  Search,
+  ShoppingBag,
+  Navigation,
+  Wallet,
+  ShieldCheck,
+  Timer
 } from 'lucide-react';
 import { brand } from '@/lib/brand';
 import { FOOD_FALLBACK } from '@/lib/food-images';
 
 /**
- * Maverick's Food Hub — platform home (B2B marketing surface).
+ * Reshee Tech — platform home (marketing surface).
  *
- * Strategic shift: this page is NOT a place to order food. It is the surface
- * that attracts restaurants to list with us and riders to deliver for us.
- * Customers reach restaurants via shared URLs / QR codes that land on
- * `/r/<slug>`; the cart/order UI lives there.
+ * This page introduces the platform to all three sides of the marketplace:
+ * customers who order, restaurants who cook, and riders who deliver. The hero
+ * leads with the restaurant story (the side we're actively onboarding), but
+ * every audience gets a clear path:
+ *   • customers  → "How ordering works" + browse restaurants
+ *   • restaurants → "List your restaurant" CTA + How it works steps
+ *   • riders     → the RiderAcquisition strip
  *
- * Therefore: no "Find food" button, no cart, no consumer-facing CTAs.
- * Featured kitchens are shown as social proof ("Trusted by these kitchens"),
- * not as a shopping list.
+ * Ordering itself happens on a restaurant's storefront (`/r/<slug>`), reached
+ * by browsing `/restaurants` or scanning a kitchen's QR code — so the home page
+ * carries no cart of its own.
  */
 export default async function HomePage() {
   const [restaurants, totalActive, ridersTotal, ridersOnline] = await Promise.all([
@@ -134,11 +143,87 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ────────────────────────── Why Maverick's ────────────────────────── */}
+      {/* ────────────────────────── For customers ────────────────────────── */}
+      <section id="for-customers" className="border-b bg-secondary/40">
+        <div className="container py-20">
+          <div className="text-center mb-12 reveal">
+            <div className="text-xs font-semibold uppercase tracking-wider text-primary">
+              For customers
+            </div>
+            <h2 className="display mt-2 text-3xl md:text-5xl font-semibold tracking-tight">
+              Hungry? Order in three taps.
+            </h2>
+            <p className="mt-3 text-sm md:text-base text-muted-foreground max-w-xl mx-auto">
+              Browse every kitchen near you, build your order, and track the rider to your
+              door — all in one place.
+            </p>
+          </div>
+
+          <ol className="grid gap-6 md:grid-cols-3 reveal-stagger">
+            {[
+              {
+                icon: Search,
+                title: 'Find a kitchen',
+                body: 'Browse restaurants near you by cuisine, rating or delivery time. Or open a kitchen straight from its QR code.'
+              },
+              {
+                icon: ShoppingBag,
+                title: 'Build your order',
+                body: 'Add dishes to your cart, apply a coupon, pay securely online or with cash on delivery. No app download needed.'
+              },
+              {
+                icon: Navigation,
+                title: 'Track to your door',
+                body: 'Watch your order go from kitchen to rider to doorstep on a live map — with an honest ETA the whole way.'
+              }
+            ].map(({ icon: Icon, title, body }) => (
+              <li key={title} className="rounded-2xl bg-card p-7 border card-lift list-none">
+                <div className="grid size-12 place-items-center rounded-2xl bg-primary/10 text-primary">
+                  <Icon className="size-6" />
+                </div>
+                <h3 className="display text-xl font-semibold mt-5">{title}</h3>
+                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{body}</p>
+              </li>
+            ))}
+          </ol>
+
+          <div className="mt-10 grid gap-4 sm:grid-cols-3 reveal-stagger">
+            {[
+              { icon: Timer, label: '~35 min average delivery, with a live ETA you can trust' },
+              { icon: Wallet, label: 'Pay online or cash on delivery — your call, every time' },
+              { icon: ShieldCheck, label: 'FSSAI-verified kitchens and contactless drop-off' }
+            ].map(({ icon: Icon, label }) => (
+              <div
+                key={label}
+                className="flex items-start gap-3 rounded-2xl border bg-card/60 p-4"
+              >
+                <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-success/10 text-success">
+                  <Icon className="size-4.5" />
+                </div>
+                <span className="text-sm text-muted-foreground leading-snug">{label}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+            <Button size="lg" asChild className="group">
+              <Link href="/restaurants">
+                Browse restaurants
+                <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </Button>
+            <Button size="lg" variant="outline" asChild>
+              <Link href="/track">Track an order</Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* ────────────────────────── Why Reshee Tech ────────────────────────── */}
       <section className="container py-20">
         <div className="text-center mb-12 reveal">
           <div className="text-xs font-semibold uppercase tracking-wider text-primary">
-            Why Maverick&apos;s
+            For restaurants
           </div>
           <h2 className="display mt-2 text-3xl md:text-5xl font-semibold tracking-tight">
             Everything your kitchen needs, none of the overhead.
@@ -221,7 +306,7 @@ export default async function HomePage() {
             Now serving from these kitchens
           </h2>
           <p className="mt-3 text-sm text-muted-foreground max-w-md mx-auto">
-            Some of the restaurants already running on Maverick&apos;s. Tap a card to see their
+            Some of the restaurants already running on Reshee Tech. Tap a card to see their
             storefront.
           </p>
         </div>
@@ -371,9 +456,13 @@ export default async function HomePage() {
               Partner questions, answered.
             </h2>
             <p className="mt-3 text-sm text-muted-foreground max-w-sm">
-              Still curious?{' '}
+              Looking for help with an order? See the{' '}
+              <Link href="/faq" className="text-primary underline">
+                full Help &amp; FAQ
+              </Link>{' '}
+              or{' '}
               <Link href="/contact" className="text-primary underline">
-                Get in touch
+                get in touch
               </Link>
               .
             </p>
@@ -382,7 +471,7 @@ export default async function HomePage() {
           <div className="md:col-span-2 reveal-stagger">
             {[
               {
-                q: "What does Maverick's charge?",
+                q: "What does Reshee Tech charge?",
                 a: 'Listing is free. There is no monthly fee and no setup cost. We charge a small commission only on orders we successfully deliver to your customers — so we win when you win.'
               },
               {

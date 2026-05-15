@@ -33,7 +33,7 @@ export function RiderAcquisition() {
                   Earn on your schedule
                 </h2>
                 <p className="mt-4 text-white/90 max-w-md">
-                  Join the platform rider pool. Pick up orders from any kitchen on Maverick&apos;s,
+                  Join the platform rider pool. Pick up orders from any kitchen on Reshee Tech,
                   set your own hours, and get paid the same day.
                 </p>
 

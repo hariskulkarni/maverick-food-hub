@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { api, API_BASE, ApiError, type KycDoc, type RiderMe } from '../../lib/api';
 import { growth, type TierName } from '../../lib/api-growth';
 import { useAuth } from '../../lib/auth';
@@ -87,6 +88,7 @@ export default function ProfileScreen() {
   const [viewerDoc, setViewerDoc] = useState<ViewableDoc | null>(null);
   const [tier, setTier] = useState<TierName | null>(null);
   const [me, setMe] = useState<RiderMe | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const loadKyc = useCallback(async () => {
     try {
@@ -142,6 +144,74 @@ export default function ProfileScreen() {
     }
   }
 
+  /** Run the picked image through the avatar upload + refresh local state. */
+  async function uploadAvatar(uri: string) {
+    setUploadingAvatar(true);
+    try {
+      const { avatarUrl } = await api.uploadAvatar(uri);
+      // Update local state so the new photo shows instantly — it's already
+      // persisted server-side on User.avatarUrl.
+      setMe((prev) => (prev ? { ...prev, avatarUrl } : prev));
+    } catch (e) {
+      Alert.alert(
+        'Could not update photo',
+        e instanceof ApiError ? e.message : 'Please try again.'
+      );
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
+
+  /** Open camera or library, then upload the chosen image as the avatar. */
+  async function pickAvatar(source: 'camera' | 'library') {
+    try {
+      if (source === 'camera') {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert(
+            'Camera permission needed',
+            'Enable camera access in Settings to take a profile photo.'
+          );
+          return;
+        }
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          quality: 0.6,
+          allowsEditing: true,
+          aspect: [1, 1],
+        });
+        if (!result.canceled && result.assets[0]) await uploadAvatar(result.assets[0].uri);
+      } else {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert(
+            'Photo permission needed',
+            'Enable photo access in Settings to choose a profile photo.'
+          );
+          return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          quality: 0.6,
+          allowsEditing: true,
+          aspect: [1, 1],
+        });
+        if (!result.canceled && result.assets[0]) await uploadAvatar(result.assets[0].uri);
+      }
+    } catch {
+      Alert.alert('Could not open camera', 'Please try again.');
+    }
+  }
+
+  function changeAvatar() {
+    if (uploadingAvatar) return;
+    Alert.alert('Profile photo', 'Choose a new profile photo', [
+      { text: 'Take photo', onPress: () => pickAvatar('camera') },
+      { text: 'Choose from library', onPress: () => pickAvatar('library') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
   function confirmSignOut() {
     Alert.alert('Sign out', 'You will need your phone number and an OTP to sign back in.', [
       { text: 'Cancel', style: 'cancel' },
@@ -166,16 +236,33 @@ export default function ProfileScreen() {
         {/* Identity card */}
         <View style={styles.card}>
           <View style={styles.identityRow}>
-            {me?.avatarUrl ? (
-              <Image
-                source={{ uri: absoluteUrl(me.avatarUrl) }}
-                style={styles.avatarImage}
-              />
-            ) : (
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{initials || 'R'}</Text>
+            <Pressable
+              onPress={changeAvatar}
+              disabled={uploadingAvatar}
+              hitSlop={6}
+              style={styles.avatarWrap}
+              accessibilityRole="button"
+              accessibilityLabel="Change profile photo"
+            >
+              {me?.avatarUrl ? (
+                <Image
+                  source={{ uri: absoluteUrl(me.avatarUrl) }}
+                  style={styles.avatarImage}
+                />
+              ) : (
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{initials || 'R'}</Text>
+                </View>
+              )}
+              <View style={styles.avatarBadge}>
+                <Ionicons name="camera" size={12} color={colors.white} />
               </View>
-            )}
+              {uploadingAvatar ? (
+                <View style={styles.avatarOverlay}>
+                  <ActivityIndicator color={colors.white} size="small" />
+                </View>
+              ) : null}
+            </Pressable>
             <View style={styles.identityText}>
               {editing ? (
                 <TextInput
@@ -425,6 +512,7 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   identityRow: { flexDirection: 'row', alignItems: 'center' },
+  avatarWrap: { marginRight: spacing.md },
   avatar: {
     width: 52,
     height: 52,
@@ -432,14 +520,34 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
   },
   avatarImage: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    marginRight: spacing.md,
     backgroundColor: colors.primarySoft,
+  },
+  avatarBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.card,
+  },
+  avatarOverlay: {
+    position: 'absolute',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarText: {
     color: colors.white,
