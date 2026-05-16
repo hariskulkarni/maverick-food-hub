@@ -466,4 +466,46 @@ export const api = {
     }
     return res.text();
   },
+
+  // ── Batch invitations (mid-delivery "add this order to your route?") ──────
+  /** Currently-pending batch invitations for this rider. */
+  batchInvitations: () =>
+    request<{ invitations: BatchInvitation[] }>('/api/rider/batch-invitations'),
+
+  /** Accept a batch invitation by id. */
+  acceptBatchInvitation: (id: string) =>
+    request<{ ok: true; assignmentId: string; orderId: string }>(
+      `/api/rider/batch-invitations/${id}/accept`,
+      { method: 'POST' }
+    ),
+
+  /** Decline a batch invitation by id, with an optional free-text reason. */
+  declineBatchInvitation: (id: string, reason?: string) =>
+    request<{ ok: true; status: string; noop?: boolean }>(
+      `/api/rider/batch-invitations/${id}/decline`,
+      { method: 'POST', body: reason ? { reason } : undefined }
+    ),
 };
+
+/**
+ * A pending batch invitation, as returned by GET /api/rider/batch-invitations.
+ * Mirrors the SerializedBatchInvitation shape on the server side — keep in
+ * sync with `apps/web/src/app/api/rider/batch-invitations/_helpers.ts`.
+ */
+export interface BatchInvitation {
+  id: string;
+  orderId: string;
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED' | 'CANCELLED';
+  detourKm: number;
+  extraEarnings: number;
+  pickupEtaMin: number | null;
+  invitedAt: string;
+  expiresAt: string;
+  secondsLeft: number;
+  order: {
+    code: string;
+    total: number;
+    branchName: string;
+    customerArea: string;
+  };
+}

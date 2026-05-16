@@ -274,18 +274,31 @@ export default function DeliveryScreen() {
 
   async function confirmDelivery() {
     if (acting || !assignment) return;
-    if (otp.length < 4) {
-      setOtpError('Enter the code the customer gives you.');
+    // Defence in depth — the input already filters non-digits on change, but
+    // do it again here so paste, autofill, or screen-reader hand-off can't
+    // sneak in a hidden char (NBSP, BOM, autofill bullet) the keyboard
+    // missed. Whatever the rider thought they typed, this is what we send.
+    const clean = otp.replace(/\D+/g, '');
+    if (clean.length < 4) {
+      setOtpError('Enter the 4-digit code the customer gives you.');
       return;
     }
     setActing(true);
     setOtpError(null);
     try {
-      await api.deliver(assignment.id, otp);
+      await api.deliver(assignment.id, clean);
       setDelivered(true);
     } catch (e) {
       if (e instanceof ApiError && e.status === 400) {
-        setOtpError('That code is incorrect. Ask the customer to read it again.');
+        // Backend now returns { reason, message } — show its message verbatim
+        // when present so wrong-length / mismatch / missing-expected each
+        // surface their own copy.
+        const body = e.body as { message?: string; reason?: string } | null;
+        const msg =
+          body && typeof body.message === 'string' && body.message.length > 0
+            ? body.message
+            : 'That code is incorrect. Ask the customer to read it again.';
+        setOtpError(msg);
       } else {
         Alert.alert('Could not confirm', e instanceof ApiError ? e.message : 'Please try again.');
       }

@@ -54,8 +54,38 @@ export function genOrderCode(): string {
   return 'ORD-' + Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
+/**
+ * Generate the customer's 4-digit hand-over code shown on the order tracker.
+ *
+ * Contract:
+ *   - Always 4 ASCII digits.
+ *   - Range 1000-9999 (no leading zeros, so the rider sees the same number of
+ *     digits as the customer regardless of font / kerning).
+ *   - Stable for the lifetime of the order — set once at creation, never rotated.
+ *
+ * The `.padStart(4, '0')` is defensive: today the math already guarantees a
+ * 4-digit string, but if the range ever changes (e.g. to 6-digit codes) callers
+ * that hard-coded a 4-wide UI won't silently render shorter codes.
+ */
 export function genDeliveryOtp(): string {
-  return String(Math.floor(1000 + Math.random() * 9000));
+  return String(Math.floor(1000 + Math.random() * 9000)).padStart(4, '0');
+}
+
+/**
+ * Canonicalise a delivery OTP for comparison.
+ *
+ * Strips every non-digit character (whitespace, hidden BOMs, autofill bullets,
+ * dashes that some keyboards insert, NBSPs from copy/paste). Use this on BOTH
+ * sides of every OTP equality check so a rider can never fail verification
+ * because their keyboard inserted an invisible character or because the stored
+ * code had a stray space.
+ *
+ * Returns '' if `s` is null/undefined/empty after stripping — callers should
+ * treat that as a verification failure (don't equate two empty strings).
+ */
+export function normalizeOtp(s: string | null | undefined): string {
+  if (!s) return '';
+  return String(s).replace(/\D+/g, '');
 }
 
 export const STATUS_LABELS: Record<string, string> = {

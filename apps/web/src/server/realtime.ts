@@ -26,6 +26,8 @@ declare global {
   var __busBuffer: Map<string, BufferedEvent[]> | undefined;
   // eslint-disable-next-line no-var
   var __busSeq: { n: number } | undefined;
+  // eslint-disable-next-line no-var
+  var __batchExpirySweeper: ReturnType<typeof setInterval> | undefined;
 }
 
 export const bus = global.__bus ?? new Bus();
@@ -74,6 +76,37 @@ function appendToRing(channel: string, event: RealtimeEvent): BufferedEvent {
 export function publish(channel: string, event: RealtimeEvent): void {
   appendToRing(channel, event);
   bus.emit(channel, event);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Background ticker — BatchInvitation TTL sweep.
+//
+// Every 5 seconds we flip stale PENDING invitations to EXPIRED. The interval
+// is parked on globalThis so Next.js dev HMR doesn't spawn duplicate timers
+// after every recompile. Single source: when this module first loads in a
+// process, exactly one sweeper runs for the lifetime of that process.
+//
+// Hosted here (rather than in batch-expiry.ts) because realtime.ts is already
+// a module-level singleton wired into every SSE-bearing route, so it's the
+// natural place for any always-on background work. To run the sweeper from a
+// route handler (e.g. tests), call `expireStaleBatchInvitations()` directly.
+// ─────────────────────────────────────────────────────────────────────────────
+const BATCH_EXPIRY_INTERVAL_MS = 5_000;
+if (!global.__batchExpirySweeper) {
+  // Dynamic import so realtime.ts (which is imported during build by route
+  // handlers) doesn't pull in @prisma/client when Next.js is statically
+  // analysing pages — Prisma's bootstrap is heavier than the bus needs.
+  global.__batchExpirySweeper = setInterval(() => {
+    import('./batch-expiry')
+      .then((m) => m.expireStaleBatchInvitations())
+      .catch(() => {
+        /* swallow — the sweeper retries on the next tick */
+      });
+  }, BATCH_EXPIRY_INTERVAL_MS);
+  // Don't let this timer keep a serverless lambda alive past request end.
+  if (typeof global.__batchExpirySweeper.unref === 'function') {
+    global.__batchExpirySweeper.unref();
+  }
 }
 
 /**

@@ -19,10 +19,12 @@ import { brand } from '@/lib/brand';
 import { loadAndApplyOffers, loadOfferByCode, recordRedemption, type OfferCartLine } from './offers';
 import { audit } from './audit';
 import { notifyRidersOfNewOrder } from './rider-push';
+import { maybeOfferAsBatch } from './batch-dispatch';
 import { clampTwo } from '@/lib/utils';
 import { loadRulesForRestaurant, priceForItem, priceForCombo } from './happy-hours';
 import { refreshChallengeProgressForOrder } from './challenges';
 import { previewSignupBonusForUser, holdSignupBonusForOrder, commitSignupBonusForOrder, restoreSignupBonusForOrder } from './signup-bonus';
+import { sendDeliveryOtpSms } from './notify-templates';
 
 // State machine. Cancellation is allowed from any pre-delivery state into the
 // matching CANCELLED_BY_* terminal. Legacy CANCELLED is kept for back-compat.
@@ -482,12 +484,24 @@ export async function transitionOrder(orderId: string, next: OrderStatus, opts: 
 
   publish(`order:${orderId}`, { kind: 'status', orderId, status: next, at: new Date().toISOString() });
   publish(`branch:${order.branchId}:orders`, { kind: 'status', orderId, status: next, at: new Date().toISOString() });
+  // OUT_FOR_DELIVERY → send the customer their delivery OTP via SMS so they
+  // can hand it to the rider at the door. Fire-and-forget: a notification
+  // failure must never roll back or block the transition. The previous-state
+  // guard is implicit — transitionOrder early-returns when status === next.
+  if (next === OrderStatus.OUT_FOR_DELIVERY) {
+    sendDeliveryOtpSms(orderId).catch(() => {});
+  }
   // When an order is ready, push to the platform-wide rider pool channel.
   if (next === OrderStatus.READY) {
     publish('rider:pool', { kind: 'order:new', orderId, branchId: order.branchId });
     // Push-notify online riders who have a registered device token. Best-effort
     // — a push failure must never roll back or block the transition.
     notifyRidersOfNewOrder(orderId).catch(() => {});
+    // Batch-dispatch: if free rider capacity is tight, offer this order as an
+    // append-to-route invitation to OUT_FOR_DELIVERY riders nearby. The engine
+    // self-gates on capacity (returns {invited:0} when there are enough free
+    // riders), so it's safe to call on every READY transition. Fire-and-forget.
+    maybeOfferAsBatch(orderId).catch(() => {});
   }
   // Challenge progress refresh fires AFTER the order transition commits so a
   // challenge-update failure never rolls back a delivered order. The function

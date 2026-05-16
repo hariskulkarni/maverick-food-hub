@@ -60,3 +60,37 @@ export async function notifyRidersOfNewOrder(orderId: string): Promise<void> {
     log.error({ err, orderId }, 'notifyRidersOfNewOrder failed');
   }
 }
+
+/**
+ * Ping a single rider that they've been invited to batch a new order onto
+ * their current delivery. Carries the invitation id + the extra-earnings ₹
+ * so the rider's app can render the in-app modal immediately when it picks
+ * up the data payload (alongside the SSE event on `rider:<id>:batch-invitation`).
+ *
+ * Best-effort — every send is wrapped, a push failure must never block the
+ * dispatch engine.
+ */
+export async function sendBatchInvitationPush(args: {
+  expoPushToken: string;
+  invitationId: string;
+  orderId: string;
+  extraEarnings: number;
+}): Promise<void> {
+  try {
+    await sendExpoPush([
+      {
+        to: args.expoPushToken,
+        title: 'Add this delivery to your route?',
+        body: `Earn an extra ₹${args.extraEarnings} — tap to view.`,
+        data: {
+          kind: 'batch:invitation',
+          invitationId: args.invitationId,
+          orderId: args.orderId,
+          extraEarnings: args.extraEarnings,
+        },
+      },
+    ]);
+  } catch (err) {
+    log.error({ err, invitationId: args.invitationId }, 'sendBatchInvitationPush failed');
+  }
+}

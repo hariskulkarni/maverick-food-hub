@@ -1,14 +1,15 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { OrderStatusBadge } from '@/components/order-status-badge';
 import { useSSE } from '@/hooks/use-sse';
-import { money, fmtDate, STATUS_LABELS } from '@/lib/utils';
-import { Printer, X, Check, Bike, Bell, BellOff } from 'lucide-react';
+import { money, fmtDate } from '@/lib/utils';
+import { Printer, X, Check, Bike } from 'lucide-react';
 import { toast } from 'sonner';
-import { playNewOrderChime } from '@/lib/audio-cues';
+import { useNotificationSound } from '@/hooks/use-notification-sound';
+import { SoundToggle } from '@/components/sound-toggle';
 // AssignRiderDialog removed — riders self-claim from the platform pool now.
 
 type Order = any;
@@ -24,36 +25,28 @@ const FILTERS = [
   { key: 'ONLINE', label: 'Online paid', match: (o: any) => o.paymentMethod === 'RAZORPAY' }
 ] as const;
 
-const SOUND_PREF_KEY = 'orders-board:sound-enabled';
-
 type PendingAlert = { orderId: string; code: string };
 
 export function OrdersBoard({ branchId, initial }: { branchId: string; initial: Order[] }) {
   const [orders, setOrders] = useState<Order[]>(initial);
   const [filter, setFilter] = useState<string>('all');
   const [busy, setBusy] = useState<Record<string, boolean>>({});
-  const [soundOn, setSoundOn] = useState<boolean>(true);
   const [alerts, setAlerts] = useState<PendingAlert[]>([]);
-  const soundOnRef = useRef(soundOn);
-  soundOnRef.current = soundOn;
 
-  // Load sound preference & request notification permission once on mount.
+  // Admin gets a single soft chime per new order — kitchen owns the looping
+  // attention loop. Pref is persisted by the hook under `notif-sound-admin.mp3`.
+  const chime = useNotificationSound('/sounds/admin.mp3', { loop: false });
+
+  // Request browser notification permission once on mount.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem(SOUND_PREF_KEY);
-    if (stored != null) setSoundOn(stored === '1');
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});
     }
   }, []);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(SOUND_PREF_KEY, soundOn ? '1' : '0');
-  }, [soundOn]);
-
   function fireAlert(code: string) {
-    if (soundOnRef.current) playNewOrderChime();
+    chime.play();
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       try {
         new Notification('New order', { body: `Order ${code} just came in`, tag: `order-${code}` });
@@ -162,15 +155,9 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
             {f.label}
           </button>
         ))}
-        <button
-          type="button"
-          onClick={() => setSoundOn((v) => !v)}
-          title={soundOn ? 'Sound alerts: on' : 'Sound alerts: off'}
-          className={`ml-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm ${soundOn ? 'border-primary bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent'}`}
-        >
-          {soundOn ? <Bell className="size-4" /> : <BellOff className="size-4" />}
-          {soundOn ? 'Sound on' : 'Sound off'}
-        </button>
+        <div className="ml-auto">
+          <SoundToggle enabled={chime.enabled} onToggle={chime.setEnabled} />
+        </div>
       </div>
 
       <div className="grid gap-3">

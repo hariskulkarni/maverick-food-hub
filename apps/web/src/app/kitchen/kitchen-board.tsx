@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +7,9 @@ import { useSSE } from '@/hooks/use-sse';
 import { ChefHat, Package, Clock, Printer, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { KotLine } from './kot-line';
+import { useNotificationSound } from '@/hooks/use-notification-sound';
+import { SoundToggle } from '@/components/sound-toggle';
+import { KitchenAttentionBanner } from '@/components/kitchen-attention-banner';
 
 const COLUMNS = [
   { key: 'ACCEPTED', title: 'New', icon: Clock },
@@ -17,8 +20,44 @@ const COLUMNS = [
 export function KitchenBoard({ branchId, initial }: { branchId: string; initial: any[] }) {
   const [orders, setOrders] = useState<any[]>(initial);
   const [now, setNow] = useState(Date.now());
+  const [unacked, setUnacked] = useState<Set<string>>(new Set());
+
+  // Looping kitchen chime — fires every 3s while there are unacknowledged
+  // orders. The hook owns the audio element + autoplay-policy graceful fail.
+  const chime = useNotificationSound('/sounds/kitchen.mp3', { loop: true, intervalMs: 3000 });
+  const chimePlayingRef = useRef(false);
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
+
+  // Request browser notification permission once on mount — works only after
+  // a user gesture in most browsers, but no harm asking here; if it's denied
+  // we fall back to the banner + chime alone.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
+  // Drive looping chime from the unacked set — start when non-empty, stop
+  // when drained. `chimePlayingRef` debounces so we don't re-arm the
+  // interval on every render.
+  useEffect(() => {
+    if (unacked.size > 0 && !chimePlayingRef.current) {
+      chime.play();
+      chimePlayingRef.current = true;
+    } else if (unacked.size === 0 && chimePlayingRef.current) {
+      chime.stop();
+      chimePlayingRef.current = false;
+    }
+  }, [unacked, chime]);
+
+  // Also clear the chime if the operator disables the sound toggle while the
+  // banner is up — the loop interval is already disarmed inside the hook,
+  // we just resync the local ref so re-enabling restarts.
+  useEffect(() => {
+    if (!chime.enabled) chimePlayingRef.current = false;
+  }, [chime.enabled]);
 
   useSSE(`branch:${branchId}:orders`, {
     onMessage: async (e: any) => {
@@ -31,11 +70,34 @@ export function KitchenBoard({ branchId, initial }: { branchId: string; initial:
         if (['ACCEPTED', 'PREPARING', 'READY'].includes(o.status)) return [...without, o].sort((a, b) => new Date(a.acceptedAt ?? a.placedAt).getTime() - new Date(b.acceptedAt ?? b.placedAt).getTime());
         return without;
       });
+      // A new order or one freshly ACCEPTED — that's our "attention" trigger
+      // for the kitchen. Track its id so we can clear it on acknowledge.
       if (e.kind === 'order:new' || (e.kind === 'status' && e.status === 'ACCEPTED')) {
         toast.info(`New order ${o.code}`);
+        setUnacked((prev) => {
+          const next = new Set(prev);
+          next.add(o.id);
+          return next;
+        });
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          try {
+            new Notification('New order — Kitchen', {
+              body: `Order ${o.code} needs attention`,
+              tag: `kitchen-${o.code}`,
+              requireInteraction: true,
+              silent: false
+            });
+          } catch {
+            /* notification API can throw in some browsers/contexts */
+          }
+        }
       }
     }
   });
+
+  function acknowledge() {
+    setUnacked(new Set());
+  }
 
   async function transition(id: string, next: string) {
     const r = await fetch(`/api/admin/orders/${id}/transition`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: next }) });
@@ -43,7 +105,12 @@ export function KitchenBoard({ branchId, initial }: { branchId: string; initial:
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <>
+      <KitchenAttentionBanner count={unacked.size} onAcknowledge={acknowledge} />
+      <div className="mb-3 flex items-center justify-end">
+        <SoundToggle enabled={chime.enabled} onToggle={chime.setEnabled} />
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
       {COLUMNS.map((col) => {
         const items = orders.filter((o) => o.status === col.key);
         return (
@@ -96,6 +163,7 @@ export function KitchenBoard({ branchId, initial }: { branchId: string; initial:
           </section>
         );
       })}
-    </div>
+      </div>
+    </>
   );
 }

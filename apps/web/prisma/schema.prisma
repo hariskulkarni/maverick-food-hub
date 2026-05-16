@@ -40,27 +40,27 @@ enum RiderApplicationStatus {
 
 enum OrderStatus {
   // Pre-payment / payment funnel
-  PAYMENT_PENDING            // Order created, waiting for payment to land
-  PAYMENT_FAILED             // Provider rejected the payment
+  PAYMENT_PENDING // Order created, waiting for payment to land
+  PAYMENT_FAILED // Provider rejected the payment
   // Restaurant funnel
-  RECEIVED                   // Paid (or COD) and waiting for restaurant accept
+  RECEIVED // Paid (or COD) and waiting for restaurant accept
   ACCEPTED
   PREPARING
-  READY                      // Ready for pickup — published to rider pool
+  READY // Ready for pickup — published to rider pool
   // Rider funnel
-  RIDER_ASSIGNED             // Specific rider on the way to pickup
-  RIDER_REACHED_RESTAURANT   // Rider arrived at the kitchen
-  PICKED_UP                  // Rider has the food
-  OUT_FOR_DELIVERY           // Same as PICKED_UP from customer's POV
-  RIDER_REACHED_CUSTOMER     // At the door
+  RIDER_ASSIGNED // Specific rider on the way to pickup
+  RIDER_REACHED_RESTAURANT // Rider arrived at the kitchen
+  PICKED_UP // Rider has the food
+  OUT_FOR_DELIVERY // Same as PICKED_UP from customer's POV
+  RIDER_REACHED_CUSTOMER // At the door
   // Delivery failure paths
-  DELIVERY_OTP_FAILED        // OTP entered too many times incorrectly
-  CUSTOMER_UNREACHABLE       // Rider could not contact the customer
-  DELIVERY_FAILED            // Terminal — couldn't be handed over
+  DELIVERY_OTP_FAILED // OTP entered too many times incorrectly
+  CUSTOMER_UNREACHABLE // Rider could not contact the customer
+  DELIVERY_FAILED // Terminal — couldn't be handed over
   // Happy ending
   DELIVERED
   // Cancellation paths
-  CANCELLED                  // Generic — legacy column. Use CANCELLED_BY_* for new code
+  CANCELLED // Generic — legacy column. Use CANCELLED_BY_* for new code
   CANCELLED_BY_CUSTOMER
   CANCELLED_BY_RESTAURANT
   CANCELLED_BY_ADMIN
@@ -227,22 +227,22 @@ model User {
   deletedAt    DateTime?
 
   addresses             Address[]
-  orders                Order[]           @relation("CustomerOrders")
+  orders                Order[]              @relation("CustomerOrders")
   otpTokens             OtpToken[]
   riderProfile          RiderProfile?
   walletAccount         Wallet?
   loyaltyAccount        LoyaltyAccount?
-  referralsMade         Referral[]        @relation("Referrer")
-  referralsRedeemed     Referral[]        @relation("Referred")
+  referralsMade         Referral[]           @relation("Referrer")
+  referralsRedeemed     Referral[]           @relation("Referred")
   notifications         NotificationLog[]
   branchMemberships     BranchUser[] // for ADMIN/KITCHEN scoped to branch(es)
   restaurantMemberships RestaurantUser[]
-  ownedRestaurants      Restaurant[]      @relation("RestaurantOwner")
-  ownedBrands           Brand[]           @relation("BrandOwner")
+  ownedRestaurants      Restaurant[]         @relation("RestaurantOwner")
+  ownedBrands           Brand[]              @relation("BrandOwner")
   challengeProgress     ChallengeProgress[]
   challengeRewards      ChallengeReward[]
   signupBonusGrant      SignupBonusGrant?
-  orderFeedback         OrderFeedback[]   @relation("CustomerFeedback")
+  orderFeedback         OrderFeedback[]      @relation("CustomerFeedback")
   favoriteRestaurants   FavoriteRestaurant[]
   favoriteItems         FavoriteItem[]
 
@@ -310,8 +310,8 @@ model Address {
 // Restaurant can also be moved between brands without data migration —
 // reports use the *current* brand assignment.
 model Brand {
-  id            String   @id @default(cuid())
-  slug          String   @unique
+  id            String           @id @default(cuid())
+  slug          String           @unique
   name          String
   tagline       String?
   description   String?
@@ -321,8 +321,8 @@ model Brand {
   contactPhone  String?
   ownerUserId   String? // optional umbrella admin (e.g. group MD)
   status        RestaurantStatus @default(ACTIVE)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   owner       User?        @relation("BrandOwner", fields: [ownerUserId], references: [id])
   restaurants Restaurant[]
@@ -343,28 +343,28 @@ enum RiderDispatchMode {
 }
 
 model Restaurant {
-  id             String           @id @default(cuid())
-  slug           String           @unique
-  name           String
-  tagline        String?
-  description    String?
-  cuisine        String? // "Indian", "Italian", "Multi-cuisine"
-  logoUrl        String?
-  coverImageUrl  String?
-  contactEmail   String?
-  contactPhone   String?
-  status         RestaurantStatus @default(PENDING)
-  ownerUserId    String // primary owner — User.role=ADMIN
-  approvedAt     DateTime?
-  rejectedReason String?
-  commissionPct  Float            @default(15.0) // platform's cut
+  id                   String            @id @default(cuid())
+  slug                 String            @unique
+  name                 String
+  tagline              String?
+  description          String?
+  cuisine              String? // "Indian", "Italian", "Multi-cuisine"
+  logoUrl              String?
+  coverImageUrl        String?
+  contactEmail         String?
+  contactPhone         String?
+  status               RestaurantStatus  @default(PENDING)
+  ownerUserId          String // primary owner — User.role=ADMIN
+  approvedAt           DateTime?
+  rejectedReason       String?
+  commissionPct        Float             @default(15.0) // platform's cut
   // Rider sourcing policy for this restaurant's orders.
   riderDispatchMode    RiderDispatchMode @default(FLEET_ONLY)
   fleetFallbackMinutes Int               @default(5) // DEDICATED_FIRST: wait before opening to fleet
   // Optional umbrella brand. NULL ⇒ solo restaurant (existing behaviour).
-  brandId        String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  brandId              String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
 
   owner             User                    @relation("RestaurantOwner", fields: [ownerUserId], references: [id])
   brand             Brand?                  @relation(fields: [brandId], references: [id], onDelete: SetNull)
@@ -433,47 +433,47 @@ model DeliveryPayoutRule {
 
   // ── Base & distance ────────────────────────────────────────────────────
   baseAmount              Decimal @default(30.00) @db.Decimal(10, 2)
-  perKmAmount             Decimal @default(5.00)  @db.Decimal(10, 2)
-  firstKmIncluded         Decimal @default(1.0)   @db.Decimal(6, 2)  // km included in base
-  longDistanceThresholdKm Decimal @default(5.0)   @db.Decimal(6, 2)
-  longDistanceBonusPerKm  Decimal @default(0)     @db.Decimal(10, 2) // extra ₹/km beyond threshold
+  perKmAmount             Decimal @default(5.00) @db.Decimal(10, 2)
+  firstKmIncluded         Decimal @default(1.0) @db.Decimal(6, 2) // km included in base
+  longDistanceThresholdKm Decimal @default(5.0) @db.Decimal(6, 2)
+  longDistanceBonusPerKm  Decimal @default(0) @db.Decimal(10, 2) // extra ₹/km beyond threshold
 
   // ── Time-based ─────────────────────────────────────────────────────────
-  perMinuteAmount         Decimal @default(0)     @db.Decimal(10, 2) // pay per active minute
-  lunchPeakStartMin       Int     @default(720)   // 12:00
-  lunchPeakEndMin         Int     @default(870)   // 14:30
-  lunchPeakBonus          Decimal @default(10.00) @db.Decimal(10, 2)
-  dinnerPeakStartMin      Int     @default(1140)  // 19:00
-  dinnerPeakEndMin        Int     @default(1380)  // 23:00
-  dinnerPeakBonus         Decimal @default(10.00) @db.Decimal(10, 2)
-  lateNightStartMin       Int     @default(1320)  // 22:00
-  lateNightBonus          Decimal @default(0)     @db.Decimal(10, 2)
-  weekendBonus            Decimal @default(0)     @db.Decimal(10, 2)
+  perMinuteAmount    Decimal @default(0) @db.Decimal(10, 2) // pay per active minute
+  lunchPeakStartMin  Int     @default(720) // 12:00
+  lunchPeakEndMin    Int     @default(870) // 14:30
+  lunchPeakBonus     Decimal @default(10.00) @db.Decimal(10, 2)
+  dinnerPeakStartMin Int     @default(1140) // 19:00
+  dinnerPeakEndMin   Int     @default(1380) // 23:00
+  dinnerPeakBonus    Decimal @default(10.00) @db.Decimal(10, 2)
+  lateNightStartMin  Int     @default(1320) // 22:00
+  lateNightBonus     Decimal @default(0) @db.Decimal(10, 2)
+  weekendBonus       Decimal @default(0) @db.Decimal(10, 2)
 
   // Legacy field kept for back-compat (UIs preferred lunch/dinner now)
-  peakHourBonus           Decimal @default(10.00) @db.Decimal(10, 2)
+  peakHourBonus Decimal @default(10.00) @db.Decimal(10, 2)
 
   // ── Conditions ─────────────────────────────────────────────────────────
-  rainBonus               Decimal @default(15.00) @db.Decimal(10, 2)
-  codHandlingFee          Decimal @default(0)     @db.Decimal(10, 2) // ₹ paid for cash-on-delivery
-  orderValueSharePct      Float   @default(0)                        // % of subtotal added to payout
+  rainBonus          Decimal @default(15.00) @db.Decimal(10, 2)
+  codHandlingFee     Decimal @default(0) @db.Decimal(10, 2) // ₹ paid for cash-on-delivery
+  orderValueSharePct Float   @default(0) // % of subtotal added to payout
 
   // ── Performance & quality ──────────────────────────────────────────────
   dailyTripBonusThreshold  Int     @default(0)
   dailyTripBonusAmount     Decimal @default(0) @db.Decimal(10, 2)
   weeklyTripBonusThreshold Int     @default(0)
   weeklyTripBonusAmount    Decimal @default(0) @db.Decimal(10, 2)
-  ratingBonusThreshold     Float   @default(0)                       // e.g. 4.5
+  ratingBonusThreshold     Float   @default(0) // e.g. 4.5
   ratingBonusAmount        Decimal @default(0) @db.Decimal(10, 2)
 
   // ── Wait time & exceptions ─────────────────────────────────────────────
-  waitTimeStartMin        Int     @default(10)
-  waitTimePerMin          Decimal @default(1) @db.Decimal(10, 2)
-  cancellationPayPct      Int     @default(50)                        // % of base if cancelled post-pickup
+  waitTimeStartMin   Int     @default(10)
+  waitTimePerMin     Decimal @default(1) @db.Decimal(10, 2)
+  cancellationPayPct Int     @default(50) // % of base if cancelled post-pickup
 
   // ── Caps ───────────────────────────────────────────────────────────────
-  minimumPerDelivery      Decimal @default(0) @db.Decimal(10, 2)
-  maxPerDelivery          Decimal @default(0) @db.Decimal(10, 2)      // 0 = uncapped
+  minimumPerDelivery Decimal @default(0) @db.Decimal(10, 2)
+  maxPerDelivery     Decimal @default(0) @db.Decimal(10, 2) // 0 = uncapped
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -633,9 +633,9 @@ model Category {
 model CategoryAvailability {
   id         String @id @default(cuid())
   categoryId String
-  dayOfWeek  Int    // 0 = Sun … 6 = Sat (matches JS Date.getDay)
-  startMin   Int    // inclusive, e.g. 7*60 = 420 for 07:00
-  endMin     Int    // exclusive, e.g. 11*60 = 660 for 11:00
+  dayOfWeek  Int // 0 = Sun … 6 = Sat (matches JS Date.getDay)
+  startMin   Int // inclusive, e.g. 7*60 = 420 for 07:00
+  endMin     Int // exclusive, e.g. 11*60 = 660 for 11:00
 
   category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
@@ -663,17 +663,17 @@ model MenuItem {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  branch         Branch                 @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  category       Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  availabilities MenuItemAvailability[]
-  comboItems     ComboItem[]
-  orderItems     OrderItem[]
-  inventoryItem  InventoryItem?         @relation(fields: [inventoryItemId], references: [id])
-  favoritedBy    FavoriteItem[]
-  offerScopes        OfferItemScope[]
-  crossSellAsParent  CrossSell[] @relation("CrossSellParent")
-  crossSellAsTarget  CrossSell[] @relation("CrossSellSuggested")
-  happyHourRules     HappyHourRule[]
+  branch            Branch                 @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  category          Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  availabilities    MenuItemAvailability[]
+  comboItems        ComboItem[]
+  orderItems        OrderItem[]
+  inventoryItem     InventoryItem?         @relation(fields: [inventoryItemId], references: [id])
+  favoritedBy       FavoriteItem[]
+  offerScopes       OfferItemScope[]
+  crossSellAsParent CrossSell[]            @relation("CrossSellParent")
+  crossSellAsTarget CrossSell[]            @relation("CrossSellSuggested")
+  happyHourRules    HappyHourRule[]
 
   @@unique([branchId, slug])
   @@index([branchId, categoryId])
@@ -737,17 +737,17 @@ model Order {
   addressId  String?
   status     OrderStatus @default(RECEIVED)
 
-  subtotal       Decimal @db.Decimal(10, 2)
-  taxAmount      Decimal @default(0.00) @db.Decimal(10, 2)
-  deliveryFee    Decimal @default(0.00) @db.Decimal(10, 2)
-  discountAmount Decimal @default(0.00) @db.Decimal(10, 2)
-  walletApplied  Decimal @default(0.00) @db.Decimal(10, 2)
-  loyaltyApplied Decimal @default(0.00) @db.Decimal(10, 2)
+  subtotal           Decimal @db.Decimal(10, 2)
+  taxAmount          Decimal @default(0.00) @db.Decimal(10, 2)
+  deliveryFee        Decimal @default(0.00) @db.Decimal(10, 2)
+  discountAmount     Decimal @default(0.00) @db.Decimal(10, 2)
+  walletApplied      Decimal @default(0.00) @db.Decimal(10, 2)
+  loyaltyApplied     Decimal @default(0.00) @db.Decimal(10, 2)
   // Snapshot of the signup-bonus discount applied at order time. Separate from
   // discountAmount so reports can attribute promo spend vs new-customer credit.
   signupBonusApplied Decimal @default(0.00) @db.Decimal(10, 2)
-  total          Decimal @db.Decimal(10, 2)
-  currency       String  @default("INR")
+  total              Decimal @db.Decimal(10, 2)
+  currency           String  @default("INR")
 
   paymentMethod       PaymentMethod
   customerNotes       String?
@@ -755,16 +755,16 @@ model Order {
   estimatedReadyAt    DateTime?
   estimatedDeliveryAt DateTime?
 
-  placedAt         DateTime  @default(now())
-  acceptedAt       DateTime?
-  preparingAt      DateTime?
-  readyAt          DateTime?
-  outForDeliveryAt DateTime?
-  deliveredAt      DateTime?
-  cancelledAt      DateTime?
-  cancelReason     String?
+  placedAt           DateTime            @default(now())
+  acceptedAt         DateTime?
+  preparingAt        DateTime?
+  readyAt            DateTime?
+  outForDeliveryAt   DateTime?
+  deliveredAt        DateTime?
+  cancelledAt        DateTime?
+  cancelReason       String?
   cancellationReason CancellationReason?
-  cancelledBy      String? // userId who triggered cancel
+  cancelledBy        String? // userId who triggered cancel
 
   deliveryOtp         String? // 4-digit verification code
   deliveryOtpVerified Boolean @default(false)
@@ -772,22 +772,23 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  branch           Branch               @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  customer         User                 @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Restrict)
-  address          Address?             @relation(fields: [addressId], references: [id])
-  items            OrderItem[]
-  statusEvents     OrderStatusEvent[]
-  payments         Payment[]
-  refunds          Refund[]
-  assignment       RiderAssignment?
-  couponRedemption CouponRedemption?
-  offerRedemptions OfferRedemption[]
+  branch            Branch               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  customer          User                 @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: Restrict)
+  address           Address?             @relation(fields: [addressId], references: [id])
+  items             OrderItem[]
+  statusEvents      OrderStatusEvent[]
+  payments          Payment[]
+  refunds           Refund[]
+  assignment        RiderAssignment?
+  couponRedemption  CouponRedemption?
+  offerRedemptions  OfferRedemption[]
   signupBonusLedger SignupBonusLedger[]
-  loyaltyTxns      LoyaltyTransaction[]
-  walletTxns       WalletTransaction[]
-  escalations      OrderEscalation[]
-  codCollection    CodCollection?
-  feedback         OrderFeedback?
+  loyaltyTxns       LoyaltyTransaction[]
+  walletTxns        WalletTransaction[]
+  escalations       OrderEscalation[]
+  codCollection     CodCollection?
+  feedback          OrderFeedback?
+  batchInvitations  BatchInvitation[]
 
   @@index([branchId, status])
   @@index([branchId, status, createdAt])
@@ -825,26 +826,26 @@ enum FeedbackIssueTag {
 }
 
 model OrderFeedback {
-  id            String   @id @default(cuid())
-  orderId       String   @unique
-  customerId    String
+  id                    String             @id @default(cuid())
+  orderId               String             @unique
+  customerId            String
   // 1..5 each; null means "customer didn't rate that axis".
-  foodRating    Int?
-  deliveryRating Int?
-  overallRating Int?
-  comment       String?
+  foodRating            Int?
+  deliveryRating        Int?
+  overallRating         Int?
+  comment               String?
   // Stored as an array column — Postgres-native, no JSON parsing for filters.
-  issueTags     FeedbackIssueTag[] @default([])
-  imageUrl      String?
+  issueTags             FeedbackIssueTag[] @default([])
+  imageUrl              String?
   // Customer can opt-in to share their (already-public) comment with the rider.
   // Default: rider sees ratings + redacted comment only.
-  shareCommentWithRider Boolean @default(false)
+  shareCommentWithRider Boolean            @default(false)
   // Snapshotted at create so the 48h window survives clock drift on the order.
-  windowEndsAt  DateTime
+  windowEndsAt          DateTime
   // Audit
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  editedAt      DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  editedAt              DateTime?
 
   order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   customer User  @relation("CustomerFeedback", fields: [customerId], references: [id], onDelete: Cascade)
@@ -931,15 +932,15 @@ model CouponRedemption {
 // the highest-value combination.
 
 enum OfferType {
-  PERCENTAGE                 // X% off (with optional max cap)
-  FIXED                      // Flat ₹ off
-  BUY_X_GET_Y                // Buy N of item A, get M of item B free/discounted
-  COMBO_DISCOUNT             // Bundle-of-items discount (slash combined price)
-  FREE_ITEM_ABOVE            // Free menu item when subtotal ≥ threshold
-  FIRST_ORDER                // Only redeemable on the customer's 1st order
-  REPEAT_CUSTOMER            // Eligible after N completed orders
-  DINE_IN_TO_ONLINE          // Issued from a dine-in receipt, redeemable online
-  ONLINE_TO_DINE_IN          // Issued from an online order, redeemable in-restaurant
+  PERCENTAGE // X% off (with optional max cap)
+  FIXED // Flat ₹ off
+  BUY_X_GET_Y // Buy N of item A, get M of item B free/discounted
+  COMBO_DISCOUNT // Bundle-of-items discount (slash combined price)
+  FREE_ITEM_ABOVE // Free menu item when subtotal ≥ threshold
+  FIRST_ORDER // Only redeemable on the customer's 1st order
+  REPEAT_CUSTOMER // Eligible after N completed orders
+  DINE_IN_TO_ONLINE // Issued from a dine-in receipt, redeemable online
+  ONLINE_TO_DINE_IN // Issued from an online order, redeemable in-restaurant
 }
 
 // Where the offer is allowed to be redeemed. Lets a single Offer row cover the
@@ -951,34 +952,34 @@ enum ChannelScope {
 }
 
 model Offer {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   // ── Identity ──────────────────────────────────────────────────────────
-  name        String          // Internal admin label
-  description String?         // Customer-facing copy ("Get 20% off, max ₹100")
+  name        String // Internal admin label
+  description String? // Customer-facing copy ("Get 20% off, max ₹100")
   type        OfferType
   // Optional promo code. NULL = auto-apply only (no code entry needed).
   // Unique when present so customers can type one in at checkout.
-  code        String?  @unique
+  code        String?   @unique
 
   // ── Reward parameters ─────────────────────────────────────────────────
   // Not every type uses every field — the resolver picks the relevant ones
   // based on `type`. We keep them all on the model so the admin form can be
   // type-switched without a polymorphic table. JSON columns avoid extra
   // round-trips when a type-specific structure is needed (e.g. BUY_X_GET_Y).
-  percentOff       Float?                          // PERCENTAGE
-  flatOff          Decimal? @db.Decimal(10, 2)     // FIXED + caps for others
-  maxDiscount      Decimal? @db.Decimal(10, 2)     // ceiling on % types
-  minOrderAmount   Decimal? @db.Decimal(10, 2)     // gate by cart subtotal
+  percentOff     Float? // PERCENTAGE
+  flatOff        Decimal? @db.Decimal(10, 2) // FIXED + caps for others
+  maxDiscount    Decimal? @db.Decimal(10, 2) // ceiling on % types
+  minOrderAmount Decimal? @db.Decimal(10, 2) // gate by cart subtotal
   // BUY_X_GET_Y: { buyItemId, buyQty, getItemId, getQty, getDiscountPct }
   // COMBO_DISCOUNT: { items: [{id, qty}], comboPrice }
   // FREE_ITEM_ABOVE: { itemId, threshold }
-  rewardConfig     Json?
+  rewardConfig   Json?
 
   // ── Scope ─────────────────────────────────────────────────────────────
   // restaurantId NULL ⇒ platform-wide offer (e.g. ONLINE_TO_DINE_IN incentives
   // from corporate). branchId NULL ⇒ all branches of the restaurant.
-  restaurantId   String?
-  branchId       String?
+  restaurantId        String?
+  branchId            String?
   // Many-to-many to categories / items via join tables so a single offer can
   // target a subset of menu — e.g. "20% off Desserts category".
   appliesToCategories OfferCategoryScope[]
@@ -996,21 +997,21 @@ model Offer {
   // ── Validity & caps ───────────────────────────────────────────────────
   validFrom    DateTime  @default(now())
   validTo      DateTime?
-  usageLimit   Int?      // Global cap — null = unlimited
+  usageLimit   Int? // Global cap — null = unlimited
   usedCount    Int       @default(0)
   perUserLimit Int       @default(1) // Per-customer cap
 
   // ── Lifecycle & ordering ──────────────────────────────────────────────
-  isActive   Boolean @default(true)
+  isActive  Boolean @default(true)
   // Higher priority wins when multiple offers could auto-apply. Ties broken
   // by `discountAmount DESC` then `createdAt DESC`.
-  priority   Int     @default(0)
+  priority  Int     @default(0)
   // When true, the resolver may auto-apply this offer (no code required) on
   // any eligible cart. False = code-only.
-  autoApply  Boolean @default(false)
+  autoApply Boolean @default(false)
   // Stackable with other offers? Default false — the resolver picks one best
   // offer per cart unless `stackable` is true on every involved offer.
-  stackable  Boolean @default(false)
+  stackable Boolean @default(false)
 
   // ── Audit ─────────────────────────────────────────────────────────────
   createdById String?
@@ -1018,15 +1019,15 @@ model Offer {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  restaurant  Restaurant?       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  restaurant Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   // Optional link back to a CouponCampaign — set when the Offer was auto-
   // generated by a campaign issuance. The campaign owns the cross-channel
   // metadata (issued count, distribution count, conversion rate); the Offer
   // does the actual cart-level redemption math.
   campaignId String?
 
-  branch          Branch?            @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  campaign        CouponCampaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  branch          Branch?           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  campaign        CouponCampaign?   @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   redemptions     OfferRedemption[]
   challengeReward ChallengeReward?
 
@@ -1069,16 +1070,16 @@ model OfferItemScope {
 // `amountOff` and `breakdown` so post-hoc analytics work even if the parent
 // offer changes its reward parameters later.
 model OfferRedemption {
-  id        String   @id @default(cuid())
+  id        String       @id @default(cuid())
   offerId   String
   orderId   String
   userId    String
-  amountOff Decimal  @db.Decimal(10, 2)
+  amountOff Decimal      @db.Decimal(10, 2)
   // Type-specific snapshot — e.g. for BUY_X_GET_Y: { buyItemId, freeQty, savedAmt }
   breakdown Json?
   // Channel the redemption fired on (lets us count dine-in vs online conversion)
   channel   ChannelScope @default(ONLINE)
-  createdAt DateTime @default(now())
+  createdAt DateTime     @default(now())
 
   offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -1115,31 +1116,31 @@ enum CampaignStatus {
 }
 
 model CouponCampaign {
-  id           String  @id @default(cuid())
+  id           String          @id @default(cuid())
   restaurantId String?
   name         String
   description  String?
-  codePrefix   String  @unique // e.g. "EATIN" — actual code becomes EATIN20 or similar
+  codePrefix   String          @unique // e.g. "EATIN" — actual code becomes EATIN20 or similar
   channel      CampaignChannel
 
   // Discount config (cloned onto the linked Offer at issuance).
-  discountType   String  // "PERCENTAGE" | "FIXED" — kept as string so a future
-                         // discount type can be added without an enum migration.
-  discountValue  Decimal @db.Decimal(10, 2)
+  discountType   String // "PERCENTAGE" | "FIXED" — kept as string so a future
+  // discount type can be added without an enum migration.
+  discountValue  Decimal  @db.Decimal(10, 2)
   maxDiscount    Decimal? @db.Decimal(10, 2)
   minOrderAmount Decimal? @db.Decimal(10, 2)
 
   // Caps
-  maxUses      Int?    // global redemption cap (NULL = unlimited)
-  perUserLimit Int     @default(1)
+  maxUses      Int? // global redemption cap (NULL = unlimited)
+  perUserLimit Int  @default(1)
 
   // Schedule
-  validFrom DateTime @default(now())
+  validFrom DateTime  @default(now())
   expiresAt DateTime?
 
   // Reporting metadata — admin manually bumps `distributedCount` after a
   // print/email run so the conversion-rate report has a denominator.
-  distributedCount Int @default(0)
+  distributedCount Int            @default(0)
   status           CampaignStatus @default(DRAFT)
 
   // Audit columns
@@ -1173,19 +1174,19 @@ model CouponCampaign {
 
 enum HappyHourScope {
   RESTAURANT // applies to every item + combo at the restaurant
-  CATEGORY   // every item in a single category
-  MENU_ITEM  // one specific menu item
-  COMBO      // one specific combo
+  CATEGORY // every item in a single category
+  MENU_ITEM // one specific menu item
+  COMBO // one specific combo
 }
 
 enum HappyHourDiscountType {
-  PERCENTAGE          // X% off original price
-  FIXED_PRICE         // explicit new price, e.g. "every cocktail is ₹199"
-  FIXED_AMOUNT_OFF    // flat ₹ off original
+  PERCENTAGE // X% off original price
+  FIXED_PRICE // explicit new price, e.g. "every cocktail is ₹199"
+  FIXED_AMOUNT_OFF // flat ₹ off original
 }
 
 model HappyHourRule {
-  id           String @id @default(cuid())
+  id           String  @id @default(cuid())
   restaurantId String
   name         String
   description  String?
@@ -1202,11 +1203,11 @@ model HappyHourRule {
   // ── Discount ───────────────────────────────────────────────────────────
   discountType HappyHourDiscountType
   // Only one of these is read at calc time based on `discountType`.
-  percentOff  Float?
-  fixedPrice  Decimal? @db.Decimal(10, 2) // FIXED_PRICE: the new unit price
-  amountOff   Decimal? @db.Decimal(10, 2) // FIXED_AMOUNT_OFF
+  percentOff   Float?
+  fixedPrice   Decimal?              @db.Decimal(10, 2) // FIXED_PRICE: the new unit price
+  amountOff    Decimal?              @db.Decimal(10, 2) // FIXED_AMOUNT_OFF
   // Optional floor for safety so a 50% rule can't ever drop a ₹500 item below ₹100.
-  minPrice    Decimal? @db.Decimal(10, 2)
+  minPrice     Decimal?              @db.Decimal(10, 2)
 
   // ── Validity range ─────────────────────────────────────────────────────
   validFrom DateTime  @default(now())
@@ -1222,10 +1223,10 @@ model HappyHourRule {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  category   Category?  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  menuItem   MenuItem?  @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
-  combo      Combo?     @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  restaurant Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  category   Category?           @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  menuItem   MenuItem?           @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  combo      Combo?              @relation(fields: [comboId], references: [id], onDelete: Cascade)
   schedules  HappyHourSchedule[]
 
   @@index([restaurantId, isActive, validFrom, validTo])
@@ -1241,9 +1242,9 @@ model HappyHourRule {
 model HappyHourSchedule {
   id        String @id @default(cuid())
   ruleId    String
-  dayOfWeek Int    // 0..6 (Sun..Sat, matches Date.getDay)
-  startMin  Int    // 0..1440 inclusive
-  endMin    Int    // 0..1440 exclusive
+  dayOfWeek Int // 0..6 (Sun..Sat, matches Date.getDay)
+  startMin  Int // 0..1440 inclusive
+  endMin    Int // 0..1440 exclusive
 
   rule HappyHourRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
 
@@ -1260,34 +1261,34 @@ model HappyHourSchedule {
 // that derivation will write into the same table so consumers don't need to
 // change.
 model CrossSell {
-  id         String @id @default(cuid())
+  id              String   @id @default(cuid())
   // Trigger item — the one the customer is viewing or has in cart.
-  parentItemId  String
+  parentItemId    String
   // Suggested item shown as the cross-sell.
   suggestedItemId String
   // Optional position to control rendering order.
-  sortOrder  Int     @default(0)
+  sortOrder       Int      @default(0)
   // Surface where this should appear — comma-separated to keep schema simple:
   // 'pdp' (product detail page), 'cart', or 'pdp,cart'.
-  surface    String  @default("pdp,cart")
+  surface         String   @default("pdp,cart")
   // Group/kind for sectioned rendering on the customer PDP. Each parent item
   // can have one strip per kind, so admins can curate "Add drink",
   // "Add dessert", "Complete your meal", and the generic "frequently_together"
   // separately. Stored as a string (not enum) so adding a new section like
   // "Add a side" later doesn't require a migration. Defaults to the legacy
   // catch-all so existing rows keep rendering in the generic strip.
-  kind       String  @default("frequently_together") // frequently_together | complete_meal | add_drink | add_dessert | add_side
+  kind            String   @default("frequently_together") // frequently_together | complete_meal | add_drink | add_dessert | add_side
   // Optional note to the admin so they remember the reason.
-  note       String?
+  note            String?
   // Whether this row is admin-curated ('manual') or system-derived ('auto').
   // The auto rows can be safely overwritten by a recompute job; manual rows
   // are sacrosanct.
-  source     String  @default("manual")
-  isActive   Boolean @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  source          String   @default("manual")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  parentItem    MenuItem @relation("CrossSellParent",    fields: [parentItemId],    references: [id], onDelete: Cascade)
+  parentItem    MenuItem @relation("CrossSellParent", fields: [parentItemId], references: [id], onDelete: Cascade)
   suggestedItem MenuItem @relation("CrossSellSuggested", fields: [suggestedItemId], references: [id], onDelete: Cascade)
 
   @@unique([parentItemId, suggestedItemId, kind])
@@ -1324,59 +1325,59 @@ model CrossSell {
 //     abuse where the same phone is reused across accounts.
 
 enum ChallengeType {
-  ORDER_COUNT       // place N orders within window
-  SPEND_THRESHOLD   // spend ≥ ₹X within window
-  CUISINE_VARIETY   // order from N distinct cuisines (different Restaurant or Brand cuisines)
-  WEEKEND_STREAK    // place ≥1 order on N consecutive weekends
-  FIRST_N_ORDERS    // any first N orders (per customer)
+  ORDER_COUNT // place N orders within window
+  SPEND_THRESHOLD // spend ≥ ₹X within window
+  CUISINE_VARIETY // order from N distinct cuisines (different Restaurant or Brand cuisines)
+  WEEKEND_STREAK // place ≥1 order on N consecutive weekends
+  FIRST_N_ORDERS // any first N orders (per customer)
 }
 
 enum ChallengeWindow {
-  LIFETIME    // never resets — counts the customer's whole history
-  MONTHLY     // calendar month
-  WEEKLY      // calendar week (Mon–Sun)
-  CUSTOM      // bounded by Challenge.validFrom/validTo
+  LIFETIME // never resets — counts the customer's whole history
+  MONTHLY // calendar month
+  WEEKLY // calendar week (Mon–Sun)
+  CUSTOM // bounded by Challenge.validFrom/validTo
 }
 
 enum ChallengeRewardType {
-  FIXED_OFF       // ₹X off the next order
-  PERCENT_OFF     // X% off the next order
-  FREE_DELIVERY   // skip delivery fee on next order
+  FIXED_OFF // ₹X off the next order
+  PERCENT_OFF // X% off the next order
+  FREE_DELIVERY // skip delivery fee on next order
 }
 
 model Challenge {
-  id          String @id @default(cuid())
+  id           String  @id @default(cuid())
   // ── Identity ─────────────────────────────────────────────────────────
-  name        String                          // "First 5 Orders Reward"
-  description String?                         // customer-facing copy
+  name         String // "First 5 Orders Reward"
+  description  String? // customer-facing copy
   // Optional brand or restaurant scope — NULL = platform-wide.
   brandId      String?
   restaurantId String?
 
   // ── Rule ─────────────────────────────────────────────────────────────
-  type        ChallengeType
-  target      Int                             // N orders / N cuisines / ₹X spend
-  window      ChallengeWindow @default(LIFETIME)
+  type          ChallengeType
+  target        Int // N orders / N cuisines / ₹X spend
+  window        ChallengeWindow @default(LIFETIME)
   // Required minimum order value for an order to *count* toward this challenge
   // (lets admins say "spend ₹1000 in qualifying orders ≥ ₹200").
-  minOrderValue Decimal? @db.Decimal(10, 2)
+  minOrderValue Decimal?        @db.Decimal(10, 2)
 
   // ── Reward ───────────────────────────────────────────────────────────
-  rewardType  ChallengeRewardType
-  rewardValue Decimal @db.Decimal(10, 2)     // ₹100 for FIXED, 10 for PERCENT, ignored for FREE_DELIVERY
-  rewardMaxDiscount Decimal? @db.Decimal(10, 2) // optional cap for PERCENT_OFF
-  rewardValidityDays Int @default(30)        // generated coupon expires in N days
+  rewardType         ChallengeRewardType
+  rewardValue        Decimal             @db.Decimal(10, 2) // ₹100 for FIXED, 10 for PERCENT, ignored for FREE_DELIVERY
+  rewardMaxDiscount  Decimal?            @db.Decimal(10, 2) // optional cap for PERCENT_OFF
+  rewardValidityDays Int                 @default(30) // generated coupon expires in N days
 
   // ── Validity & lifecycle ─────────────────────────────────────────────
-  validFrom DateTime @default(now())
+  validFrom DateTime  @default(now())
   validTo   DateTime?
-  isActive  Boolean  @default(true)
+  isActive  Boolean   @default(true)
   // Higher priority surfaces first on the /rewards page.
-  priority  Int      @default(0)
+  priority  Int       @default(0)
 
   // ── Fraud prevention ─────────────────────────────────────────────────
-  perCustomerLimit  Int     @default(1)       // one reward per customer
-  phoneVerifiedOnly Boolean @default(true)    // must have a verified phone
+  perCustomerLimit  Int     @default(1) // one reward per customer
+  phoneVerifiedOnly Boolean @default(true) // must have a verified phone
   // Maximum number of rewards across all customers (cost cap).
   totalLimit        Int?
   totalIssued       Int     @default(0)
@@ -1387,10 +1388,10 @@ model Challenge {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  brand       Brand?      @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  restaurant  Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
-  progress    ChallengeProgress[]
-  rewards     ChallengeReward[]
+  brand      Brand?              @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  restaurant Restaurant?         @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
+  progress   ChallengeProgress[]
+  rewards    ChallengeReward[]
 
   @@index([isActive, validFrom, validTo])
   @@index([brandId, isActive])
@@ -1406,17 +1407,17 @@ model Challenge {
 // `metadata` JSON column holds type-specific state (set of cuisine IDs,
 // last-qualifying-weekend ISO date, etc.) so the resolver can be stateless.
 model ChallengeProgress {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   challengeId String
   userId      String
-  value       Decimal  @default(0) @db.Decimal(12, 2)
+  value       Decimal   @default(0) @db.Decimal(12, 2)
   // Type-specific state (cuisine ID set, last weekend ISO, etc.)
   metadata    Json?
-  completed   Boolean  @default(false)
+  completed   Boolean   @default(false)
   completedAt DateTime?
   lastOrderId String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1430,18 +1431,18 @@ model ChallengeProgress {
 // the customer's phone number at issue time so phone-based fraud checks work
 // even after the customer changes their number later.
 model ChallengeReward {
-  id           String   @id @default(cuid())
-  challengeId  String
-  userId       String
+  id             String    @id @default(cuid())
+  challengeId    String
+  userId         String
   // The generated Offer (with unique code) the customer can redeem.
-  offerId      String   @unique
+  offerId        String    @unique
   // Phone snapshot — used to enforce per-phone limits across multi-account abuse.
-  phoneSnapshot String?
+  phoneSnapshot  String?
   triggerOrderId String?
-  issuedAt     DateTime @default(now())
+  issuedAt       DateTime  @default(now())
   // Optimistic flag — flipped when the customer actually redeems the offer.
-  redeemed     Boolean  @default(false)
-  redeemedAt   DateTime?
+  redeemed       Boolean   @default(false)
+  redeemedAt     DateTime?
 
   challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1506,50 +1507,51 @@ enum RiderType {
 }
 
 model RiderProfile {
-  id              String    @id @default(cuid())
-  userId          String    @unique
-  branchId        String? // optional home base, nullable now
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  branchId              String? // optional home base, nullable now
   // Fleet vs. restaurant-dedicated. DEDICATED riders carry `dedicatedRestaurantId`.
-  riderType       RiderType @default(FLEET)
+  riderType             RiderType @default(FLEET)
   dedicatedRestaurantId String? // set when riderType = DEDICATED
-  vehicleType     String    @default("BIKE")
-  vehicleNumber   String?
-  isOnline        Boolean   @default(false)
-  currentLat      Float?
-  currentLng      Float?
-  expoPushToken   String?   // Expo push token from the native rider app (FCM under the hood)
-  currentLoad     Int       @default(0)
-  rating          Float     @default(5.0)
-  totalDeliveries Int       @default(0)
-  totalEarnings   Decimal   @default(0.00) @db.Decimal(12, 2)
-  totalTips       Decimal   @default(0.00) @db.Decimal(12, 2)
-  approvedById    String? // SUPER_ADMIN id who approved this rider
-  approvedAt      DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  vehicleType           String    @default("BIKE")
+  vehicleNumber         String?
+  isOnline              Boolean   @default(false)
+  currentLat            Float?
+  currentLng            Float?
+  expoPushToken         String? // Expo push token from the native rider app (FCM under the hood)
+  currentLoad           Int       @default(0)
+  rating                Float     @default(5.0)
+  totalDeliveries       Int       @default(0)
+  totalEarnings         Decimal   @default(0.00) @db.Decimal(12, 2)
+  totalTips             Decimal   @default(0.00) @db.Decimal(12, 2)
+  approvedById          String? // SUPER_ADMIN id who approved this rider
+  approvedAt            DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  branch      Branch?                @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  dedicatedRestaurant Restaurant?    @relation("DedicatedRiders", fields: [dedicatedRestaurantId], references: [id], onDelete: SetNull)
-  assignments RiderAssignment[]
-  pings       DeliveryLocationPing[]
-  codCollections CodCollection[]
-  kycDocuments   RiderKycDocument[]
-  payoutOverrides RiderPayoutOverride[]
+  user                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch              Branch?                @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  dedicatedRestaurant Restaurant?            @relation("DedicatedRiders", fields: [dedicatedRestaurantId], references: [id], onDelete: SetNull)
+  assignments         RiderAssignment[]
+  pings               DeliveryLocationPing[]
+  codCollections      CodCollection[]
+  kycDocuments        RiderKycDocument[]
+  payoutOverrides     RiderPayoutOverride[]
 
   // Competitor-feature bundles (2026-05-14)
-  payouts             RiderPayout[]
-  incentiveProgress   RiderIncentiveProgress[]
-  emergencyContacts   RiderEmergencyContact[]
-  sosAlerts           SosAlert[]
-  incidentReports     RiderIncidentReport[]
-  tripShares          TripShare[]
-  shifts              RiderShift[]
-  preferences         RiderPreferences?
-  referralsMade       RiderReferral[]
-  trainingProgress    RiderTrainingProgress[]
-  supportTickets      RiderSupportTicket[]
-  conversations       RiderConversation[]
+  payouts           RiderPayout[]
+  incentiveProgress RiderIncentiveProgress[]
+  emergencyContacts RiderEmergencyContact[]
+  sosAlerts         SosAlert[]
+  incidentReports   RiderIncidentReport[]
+  tripShares        TripShare[]
+  shifts            RiderShift[]
+  preferences       RiderPreferences?
+  referralsMade     RiderReferral[]
+  trainingProgress  RiderTrainingProgress[]
+  supportTickets    RiderSupportTicket[]
+  conversations     RiderConversation[]
+  batchInvitations  BatchInvitation[]
 
   @@index([isOnline])
   @@index([branchId, isOnline])
@@ -1601,6 +1603,49 @@ model DeliveryLocationPing {
 
   @@index([riderId, createdAt])
   @@index([orderId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  BatchInvitation — offer to append a new drop to a rider already mid-delivery
+// ─────────────────────────────────────────────────────────────────────────────
+// When the live pool has more READY orders than free riders, the dispatcher
+// looks at OUT_FOR_DELIVERY riders whose customer-drop is close to the new
+// pickup. Each candidate gets a BatchInvitation row with a 15-second TTL and
+// a push + SSE event. The rider's app shows a full-screen accept/decline
+// countdown; on ACCEPTED the new order is added to their assignment queue and
+// the matching invitations on other riders for the same order are
+// auto-cancelled.
+enum BatchInvitationStatus {
+  PENDING // active, waiting on rider
+  ACCEPTED // rider tapped Accept — order is now in their queue
+  DECLINED // rider tapped Decline
+  EXPIRED // 15s timer ran out without action
+  CANCELLED // another rider accepted first, or admin pulled the order
+}
+
+model BatchInvitation {
+  id            String                @id @default(cuid())
+  orderId       String // the NEW order being offered
+  riderId       String // the rider already on a delivery
+  status        BatchInvitationStatus @default(PENDING)
+  // Routing economics shown to the rider so they can decide:
+  detourKm      Float // extra distance vs. straight customer drop
+  extraEarnings Decimal               @default(0.00) @db.Decimal(10, 2)
+  pickupEtaMin  Int? // mins to the pickup from rider's current location
+  invitedAt     DateTime              @default(now())
+  expiresAt     DateTime // invitedAt + 15s by default
+  respondedAt   DateTime? // when ACCEPTED / DECLINED / EXPIRED stamped
+  reason        String? // free-text decline reason or cancel cause
+
+  order Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  // A rider should see only one PENDING row per order; uniqueness on
+  // (orderId, riderId) keeps re-fan-out from creating duplicates.
+  @@unique([orderId, riderId])
+  @@index([riderId, status])
+  @@index([orderId, status])
+  @@index([status, expiresAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1678,23 +1723,23 @@ model WalletTransaction {
 // have an active grant against them. Only delivered orders move the counter.
 
 model SignupBonusConfig {
-  id            String  @id @default("singleton") // forces a single row
-  isActive      Boolean @default(false)
-  totalAmount   Decimal @default(100.00) @db.Decimal(10, 2)
-  splitCount    Int     @default(5)                // total bonus / splitCount = per-order cap
+  id                 String   @id @default("singleton") // forces a single row
+  isActive           Boolean  @default(false)
+  totalAmount        Decimal  @default(100.00) @db.Decimal(10, 2)
+  splitCount         Int      @default(5) // total bonus / splitCount = per-order cap
   // Per-order ceiling expressed directly so admins can decouple ratio when
   // they want (e.g. ₹100 grant but only ₹15 per order, expires after 5 orders).
-  perOrderCap   Decimal? @db.Decimal(10, 2)
-  minOrderValue Decimal? @db.Decimal(10, 2)        // minimum cart subtotal to be eligible
+  perOrderCap        Decimal? @db.Decimal(10, 2)
+  minOrderValue      Decimal? @db.Decimal(10, 2) // minimum cart subtotal to be eligible
   // Abuse-prevention toggles
-  phoneCheckEnabled  Boolean @default(true)
-  ipCheckEnabled     Boolean @default(true)
-  deviceCheckEnabled Boolean @default(false)
+  phoneCheckEnabled  Boolean  @default(true)
+  ipCheckEnabled     Boolean  @default(true)
+  deviceCheckEnabled Boolean  @default(false)
   // Optional expiry — grants older than this are no longer usable.
-  validityDays  Int     @default(90)
-  updatedById   String?
-  updatedAt     DateTime @updatedAt
-  createdAt     DateTime @default(now())
+  validityDays       Int      @default(90)
+  updatedById        String?
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
 }
 
 // One row per customer. `usedAmount` only increments when an order moves to
@@ -1702,29 +1747,29 @@ model SignupBonusConfig {
 // is in flight". `remainingOrders` decrements at DELIVERED and re-increments
 // at CANCELLED/REFUNDED.
 model SignupBonusGrant {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  totalAmount     Decimal  @db.Decimal(10, 2)
-  perOrderCap     Decimal  @db.Decimal(10, 2)
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  totalAmount     Decimal   @db.Decimal(10, 2)
+  perOrderCap     Decimal   @db.Decimal(10, 2)
   // Used + pending are kept separate so the UI can distinguish "credited" vs
   // "tentatively allocated to an in-flight order".
-  usedAmount      Decimal  @default(0) @db.Decimal(10, 2)
-  pendingAmount   Decimal  @default(0) @db.Decimal(10, 2)
-  remainingOrders Int      // starts at SignupBonusConfig.splitCount
+  usedAmount      Decimal   @default(0) @db.Decimal(10, 2)
+  pendingAmount   Decimal   @default(0) @db.Decimal(10, 2)
+  remainingOrders Int // starts at SignupBonusConfig.splitCount
   // Abuse snapshots — null on legacy data; never reused for matching after grant.
-  phoneSnapshot  String?
-  ipSnapshot     String?
-  deviceSnapshot String?
+  phoneSnapshot   String?
+  ipSnapshot      String?
+  deviceSnapshot  String?
   // Lifecycle
-  expiresAt DateTime?
+  expiresAt       DateTime?
   // Revocations (e.g. admin invalidates due to abuse) are soft.
-  revokedAt DateTime?
-  revokedReason String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  revokedAt       DateTime?
+  revokedReason   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ledger    SignupBonusLedger[]
+  user   User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledger SignupBonusLedger[]
 
   @@index([phoneSnapshot])
   @@index([ipSnapshot])
@@ -1865,11 +1910,11 @@ model NotificationLog {
 // prune rows older than the debounce window.
 model AlertDebounce {
   id         String   @id @default(cuid())
-  entityType String   // e.g. "MenuItem" / "Category" / "Combo" / "IntegrationCredential"
+  entityType String // e.g. "MenuItem" / "Category" / "Combo" / "IntegrationCredential"
   entityId   String
   kind       String
   lastSentAt DateTime
-  payload    Json?    // snapshot of the last alert content for diagnostics
+  payload    Json? // snapshot of the last alert content for diagnostics
 
   @@unique([entityType, entityId, kind])
   @@index([lastSentAt])
@@ -1902,15 +1947,15 @@ model OtpAttempt {
 // Stuck-order detector writes here. The /platform/live-ops dashboard shows
 // open escalations as cards; admins acknowledge or resolve.
 model OrderEscalation {
-  id         String              @id @default(cuid())
+  id         String             @id @default(cuid())
   orderId    String
   type       EscalationType
-  severity   EscalationSeverity  @default(MEDIUM)
-  status     EscalationStatus    @default(OPEN)
+  severity   EscalationSeverity @default(MEDIUM)
+  status     EscalationStatus   @default(OPEN)
   message    String
   resolvedBy String?
   resolvedAt DateTime?
-  createdAt  DateTime            @default(now())
+  createdAt  DateTime           @default(now())
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -1944,19 +1989,19 @@ model CodCollection {
 // Raw payment webhook payloads. Persisting ensures idempotency (we never
 // process the same webhook twice) and gives us a forensic trail.
 model PaymentWebhookEvent {
-  id         String   @id @default(cuid())
-  provider   String
-  eventType  String
-  paymentId  String?
-  orderId    String?
+  id              String    @id @default(cuid())
+  provider        String
+  eventType       String
+  paymentId       String?
+  orderId         String?
   // Provider's unique event ID — used for idempotency lookup
-  providerEventId String? @unique
-  signature  String?
-  rawPayload Json
-  processed  Boolean  @default(false)
-  error      String?
-  createdAt  DateTime @default(now())
-  processedAt DateTime?
+  providerEventId String?   @unique
+  signature       String?
+  rawPayload      Json
+  processed       Boolean   @default(false)
+  error           String?
+  createdAt       DateTime  @default(now())
+  processedAt     DateTime?
 
   @@index([provider, eventType, createdAt])
   @@index([orderId])
@@ -1970,8 +2015,8 @@ model AuditLog {
   actorId      String?
   actorRole    String?
   restaurantId String?
-  action       String   // e.g. "restaurant.approve", "payout.adjust"
-  entityType   String   // e.g. "Restaurant", "Order"
+  action       String // e.g. "restaurant.approve", "payout.adjust"
+  entityType   String // e.g. "Restaurant", "Order"
   entityId     String?
   before       Json?
   after        Json?
@@ -1988,18 +2033,18 @@ model AuditLog {
 // Database-backed job queue. Cheap alternative to Redis/BullMQ for Phase 1.
 // A small worker process polls runAt <= now() and status=PENDING.
 model Job {
-  id        String    @id @default(cuid())
-  type      String
-  payload   Json
-  status    JobStatus @default(PENDING)
-  attempts  Int       @default(0)
-  maxAttempts Int     @default(5)
-  runAt     DateTime  @default(now())
-  lockedAt  DateTime?
-  lockedBy  String?
-  lastError String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  type        String
+  payload     Json
+  status      JobStatus @default(PENDING)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  runAt       DateTime  @default(now())
+  lockedAt    DateTime?
+  lockedBy    String?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([status, runAt])
   @@index([type, status])
@@ -2009,8 +2054,8 @@ model Job {
 // lists recent rows. Useful for triage on a single-VPS deployment.
 model ErrorLog {
   id        String   @id @default(cuid())
-  level     String   // "error" | "warn" | "info"
-  source    String   // module/file name
+  level     String // "error" | "warn" | "info"
+  source    String // module/file name
   message   String
   stack     String?
   metadata  Json?
@@ -2055,10 +2100,10 @@ model QrCode {
 
 // Customer retention — favorite restaurants and items.
 model FavoriteRestaurant {
-  id           String     @id @default(cuid())
+  id           String   @id @default(cuid())
   userId       String
   restaurantId String
-  createdAt    DateTime   @default(now())
+  createdAt    DateTime @default(now())
 
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
@@ -2068,10 +2113,10 @@ model FavoriteRestaurant {
 }
 
 model FavoriteItem {
-  id          String   @id @default(cuid())
-  userId      String
-  menuItemId  String
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  userId     String
+  menuItemId String
+  createdAt  DateTime @default(now())
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
@@ -2085,14 +2130,14 @@ model FavoriteItem {
 // (Fields here would normally live on RiderProfile; using a separate model
 // keeps the migration additive without touching existing rider columns.)
 model RiderHeartbeat {
-  id          String   @id @default(cuid())
-  riderId     String   @unique
-  lastSeenAt  DateTime @default(now())
+  id             String    @id @default(cuid())
+  riderId        String    @unique
+  lastSeenAt     DateTime  @default(now())
   lastLocationAt DateTime?
-  batteryLevel Int?
-  gpsEnabled  Boolean  @default(true)
-  appVersion  String?
-  updatedAt   DateTime @updatedAt
+  batteryLevel   Int?
+  gpsEnabled     Boolean   @default(true)
+  appVersion     String?
+  updatedAt      DateTime  @updatedAt
 
   @@index([lastSeenAt])
 }
@@ -2187,46 +2232,46 @@ enum KycDocumentStatus {
 /// rely on AuditLog for the trail. Sensitive numbers are encrypted at rest;
 /// only the last 4 chars are stored in plaintext for masked UI display.
 model RiderKycDocument {
-  id                      String            @id @default(cuid())
-  riderId                 String
-  type                    KycDocumentType
-  status                  KycDocumentStatus @default(PENDING)
+  id      String            @id @default(cuid())
+  riderId String
+  type    KycDocumentType
+  status  KycDocumentStatus @default(PENDING)
 
   // Document number — encrypted blob using existing src/server/crypto.ts helpers
   // (AES-256-GCM, base64 of iv ‖ authTag ‖ ciphertext). `numberLast4` is the
   // only plaintext fragment ever shown back to the rider or admin in the UI.
-  numberEncrypted         String?
-  numberLast4             String?
+  numberEncrypted String?
+  numberLast4     String?
 
   // File metadata — actual file lives behind storage() driver
-  fileUrl                 String
-  fileName                String?
-  fileSize                Int?
-  fileMimeType            String?
+  fileUrl      String
+  fileName     String?
+  fileSize     Int?
+  fileMimeType String?
 
   // Document dates
-  issuedOn                DateTime?
-  expiresOn               DateTime?
+  issuedOn  DateTime?
+  expiresOn DateTime?
 
   // Review workflow
-  submittedAt             DateTime          @default(now())
-  reviewedAt              DateTime?
-  reviewedBy              String?
-  rejectionReason         String?
+  submittedAt     DateTime  @default(now())
+  reviewedAt      DateTime?
+  reviewedBy      String?
+  rejectionReason String?
 
   // Audit trail signal
-  uploadedFromIp          String?
-  updatedAt               DateTime          @updatedAt
+  uploadedFromIp String?
+  updatedAt      DateTime @updatedAt
 
   // Live-verification metadata. Populated when an external verifier runs.
   // Null `verifierProvider` means we never attempted live verification
   // (e.g. format-only mock or pre-paid-API state).
-  verifierProvider        String?    // 'mock' | 'karza' | 'surepass' | 'signzy'
-  verifierStatus          String?    // 'PENDING' | 'PASS' | 'FAIL' | 'ERROR' | 'UNSUPPORTED'
-  verifierMessage         String?    // human-readable explanation
-  verifierResponse        Json?      // raw vendor payload (for forensics + admin review)
-  verifierExternalRef     String?    // vendor's transaction id
-  verifiedAt              DateTime?
+  verifierProvider    String? // 'mock' | 'karza' | 'surepass' | 'signzy'
+  verifierStatus      String? // 'PENDING' | 'PASS' | 'FAIL' | 'ERROR' | 'UNSUPPORTED'
+  verifierMessage     String? // human-readable explanation
+  verifierResponse    Json? // raw vendor payload (for forensics + admin review)
+  verifierExternalRef String? // vendor's transaction id
+  verifiedAt          DateTime?
 
   rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
 
@@ -2260,7 +2305,7 @@ model RiderPayout {
   status      RiderPayoutStatus @default(REQUESTED)
   method      String            @default("UPI") // UPI | BANK
   upiId       String?
-  reference   String?           // mock processor txn id
+  reference   String? // mock processor txn id
   note        String?
   requestedAt DateTime          @default(now())
   processedAt DateTime?
@@ -2448,8 +2493,8 @@ model RiderShift {
   id        String      @id @default(cuid())
   riderId   String
   date      DateTime    @db.Date
-  startTime String      // "HH:MM" local
-  endTime   String      // "HH:MM" local
+  startTime String // "HH:MM" local
+  endTime   String // "HH:MM" local
   zoneName  String?
   status    ShiftStatus @default(BOOKED)
   createdAt DateTime    @default(now())
@@ -2577,7 +2622,7 @@ model RiderSupportTicket {
   createdAt DateTime            @default(now())
   updatedAt DateTime            @updatedAt
 
-  rider    RiderProfile         @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  rider    RiderProfile          @relation(fields: [riderId], references: [id], onDelete: Cascade)
   messages RiderSupportMessage[]
 
   @@index([riderId, status])
@@ -2585,12 +2630,12 @@ model RiderSupportTicket {
 }
 
 model RiderSupportMessage {
-  id        String   @id @default(cuid())
-  ticketId  String
-  fromRider Boolean  @default(true)
+  id         String   @id @default(cuid())
+  ticketId   String
+  fromRider  Boolean  @default(true)
   authorName String?
-  body      String
-  createdAt DateTime @default(now())
+  body       String
+  createdAt  DateTime @default(now())
 
   ticket RiderSupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 

@@ -34,12 +34,14 @@ export function usePushRegistration(enabled: boolean) {
         // returned above before reaching this line.
         const Notifications = await import('expo-notifications');
 
+        // Foreground handler — show the banner, play the sound, set the badge.
+        // This is what makes pings register even when the app is open.
         Notifications.setNotificationHandler({
           handleNotification: async () => ({
             shouldShowBanner: true,
             shouldShowList: true,
             shouldPlaySound: true,
-            shouldSetBadge: false,
+            shouldSetBadge: true,
           }),
         });
 
@@ -52,10 +54,24 @@ export function usePushRegistration(enabled: boolean) {
         if (status !== 'granted' || cancelled) return;
 
         // Android needs a channel for heads-up display of incoming pings.
+        // We have two channels:
+        //   - 'orders' at MAX importance → heads-up + sound + vibration, the
+        //     loud "new delivery!" channel. Cannot be silenced by the user
+        //     short of disabling notifications for the app entirely.
+        //   - 'messages' at HIGH importance → admin/super-admin chat pings.
         if (Platform.OS === 'android') {
           await Notifications.setNotificationChannelAsync('orders', {
-            name: 'New orders',
+            name: 'New Orders',
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#FF6B35',
+            sound: 'default',
+            bypassDnd: false,
+          });
+          await Notifications.setNotificationChannelAsync('messages', {
+            name: 'Messages',
             importance: Notifications.AndroidImportance.HIGH,
+            sound: 'default',
           });
         }
 
