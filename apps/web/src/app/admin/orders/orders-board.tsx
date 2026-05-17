@@ -1,12 +1,12 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { OrderStatusBadge } from '@/components/order-status-badge';
 import { useSSE } from '@/hooks/use-sse';
 import { money, fmtDate } from '@/lib/utils';
-import { Printer, X, Check, Bike } from 'lucide-react';
+import { Printer, X, Check, Bike, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { SoundToggle } from '@/components/sound-toggle';
@@ -32,6 +32,15 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
   const [filter, setFilter] = useState<string>('all');
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [alerts, setAlerts] = useState<PendingAlert[]>([]);
+  // Sync safety net — tracks last successful pull from /api/admin/orders/snapshot.
+  // Triggers the amber "Synced Xs ago" pill in the header when stale.
+  const [lastSyncAt, setLastSyncAt] = useState<number>(Date.now());
+  const [nowTick, setNowTick] = useState<number>(Date.now());
+  const [refreshing, setRefreshing] = useState(false);
+  // Known-ids: orders we've already surfaced through SSE or a prior snapshot,
+  // so the periodic snapshot doesn't re-fire the chime for already-known
+  // orders. Both SSE and snapshot paths add to this set.
+  const knownOrderIdsRef = useRef<Set<string>>(new Set(initial.map((o) => o.id)));
 
   // Admin gets a single soft chime per new order — kitchen owns the looping
   // attention loop. Pref is persisted by the hook under `notif-sound-admin.mp3`.
@@ -74,6 +83,76 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
     return () => clearInterval(t);
   }, [alerts, orders]);
 
+  /**
+   * Snapshot refresh — re-fetch the full order list and reconcile state.
+   * Same safety-net pattern as the kitchen board: defends against SSE
+   * silently dropping (laptop sleep, nginx restart, network blip). Fires
+   * the chime ONLY for orders we hadn't seen before, so the snapshot poll
+   * never double-rings on already-known orders.
+   */
+  const refreshSnapshot = useCallback(async (silent = false) => {
+    if (!silent) setRefreshing(true);
+    try {
+      const r = await fetch('/api/admin/orders/snapshot', { cache: 'no-store' });
+      if (!r.ok) return;
+      const body = await r.json() as { at: string; orders: Order[] };
+      const fresh = body.orders.filter((o: Order) => !knownOrderIdsRef.current.has(o.id));
+      setOrders(body.orders);
+      if (fresh.length > 0) {
+        // Surface arrivals discovered via snapshot (vs SSE). Only RECEIVED
+        // qualifies for the persistent alert banner — already-accepted
+        // orders shouldn't pop the admin's attention loop.
+        for (const o of fresh) {
+          if (o.status === 'RECEIVED') {
+            fireAlert(o.code);
+            setAlerts((prev) =>
+              prev.some((a) => a.orderId === o.id)
+                ? prev
+                : [...prev, { orderId: o.id, code: o.code }]
+            );
+          }
+        }
+      }
+      knownOrderIdsRef.current = new Set(body.orders.map((o: Order) => o.id));
+      setLastSyncAt(Date.now());
+    } catch {
+      /* swallow — try again on the next tick */
+    } finally {
+      if (!silent) setRefreshing(false);
+    }
+  }, []);
+
+  // Periodic snapshot — every 15s. Safety net for any silent SSE failure.
+  useEffect(() => {
+    const id = setInterval(() => refreshSnapshot(true), 15_000);
+    return () => clearInterval(id);
+  }, [refreshSnapshot]);
+
+  // Tab visibility — refresh the instant admin returns to the foreground.
+  // Defends against the #1 "orders disappeared" report: tab was hidden /
+  // laptop was asleep / browser killed the EventSource silently.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshSnapshot(true);
+    };
+    const onFocus = () => refreshSnapshot(true);
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    // Also do a snapshot on mount so a hard reload after a long stale tab
+    // never serves the SSR result alone.
+    refreshSnapshot(true);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refreshSnapshot]);
+
+  // Tick every 5s so the sync-indicator pill updates in near-real time.
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 5_000);
+    return () => clearInterval(id);
+  }, []);
+
   useSSE(`branch:${branchId}:orders`, {
     onMessage: async (e: any) => {
       // Refetch the affected order on any event for simplicity
@@ -90,6 +169,10 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
         }
         return [updated, ...prev];
       });
+      // Mark known + bump sync so the indicator stays green even when SSE
+      // is doing all the work and snapshots aren't strictly needed.
+      knownOrderIdsRef.current.add(updated.id);
+      setLastSyncAt(Date.now());
       if (e.kind === 'order:new') {
         toast.info(`New order ${updated.code}`);
         fireAlert(updated.code);
@@ -155,7 +238,8 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
             {f.label}
           </button>
         ))}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <AdminSyncIndicator lastSyncAt={lastSyncAt} now={nowTick} onRefresh={() => refreshSnapshot(false)} refreshing={refreshing} />
           <SoundToggle enabled={chime.enabled} onToggle={chime.setEnabled} />
         </div>
       </div>
@@ -214,5 +298,51 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
       </div>
 
     </>
+  );
+}
+
+/**
+ * Real-time sync confidence pill for the admin orders board. Green "Live"
+ * if the last snapshot/SSE update was within 30s; amber "Synced Xs ago"
+ * with a WifiOff icon otherwise. Includes a manual Refresh button.
+ */
+function AdminSyncIndicator({
+  lastSyncAt,
+  now,
+  onRefresh,
+  refreshing,
+}: {
+  lastSyncAt: number;
+  now: number;
+  onRefresh: () => void;
+  refreshing: boolean;
+}) {
+  const seconds = Math.max(0, Math.floor((now - lastSyncAt) / 1000));
+  const stale = seconds > 30;
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+          stale
+            ? 'border-warning/40 bg-warning/10 text-warning'
+            : 'border-success/40 bg-success/10 text-success'
+        }`}
+        title={stale ? 'Real-time sync may be delayed' : 'Live'}
+      >
+        {stale ? <WifiOff className="size-3" /> : <Wifi className="size-3" />}
+        {stale ? `Synced ${seconds}s ago` : 'Live'}
+      </span>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={onRefresh}
+        disabled={refreshing}
+        className="h-7 px-2 text-xs"
+        title="Force refresh"
+      >
+        <RefreshCw className={`size-3 ${refreshing ? 'animate-spin' : ''}`} />
+        <span className="ml-1">Refresh</span>
+      </Button>
+    </div>
   );
 }

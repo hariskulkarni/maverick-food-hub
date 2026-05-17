@@ -3,12 +3,22 @@ import { requireRestaurant } from '@/server/tenancy';
 import { KitchenBoard } from './kitchen-board';
 
 export const metadata = { title: 'Kitchen' };
+// Never cache this page — the order list MUST reflect the live database on
+// every server render. Without force-dynamic, Next.js might serve a cached
+// HTML response that pre-dates the customer's just-placed order, defeating
+// the SSE sync we're hardening below.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function KitchenPage() {
   const restaurant = await requireRestaurant();
   const branch = await prisma.branch.findFirstOrThrow({ where: { restaurantId: restaurant.id, isActive: true }, orderBy: { createdAt: 'asc' } });
+  // RECEIVED is included so newly-placed customer orders surface in a
+  // dedicated "New" column on the kitchen board with an Accept button. The
+  // admin's /admin/orders board can still accept them too — both paths route
+  // through the same transitionOrder() server logic.
   const orders = await prisma.order.findMany({
-    where: { branchId: branch.id, status: { in: ['ACCEPTED', 'PREPARING', 'READY'] } },
+    where: { branchId: branch.id, status: { in: ['RECEIVED', 'ACCEPTED', 'PREPARING', 'READY'] } },
     // Expand each combo so the kitchen sees what's actually being plated. The
     // OrderItem.name is the combo's snapshot name; the constituent menuItem
     // names come from the related Combo.items[].
@@ -20,7 +30,9 @@ export default async function KitchenPage() {
       },
       customer: true
     },
-    orderBy: { acceptedAt: 'asc' }
+    // RECEIVED orders have no `acceptedAt` yet — fall through to placedAt so
+    // they sort by arrival time within the New column.
+    orderBy: [{ acceptedAt: 'asc' }, { placedAt: 'asc' }]
   });
 
   // Pre-compute a `comboBreakdown` per OrderItem so the client component can

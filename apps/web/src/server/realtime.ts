@@ -75,7 +75,25 @@ function appendToRing(channel: string, event: RealtimeEvent): BufferedEvent {
 
 export function publish(channel: string, event: RealtimeEvent): void {
   appendToRing(channel, event);
+  const listenerCount = bus.listenerCount(channel);
   bus.emit(channel, event);
+  // Structured operational log so production drift ("orders not syncing")
+  // is diagnosable without source access. Grep `pm2 logs rm-web | grep
+  // bus.publish` to see every event + how many open SSE subscribers it
+  // fanned out to. listenerCount=0 means the kitchen tab isn't connected
+  // (closed laptop, nginx blocking, etc.) — the polling fallback should
+  // pick it up on the next poll, but it's the first thing to check when
+  // sync seems broken.
+  // eslint-disable-next-line no-console
+  console.log(JSON.stringify({
+    at: new Date().toISOString(),
+    msg: 'bus.publish',
+    channel,
+    kind: event.kind,
+    listenerCount,
+    orderId: 'orderId' in event ? event.orderId : undefined,
+    riderId: 'riderId' in event ? event.riderId : undefined,
+  }));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

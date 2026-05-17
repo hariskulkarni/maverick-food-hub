@@ -6,6 +6,11 @@ import { isPaused } from '@/server/branch-pause';
 import { auth } from '@/server/auth';
 
 export const metadata = { title: 'Admin · Orders' };
+// Never cache — every page render must reflect the live database. Without
+// force-dynamic, Next.js may serve a cached HTML that pre-dates a just-placed
+// order, defeating the SSE + snapshot sync below.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function AdminOrdersPage({ searchParams: _sp }: { searchParams: Promise<{ filter?: string }> }) {
   await _sp; // touched for Next.js dynamic rendering
