@@ -18,6 +18,7 @@ import { loadRulesForRestaurant, priceForItem, priceForCombo, minutesUntilHappyH
 import { HappyHourBanner } from './happy-hour-banner';
 import { DeliveryEtaCard } from './delivery-eta-card';
 import { BrandRibbon } from './brand-ribbon';
+import { CategoryFab, type CategoryFabEntry } from './category-fab';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -131,6 +132,29 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
 
   const heroImage = restaurant.coverImageUrl || restaurant.logoUrl || FOOD_FALLBACK;
   const dishCount = categories.reduce((s, c) => s + c.menuItems.length, 0);
+
+  // Floating categories FAB entries — projected from the same `categories`
+  // query so availability + counts match what MenuClient renders. Empty
+  // categories are skipped from the FAB because tapping them is a dead-end.
+  const fabCategories: CategoryFabEntry[] = categories
+    .filter((c) => c.menuItems.length > 0)
+    .map((c) => {
+      const status = isCategoryAvailableNow({
+        id: c.id,
+        name: c.name,
+        isActive: c.isActive,
+        scheduleEnabled: c.scheduleEnabled,
+        availabilities: c.availabilities,
+      });
+      return {
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        itemCount: c.menuItems.length,
+        available: status.available,
+        nextOpenLabel: status.available ? null : formatNextOpenLabel(status),
+      };
+    });
   // Deterministic-looking rating from restaurant id, so it stays stable per page
   const rating = (4 + ((restaurant.id.charCodeAt(0) % 9) / 10)).toFixed(1);
 
@@ -389,6 +413,10 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
           )}
         />
       </section>
+
+      {/* Floating Categories Menu (mobile-only). Mounted at the page root so it
+          stays visible while the user scrolls through the menu sections. */}
+      <CategoryFab categories={fabCategories} />
     </div>
   );
 }
