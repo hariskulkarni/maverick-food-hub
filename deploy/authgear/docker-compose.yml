@@ -1,0 +1,126 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Authgear sandbox — self-hosted MFA / OTP / passwordless evaluation stack
+# ─────────────────────────────────────────────────────────────────────────────
+#
+#  Brings up Authgear (server + portal + admin API) plus its own Postgres +
+#  Redis, on an isolated docker network. Intentionally LIGHT — no Grafana,
+#  Tempo, Loki, otel-collector, pgbouncer, k6, or any of the observability
+#  stack the upstream repo ships for development of Authgear itself. This is
+#  for evaluating Authgear, not contributing to it.
+#
+#  Run from the repo root:
+#    docker compose -f deploy/authgear/docker-compose.yml up -d
+#
+#  Tear down (keeps Postgres volume; add `-v` to wipe):
+#    docker compose -f deploy/authgear/docker-compose.yml down
+#
+#  Ports exposed on the host:
+#    3100  — Authgear server (OIDC issuer, public OAuth endpoints)
+#    3110  — Authgear portal (admin web UI for creating apps, users, MFA cfg)
+#    3120  — Authgear admin GraphQL API (used by the portal and your scripts)
+#
+#  See deploy/authgear/README.md for end-to-end setup, including how to:
+#    1. Create a project in the portal
+#    2. Create an OAuth/OIDC client and copy clientId/clientSecret
+#    3. Configure MFA / OTP / email login methods
+#    4. Set AUTHGEAR_* env vars in apps/web/.env.local
+#    5. Visit /login/authgear in the Restaurant Manager to see it in action
+#
+#  IMPORTANT: This is a SANDBOX. NextAuth still owns production auth for
+#  customers (phone-OTP), staff (email+Argon2id), and riders (Bearer JWT).
+#  Adding Authgear is non-destructive — its provider is gated by env vars and
+#  is invisible unless AUTHGEAR_ENABLED=true.
+
+# Single shared network — Authgear and its deps talk to each other by service
+# name (postgres-authgear, redis-authgear). Isolated from the host network
+# stack and from the main app's docker network if you have one running.
+networks:
+  authgear:
+    name: authgear
+
+volumes:
+  authgear-pg-data:
+    name: authgear-pg-data
+
+services:
+  # ───────── Postgres — Authgear's own database (separate from rm-postgres) ─────────
+  # Authgear ships its own schema and migrations; do NOT point it at the
+  # Restaurant Manager database. Authgear owns this DB top-to-bottom.
+  postgres-authgear:
+    image: postgres:16-alpine
+    container_name: authgear-postgres
+    restart: unless-stopped
+    networks: [authgear]
+    environment:
+      POSTGRES_USER: authgear
+      POSTGRES_PASSWORD: authgear_local_password
+      POSTGRES_DB: authgear
+    volumes:
+      - authgear-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authgear"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ───────── Redis — session + rate-limit + nonce storage ─────────
+  # Authgear keeps short-lived state here (login sessions, OTP attempts,
+  # rate-limit counters). Memory-only is fine for a sandbox — losing this
+  # on container restart just signs everyone out, which is acceptable.
+  redis-authgear:
+    image: redis:7-alpine
+    container_name: authgear-redis
+    restart: unless-stopped
+    networks: [authgear]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ───────── Authgear server (OIDC issuer + AuthUI) ─────────
+  # This is the binary that handles all of: OAuth/OIDC endpoints (.well-known,
+  # /authorize, /token, /userinfo, /jwks), the pre-built signup/login pages
+  # (AuthUI), MFA challenges, OTP delivery hooks, etc.
+  #
+  # Public URL is http://localhost:3100. When wiring this into NextAuth on
+  # the Restaurant Manager web app, this becomes the AUTHGEAR_ISSUER env var.
+  authgear:
+    image: ghcr.io/authgear/authgear-server:latest
+    container_name: authgear
+    restart: unless-stopped
+    networks: [authgear]
+    depends_on:
+      postgres-authgear: { condition: service_healthy }
+      redis-authgear:    { condition: service_healthy }
+    ports:
+      - "3100:3000"
+    environment:
+      # Tells Authgear where it is. Must match what end-user browsers reach.
+      # If you front this with a proper hostname later, change here + restart.
+      PUBLIC_ORIGIN: http://localhost:3100
+      DATABASE_URL: postgres://authgear:authgear_local_password@postgres-authgear:5432/authgear?sslmode=disable
+      REDIS_URL: redis://redis-authgear:6379
+
+  # ───────── Authgear portal (admin web UI) ─────────
+  # The portal is where YOU log in (as the operator) to create projects,
+  # OAuth clients, configure login methods (passwords / OTP / passkeys / MFA),
+  # browse end-users, run admin actions. It's a separate frontend that talks
+  # to the same backend as the server above.
+  authgear-portal:
+    image: ghcr.io/authgear/authgear-portal:latest
+    container_name: authgear-portal
+    restart: unless-stopped
+    networks: [authgear]
+    depends_on:
+      postgres-authgear: { condition: service_healthy }
+      redis-authgear:    { condition: service_healthy }
+      authgear:          { condition: service_started }
+    ports:
+      - "3110:3003"  # portal web UI
+      - "3120:3002"  # admin GraphQL
+    environment:
+      PUBLIC_ORIGIN: http://localhost:3110
+      AUTHGEAR_HTTP_ORIGIN: http://authgear:3000
+      DATABASE_URL: postgres://authgear:authgear_local_password@postgres-authgear:5432/authgear?sslmode=disable
+      REDIS_URL: redis://redis-authgear:6379

@@ -139,6 +139,36 @@ export const authConfig: NextAuthConfig = {
     // local/dev builds without Google credentials still boot.
     ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
       ? [Google({ clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET })]
+      : []),
+    // Authgear OIDC — non-destructive sandbox provider for evaluating
+    // self-hosted Auth0/Clerk alternatives (MFA, OTP, passkeys, SSO, SAML).
+    // Only loads when AUTHGEAR_ENABLED=true AND issuer + client credentials
+    // are present, so a stray prod build without the env vars can't accidentally
+    // expose an unconfigured provider. The provider id is 'authgear' — match
+    // that exactly when calling `signIn('authgear')` from a client component.
+    // See deploy/authgear/README.md for end-to-end setup.
+    ...(process.env.AUTHGEAR_ENABLED === 'true' &&
+        process.env.AUTHGEAR_ISSUER &&
+        process.env.AUTHGEAR_CLIENT_ID &&
+        process.env.AUTHGEAR_CLIENT_SECRET
+      ? [{
+          id: 'authgear',
+          name: 'Authgear',
+          type: 'oidc' as const,
+          issuer: process.env.AUTHGEAR_ISSUER,
+          clientId: process.env.AUTHGEAR_CLIENT_ID,
+          clientSecret: process.env.AUTHGEAR_CLIENT_SECRET,
+          // Standard OIDC scopes. Authgear returns email + phone in the id_token
+          // when these are requested and the user has consented in AuthUI.
+          authorization: { params: { scope: 'openid profile email offline_access' } },
+          // We intentionally do NOT map this onto a Restaurant Manager User
+          // row here — the sandbox test page just displays returned claims so
+          // you can see what Authgear sends back. Real linkage (createUser /
+          // upsert on the `sub` claim) is the first migration step IF you
+          // decide to adopt Authgear for production. Until then, signing in
+          // via Authgear gives you a session whose user.id is the Authgear
+          // `sub` — not a Restaurant Manager User row.
+        }]
       : [])
   ],
   callbacks: {
