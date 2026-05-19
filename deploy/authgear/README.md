@@ -1,136 +1,148 @@
 # Authgear Sandbox
 
-A non-destructive evaluation of [Authgear](https://github.com/authgear/authgear-server) — an open-source Auth0/Clerk alternative with MFA, OTP, passkeys, passwordless, SSO, SAML, and OIDC out of the box. License: Apache 2.0.
+A non-destructive evaluation of [Authgear](https://github.com/authgear/authgear-server) — open-source Auth0/Clerk alternative with MFA, OTP, passkeys, passwordless, SSO, and SAML.
 
-This sandbox lets you **try Authgear without changing anything in production auth**. NextAuth (phone-OTP for customers, email+Argon2id for staff, Bearer JWT for riders) keeps working exactly as today. Authgear runs alongside it on a separate port, gated behind environment variables.
+This sandbox lets you **try Authgear without changing anything in production auth**. NextAuth (phone-OTP for customers, email+Argon2id for staff, Bearer JWT for riders) keeps working exactly as today. Authgear's provider is gated behind environment variables — invisible until you flip them.
 
-## What you can evaluate
+## Setup paths
 
-- **Login methods:** email+password, magic-link, SMS/email OTP, passkeys, social SSO (Google/Apple/Facebook/…)
-- **MFA:** TOTP (Google Authenticator / Authy), SMS OTP, email OTP, additional password
-- **B2B:** SAML, ADFS, LDAP enterprise connections
-- **Account portal:** pre-built user settings page (change password, manage MFA, sessions, devices)
-- **Admin portal:** GUI for user management, monitoring, audit logs, login analytics
-- **Hooks:** webhooks + TypeScript hooks on signup / login / etc.
+There are two ways to get an Authgear server you can point the Restaurant Manager at. **Strongly recommended for "just exploring": Authgear Cloud free tier.** The self-host path requires building the Go server from source (Authgear's open-source distribution does not publish public Docker images for the server itself).
 
-## Quick start (15 minutes)
+| Path | Time to working | When to pick it |
+|---|---|---|
+| **Authgear Cloud free tier** (recommended) | ~5 min | Evaluating features. No infra to manage, hosted by Authgear, free for development. |
+| **Self-host from source** | ~45-60 min | You've decided to adopt Authgear and need full control over data residency / customisation. |
 
-### 1. Bring up Authgear
+---
 
-```bash
-cd "/path/to/Restaurant Manager"
-docker compose -f deploy/authgear/docker-compose.yml up -d
-```
+## Path 1 — Authgear Cloud (recommended, ~5 min)
 
-Wait ~30 seconds for postgres + authgear server + portal to start. Then check:
+### 1. Sign up
 
-```bash
-docker compose -f deploy/authgear/docker-compose.yml ps
-```
+Open <https://www.authgear.com> → **Get Started** → create an account. Free tier covers evaluation and small production use.
 
-All three services should be `healthy` or `running`.
+You land in the Authgear Portal. Create a project — name it whatever (`reshee-test` is fine). The project slug becomes part of the OIDC issuer URL.
 
-### 2. Create a project in the portal
+### 2. Configure login methods (Portal sidebar)
 
-Open <http://localhost:3110> in your browser. The portal will walk you through:
+**Authentication → Login Methods** — pick what you want to test. Common combinations:
+- Email + Password (with optional MFA)
+- Phone + OTP (passwordless)
+- Email + magic-link OTP
+- Social: Google, Apple, Facebook, GitHub (each takes ~2 min to wire up in the same portal)
 
-- Sign up as the operator (your email + a strong password — this is *your* admin login, separate from end-user accounts)
-- Create a new project. Name it whatever — e.g. `reshee-test`. The project slug becomes part of the OIDC issuer URL.
-- The portal lands on the project dashboard.
+**Authentication → 2FA** — toggle **Require 2FA** if you want to force MFA. Factors: TOTP (Google Authenticator), SMS OTP, email OTP.
 
-### 3. Configure login methods
+**Authentication → Passkeys** — enable for biometric / security-key login.
 
-In the portal:
+### 3. Create an OAuth/OIDC client
 
-**Authentication → Login Methods**
+**Applications → Add Application** → **OIDC client** (web)
 
-- Enable **Email** and **Phone**.
-- Under "How users sign in", pick the combinations you want to test. The most common is:
-  - Email + Password (with optional MFA)
-  - Phone + OTP (passwordless)
-  - Email + magic-link OTP
+Redirect URIs:
+- `http://localhost:3000/api/auth/callback/authgear` (local dev)
+- `http://148.230.66.124/api/auth/callback/authgear` (VPS, optional)
 
-**Authentication → 2FA**
+Save. The portal shows you:
+- **Issuer URL** — looks like `https://<your-project>.authgear.cloud` or similar
+- **Client ID**
+- **Client Secret**
 
-- Toggle **Require 2FA** if you want to force MFA.
-- Allowed factors: TOTP (recommended for super-admins), SMS OTP, email OTP.
+### 4. Wire it into the Restaurant Manager
 
-**Authentication → Passkeys**
-
-- Enable passkeys if you want to test the biometric/security-key flow.
-
-### 4. Create an OAuth client (so the Restaurant Manager can use Authgear)
-
-In the portal:
-
-**Applications → Add Application** → pick **OIDC client** (web app)
-
-Fill in:
-
-- **Redirect URIs:** add `http://localhost:3000/api/auth/callback/authgear` (for local dev) and `http://148.230.66.124/api/auth/callback/authgear` (for VPS sandboxing if you want it accessible there too).
-- Save.
-
-The portal will show you a **Client ID** and a **Client Secret**. Copy both.
-
-Also note the **Issuer URL** — it'll be something like `http://localhost:3100/<project-slug>`.
-
-### 5. Wire Authgear into the Restaurant Manager web app
-
-Edit `apps/web/.env.local` (create it if it doesn't exist) and add:
+Edit `apps/web/.env.local` (create it if missing) and add:
 
 ```bash
 AUTHGEAR_ENABLED=true
-AUTHGEAR_ISSUER=http://localhost:3100/<project-slug>
-AUTHGEAR_CLIENT_ID=<from step 4>
-AUTHGEAR_CLIENT_SECRET=<from step 4>
+AUTHGEAR_ISSUER=https://<your-project>.authgear.cloud
+AUTHGEAR_CLIENT_ID=<from step 3>
+AUTHGEAR_CLIENT_SECRET=<from step 3>
 ```
 
-Restart `npm run dev` (or `pm2 restart rm-web` on the VPS) so the new env vars are picked up. NextAuth will auto-discover the OIDC config from the issuer's `/.well-known/openid-configuration` endpoint.
+Restart your dev server (`npm run dev`). NextAuth auto-discovers the OIDC config from the issuer's `/.well-known/openid-configuration` endpoint.
 
-### 6. Try the test flow
+### 5. Try the flow
 
-Open <http://localhost:3000/login/authgear> in your browser. Click **Sign in with Authgear**. You'll be redirected to Authgear's hosted login UI (AuthUI), where you can sign up or log in using whichever methods you enabled in step 3. After successful login, you bounce back to the Restaurant Manager and see a JSON blob of the claims Authgear returned (`sub`, `email`, `email_verified`, `phone_number`, `name`, `amr` — the auth methods used, including any MFA factors).
+Open <http://localhost:3000/login/authgear>. Click **Sign in with Authgear**. You redirect to Authgear's hosted AuthUI, sign up or log in using whichever methods you enabled, bounce back to the Restaurant Manager, and see a JSON dump of the claims (sub, email, email_verified, phone_number, name) at `/login/authgear/result`.
 
-That's the sandbox. From here you can:
+---
 
-- Configure webhooks (Authgear portal → Hooks) and see them fire when you sign up
-- Add social logins (Google/Apple/Facebook) under **Authentication → Connections**
-- Test the account settings page at `http://localhost:3100/<project-slug>/settings`
-- Browse end-users + audit logs in the portal
+## Path 2 — Self-host from source (~45-60 min)
 
-## What's not wired
+Authgear's OSS distribution requires building from source. Their `docker-compose.yaml` in the upstream repo only provides the dependencies (Postgres, Redis, Elasticsearch, nginx); the Authgear server itself is a Go binary you build locally.
 
-This sandbox **does not**:
+If you want to go this route, the steps are roughly:
 
-- Create user records in the Restaurant Manager database. The test page just shows the claims; it doesn't link Authgear identities to local `User` rows. Migration would be a separate step.
-- Touch the existing `phone-otp` / `email-password` providers. Riders, customers, admin, kitchen, and super-admin all still log in the way they do today.
-- Affect the rider Bearer-JWT flow in the native app. That's `apps/web/src/server/rider-auth.ts`, completely independent.
-- Run in production. `AUTHGEAR_ENABLED=true` is intentionally only in `.env.local` so a stray `git commit` can't accidentally turn it on in prod.
+```bash
+# 1. Clone the upstream repo
+git clone https://github.com/authgear/authgear-server.git
+cd authgear-server
+
+# 2. Bring up the dependency stack (postgres + redis + elasticsearch + nginx)
+docker compose up -d postgres16 pgbouncer redis elasticsearch proxy minio
+
+# 3. Install Go (1.22+) and Node.js (for the AuthUI/Portal frontends)
+# Follow tooling versions in .tool-versions
+
+# 4. Build all the things
+make build
+
+# 5. Initialise config + run migrations
+./dist/authgear setup
+
+# 6. Run the server
+./dist/authgear start
+
+# (Repeat for portal and admin API binaries)
+```
+
+Full instructions: <https://docs.authgear.com/deployment/local-development/local>. Production is officially supported via [Helm chart](https://docs.authgear.com/deployment/production-deployment/helm).
+
+The `docker-compose.yml` I originally shipped in this folder referenced `ghcr.io/authgear/authgear-*` images that don't exist publicly — I've left it as a placeholder reference but **it won't run as-is**. Use the upstream repo if you go this route.
+
+---
+
+## What's wired in the Restaurant Manager
+
+Once you have an Authgear server (Cloud or self-hosted) + the four env vars set:
+
+- **`apps/web/src/server/auth.ts`** — registers an OIDC provider with id `'authgear'`, gated by `AUTHGEAR_ENABLED=true`. Self-disables when any of the four env vars is missing, so a prod build without the env vars exposes nothing.
+- **`/login/authgear`** — sandbox start page. Shows provider status + "Sign in with Authgear" button + your current NextAuth session.
+- **`/login/authgear/result`** — post-redirect landing page. Dumps the session JSON (sub, email, name) so you can see what Authgear returned.
+
+## What's NOT wired
+
+- No User row is created or linked in the Restaurant Manager DB. The test page is observation-only.
+- No existing flow changes — customer phone-OTP, staff email+Argon2id, rider Bearer-JWT, Google OAuth all keep working unchanged.
+- Production env on the VPS has `AUTHGEAR_ENABLED` unset; the provider doesn't exist there.
 
 ## If you decide to adopt Authgear for real
 
-The migration would be roughly:
+Migration order (lowest blast-radius first):
 
-1. Pick a scope: replace one flow at a time. Most natural first target is super-admin login (small user count, MFA wanted there anyway).
-2. Add a Prisma `authgearSub` column on `User` so you can link Authgear identities to existing accounts.
-3. Run a one-time migration: for each existing super-admin, send them a "claim your Authgear account" email; they sign up in Authgear with the same email; the `signIn` callback in NextAuth links the new `sub` claim to the existing `User.id`.
-4. Once linked, the existing email+password provider can be removed for that role.
-5. Repeat for restaurant admin, kitchen, customer (in that order — customers are highest blast-radius).
+1. **Super-admin** — smallest user count, MFA wanted there anyway. Add `authgearSub` column on User, send "claim your Authgear account" email to each super-admin, link in the NextAuth `signIn` callback.
+2. **Restaurant admin** — same pattern.
+3. **Kitchen** — same.
+4. **Customer** — highest blast-radius. Roll out gradually with a feature flag per tenant.
 
-I'd estimate ~3 days of focused work to migrate all roles, plus a 1-week soak period running both auths in parallel before you remove the legacy code.
+Riders stay on the Bearer JWT in the native app (Authgear has an SDK for React Native, but rider auth is fast + stable, no reason to migrate it).
+
+Estimate: ~3 days of focused work to migrate all roles + 1-week soak running both auths in parallel before removing legacy code.
 
 ## Tearing down
 
+Disable the sandbox without removing the code:
+
 ```bash
-# Stop containers, keep data:
-docker compose -f deploy/authgear/docker-compose.yml down
-
-# Stop and WIPE everything (Postgres volume, projects, users):
-docker compose -f deploy/authgear/docker-compose.yml down -v
-
-# Disable the provider in the web app:
-# Either delete the AUTHGEAR_* env vars from apps/web/.env.local, or set
-# AUTHGEAR_ENABLED=false. The provider self-disables when ENABLED isn't true.
+# In apps/web/.env.local, either delete the AUTHGEAR_* vars or:
+AUTHGEAR_ENABLED=false
 ```
 
-The only code change is the conditional provider in `apps/web/src/server/auth.ts` — that's safe to leave in place even when Authgear is off, it just becomes dead code.
+Restart the dev server. The provider self-disables and `/login/authgear` shows "not configured". The code is safe to leave in place — dead code when the flag is off.
+
+Full removal (delete every Authgear-related file):
+
+```bash
+rm -rf deploy/authgear apps/web/src/app/login/authgear
+# Then remove the conditional provider block in apps/web/src/server/auth.ts
+```
