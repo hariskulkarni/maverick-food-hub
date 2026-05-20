@@ -140,7 +140,7 @@ export function LoginClient({
           r === 'SUPER_ADMIN' ? '/platform'
         : r === 'ADMIN'       ? '/admin'
         : r === 'KITCHEN'     ? '/kitchen'
-        : r === 'CUSTOMER'    ? '/'
+        : r === 'CUSTOMER'    ? '/restaurants'
         : r === 'RIDER'       ? '/rider-app'
         : fallback;
       window.location.href = target;
@@ -154,7 +154,10 @@ export function LoginClient({
     const r = await signIn('phone-otp', { phone, code, purpose: 'login', redirect: false });
     setBusy(false);
     if (r?.error) return toast.error('Invalid or expired code');
-    await routeByRole('/');
+    // Customers land on the restaurant picker (/restaurants) so they immediately
+    // choose a restaurant, then see its menu. routeByRole returns /restaurants
+    // for the CUSTOMER role; this fallback covers the rare case /api/me is slow.
+    await routeByRole('/restaurants');
   }
 
   async function loginEmail() {
