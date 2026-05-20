@@ -197,6 +197,76 @@ export async function accessibleRestaurants(): Promise<{
   return { flat, groups: Array.from(groupsMap.values()), activeId };
 }
 
+export interface OrderScope {
+  /** Every restaurant the caller can manage (used to scope order monitoring). */
+  restaurantIds: string[];
+  /** All branches across those restaurants. */
+  branchIds: string[];
+  /** True when the caller manages more than one restaurant — drives labels/filter. */
+  multi: boolean;
+  /** For the per-restaurant filter (the active/primary restaurant first). */
+  restaurants: { id: string; name: string }[];
+  /** branchId → its source restaurant, for labelling every order row. */
+  labelByBranchId: Record<string, { restaurantId: string; restaurantName: string; branchName: string }>;
+  /** The realtime channels to subscribe to (one per branch). */
+  channels: string[];
+  /** The caller's active/primary restaurant + its first branch (for pause controls etc.). */
+  activeRestaurantId: string;
+  primaryBranchId: string | null;
+}
+
+/**
+ * The order-monitoring scope for the current user: EVERY restaurant they can
+ * manage (not just the active one), so an operator with several restaurants
+ * sees orders from all of them — an order can never be "invisible" just because
+ * the wrong restaurant is active. Each order is labelled with its restaurant.
+ * For a single-restaurant user this collapses to exactly that one restaurant.
+ */
+export async function accessibleOrderScope(): Promise<OrderScope | null> {
+  const session = await auth();
+  if (!session?.user || !TENANT_ROLES.includes(session.user.role)) return null;
+  const set = await accessibleSet(session.user.id);
+  if (set.size === 0) return null;
+  const entries = [...set.values()];
+
+  // Active restaurant first (honours the switcher cookie), then the rest — so
+  // the filter dropdown and primary branch default to what the user picked.
+  const active = await currentRestaurant();
+  const restaurantIds = entries.map((e) => e.restaurant.id);
+  const ordered = [
+    ...(active ? [active.id] : []),
+    ...restaurantIds.filter((id) => id !== active?.id),
+  ];
+
+  const branches = await prisma.branch.findMany({
+    where: { restaurantId: { in: restaurantIds } },
+    select: { id: true, name: true, restaurantId: true },
+  });
+  const nameById = new Map(entries.map((e) => [e.restaurant.id, e.restaurant.name]));
+  const labelByBranchId: Record<string, { restaurantId: string; restaurantName: string; branchName: string }> = {};
+  for (const b of branches) {
+    labelByBranchId[b.id] = {
+      restaurantId: b.restaurantId,
+      restaurantName: nameById.get(b.restaurantId) ?? '',
+      branchName: b.name,
+    };
+  }
+  const branchIds = branches.map((b) => b.id);
+  const primaryBranchId =
+    branches.find((b) => b.restaurantId === active?.id)?.id ?? branchIds[0] ?? null;
+
+  return {
+    restaurantIds,
+    branchIds,
+    multi: restaurantIds.length > 1,
+    restaurants: ordered.map((id) => ({ id, name: nameById.get(id) ?? '' })),
+    labelByBranchId,
+    channels: branchIds.map((id) => `branch:${id}:orders`),
+    activeRestaurantId: active?.id ?? restaurantIds[0],
+    primaryBranchId,
+  };
+}
+
 export interface GroupSharing {
   /** The restaurant whose toggles are in effect (self if top-level, else the parent). */
   sourceRestaurantId: string;

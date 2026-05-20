@@ -1,5 +1,5 @@
 import { prisma } from '@/server/db';
-import { requireRestaurant } from '@/server/tenancy';
+import { requireRestaurant, accessibleOrderScope } from '@/server/tenancy';
 import { KitchenBoard } from './kitchen-board';
 
 export const metadata = { title: 'Kitchen' };
@@ -11,14 +11,18 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function KitchenPage() {
-  const restaurant = await requireRestaurant();
-  const branch = await prisma.branch.findFirstOrThrow({ where: { restaurantId: restaurant.id, isActive: true }, orderBy: { createdAt: 'asc' } });
+  await requireRestaurant(); // role/membership gate
+  // Span every restaurant this account manages so an order is never invisible
+  // because the wrong restaurant is active. A single-restaurant kitchen user
+  // collapses to exactly their one branch.
+  const scope = await accessibleOrderScope();
+  if (!scope) return <div className="p-6">No restaurant for this account.</div>;
   // RECEIVED is included so newly-placed customer orders surface in a
   // dedicated "New" column on the kitchen board with an Accept button. The
   // admin's /admin/orders board can still accept them too — both paths route
   // through the same transitionOrder() server logic.
   const orders = await prisma.order.findMany({
-    where: { branchId: branch.id, status: { in: ['RECEIVED', 'ACCEPTED', 'PREPARING', 'READY'] } },
+    where: { branchId: { in: scope.branchIds }, status: { in: ['RECEIVED', 'ACCEPTED', 'PREPARING', 'READY'] } },
     // Expand each combo so the kitchen sees what's actually being plated. The
     // OrderItem.name is the combo's snapshot name; the constituent menuItem
     // names come from the related Combo.items[].
@@ -39,6 +43,7 @@ export default async function KitchenPage() {
   // stay dumb — no client-side prisma fetches, no combo definition lookups.
   const decorated = orders.map((o) => ({
     ...o,
+    _label: scope.labelByBranchId[o.branchId] ?? null,
     items: o.items.map((i: any) => ({
       ...i,
       comboBreakdown: i.combo
@@ -50,5 +55,12 @@ export default async function KitchenPage() {
     }))
   }));
 
-  return <KitchenBoard branchId={branch.id} initial={JSON.parse(JSON.stringify(decorated))} />;
+  return (
+    <KitchenBoard
+      branchId={scope.primaryBranchId ?? scope.branchIds[0]!}
+      channels={scope.channels}
+      multi={scope.multi}
+      initial={JSON.parse(JSON.stringify(decorated))}
+    />
+  );
 }

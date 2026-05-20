@@ -1,5 +1,5 @@
 import { prisma } from '@/server/db';
-import { requireRestaurant } from '@/server/tenancy';
+import { requireRestaurant, accessibleOrderScope } from '@/server/tenancy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,14 +18,13 @@ export const runtime = 'nodejs';
  * pass; the resolver throws on anonymous / wrong-role.
  */
 export async function GET() {
-  const restaurant = await requireRestaurant();
-  const branch = await prisma.branch.findFirstOrThrow({
-    where: { restaurantId: restaurant.id, isActive: true },
-    orderBy: { createdAt: 'asc' }
-  });
+  await requireRestaurant(); // role/membership gate
+  // Span every restaurant this account manages — same scope as the SSR page.
+  const scope = await accessibleOrderScope();
+  if (!scope) return new Response('No restaurant for this user', { status: 404 });
   const orders = await prisma.order.findMany({
     where: {
-      branchId: branch.id,
+      branchId: { in: scope.branchIds },
       status: { in: ['RECEIVED', 'ACCEPTED', 'PREPARING', 'READY'] }
     },
     include: {
@@ -43,6 +42,7 @@ export async function GET() {
   // two formats.
   const decorated = orders.map((o) => ({
     ...o,
+    _label: scope.labelByBranchId[o.branchId] ?? null,
     items: o.items.map((i: any) => ({
       ...i,
       comboBreakdown: i.combo
@@ -53,9 +53,12 @@ export async function GET() {
         : null
     }))
   }));
-  return Response.json({
-    at: new Date().toISOString(),
-    branchId: branch.id,
-    orders: JSON.parse(JSON.stringify(decorated))
-  });
+  return Response.json(
+    {
+      at: new Date().toISOString(),
+      branchId: scope.primaryBranchId,
+      orders: JSON.parse(JSON.stringify(decorated))
+    },
+    { headers: { 'Cache-Control': 'no-store' } }
+  );
 }

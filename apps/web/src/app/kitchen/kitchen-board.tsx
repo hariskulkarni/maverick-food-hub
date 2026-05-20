@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,7 +23,7 @@ const COLUMNS = [
   { key: 'READY', title: 'Ready', icon: Package }
 ] as const;
 
-export function KitchenBoard({ branchId, initial }: { branchId: string; initial: any[] }) {
+export function KitchenBoard({ branchId, channels, multi = false, initial }: { branchId: string; channels?: string[]; multi?: boolean; initial: any[] }) {
   const [orders, setOrders] = useState<any[]>(initial);
   const [now, setNow] = useState(Date.now());
   const [unacked, setUnacked] = useState<Set<string>>(new Set());
@@ -153,6 +153,10 @@ export function KitchenBoard({ branchId, initial }: { branchId: string; initial:
   useSSE(`branch:${branchId}:orders`, {
     onMessage: async (e: any) => {
       if (!e.orderId) return;
+      // Multi-restaurant: the per-order endpoint is single-branch scoped, so an
+      // order from another restaurant in this account would 404. Reconcile via
+      // the group-aware kitchen snapshot instead (it spans every branch).
+      if (multi) { await refreshSnapshot(true); return; }
       const r = await fetch(`/api/admin/orders/${e.orderId}`);
       if (!r.ok) return;
       const o = await r.json();
@@ -197,6 +201,25 @@ export function KitchenBoard({ branchId, initial }: { branchId: string; initial:
       }
     }
   });
+
+  // Multi-restaurant realtime: also subscribe to every OTHER branch channel
+  // this account manages (besides the primary one useSSE already handles) so a
+  // new order at any of them updates the board instantly. Any event reconciles
+  // via the group-aware snapshot. The 15s poll remains the safety net.
+  const secondaryChannels = useMemo(
+    () => (channels ?? []).filter((c) => c !== `branch:${branchId}:orders`),
+    [channels, branchId]
+  );
+  useEffect(() => {
+    if (secondaryChannels.length === 0) return;
+    if (typeof EventSource === 'undefined') return;
+    const sources = secondaryChannels.map((c) => {
+      const es = new EventSource(`/api/events?channel=${encodeURIComponent(c)}`);
+      es.onmessage = () => { refreshSnapshot(true); };
+      return es;
+    });
+    return () => { for (const es of sources) { try { es.close(); } catch {} } };
+  }, [secondaryChannels, refreshSnapshot]);
 
   function acknowledge() {
     setUnacked(new Set());

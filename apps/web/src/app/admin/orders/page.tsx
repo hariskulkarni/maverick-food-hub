@@ -1,6 +1,5 @@
 import { prisma } from '@/server/db';
-import { requireRestaurant } from '@/server/tenancy';
-import { resolveGroupContext } from '@/server/group-scope';
+import { requireRestaurant, accessibleOrderScope } from '@/server/tenancy';
 import { OrdersBoard } from './orders-board';
 import { PauseControl } from './pause-control';
 import { isPaused } from '@/server/branch-pause';
@@ -15,21 +14,21 @@ export const revalidate = 0;
 
 export default async function AdminOrdersPage({ searchParams: _sp }: { searchParams: Promise<{ filter?: string }> }) {
   await _sp; // touched for Next.js dynamic rendering
-  const session = await auth();
-  const restaurant = await requireRestaurant();
-  // The branch may be paused (isActive=false). Don't filter on isActive here —
-  // we still want the admin to see the orders board for a paused branch so they
-  // can resume it. Fall back to any branch for this restaurant.
-  const branch = await prisma.branch.findFirstOrThrow({ where: { restaurantId: restaurant.id }, orderBy: { createdAt: 'asc' } });
-  const pause = await isPaused(branch.id);
+  await auth();
+  await requireRestaurant(); // role/membership gate (throws 404 for non-tenant users)
 
-  // Resolve the group rooted at the active restaurant. When it's a real group
-  // (parent with children), span every branch across the group; otherwise keep
-  // exactly the single-branch behaviour for solo tenants / a child viewed directly.
-  const group = await resolveGroupContext(restaurant.id);
+  // Order monitoring spans EVERY restaurant this account manages — not just the
+  // active one — so an order is never invisible because the wrong restaurant is
+  // selected. For a single-restaurant operator this is exactly that one branch.
+  const scope = await accessibleOrderScope();
+  if (!scope) {
+    return <div className="p-6">No restaurant for this account.</div>;
+  }
+  const primaryBranchId = scope.primaryBranchId ?? scope.branchIds[0]!;
+  const pause = await isPaused(primaryBranchId);
 
   const orders = await prisma.order.findMany({
-    where: group.isGroup ? { branchId: { in: group.branchIds } } : { branchId: branch.id },
+    where: { branchId: { in: scope.branchIds } },
     include: { customer: true, items: true, address: true, assignment: { include: { rider: { include: { user: true } } } } },
     orderBy: { placedAt: 'desc' },
     take: 100
@@ -37,19 +36,18 @@ export default async function AdminOrdersPage({ searchParams: _sp }: { searchPar
   // Annotate each order with its source restaurant for the board's label/filter.
   const annotated = orders.map((o) => ({
     ...o,
-    _label: group.labelByBranchId[o.branchId] ?? null
+    _label: scope.labelByBranchId[o.branchId] ?? null
   }));
 
-  // Restaurant options for the group filter (parent first, then children).
-  const restaurantOptions = group.isGroup
-    ? group.restaurants.map((r) => ({ id: r.id, name: r.name, isParent: r.isParent }))
+  const restaurantOptions = scope.multi
+    ? scope.restaurants.map((r) => ({ id: r.id, name: r.name, isParent: r.id === scope.activeRestaurantId }))
     : [];
 
   return (
     <div className="p-6 space-y-4">
       <h1 className="display text-2xl font-semibold">Orders</h1>
       <PauseControl
-        branchId={branch.id}
+        branchId={primaryBranchId}
         initial={{
           paused: pause.paused,
           reason: pause.reason,
@@ -58,9 +56,10 @@ export default async function AdminOrdersPage({ searchParams: _sp }: { searchPar
         }}
       />
       <OrdersBoard
-        branchId={branch.id}
-        channel={group.isGroup ? group.channel : `branch:${branch.id}:orders`}
-        isGroup={group.isGroup}
+        branchId={primaryBranchId}
+        channel={`branch:${primaryBranchId}:orders`}
+        channels={scope.channels}
+        isGroup={scope.multi}
         restaurantOptions={restaurantOptions}
         initial={JSON.parse(JSON.stringify(annotated))}
       />

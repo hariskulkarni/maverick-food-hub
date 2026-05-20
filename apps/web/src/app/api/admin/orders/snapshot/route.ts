@@ -1,6 +1,5 @@
 import { prisma } from '@/server/db';
-import { requireRestaurant } from '@/server/tenancy';
-import { resolveGroupContext } from '@/server/group-scope';
+import { requireRestaurant, accessibleOrderScope } from '@/server/tenancy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -15,19 +14,14 @@ export const runtime = 'nodejs';
  * the safety net that guarantees no order is invisible for more than ~15s.
  */
 export async function GET() {
-  const restaurant = await requireRestaurant();
-  const branch = await prisma.branch.findFirstOrThrow({
-    where: { restaurantId: restaurant.id },
-    orderBy: { createdAt: 'asc' }
-  });
-
-  // For a group parent, span every branch across the group; otherwise keep the
-  // single-branch behaviour. Auth is the same currentRestaurant() guard, and
-  // resolveGroupContext only widens to children of the active restaurant.
-  const group = await resolveGroupContext(restaurant.id);
+  await requireRestaurant(); // role/membership gate
+  // Span EVERY restaurant this account manages — same scope the SSR page uses —
+  // so the poll surfaces orders from all of them, not just the active one.
+  const scope = await accessibleOrderScope();
+  if (!scope) return new Response('No restaurant for this user', { status: 404 });
 
   const orders = await prisma.order.findMany({
-    where: group.isGroup ? { branchId: { in: group.branchIds } } : { branchId: branch.id },
+    where: { branchId: { in: scope.branchIds } },
     include: {
       customer: true,
       items: true,
@@ -37,15 +31,17 @@ export async function GET() {
     orderBy: { placedAt: 'desc' },
     take: 100
   });
-  // Annotate each order with its source-restaurant label (null when not grouped).
   const annotated = orders.map((o) => ({
     ...o,
-    _label: group.labelByBranchId[o.branchId] ?? null
+    _label: scope.labelByBranchId[o.branchId] ?? null
   }));
-  return Response.json({
-    at: new Date().toISOString(),
-    branchId: branch.id,
-    isGroup: group.isGroup,
-    orders: JSON.parse(JSON.stringify(annotated))
-  });
+  return Response.json(
+    {
+      at: new Date().toISOString(),
+      branchId: scope.primaryBranchId,
+      isGroup: scope.multi,
+      orders: JSON.parse(JSON.stringify(annotated))
+    },
+    { headers: { 'Cache-Control': 'no-store' } }
+  );
 }

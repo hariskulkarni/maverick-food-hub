@@ -32,16 +32,21 @@ type RestaurantOption = { id: string; name: string; isParent: boolean };
 export function OrdersBoard({
   branchId,
   channel,
+  channels,
   isGroup = false,
   restaurantOptions = [],
   initial
 }: {
   branchId: string;
-  /** Channel to subscribe to: group channel when grouped, else branch channel. */
+  /** Primary channel to subscribe to (the active restaurant's branch). */
   channel?: string;
-  /** True when the active restaurant is a group parent spanning children. */
+  /** Every branch channel across the restaurants this account manages — the
+   *  board subscribes to all of them so an order shows up regardless of which
+   *  restaurant it was placed at. */
+  channels?: string[];
+  /** True when the account manages more than one restaurant (show labels/filter). */
   isGroup?: boolean;
-  /** Group restaurants for the per-restaurant filter (empty when not grouped). */
+  /** Restaurants for the per-restaurant filter (empty when single-restaurant). */
   restaurantOptions?: RestaurantOption[];
   initial: Order[];
 }) {
@@ -211,6 +216,26 @@ export function OrdersBoard({
       }
     }
   });
+
+  // Multi-restaurant realtime: subscribe to EVERY other branch channel (besides
+  // the primary one useSSE already handles) so an order placed at any restaurant
+  // this account manages updates the board instantly. On any event we reconcile
+  // via the group-aware snapshot (the per-order endpoint is single-branch
+  // scoped). The 15s poll above remains the ultimate safety net.
+  const secondaryChannels = useMemo(
+    () => (channels ?? []).filter((c) => c !== (channel ?? `branch:${branchId}:orders`)),
+    [channels, channel, branchId]
+  );
+  useEffect(() => {
+    if (secondaryChannels.length === 0) return;
+    if (typeof EventSource === 'undefined') return;
+    const sources = secondaryChannels.map((c) => {
+      const es = new EventSource(`/api/events?channel=${encodeURIComponent(c)}`);
+      es.onmessage = () => { refreshSnapshot(true); };
+      return es;
+    });
+    return () => { for (const es of sources) { try { es.close(); } catch {} } };
+  }, [secondaryChannels, refreshSnapshot]);
 
   // If an alerted order is accepted (or otherwise leaves RECEIVED), auto-clear its banner.
   useEffect(() => {
