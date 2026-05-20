@@ -24,6 +24,12 @@ export interface PricingInputs {
   taxRatePct: number;
   baseDeliveryFee: number;
   perKmDeliveryFee: number;
+  /**
+   * Flat restaurant-packaging charge added to the order total (delivery +
+   * pickup). Defaults to 0 when omitted so existing callers and tests are
+   * unaffected. Caller is responsible for passing 0 on DINE_IN orders.
+   */
+  packagingFee?: number;
   branch?: { lat?: number | null; lng?: number | null } | null;
   delivery?: { lat?: number | null; lng?: number | null } | null;
   coupon?: { flatOff?: number | null; percentOff?: number | null; minOrderAmount?: number | null; maxDiscount?: number | null } | null;
@@ -49,6 +55,7 @@ export interface PricingResult {
   subtotal: number;
   taxAmount: number;
   deliveryFee: number;
+  packagingFee: number;
   discountAmount: number;
   walletApplied: number;
   loyaltyApplied: number;
@@ -95,6 +102,9 @@ export function pricing(inp: PricingInputs): PricingResult {
     );
   }
   const deliveryFee = clampTwo(inp.baseDeliveryFee + inp.perKmDeliveryFee * Math.max(0, distanceKm - 1));
+  // Flat packaging charge. Treated like the delivery fee — added to the amount
+  // owed but not part of the taxable base (mirrors how deliveryFee is handled).
+  const packagingFee = clampTwo(Math.max(0, inp.packagingFee ?? 0));
 
   let couponDiscount = 0;
   let couponApplied = false;
@@ -124,7 +134,7 @@ export function pricing(inp: PricingInputs): PricingResult {
   // Signup bonus is layered last so an aggressive total can't drag below 0.
   // The bonus engine already capped this to the per-order ceiling and the
   // grant's remaining balance, so we just clamp here defensively.
-  const remainingOwed = Math.max(0, subtotal + taxAmount + deliveryFee - discount - wallet - loyalty);
+  const remainingOwed = Math.max(0, subtotal + taxAmount + deliveryFee + packagingFee - discount - wallet - loyalty);
   const signupBonus = clampTwo(Math.max(0, Math.min(remainingOwed, inp.signupBonusApplied ?? 0)));
 
   const total = clampTwo(Math.max(0, remainingOwed - signupBonus));
@@ -133,6 +143,7 @@ export function pricing(inp: PricingInputs): PricingResult {
     subtotal,
     taxAmount,
     deliveryFee,
+    packagingFee,
     discountAmount: discount,
     walletApplied: wallet,
     loyaltyApplied: loyalty,

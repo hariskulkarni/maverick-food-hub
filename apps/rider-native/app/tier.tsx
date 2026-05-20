@@ -113,7 +113,7 @@ export default function TierScreen() {
                 <Ionicons name="trophy" size={44} color={colors.primary} />
                 <Text style={styles.maxedTitle}>Top tier reached!</Text>
                 <Text style={styles.heroHint}>
-                  You're a Platinum rider — the highest rung on the ladder.
+                  You&apos;re a Platinum rider — the highest rung on the ladder.
                 </Text>
               </View>
             )}

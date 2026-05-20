@@ -43,7 +43,7 @@ export function RiderTiersClient({ rows, distribution }: {
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   const visible = useMemo(() => {
-    let r = filter === 'ALL' ? rows.slice() : rows.filter((x) => x.tier === filter);
+    const r = filter === 'ALL' ? rows.slice() : rows.filter((x) => x.tier === filter);
     r.sort((a, b) => {
       let av: number | string; let bv: number | string;
       switch (sortKey) {

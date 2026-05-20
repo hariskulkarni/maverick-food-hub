@@ -68,7 +68,7 @@ export function DocumentViewer({
             <Ionicons name="document-text-outline" size={56} color={colors.textMuted} />
             <Text style={styles.fallbackText}>
               This document is a {doc.fileMimeType ?? 'file'}. Tap below to open
-              it with your device's viewer.
+              it with your device&apos;s viewer.
             </Text>
           </View>
         )}

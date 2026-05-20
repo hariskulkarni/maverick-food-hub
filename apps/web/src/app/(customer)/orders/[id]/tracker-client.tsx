@@ -278,6 +278,9 @@ export function OrderTrackerClient({
               {Number(order.walletApplied) > 0 && <Row label="Wallet" value={'−' + money(Number(order.walletApplied))} accent="text-success" />}
               {Number(order.loyaltyApplied) > 0 && <Row label="Loyalty" value={'−' + money(Number(order.loyaltyApplied))} accent="text-success" />}
               <Row label="Tax" value={money(Number(order.taxAmount))} />
+              {Number(order.packagingFee ?? 0) > 0 && (
+                <Row label="Restaurant Packaging" value={money(Number(order.packagingFee))} />
+              )}
               <Row label="Delivery" value={money(Number(order.deliveryFee))} />
               <div className="flex justify-between border-t pt-2 mt-2 text-base font-semibold">
                 <span>Total</span><span className="text-primary">{money(Number(order.total))}</span>

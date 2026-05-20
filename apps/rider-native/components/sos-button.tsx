@@ -129,8 +129,8 @@ export function SosButton({ assignmentId }: SosButtonProps) {
             <Text style={styles.activeTitle}>SOS ACTIVE</Text>
           </View>
           <Text style={styles.activeBody}>
-            Help has been alerted with your location. Stay where you are if it's
-            safe. Call 112 if you're in immediate danger.
+            Help has been alerted with your location. Stay where you are if it&apos;s
+            safe. Call 112 if you&apos;re in immediate danger.
           </Text>
           <Pressable
             style={({ pressed }) => [styles.safeBtn, pressed && styles.safeBtnPressed]}

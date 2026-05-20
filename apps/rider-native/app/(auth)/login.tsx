@@ -75,7 +75,7 @@ export default function LoginScreen() {
           <View style={styles.heading}>
             <Text style={styles.title}>Sign in to start{'\n'}delivering</Text>
             <Text style={styles.subtitle}>
-              Enter your registered rider phone number. We'll text you a
+              Enter your registered rider phone number. We&apos;ll text you a
               verification code.
             </Text>
           </View>

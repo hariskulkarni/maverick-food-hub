@@ -100,7 +100,7 @@ export default function VerifyScreen() {
             <View style={styles.demoHint}>
               <Text style={styles.demoHintLabel}>DEMO MODE</Text>
               <Text style={styles.demoHintText}>
-                SMS isn't wired up yet — your code is{' '}
+                SMS isn&apos;t wired up yet — your code is{' '}
                 <Text style={styles.demoHintCode}>{devCode}</Text> (pre-filled
                 below).
               </Text>

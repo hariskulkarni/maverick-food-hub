@@ -233,7 +233,7 @@ export default function ReferScreen() {
           {showForm ? (
             <View style={styles.card}>
               <View style={styles.formPad}>
-                <Text style={styles.inputLabel}>Friend's mobile number</Text>
+                <Text style={styles.inputLabel}>Friend&apos;s mobile number</Text>
                 <TextInput
                   style={styles.input}
                   value={phone}
@@ -244,7 +244,7 @@ export default function ReferScreen() {
                   maxLength={15}
                 />
                 <Text style={[styles.inputLabel, { marginTop: spacing.md }]}>
-                  Friend's name (optional)
+                  Friend&apos;s name (optional)
                 </Text>
                 <TextInput
                   style={styles.input}
@@ -295,7 +295,7 @@ export default function ReferScreen() {
           {data.referrals.length === 0 ? (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>
-                No referrals yet — share your code above and they'll show up here.
+                No referrals yet — share your code above and they&apos;ll show up here.
               </Text>
             </View>
           ) : (

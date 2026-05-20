@@ -177,7 +177,7 @@ export default function PreferencesScreen() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Max batch size</Text>
             <Text style={styles.cardBody}>
-              How many orders you're willing to carry on one trip.
+              How many orders you&apos;re willing to carry on one trip.
             </Text>
             <View style={styles.stepperRow}>
               <Pressable
@@ -244,7 +244,7 @@ export default function PreferencesScreen() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Preferred zones</Text>
             <Text style={styles.cardBody}>
-              Areas you'd rather work — dispatch favours orders here.
+              Areas you&apos;d rather work — dispatch favours orders here.
             </Text>
             {prefs.preferredZones.length > 0 ? (
               <View style={styles.chipWrap}>

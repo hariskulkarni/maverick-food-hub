@@ -136,7 +136,9 @@ export function LocationPickerDialog({ open, onOpenChange, savedAddresses }: Pro
     }
   }
 
-  async function useSaved(a: SavedAddressOption) {
+  // Not `useSaved` — a `use`-prefixed name trips react-hooks/rules-of-hooks
+  // even though this is a plain event handler, not a Hook.
+  async function applySavedAddress(a: SavedAddressOption) {
     setBusySavedId(a.id);
     try {
       const label = `${a.label} · ${[a.line1, a.city].filter(Boolean).join(', ')}`;
@@ -180,7 +182,7 @@ export function LocationPickerDialog({ open, onOpenChange, savedAddresses }: Pro
                   <button
                     key={a.id}
                     type="button"
-                    onClick={() => useSaved(a)}
+                    onClick={() => applySavedAddress(a)}
                     disabled={busySavedId !== null}
                     className="tap-press flex w-full items-start gap-2 rounded-lg border bg-card px-3 py-2 text-left text-sm hover:border-primary/40 disabled:opacity-60"
                   >

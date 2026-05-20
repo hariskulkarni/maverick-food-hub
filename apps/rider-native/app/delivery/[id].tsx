@@ -458,8 +458,8 @@ export default function DeliveryScreen() {
           ) : null}
           {permissionDenied ? (
             <Text style={styles.permWarning}>
-              Location permission is off — your live position won't show on the
-              customer's tracker. Enable it in your phone's settings.
+              Location permission is off — your live position won&apos;t show on the
+              customer&apos;s tracker. Enable it in your phone&apos;s settings.
             </Text>
           ) : null}
           {step === 'to_restaurant' || step === 'at_restaurant' ? (
@@ -531,7 +531,7 @@ export default function DeliveryScreen() {
                 <View style={styles.demoHint}>
                   <Text style={styles.demoHintLabel}>DEMO MODE</Text>
                   <Text style={styles.demoHintText}>
-                    The customer's code is{' '}
+                    The customer&apos;s code is{' '}
                     <Text style={styles.demoHintCode}>{o.deliveryOtp}</Text>
                   </Text>
                 </View>

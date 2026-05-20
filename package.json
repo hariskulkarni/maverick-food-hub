@@ -1,0 +1,23 @@
+{
+  "name": "maverick-food-hub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Maverick Food Hub — multi-tenant food delivery platform (Next.js web + Expo rider app).",
+  "scripts": {
+    "install:all": "npm --prefix apps/web install && npm --prefix apps/rider-native install",
+    "ci:install": "npm --prefix apps/web ci && npm --prefix apps/rider-native ci",
+    "db:generate": "npm --prefix apps/web run db:generate",
+    "db:migrate": "npm --prefix apps/web run db:migrate",
+    "db:deploy": "npm --prefix apps/web run db:deploy",
+    "typecheck": "npm --prefix apps/web run typecheck && npm --prefix apps/rider-native run typecheck",
+    "lint": "npm --prefix apps/web run lint && npm --prefix apps/rider-native run lint",
+    "test": "npm --prefix apps/web run test",
+    "test:ci": "npm --prefix apps/web run test:ci",
+    "build": "npm --prefix apps/web run build",
+    "audit:all": "npm --prefix apps/web audit && npm --prefix apps/rider-native audit",
+    "ci": "npm run db:generate && npm run typecheck && npm run lint && npm run test:ci"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

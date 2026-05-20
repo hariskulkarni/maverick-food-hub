@@ -27,6 +27,7 @@ interface Branch {
   taxRatePct: number;
   baseDeliveryFee: number | string;
   perKmDeliveryFee: number | string;
+  packagingFee: number | string;
   isActive: boolean;
   hours: Hours[];
 }
@@ -60,6 +61,7 @@ export function BranchForm({ branch }: { branch: Branch }) {
     taxRatePct: branch.taxRatePct,
     baseDeliveryFee: Number(branch.baseDeliveryFee),
     perKmDeliveryFee: Number(branch.perKmDeliveryFee),
+    packagingFee: Number(branch.packagingFee),
     isActive: branch.isActive
   });
   // Pre-fill hours: 7 days, defaulting closed if missing
@@ -211,6 +213,9 @@ export function BranchForm({ branch }: { branch: Branch }) {
         </Field>
         <Field label="Per-km delivery fee (₹)">
           <Input type="number" step="0.5" min="0" value={f.perKmDeliveryFee} onChange={(e) => set('perKmDeliveryFee', Number(e.target.value || 0))} />
+        </Field>
+        <Field label="Packaging fee (₹)">
+          <Input type="number" step="1" min="0" value={f.packagingFee} onChange={(e) => set('packagingFee', Number(e.target.value || 0))} />
         </Field>
       </div>
 

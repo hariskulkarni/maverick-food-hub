@@ -25,7 +25,6 @@ import { Vibration } from 'react-native';
 // at bundle time, drop a placeholder MP3 at that path and re-bundle.
 let soundAsset: number | null = null;
 try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   soundAsset = require('../assets/sounds/new-order.mp3');
 } catch {
   soundAsset = null;
@@ -88,6 +87,7 @@ async function buildPlayer(): Promise<PlayerHandle | null> {
   // runtime safety net for legacy builds that still bundle expo-av.
   try {
     // @ts-expect-error — expo-av is an optional runtime dependency.
+    // eslint-disable-next-line import/no-unresolved -- expo-av is an optional runtime-only fallback, intentionally not a dependency
     const av: any = await import('expo-av');
     const { Sound } = av.Audio;
     const { sound } = await Sound.createAsync(soundAsset);

@@ -99,6 +99,32 @@ describe('pricing — delivery fee', () => {
   });
 });
 
+describe('pricing — packaging fee', () => {
+  it('defaults to 0 when not provided (back-compat)', () => {
+    const r = pricing({ ...base, lines: [{ unitPrice: 100, quantity: 1 }] });
+    expect(r.packagingFee).toBe(0);
+  });
+
+  it('adds a flat packaging fee to the total without taxing it', () => {
+    const r = pricing({
+      ...base,
+      taxRatePct: 0,
+      baseDeliveryFee: 0,
+      perKmDeliveryFee: 0,
+      lines: [{ unitPrice: 100, quantity: 1 }],
+      packagingFee: 20
+    });
+    expect(r.packagingFee).toBe(20);
+    // subtotal 100 + packaging 20, no tax/delivery
+    expect(r.total).toBe(120);
+  });
+
+  it('clamps a negative packaging fee to 0', () => {
+    const r = pricing({ ...base, lines: [{ unitPrice: 100, quantity: 1 }], packagingFee: -5 });
+    expect(r.packagingFee).toBe(0);
+  });
+});
+
 describe('pricing — wallet / total clamping', () => {
   it('never returns a negative total when wallet exceeds the subtotal', () => {
     const r = pricing({

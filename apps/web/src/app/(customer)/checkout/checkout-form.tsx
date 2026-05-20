@@ -118,6 +118,9 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
           branchId,
           // Pickup + dine-in carry no delivery address → no delivery fee in the quote.
           addressId: isDelivery ? (addressId || undefined) : undefined,
+          // Lets the quote zero the packaging fee for dine-in so the preview total
+          // matches the order total computed server-side.
+          fulfillmentType,
           items: lines.map((l) => ({ menuItemId: l.kind === 'item' ? l.refId : undefined, comboId: l.kind === 'combo' ? l.refId : undefined, quantity: l.quantity })),
           couponCode: appliedCoupon || undefined,
           walletApply: walletApply ? Math.min(walletBalance, 500) : 0,
@@ -128,7 +131,7 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
       if (!cancelled) setPricing(j);
     })();
     return () => { cancelled = true; };
-  }, [lines, addressId, appliedCoupon, walletApply, loyaltyApply, branchId, walletBalance, loyaltyPoints, isDelivery]);
+  }, [lines, addressId, appliedCoupon, walletApply, loyaltyApply, branchId, walletBalance, loyaltyPoints, isDelivery, fulfillmentType]);
 
   // Re-check the qualifying freebie whenever the subtotal changes. Public
   // endpoint, resolved by restaurant slug — reuses the core selection engine.
@@ -420,6 +423,9 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
                 {pricing.walletApplied > 0 && <Row label="Wallet" value={'−' + money(pricing.walletApplied)} />}
                 {pricing.loyaltyApplied > 0 && <Row label="Loyalty" value={'−' + money(pricing.loyaltyApplied)} />}
                 <Row label={`Tax (${pricing.taxRatePct ?? ''}%)`} value={money(pricing.taxAmount)} />
+                {pricing.packagingFee > 0 && (
+                  <Row label="Restaurant Packaging" value={money(pricing.packagingFee)} />
+                )}
                 {isDelivery && (
                   <Row label={`Delivery${pricing.distanceKm ? ` (~${pricing.distanceKm} km)` : ''}`} value={money(pricing.deliveryFee)} />
                 )}

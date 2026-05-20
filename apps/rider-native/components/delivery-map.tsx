@@ -34,7 +34,7 @@ export function DeliveryMap({
     return (
       <View style={styles.placeholder}>
         <Text style={styles.placeholderText}>
-          No map for this order — pickup/drop coordinates aren't set.
+          No map for this order — pickup/drop coordinates aren&apos;t set.
         </Text>
       </View>
     );

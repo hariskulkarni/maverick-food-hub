@@ -142,7 +142,7 @@ export function AdminMessagesClient({
     if (!text || sending) return;
     setSending(true);
     try {
-      let convoId = activeId;
+      const convoId = activeId;
       let res: Response;
       if (convoId) {
         res = await fetch(`/api/admin/messages/${convoId}`, {

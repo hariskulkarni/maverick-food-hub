@@ -32,7 +32,7 @@ import {
   type MessageParty,
 } from '../lib/api';
 import { ScreenHeader } from '../components/screen-header';
-import { colors, spacing, radius, font, shadow } from '../lib/theme';
+import { colors, spacing, radius, font } from '../lib/theme';
 
 function fmtWhen(iso: string): string {
   const d = new Date(iso);
@@ -224,7 +224,7 @@ export default function MessagesScreen() {
           {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
 
           <Text style={styles.intro}>
-            Chat directly with Oak &amp; Sizzler staff — your restaurant's team
+            Chat directly with Oak &amp; Sizzler staff — your restaurant&apos;s team
             and the platform support desk.
           </Text>
 
@@ -251,7 +251,7 @@ export default function MessagesScreen() {
 
           {!hasDedicatedRestaurant ? (
             <Text style={styles.footnote}>
-              You're a fleet rider, so you're not tied to one restaurant. Use
+              You&apos;re a fleet rider, so you&apos;re not tied to one restaurant. Use
               Platform Support for any help you need.
             </Text>
           ) : null}

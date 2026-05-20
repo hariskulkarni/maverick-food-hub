@@ -25,6 +25,7 @@ const Body = z.object({
   taxRatePct:       z.number().min(0).max(50).optional(),
   baseDeliveryFee:  z.number().min(0).max(5000).optional(),
   perKmDeliveryFee: z.number().min(0).max(500).optional(),
+  packagingFee:     z.number().min(0).max(1000).optional(),
   isActive:         z.boolean().optional(),
   hours:            z.array(HoursDay).length(7).optional()
 });
@@ -44,7 +45,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: {
         ...rest,
         baseDeliveryFee:  rest.baseDeliveryFee  != null ? (rest.baseDeliveryFee  as any) : undefined,
-        perKmDeliveryFee: rest.perKmDeliveryFee != null ? (rest.perKmDeliveryFee as any) : undefined
+        perKmDeliveryFee: rest.perKmDeliveryFee != null ? (rest.perKmDeliveryFee as any) : undefined,
+        packagingFee:     rest.packagingFee     != null ? (rest.packagingFee     as any) : undefined
       }
     });
 

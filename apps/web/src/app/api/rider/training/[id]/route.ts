@@ -25,7 +25,9 @@ export async function GET(
   });
   if (!profile) return new Response('No rider profile', { status: 404 });
 
-  const module = await prisma.trainingModule.findUnique({
+  // `mod`, not `module` — `module` is a reserved CommonJS global and the
+  // @next/next/no-assign-module-variable rule (rightly) forbids shadowing it.
+  const mod = await prisma.trainingModule.findUnique({
     where: { id },
     select: {
       id: true,
@@ -43,18 +45,18 @@ export async function GET(
       },
     },
   });
-  if (!module || !module.isActive) return new Response('Not found', { status: 404 });
+  if (!mod || !mod.isActive) return new Response('Not found', { status: 404 });
 
-  const p = module.progress[0] ?? null;
+  const p = mod.progress[0] ?? null;
   return Response.json({
-    id: module.id,
-    title: module.title,
-    summary: module.summary,
-    category: module.category,
-    contentBody: module.contentBody,
-    quizQuestions: module.quizQuestions ?? null,
-    durationMin: module.durationMin,
-    isRequired: module.isRequired,
+    id: mod.id,
+    title: mod.title,
+    summary: mod.summary,
+    category: mod.category,
+    contentBody: mod.contentBody,
+    quizQuestions: mod.quizQuestions ?? null,
+    durationMin: mod.durationMin,
+    isRequired: mod.isRequired,
     progress: {
       completed: p?.completed ?? false,
       completedAt: p?.completedAt?.toISOString() ?? null,
@@ -77,11 +79,13 @@ export async function POST(
   });
   if (!profile) return new Response('No rider profile', { status: 404 });
 
-  const module = await prisma.trainingModule.findUnique({
+  // `mod`, not `module` — `module` is a reserved CommonJS global and the
+  // @next/next/no-assign-module-variable rule (rightly) forbids shadowing it.
+  const mod = await prisma.trainingModule.findUnique({
     where: { id },
     select: { id: true, isActive: true },
   });
-  if (!module || !module.isActive) return new Response('Not found', { status: 404 });
+  if (!mod || !mod.isActive) return new Response('Not found', { status: 404 });
 
   let body: { quizScore?: unknown } = {};
   try {

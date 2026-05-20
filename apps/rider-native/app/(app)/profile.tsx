@@ -78,7 +78,7 @@ function absoluteUrl(fileUrl: string): string {
 }
 
 export default function ProfileScreen() {
-  const { rider, token, signOut, updateRider } = useAuth();
+  const { rider, signOut, updateRider } = useAuth();
 
   const [docs, setDocs] = useState<KycDoc[]>([]);
   const [kycLoading, setKycLoading] = useState(true);

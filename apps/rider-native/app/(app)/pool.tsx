@@ -218,7 +218,7 @@ export default function PoolScreen() {
         <View style={styles.offlineBanner}>
           <Ionicons name="alert-circle" size={16} color={colors.warning} />
           <Text style={styles.offlineText}>
-            You're offline — go online on the Home tab to claim orders.
+            You&apos;re offline — go online on the Home tab to claim orders.
           </Text>
         </View>
       ) : null}

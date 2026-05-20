@@ -400,6 +400,9 @@ export async function placeOrder(input: PlaceOrderInput) {
     // 0 and pass no delivery coords so the distance calc can't add anything.
     baseDeliveryFee: isDelivery ? Number(branch.baseDeliveryFee) : 0,
     perKmDeliveryFee: isDelivery ? Number(branch.perKmDeliveryFee) : 0,
+    // Packaging applies to DELIVERY + PICKUP (food is packed to go) but never
+    // to DINE_IN (served at the table). DINE_IN forces it to 0.
+    packagingFee: fulfillmentType === FulfillmentType.DINE_IN ? 0 : Number(branch.packagingFee),
     branch: { lat: branch.latitude, lng: branch.longitude },
     delivery: isDelivery && address ? { lat: address.latitude, lng: address.longitude } : null,
     coupon,
@@ -469,6 +472,7 @@ export async function placeOrder(input: PlaceOrderInput) {
         subtotal: priced.subtotal as any,
         taxAmount: priced.taxAmount as any,
         deliveryFee: priced.deliveryFee as any,
+        packagingFee: priced.packagingFee as any,
         discountAmount: finalDiscount as any,
         walletApplied: priced.walletApplied as any,
         loyaltyApplied: priced.loyaltyApplied as any,

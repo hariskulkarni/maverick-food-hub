@@ -6,6 +6,7 @@ import { pricing } from '@/server/pricing';
 const Body = z.object({
   branchId: z.string(),
   addressId: z.string().optional(),
+  fulfillmentType: z.enum(['DELIVERY', 'PICKUP', 'DINE_IN']).optional(),
   items: z.array(z.object({ menuItemId: z.string().optional(), comboId: z.string().optional(), quantity: z.number().int().positive() })),
   couponCode: z.string().optional(),
   walletApply: z.number().nonnegative().optional(),
@@ -46,6 +47,8 @@ export async function POST(req: NextRequest) {
     taxRatePct: branch.taxRatePct,
     baseDeliveryFee: Number(branch.baseDeliveryFee),
     perKmDeliveryFee: Number(branch.perKmDeliveryFee),
+    // Packaging applies to delivery + pickup but not dine-in (served at table).
+    packagingFee: body.fulfillmentType === 'DINE_IN' ? 0 : Number(branch.packagingFee),
     branch: { lat: branch.latitude, lng: branch.longitude },
     delivery: address ? { lat: address.latitude, lng: address.longitude } : null,
     coupon,
