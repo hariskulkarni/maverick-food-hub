@@ -11,11 +11,15 @@ import { Switch } from '@/components/ui/switch';
 import { useCart } from '../cart-context';
 import { money } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Wallet, Sparkles, Bike, ShoppingBag, UtensilsCrossed, MapPin, CalendarClock, Gift } from 'lucide-react';
+import { Wallet, Sparkles, Bike, ShoppingBag, MapPin, CalendarClock, Gift } from 'lucide-react';
 
 interface Addr { id: string; label: string; line1: string; line2?: string | null; city: string; postalCode: string; isDefault?: boolean; }
 
-type FulfillmentType = 'DELIVERY' | 'PICKUP' | 'DINE_IN';
+// Dine-in / reservation redemption happens at the restaurant's POS, not on the
+// web checkout — so the customer checkout only offers Delivery and Pickup.
+// (Table reservations + deposit collection still live in the separate
+// /r/[slug]/reserve flow.)
+type FulfillmentType = 'DELIVERY' | 'PICKUP';
 
 interface FulfillmentCtx {
   restaurantSlug: string;
@@ -25,18 +29,6 @@ interface FulfillmentCtx {
   selfPickupEnabled: boolean;
   dineInEnabled: boolean;
   reservationDiscountPct: number;
-}
-
-interface ReservationLite {
-  id: string;
-  code: string;
-  status: string;
-  reservedAt: string;
-  tableName: string | null;
-  partySize: number;
-  depositAmount: number;
-  depositPaid: boolean;
-  discountPct: number;
 }
 
 export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints, fulfillment }: {
@@ -70,41 +62,10 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
   const [fulfillmentType, setFulfillmentType] = useState<FulfillmentType>('DELIVERY');
   const isDelivery = fulfillmentType === 'DELIVERY';
   const isPickup = fulfillmentType === 'PICKUP';
-  const isDineIn = fulfillmentType === 'DINE_IN';
-
-  // Dine-in reservation picker. Reservations are fetched lazily the first time
-  // the customer switches to Dine-in. Only CONFIRMED bookings can back an order.
-  const [reservations, setReservations] = useState<ReservationLite[] | null>(null);
-  const [reservationsLoading, setReservationsLoading] = useState(false);
-  const [reservationId, setReservationId] = useState<string>('');
 
   // Scheduled ordering. When "later", scheduledAt holds a datetime-local string.
   const [schedule, setSchedule] = useState<'now' | 'later'>('now');
   const [scheduledAt, setScheduledAt] = useState<string>('');
-
-  // Lazy-load the customer's reservations for the dine-in flow.
-  useEffect(() => {
-    if (!isDineIn || reservations !== null || reservationsLoading) return;
-    let cancelled = false;
-    setReservationsLoading(true);
-    (async () => {
-      try {
-        const r = await fetch(`/api/r/${fulfillment.restaurantSlug}/reservations`, { cache: 'no-store' });
-        const j = await r.json();
-        if (!cancelled) setReservations(Array.isArray(j.reservations) ? j.reservations : []);
-      } catch {
-        if (!cancelled) setReservations([]);
-      } finally {
-        if (!cancelled) setReservationsLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [isDineIn, reservations, reservationsLoading, fulfillment.restaurantSlug]);
-
-  // Only CONFIRMED reservations can be redeemed by an order (server enforces
-  // this too; we filter here so the customer never picks an invalid one).
-  const eligibleReservations = (reservations ?? []).filter((r) => r.status === 'CONFIRMED');
-  const selectedReservation = eligibleReservations.find((r) => r.id === reservationId) ?? null;
 
   // Recalculate pricing whenever inputs change
   useEffect(() => {
@@ -163,7 +124,6 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
 
   async function placeOrder() {
     if (isDelivery && !addressId) return toast.error('Pick a delivery address');
-    if (isDineIn && !reservationId) return toast.error('Pick the reservation this order redeems');
 
     // Resolve the scheduled slot (if any). Validate it's in the future before
     // we ship it to the server (the server re-checks against operating hours).
@@ -200,7 +160,6 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
           walletApply: walletApply ? Math.min(walletBalance, 500) : 0,
           loyaltyApply: loyaltyApply ? Math.min(loyaltyPoints, 200) : 0,
           fulfillmentType,
-          reservationId: isDineIn ? reservationId : undefined,
           scheduledFor: scheduledForIso
         })
       });
@@ -236,8 +195,10 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
     }
   }
 
-  // Whether either non-delivery option is even on the menu for this restaurant.
-  const showFulfillmentChooser = fulfillment.selfPickupEnabled || fulfillment.dineInEnabled;
+  // Pickup is the only non-delivery option offered on the web checkout (dine-in
+  // is handled at the restaurant POS), so the chooser appears only when pickup
+  // is enabled.
+  const showFulfillmentChooser = fulfillment.selfPickupEnabled;
 
   return (
     <div className="grid gap-6 md:grid-cols-[1fr_360px]">
@@ -246,13 +207,10 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
           <Card>
             <CardContent className="p-5">
               <h3 className="font-semibold mb-3">How would you like your order?</h3>
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid gap-2 sm:grid-cols-2">
                 <FulfillmentChoice value="DELIVERY" current={fulfillmentType} onChange={setFulfillmentType} icon={Bike} title="Delivery" subtitle="To your door" />
                 {fulfillment.selfPickupEnabled && (
                   <FulfillmentChoice value="PICKUP" current={fulfillmentType} onChange={setFulfillmentType} icon={ShoppingBag} title="Pickup" subtitle="Collect yourself" />
-                )}
-                {fulfillment.dineInEnabled && (
-                  <FulfillmentChoice value="DINE_IN" current={fulfillmentType} onChange={setFulfillmentType} icon={UtensilsCrossed} title="Dine-in" subtitle="At your table" />
                 )}
               </div>
             </CardContent>
@@ -291,42 +249,6 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
               <h3 className="font-semibold mb-2 flex items-center gap-2"><MapPin className="size-4 text-primary" /> Pick up at {fulfillment.branchName}</h3>
               <p className="text-sm text-muted-foreground">{fulfillment.branchAddress}</p>
               <p className="mt-2 text-xs text-muted-foreground">No delivery fee. You'll get a pickup code to show at the counter when your order is ready.</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {isDineIn && (
-          <Card>
-            <CardContent className="p-5">
-              <h3 className="font-semibold mb-3 flex items-center gap-2"><UtensilsCrossed className="size-4 text-primary" /> Redeem a reservation</h3>
-              {reservationsLoading ? (
-                <p className="text-sm text-muted-foreground">Loading your reservations…</p>
-              ) : eligibleReservations.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  You have no confirmed reservation at {fulfillment.branchName}.{' '}
-                  <Link href={`/r/${fulfillment.restaurantSlug}/reserve`} className="text-primary underline">Reserve a table</Link> first.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {eligibleReservations.map((r) => (
-                    <label key={r.id} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 hover:bg-accent ${reservationId === r.id ? 'border-primary bg-primary/5' : ''}`}>
-                      <input type="radio" className="mt-1" checked={reservationId === r.id} onChange={() => setReservationId(r.id)} />
-                      <div className="flex-1">
-                        <div className="text-sm font-medium">
-                          {r.tableName ? `Table ${r.tableName}` : `Reservation ${r.code}`} · party of {r.partySize}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {new Date(r.reservedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
-                        </div>
-                        <div className="mt-1 text-xs text-success">
-                          {r.discountPct}% off your bill
-                          {r.depositPaid && r.depositAmount > 0 ? ` · ${money(r.depositAmount)} deposit credited` : ''}
-                        </div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              )}
             </CardContent>
           </Card>
         )}
@@ -443,14 +365,6 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
                     <Gift className="size-4 shrink-0 mt-0.5 text-primary" />
                     <span>Spend {money(freebie.nextThreshold.amountAway)} more for a free <span className="font-medium text-foreground">{freebie.nextThreshold.itemName}</span>.</span>
                   </div>
-                )}
-                {isDineIn && selectedReservation && (
-                  <p className="mt-2 text-xs text-success">
-                    Dine-in: {selectedReservation.discountPct}% off applied at checkout
-                    {selectedReservation.depositPaid && selectedReservation.depositAmount > 0
-                      ? ` + ${money(selectedReservation.depositAmount)} deposit credit`
-                      : ''}. Final total is calculated when you place the order.
-                  </p>
                 )}
               </dl>
             )}
