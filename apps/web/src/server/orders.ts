@@ -6,7 +6,7 @@
  * dispatches the appropriate customer notification, and updates ETA timestamps.
  */
 
-import { OrderStatus, PaymentMethod, PaymentStatus, AssignmentStatus, Prisma } from '@prisma/client';
+import { OrderStatus, PaymentMethod, PaymentStatus, AssignmentStatus, FulfillmentType, Prisma } from '@prisma/client';
 import { prisma } from './db';
 import { publish } from './realtime';
 import { notify } from './notifications';
@@ -36,7 +36,11 @@ export const ALLOWED_NEXT: Record<OrderStatus, OrderStatus[]> = {
   RECEIVED:                 [OrderStatus.ACCEPTED, OrderStatus.CANCELLED_BY_CUSTOMER, OrderStatus.CANCELLED_BY_RESTAURANT, OrderStatus.CANCELLED_BY_ADMIN, OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED],
   ACCEPTED:                 [OrderStatus.PREPARING, OrderStatus.CANCELLED_BY_RESTAURANT, OrderStatus.CANCELLED_BY_ADMIN, OrderStatus.CANCELLED],
   PREPARING:                [OrderStatus.READY, OrderStatus.CANCELLED_BY_RESTAURANT, OrderStatus.CANCELLED_BY_ADMIN, OrderStatus.CANCELLED],
-  READY:                    [OrderStatus.RIDER_ASSIGNED, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED_BY_ADMIN, OrderStatus.CANCELLED],
+  // DELIVERED is reachable directly from READY for PICKUP + DINE_IN orders
+  // (customer collects at counter / meal served at table — no rider leg). The
+  // transition handler gates the rider-pool dispatch on fulfillmentType, so a
+  // DELIVERY order still flows READY → OUT_FOR_DELIVERY as before.
+  READY:                    [OrderStatus.RIDER_ASSIGNED, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, OrderStatus.CANCELLED_BY_ADMIN, OrderStatus.CANCELLED],
   // Rider funnel
   RIDER_ASSIGNED:           [OrderStatus.RIDER_REACHED_RESTAURANT, OrderStatus.PICKED_UP, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED_BY_ADMIN],
   RIDER_REACHED_RESTAURANT: [OrderStatus.PICKED_UP, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED_BY_ADMIN],
@@ -78,6 +82,16 @@ export interface PlaceOrderInput {
   customerNotes?: string;
   walletApply?: number;
   loyaltyApply?: number;
+  /**
+   * Fulfillment type. Defaults to DELIVERY (existing behaviour). PICKUP and
+   * DINE_IN skip rider assignment + delivery fee. DINE_IN additionally
+   * requires `reservationId` so the deposit credit + discount apply.
+   */
+  fulfillmentType?: FulfillmentType;
+  /** Future slot for a scheduled order (must be within operating hours). */
+  scheduledFor?: Date | string | null;
+  /** DINE_IN only — the confirmed reservation this order redeems. */
+  reservationId?: string | null;
 }
 
 export async function placeOrder(input: PlaceOrderInput) {
@@ -261,19 +275,69 @@ export async function placeOrder(input: PlaceOrderInput) {
   const subtotalForBonus = clampTwo(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0));
   const bonusPreview = await previewSignupBonusForUser(input.customerId, subtotalForBonus);
 
+  // ── Fulfillment resolution ─────────────────────────────────────────────────
+  const fulfillmentType: FulfillmentType = input.fulfillmentType ?? FulfillmentType.DELIVERY;
+  const isDelivery = fulfillmentType === FulfillmentType.DELIVERY;
+
+  // DINE_IN must carry a CONFIRMED reservation belonging to this customer +
+  // branch, not already redeemed by another order. We snapshot its deposit +
+  // discount % (the reservation honours what was agreed at booking time).
+  let reservation: { id: string; depositAmount: number; depositPaid: boolean; discountPct: number } | null = null;
+  if (fulfillmentType === FulfillmentType.DINE_IN) {
+    if (!input.reservationId) throw new Error('Dine-in orders require a reservation');
+    const r = await prisma.reservation.findUnique({ where: { id: input.reservationId }, include: { order: true } });
+    if (!r) throw new Error('Reservation not found');
+    if (r.customerId !== input.customerId) throw new Error('Reservation belongs to another customer');
+    if (r.branchId !== branch.id) throw new Error('Reservation is for a different branch');
+    if (r.order) throw new Error('This reservation has already been redeemed by another order');
+    if (r.status === 'CANCELLED' || r.status === 'NO_SHOW') throw new Error('Reservation is no longer active');
+    reservation = {
+      id: r.id,
+      depositAmount: Number(r.depositAmount),
+      depositPaid: r.depositPaid,
+      discountPct: r.discountPct
+    };
+  }
+
+  // Scheduled-order guard: only honour a future scheduledFor when the
+  // restaurant allows scheduling. (UI also gates this; this is server-side.)
+  const scheduledFor = input.scheduledFor ? new Date(input.scheduledFor) : null;
+
   const priced = pricing({
     lines: lines.map((l) => ({ unitPrice: l.unitPrice, quantity: l.quantity })),
     taxRatePct: branch.taxRatePct,
-    baseDeliveryFee: Number(branch.baseDeliveryFee),
-    perKmDeliveryFee: Number(branch.perKmDeliveryFee),
+    // PICKUP + DINE_IN never carry a delivery fee — force both base + per-km to
+    // 0 and pass no delivery coords so the distance calc can't add anything.
+    baseDeliveryFee: isDelivery ? Number(branch.baseDeliveryFee) : 0,
+    perKmDeliveryFee: isDelivery ? Number(branch.perKmDeliveryFee) : 0,
     branch: { lat: branch.latitude, lng: branch.longitude },
-    delivery: address ? { lat: address.latitude, lng: address.longitude } : null,
+    delivery: isDelivery && address ? { lat: address.latitude, lng: address.longitude } : null,
     coupon,
     offers: offerRewards,
     walletApplied: input.walletApply ?? 0,
     loyaltyApplied: input.loyaltyApply ?? 0,
     signupBonusApplied: bonusPreview.appliedAmount
   });
+
+  // ── Dine-in deposit credit + reservation discount ───────────────────────────
+  // The reservation's % discount comes off the (already-priced) total, then the
+  // paid deposit is credited against what remains. Both are clamped so the
+  // total never goes negative. We snapshot the deposit credit on the order for
+  // reporting (reservationDepositApplied) and fold the discount into
+  // discountAmount so existing reports/refunds treat it uniformly.
+  let reservationDepositApplied = 0;
+  let dineInTotal = priced.total;
+  let dineInDiscountAdded = 0;
+  if (reservation) {
+    dineInDiscountAdded = clampTwo((priced.total * reservation.discountPct) / 100);
+    dineInTotal = clampTwo(priced.total - dineInDiscountAdded);
+    if (reservation.depositPaid && reservation.depositAmount > 0) {
+      reservationDepositApplied = clampTwo(Math.min(reservation.depositAmount, dineInTotal));
+      dineInTotal = clampTwo(dineInTotal - reservationDepositApplied);
+    }
+  }
+  const finalTotal = reservation ? dineInTotal : priced.total;
+  const finalDiscount = clampTwo(priced.discountAmount + dineInDiscountAdded);
 
   const order = await prisma.$transaction(async (tx) => {
     const o = await tx.order.create({
@@ -286,18 +350,32 @@ export async function placeOrder(input: PlaceOrderInput) {
         subtotal: priced.subtotal as any,
         taxAmount: priced.taxAmount as any,
         deliveryFee: priced.deliveryFee as any,
-        discountAmount: priced.discountAmount as any,
+        discountAmount: finalDiscount as any,
         walletApplied: priced.walletApplied as any,
         loyaltyApplied: priced.loyaltyApplied as any,
         signupBonusApplied: priced.signupBonusApplied as any,
-        total: priced.total as any,
+        total: finalTotal as any,
         paymentMethod: input.paymentMethod,
         customerNotes: input.customerNotes,
-        deliveryOtp: genDeliveryOtp(),
+        // DELIVERY → delivery OTP. PICKUP → pickup handover code. DINE_IN → neither.
+        deliveryOtp: fulfillmentType === FulfillmentType.DELIVERY ? genDeliveryOtp() : null,
+        pickupCode: fulfillmentType === FulfillmentType.PICKUP ? genDeliveryOtp() : null,
+        fulfillmentType,
+        scheduledFor: scheduledFor,
+        reservationId: reservation?.id ?? null,
+        reservationDepositApplied: reservationDepositApplied as any,
         items: { create: lines.map((l) => ({ name: l.name, unitPrice: l.unitPrice as any, quantity: l.quantity, notes: l.notes, menuItemId: l.menuItemId, comboId: l.comboId })) },
         statusEvents: { create: [{ status: OrderStatus.RECEIVED, note: 'Placed by customer' }] }
       }
     });
+    // Mark the reservation redeemed + seated within the same transaction so two
+    // concurrent checkouts can't both claim the same table booking.
+    if (reservation) {
+      await tx.reservation.update({
+        where: { id: reservation.id },
+        data: { status: 'SEATED' }
+      });
+    }
     if (coupon) {
       // The coupon's share of the combined discount: subtract the sum of
       // offer amounts so we don't double-count when both paths fire on the
@@ -396,12 +474,14 @@ export async function placeOrder(input: PlaceOrderInput) {
     }).catch((e) => log.error({ err: (e as Error).message, orderId: order.id }, 'order.placed sms failed'));
   }
 
-  // Kick off payment if Razorpay
+  // Kick off payment if Razorpay. Amount is `finalTotal` — for dine-in this is
+  // after the reservation discount + deposit credit, so the customer pays the
+  // right reduced amount.
   if (input.paymentMethod === PaymentMethod.RAZORPAY) {
     const provider = await paymentProvider(branch.restaurantId);
     const pOrder = await provider.createOrder({
       orderId: order.id,
-      amount: priced.total,
+      amount: finalTotal,
       currency: 'INR',
       customer: { name: customer?.name, phone: customer?.phone, email: customer?.email }
     });
@@ -410,13 +490,16 @@ export async function placeOrder(input: PlaceOrderInput) {
         orderId: order.id,
         method: PaymentMethod.RAZORPAY,
         status: PaymentStatus.PENDING,
-        amount: priced.total as any,
+        amount: finalTotal as any,
         currency: 'INR',
         providerName: pOrder.providerName,
         providerRef: pOrder.providerOrderId,
         providerData: pOrder.raw as any
       }
     });
+    // Razorpay orders are auto-accepted (if the restaurant opts in) only AFTER
+    // payment is captured — that happens in the payment webhook/verify path,
+    // not here, because the order isn't paid yet.
     return { order, payment: pOrder };
   } else {
     await prisma.payment.create({
@@ -424,13 +507,42 @@ export async function placeOrder(input: PlaceOrderInput) {
         orderId: order.id,
         method: input.paymentMethod,
         status: input.paymentMethod === PaymentMethod.COD ? PaymentStatus.PENDING : PaymentStatus.CAPTURED,
-        amount: priced.total as any,
+        amount: finalTotal as any,
         currency: 'INR',
         providerName: input.paymentMethod === PaymentMethod.COD ? 'cod' : 'wallet'
       }
     });
+    // ── Auto-accept ──────────────────────────────────────────────────────────
+    // COD / wallet orders are confirmed at placement (no pending payment gate),
+    // so if the restaurant has autoAcceptOrders on, move RECEIVED → ACCEPTED
+    // immediately. Best-effort: a transition failure must not fail the order
+    // (the order is already committed; the worst case is it sits in the kitchen
+    // "New" column awaiting a manual accept). Fire-and-forget.
+    await maybeAutoAccept(order.id, branch.restaurantId).catch((e) =>
+      log.error({ err: (e as Error).message, orderId: order.id }, 'auto-accept failed')
+    );
     return { order, payment: null };
   }
+}
+
+/**
+ * If the restaurant has `autoAcceptOrders` enabled, transition a freshly-placed
+ * RECEIVED order straight to ACCEPTED. Used by the COD/wallet placement path
+ * and by the payment-capture path for Razorpay orders. Idempotent + safe — only
+ * acts when the order is still RECEIVED.
+ */
+export async function maybeAutoAccept(orderId: string, restaurantId: string, actorId?: string): Promise<void> {
+  const restaurant = await prisma.restaurant.findUnique({
+    where: { id: restaurantId },
+    select: { autoAcceptOrders: true }
+  });
+  if (!restaurant?.autoAcceptOrders) return;
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true } });
+  if (order?.status !== OrderStatus.RECEIVED) return;
+  await transitionOrder(orderId, OrderStatus.ACCEPTED, {
+    actorId,
+    note: 'Auto-accepted (restaurant setting)'
+  });
 }
 
 export async function transitionOrder(orderId: string, next: OrderStatus, opts: { actorId?: string; note?: string } = {}) {
@@ -488,11 +600,14 @@ export async function transitionOrder(orderId: string, next: OrderStatus, opts: 
   // can hand it to the rider at the door. Fire-and-forget: a notification
   // failure must never roll back or block the transition. The previous-state
   // guard is implicit — transitionOrder early-returns when status === next.
-  if (next === OrderStatus.OUT_FOR_DELIVERY) {
+  if (next === OrderStatus.OUT_FOR_DELIVERY && order.fulfillmentType === FulfillmentType.DELIVERY) {
     sendDeliveryOtpSms(orderId).catch(() => {});
   }
-  // When an order is ready, push to the platform-wide rider pool channel.
-  if (next === OrderStatus.READY) {
+  // When a DELIVERY order is ready, push to the platform-wide rider pool. PICKUP
+  // and DINE_IN orders never need a rider — they're collected/served in-house —
+  // so we skip all rider dispatch for them. A READY pickup order just waits at
+  // the counter for the customer to collect (with their pickupCode).
+  if (next === OrderStatus.READY && order.fulfillmentType === FulfillmentType.DELIVERY) {
     publish('rider:pool', { kind: 'order:new', orderId, branchId: order.branchId });
     // Push-notify online riders who have a registered device token. Best-effort
     // — a push failure must never roll back or block the transition.

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { placeOrder } from '@/server/orders';
-import { PaymentMethod } from '@prisma/client';
+import { PaymentMethod, FulfillmentType } from '@prisma/client';
 import { log } from '@/server/log';
 
 const Body = z.object({
@@ -13,7 +13,14 @@ const Body = z.object({
   paymentMethod: z.nativeEnum(PaymentMethod),
   customerNotes: z.string().optional(),
   walletApply: z.number().nonnegative().optional(),
-  loyaltyApply: z.number().nonnegative().optional()
+  loyaltyApply: z.number().nonnegative().optional(),
+  // New fulfillment fields. All optional — when absent placeOrder defaults to
+  // DELIVERY, preserving the existing behaviour exactly. The server enforces
+  // every business rule (reservation ownership, deposit credit, scheduling
+  // window); these just carry the customer's choice through.
+  fulfillmentType: z.nativeEnum(FulfillmentType).optional(),
+  scheduledFor: z.string().datetime().optional().nullable(),
+  reservationId: z.string().optional().nullable()
 });
 
 export async function POST(req: NextRequest) {
@@ -39,9 +46,19 @@ export async function POST(req: NextRequest) {
       paymentMethod: body.paymentMethod,
       customerNotes: body.customerNotes,
       walletApply: body.walletApply,
-      loyaltyApply: body.loyaltyApply
+      loyaltyApply: body.loyaltyApply,
+      fulfillmentType: body.fulfillmentType,
+      scheduledFor: body.scheduledFor,
+      reservationId: body.reservationId
     });
-    return Response.json({ orderId: result.order.id, orderCode: result.order.code, payment: result.payment });
+    return Response.json({
+      orderId: result.order.id,
+      orderCode: result.order.code,
+      fulfillmentType: result.order.fulfillmentType,
+      pickupCode: result.order.pickupCode,
+      scheduledFor: result.order.scheduledFor,
+      payment: result.payment
+    });
   } catch (err) {
     const message = (err as Error).message || 'Failed to place order';
     log.error({ err: message, body, stack: (err as Error).stack }, 'placeOrder failed');

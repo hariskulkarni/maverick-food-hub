@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { ImageUploader } from '@/components/image-uploader';
 import {
   ArrowLeft, ArrowRight, Check, Copy, Plus, Trash2, Loader2, PartyPopper, Sparkles, Pencil
@@ -77,6 +78,17 @@ interface BranchState {
 interface StaffRow { id: string; role: 'ADMIN' | 'KITCHEN'; email: string; name: string; tempPassword: string }
 interface RiderRow { id: string; phone: string; name: string; vehicleType: 'BIKE' | 'SCOOTER' | 'BICYCLE'; vehicleNumber: string }
 
+// Dine-in reservations config captured at creation time. When `enabled` is
+// false the deposit/discount/duration + initial tables are ignored server-side.
+interface DineInTableRow { id: string; name: string; capacity: number }
+interface DineInState {
+  enabled: boolean;
+  deposit: number;
+  discountPct: number;
+  durationMin: number;
+  tables: DineInTableRow[];
+}
+
 interface WizardState {
   step: number;
   identity: IdentityState;
@@ -85,6 +97,7 @@ interface WizardState {
   staff: StaffRow[];
   riders: RiderRow[];
   seedStarterMenu: boolean;
+  dineIn: DineInState;
 }
 
 const STEPS = [
@@ -112,6 +125,10 @@ type Action =
   | { type: 'rider:update'; id: string; patch: Partial<RiderRow> }
   | { type: 'rider:remove'; id: string }
   | { type: 'seedMenu'; value: boolean }
+  | { type: 'dineIn'; patch: Partial<DineInState> }
+  | { type: 'dineIn:table:add'; row: DineInTableRow }
+  | { type: 'dineIn:table:update'; id: string; patch: Partial<DineInTableRow> }
+  | { type: 'dineIn:table:remove'; id: string }
   | { type: 'replace'; state: WizardState };
 
 function reducer(state: WizardState, action: Action): WizardState {
@@ -150,6 +167,20 @@ function reducer(state: WizardState, action: Action): WizardState {
       return { ...state, riders: state.riders.filter((r) => r.id !== action.id) };
     case 'seedMenu':
       return { ...state, seedStarterMenu: action.value };
+    case 'dineIn':
+      return { ...state, dineIn: { ...state.dineIn, ...action.patch } };
+    case 'dineIn:table:add':
+      return { ...state, dineIn: { ...state.dineIn, tables: [...state.dineIn.tables, action.row] } };
+    case 'dineIn:table:update':
+      return {
+        ...state,
+        dineIn: {
+          ...state.dineIn,
+          tables: state.dineIn.tables.map((t) => (t.id === action.id ? { ...t, ...action.patch } : t)),
+        },
+      };
+    case 'dineIn:table:remove':
+      return { ...state, dineIn: { ...state.dineIn, tables: state.dineIn.tables.filter((t) => t.id !== action.id) } };
     case 'replace':
       return action.state;
     default:
@@ -193,7 +224,8 @@ function initialState(defaults: Defaults): WizardState {
       { id: 'kitchen-1', role: 'KITCHEN', email: '', name: '', tempPassword: generateTempPassword() }
     ],
     riders: [],
-    seedStarterMenu: true
+    seedStarterMenu: true,
+    dineIn: { enabled: false, deposit: 200, discountPct: 10, durationMin: 90, tables: [] }
   };
 }
 
@@ -287,6 +319,11 @@ export function WizardClient({ brands, unownedAdmins, defaults }: { brands: Bran
         // Naive shape sanity check — if a developer changes the schema, drop
         // stale drafts silently rather than crash.
         if (parsed && typeof parsed === 'object' && parsed.identity && parsed.branch) {
+          // Drafts saved before the dine-in step won't carry `dineIn` — backfill
+          // the default so the new step renders without crashing.
+          if (!parsed.dineIn) {
+            parsed.dineIn = { enabled: false, deposit: 200, discountPct: 10, durationMin: 90, tables: [] };
+          }
           dispatch({ type: 'replace', state: parsed });
         }
       }
@@ -375,7 +412,18 @@ export function WizardClient({ brands, unownedAdmins, defaults }: { brands: Bran
           vehicleType: r.vehicleType,
           vehicleNumber: r.vehicleNumber || null
         })),
-        seedStarterMenu: state.seedStarterMenu
+        seedStarterMenu: state.seedStarterMenu,
+        // Dine-in reservations config. Tables with a blank name are dropped
+        // server-side; when `enabled` is false the rest is ignored.
+        dineIn: {
+          enabled: state.dineIn.enabled,
+          deposit: state.dineIn.deposit,
+          discountPct: state.dineIn.discountPct,
+          durationMin: state.dineIn.durationMin,
+          tables: state.dineIn.tables
+            .filter((t) => t.name.trim())
+            .map((t) => ({ name: t.name.trim(), capacity: t.capacity }))
+        }
       };
 
       const res = await fetch('/api/platform/restaurants/wizard', {
@@ -432,6 +480,7 @@ export function WizardClient({ brands, unownedAdmins, defaults }: { brands: Bran
               state={state}
               brands={brands}
               issues={allIssues}
+              dispatch={dispatch}
               onEdit={(n) => dispatch({ type: 'goto', step: n })}
               onSeedToggle={(v) => dispatch({ type: 'seedMenu', value: v })}
             />
@@ -901,10 +950,11 @@ function RidersStep({ rows, dispatch, issues }: { rows: RiderRow[]; dispatch: Re
 
 // ─── Step 6: Review ─────────────────────────────────────────────────────────
 
-function ReviewStep({ state, brands, issues, onEdit, onSeedToggle }: {
+function ReviewStep({ state, brands, issues, dispatch, onEdit, onSeedToggle }: {
   state: WizardState;
   brands: BrandLite[];
   issues: string[];
+  dispatch: React.Dispatch<Action>;
   onEdit: (n: number) => void;
   onSeedToggle: (v: boolean) => void;
 }) {
@@ -960,6 +1010,8 @@ function ReviewStep({ state, brands, issues, onEdit, onSeedToggle }: {
         </CardContent>
       </Card>
 
+      <DineInConfig state={state.dineIn} dispatch={dispatch} />
+
       {issues.length > 0 && (
         <Card>
           <CardContent className="p-4 border-l-4 border-destructive">
@@ -971,6 +1023,78 @@ function ReviewStep({ state, brands, issues, onEdit, onSeedToggle }: {
         </Card>
       )}
     </div>
+  );
+}
+
+// ─── Dine-in reservations toggle (lives on the Review step) ───────────────────
+
+function DineInConfig({ state, dispatch }: { state: DineInState; dispatch: React.Dispatch<Action> }) {
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-4">
+        <div className="flex items-start gap-3">
+          <Switch
+            checked={state.enabled}
+            onCheckedChange={(v) => dispatch({ type: 'dineIn', patch: { enabled: v } })}
+            id="dinein-enabled"
+          />
+          <label htmlFor="dinein-enabled" className="text-sm flex-1 cursor-pointer">
+            <span className="font-medium">Dine-in table reservations</span>
+            <span className="block text-muted-foreground text-xs">
+              Let customers book a table for this restaurant. They pay a deposit to confirm and get a discount on their dine-in bill.
+            </span>
+          </label>
+        </div>
+
+        {state.enabled && (
+          <div className="space-y-4 border-t pt-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div>
+                <Label>Deposit (₹)</Label>
+                <Input type="number" step="1" min={0} max={100000} value={state.deposit}
+                  onChange={(e) => dispatch({ type: 'dineIn', patch: { deposit: Number(e.target.value) } })} />
+              </div>
+              <div>
+                <Label>Discount (%)</Label>
+                <Input type="number" step="1" min={0} max={100} value={state.discountPct}
+                  onChange={(e) => dispatch({ type: 'dineIn', patch: { discountPct: Number(e.target.value) } })} />
+              </div>
+              <div>
+                <Label>Hold (min)</Label>
+                <Input type="number" step="15" min={15} max={600} value={state.durationMin}
+                  onChange={(e) => dispatch({ type: 'dineIn', patch: { durationMin: Number(e.target.value) } })} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Initial tables <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              {state.tables.length === 0 && (
+                <p className="text-xs text-muted-foreground">No tables yet. Add a few or set them up later from the admin console.</p>
+              )}
+              {state.tables.map((t) => (
+                <div key={t.id} className="grid gap-2 grid-cols-[1fr_120px_auto] items-end">
+                  <div>
+                    <Input value={t.name} placeholder="T1 / Window 4"
+                      onChange={(e) => dispatch({ type: 'dineIn:table:update', id: t.id, patch: { name: e.target.value } })} />
+                  </div>
+                  <div>
+                    <Input type="number" min={1} max={50} value={t.capacity} placeholder="Seats"
+                      onChange={(e) => dispatch({ type: 'dineIn:table:update', id: t.id, patch: { capacity: Number(e.target.value) } })} />
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => dispatch({ type: 'dineIn:table:remove', id: t.id })}>
+                    <Trash2 className="size-4 text-destructive" />
+                  </Button>
+                </div>
+              ))}
+              <Button variant="outline" size="sm"
+                onClick={() => dispatch({ type: 'dineIn:table:add', row: { id: `tbl-${Date.now()}`, name: '', capacity: 2 } })}>
+                <Plus className="size-4" /> Add table
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

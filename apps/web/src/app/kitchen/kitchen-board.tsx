@@ -249,6 +249,15 @@ export function KitchenBoard({ branchId, initial }: { branchId: string; initial:
                           {min}m
                         </div>
                       </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <FulfillmentBadge type={o.fulfillmentType} />
+                        {o.scheduledFor && (
+                          <Badge variant="muted">🕒 {fmtSlot(o.scheduledFor)}</Badge>
+                        )}
+                        {o.fulfillmentType === 'PICKUP' && o.pickupCode && (
+                          <Badge variant="muted" className="font-mono">Code {o.pickupCode}</Badge>
+                        )}
+                      </div>
                       <ul className="mt-3 text-sm space-y-1">
                         {o.items.map((i: any) => (
                           <KotLine
@@ -279,6 +288,25 @@ export function KitchenBoard({ branchId, initial }: { branchId: string; initial:
       </div>
     </>
   );
+}
+
+/** Fulfillment type pill — DELIVERY is the default and shown for parity. */
+function FulfillmentBadge({ type }: { type?: string | null }) {
+  const map: Record<string, string> = {
+    DELIVERY: '🛵 Delivery',
+    PICKUP: '🥡 Pickup',
+    DINE_IN: '🍽️ Dine-in'
+  };
+  return <Badge variant="muted">{map[type ?? 'DELIVERY'] ?? '🛵 Delivery'}</Badge>;
+}
+
+/** Format a scheduled slot as a short local time, e.g. "Scheduled 7:30 PM". */
+function fmtSlot(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const sameDay = d.toDateString() === today.toDateString();
+  const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+  return sameDay ? `Scheduled ${time}` : `Scheduled ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} ${time}`;
 }
 
 /**

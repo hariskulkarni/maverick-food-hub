@@ -1,5 +1,6 @@
+import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
-import { Building2, MapPin, Bell, Plug } from 'lucide-react';
+import { Building2, MapPin, Bell, Plug, Workflow, ChevronRight } from 'lucide-react';
 import { requireRestaurant } from '@/server/tenancy';
 import { prisma } from '@/server/db';
 import { BrandingForm } from './branding-form';
@@ -29,6 +30,19 @@ export default async function SettingsPage() {
       <section className="space-y-3">
         <SectionHeader icon={Building2} title="Storefront branding" subtitle="What customers see on your restaurant page." />
         <Card><CardContent className="p-6"><BrandingForm restaurant={JSON.parse(JSON.stringify(restaurant))} /></CardContent></Card>
+      </section>
+
+      {/* ─── Order flow ─── */}
+      <section className="space-y-3">
+        <SectionHeader icon={Workflow} title="Order flow" subtitle="Auto-accept, scheduled orders, self-pickup, and dine-in reservations." />
+        <Link href="/admin/settings/order-flow">
+          <Card className="transition-colors hover:bg-accent">
+            <CardContent className="flex items-center justify-between p-6">
+              <span className="text-sm">Configure how orders are accepted, scheduled, picked up, and dined-in.</span>
+              <ChevronRight className="size-5 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
       </section>
 
       {/* ─── Branches ─── */}

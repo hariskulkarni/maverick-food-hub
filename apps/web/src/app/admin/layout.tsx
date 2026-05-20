@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { currentRestaurant } from '@/server/tenancy';
-import { LayoutDashboard, ScrollText, Utensils, BarChart3, Tag, Settings, Building2, Radio, Sparkles, Layers, Clock, Trophy, Package, Mail, History, MessageSquare, Bike, ShieldAlert, MessagesSquare } from 'lucide-react';
+import { LayoutDashboard, ScrollText, Utensils, BarChart3, Tag, Settings, Building2, Radio, Sparkles, Layers, Clock, Trophy, Package, Mail, History, MessageSquare, Bike, ShieldAlert, MessagesSquare, CalendarClock, Armchair } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -40,6 +40,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <nav className="flex-1 p-3 space-y-1 text-sm">
           <NavLink href="/admin" icon={LayoutDashboard}>Dashboard</NavLink>
           <NavLink href="/admin/orders" icon={ScrollText}>Orders</NavLink>
+          <NavLink href="/admin/reservations" icon={CalendarClock}>Reservations</NavLink>
+          <NavLink href="/admin/tables" icon={Armchair}>Tables</NavLink>
           <NavLink href="/admin/live" icon={Radio}>Live tracking</NavLink>
           <NavLink href="/admin/menu" icon={Utensils}>Menu</NavLink>
           <NavLink href="/admin/combos" icon={Package}>Combos</NavLink>

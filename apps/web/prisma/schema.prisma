@@ -245,6 +245,7 @@ model User {
   orderFeedback         OrderFeedback[]      @relation("CustomerFeedback")
   favoriteRestaurants   FavoriteRestaurant[]
   favoriteItems         FavoriteItem[]
+  reservations          Reservation[]        @relation("CustomerReservations")
 
   @@index([role])
   @@index([phone])
@@ -363,8 +364,34 @@ model Restaurant {
   fleetFallbackMinutes Int               @default(5) // DEDICATED_FIRST: wait before opening to fleet
   // Optional umbrella brand. NULL ⇒ solo restaurant (existing behaviour).
   brandId              String?
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
+
+  // ── Order-flow toggles (set at restaurant creation; admin-editable) ──────
+  // When true, a customer's RECEIVED order auto-transitions to ACCEPTED with
+  // no manual step — kitchen sees it in the active board immediately.
+  autoAcceptOrders       Boolean @default(false)
+  // Customers may schedule an order for a future date/time (validated against
+  // operating hours). The kitchen surfaces it as the scheduled slot approaches.
+  scheduledOrdersEnabled Boolean @default(true)
+  // Customers may choose self-pickup (no rider, no delivery fee, handover code).
+  selfPickupEnabled      Boolean @default(true)
+
+  // ── Dine-in reservation (master toggle, set at creation) ─────────────────
+  // dineInEnabled is the single switch that unlocks the whole reservation
+  // suite: table management, the customer reserve-a-table flow, and the
+  // DINE_IN order type with deposit credit + discount. Off by default so
+  // existing restaurants are unchanged.
+  dineInEnabled          Boolean @default(false)
+  // Flat deposit a customer pays to hold a table. Credited back against their
+  // dine-in bill. Restaurant admin can override this figure any time.
+  reservationDeposit     Decimal @default(200.00) @db.Decimal(10, 2)
+  // % discount applied to a dine-in bill that redeems a reservation (the "10%").
+  reservationDiscountPct Int     @default(10)
+  // Default slot length used by the booking/conflict engine when a customer
+  // doesn't pick an explicit duration. Drives double-booking detection.
+  reservationDurationMin Int     @default(90)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   owner             User                    @relation("RestaurantOwner", fields: [ownerUserId], references: [id])
   brand             Brand?                  @relation(fields: [brandId], references: [id], onDelete: SetNull)
@@ -555,6 +582,8 @@ model Branch {
   inventoryItems InventoryItem[]
   coupons        Coupon[]
   offers         Offer[]
+  tables         RestaurantTable[]
+  reservations   Reservation[]
 
   @@index([isActive])
 }
@@ -582,6 +611,90 @@ model OperatingHours {
   branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
   @@unique([branchId, dayOfWeek])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Fulfillment + Dine-in reservation
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// How an order is fulfilled. DELIVERY is the existing default; PICKUP and
+/// DINE_IN both skip rider assignment + delivery fee.
+enum FulfillmentType {
+  DELIVERY
+  PICKUP
+  DINE_IN
+}
+
+/// Lifecycle of a table reservation.
+///   PENDING   — created, deposit not yet settled (or awaiting restaurant confirm)
+///   CONFIRMED — deposit paid + table held for the slot
+///   SEATED    — party has arrived
+///   COMPLETED — dined; bill settled (deposit redeemed)
+///   CANCELLED — by customer or restaurant
+///   NO_SHOW   — party didn't arrive; deposit forfeited per policy
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  SEATED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+/// A physical table a restaurant branch can reserve. Capacity drives which
+/// party sizes a table can host; the availability engine prevents two
+/// reservations overlapping on the same table.
+model RestaurantTable {
+  id        String   @id @default(cuid())
+  branchId  String
+  name      String // "T1", "Window 4", "Patio A"
+  capacity  Int // seats
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  reservations Reservation[]
+
+  @@index([branchId, isActive])
+}
+
+/// A booked table for a party at a future slot. Holds the deposit + the
+/// discount % snapshotted at booking time, and links 1:1 to the eventual
+/// DINE_IN order that redeems it.
+model Reservation {
+  id                String            @id @default(cuid())
+  code              String            @unique // RSV-XXXXXX
+  branchId          String
+  customerId        String
+  tableId           String
+  partySize         Int
+  reservedAt        DateTime // slot start
+  durationMin       Int               @default(90)
+  status            ReservationStatus @default(PENDING)
+  // Deposit + discount snapshot (restaurant figures may change later; the
+  // reservation honours what was agreed at booking).
+  depositAmount     Decimal           @default(0.00) @db.Decimal(10, 2)
+  depositPaid       Boolean           @default(false)
+  depositPaymentRef String? // razorpay payment id / 'cod' / 'wallet'
+  discountPct       Int               @default(10)
+  customerNotes     String?
+  cancelledBy       String?
+  cancelReason      String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  branch   Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer User            @relation("CustomerReservations", fields: [customerId], references: [id], onDelete: Restrict)
+  table    RestaurantTable @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  // Back-relation to the DINE_IN order (FK lives on Order.reservationId).
+  order    Order?
+
+  @@index([branchId, reservedAt])
+  @@index([customerId, reservedAt])
+  @@index([tableId, reservedAt])
+  @@index([status, reservedAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -755,6 +868,22 @@ model Order {
   estimatedReadyAt    DateTime?
   estimatedDeliveryAt DateTime?
 
+  // ── Fulfillment ──────────────────────────────────────────────────────────
+  // DELIVERY (default, existing behaviour) | PICKUP (customer collects) |
+  // DINE_IN (ordered against a table reservation). PICKUP + DINE_IN skip rider
+  // assignment + delivery fee.
+  fulfillmentType           FulfillmentType @default(DELIVERY)
+  // When set, this is a scheduled order for a future slot. Kitchen surfaces it
+  // as the slot nears rather than immediately.
+  scheduledFor              DateTime?
+  // Self-pickup handover code — analogous to deliveryOtp but verified by
+  // restaurant staff at counter pickup.
+  pickupCode                String?
+  pickupCodeVerified        Boolean         @default(false)
+  // Dine-in: the reservation this order redeems (1:1) + the deposit credited.
+  reservationId             String?         @unique
+  reservationDepositApplied Decimal         @default(0.00) @db.Decimal(10, 2)
+
   placedAt           DateTime            @default(now())
   acceptedAt         DateTime?
   preparingAt        DateTime?
@@ -789,12 +918,15 @@ model Order {
   codCollection     CodCollection?
   feedback          OrderFeedback?
   batchInvitations  BatchInvitation[]
+  reservation       Reservation?         @relation(fields: [reservationId], references: [id])
 
   @@index([branchId, status])
   @@index([branchId, status, createdAt])
   @@index([customerId, createdAt])
   @@index([customerId, placedAt])
   @@index([status, placedAt])
+  @@index([branchId, fulfillmentType, status])
+  @@index([scheduledFor])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

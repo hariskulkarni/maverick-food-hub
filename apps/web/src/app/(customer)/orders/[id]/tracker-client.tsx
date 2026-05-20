@@ -133,6 +133,16 @@ export function OrderTrackerClient({
             <OrderStatusBadge status={order.status} />
           </h1>
           <p className="text-sm text-muted-foreground">Placed {fmtDate(order.placedAt)}</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span className="rounded-full border bg-muted px-2 py-0.5 text-[11px] font-medium">
+              {order.fulfillmentType === 'PICKUP' ? '🥡 Pickup' : order.fulfillmentType === 'DINE_IN' ? '🍽️ Dine-in' : '🛵 Delivery'}
+            </span>
+            {order.scheduledFor && (
+              <span className="rounded-full border bg-primary/10 text-primary px-2 py-0.5 text-[11px] font-medium inline-flex items-center gap-1">
+                <Clock className="size-3" /> Scheduled {new Date(order.scheduledFor).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
+            )}
+          </div>
         </div>
         {/* Support buttons — stack vertically on mobile, side-by-side on sm+.
             44×44 tap targets enforced on mobile. */}
@@ -303,6 +313,10 @@ export function OrderTrackerClient({
 
           {order.deliveryOtp && !isDelivered && !isTerminal && !order.deliveryOtpVerified && (
             <DeliveryOtpCard otp={order.deliveryOtp} status={order.status} />
+          )}
+
+          {order.fulfillmentType === 'PICKUP' && order.pickupCode && !isDelivered && !isTerminal && !order.pickupCodeVerified && (
+            <PickupCodeCard code={order.pickupCode} status={order.status} />
           )}
 
           {isDelivered && order.assignment && <TipCard order={order} />}
@@ -565,6 +579,93 @@ function DeliveryOtpCard({ otp, status }: { otp: string; status: string }) {
 
 function Row({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return <div className="flex justify-between"><dt className="text-muted-foreground">{label}</dt><dd className={accent}>{value}</dd></div>;
+}
+
+/**
+ * Pickup handover code card — the self-pickup analogue of the delivery OTP.
+ * Goes prominent (pulsing) once the order is READY so the customer knows to
+ * head to the counter; muted beforehand. Staff verify this code at handover.
+ */
+function PickupCodeCard({ code, status }: { code: string; status: string }) {
+  const [copied, setCopied] = useState(false);
+  const isReady = status === 'READY';
+
+  async function copyCode() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2_000);
+    } catch {
+      window.prompt('Copy your pickup code', code);
+    }
+  }
+
+  const digits = code.split('');
+
+  return (
+    <Card
+      className={`card-lift overflow-hidden transition-all ${
+        isReady
+          ? 'border-2 border-primary bg-gradient-to-br from-primary/10 via-warning/5 to-card ring-saffron'
+          : 'border-primary/30 bg-gradient-to-br from-primary/5 via-card to-card'
+      }`}
+    >
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-semibold flex items-center gap-2 text-base">
+              {isReady ? (
+                <>
+                  <span className="relative inline-flex">
+                    <span className="size-2.5 rounded-full bg-primary" />
+                    <span className="absolute inset-0 size-2.5 rounded-full bg-primary pulse-soft" />
+                  </span>
+                  Ready — show this code at the counter
+                </>
+              ) : (
+                <>
+                  <KeyRound className="size-4 text-primary" /> Your pickup code
+                </>
+              )}
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              {isReady
+                ? 'Your order is ready for collection. Show this code to staff to pick it up.'
+                : 'Save this code — staff will ask for it when you collect your order.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={copyCode}
+            aria-label="Copy pickup code"
+            className="shrink-0 inline-flex items-center gap-1 rounded-full border bg-card px-2.5 py-1 text-xs font-medium hover:border-primary hover:text-primary transition-colors tap-press"
+          >
+            {copied ? (<><CheckCircle2 className="size-3.5 text-success" /> Copied</>) : (<><Copy className="size-3.5" /> Copy</>)}
+          </button>
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          {digits.map((d, i) => (
+            <div
+              key={i}
+              className={`flex-1 aspect-[3/4] grid place-items-center rounded-xl font-mono font-bold text-3xl md:text-4xl tracking-tighter transition-all ${
+                isReady
+                  ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30'
+                  : 'bg-card border-2 border-primary/20 text-primary'
+              }`}
+            >
+              {d}
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 flex items-center gap-2 text-[11px] text-muted-foreground">
+          <ShieldCheck className="size-3.5 text-success shrink-0" />
+          <span>Staff verify this code when they hand over your order.</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function TipCard({ order }: { order: any }) {

@@ -89,13 +89,28 @@ const RiderSchema = z.object({
   vehicleNumber: OptionalString
 });
 
+// Dine-in reservations config (optional). When `enabled` is false everything
+// else is ignored and the restaurant is created with dineInEnabled = false.
+const DineInTableSchema = z.object({
+  name: z.string().min(1).max(60),
+  capacity: z.number().int().min(1).max(50)
+});
+const DineInSchema = z.object({
+  enabled: z.boolean().default(false),
+  deposit: z.number().min(0).max(100000).default(200),
+  discountPct: z.number().int().min(0).max(100).default(10),
+  durationMin: z.number().int().min(15).max(600).default(90),
+  tables: z.array(DineInTableSchema).max(200).default([])
+}).default({ enabled: false, deposit: 200, discountPct: 10, durationMin: 90, tables: [] });
+
 const Body = z.object({
   identity: IdentitySchema,
   brand: BrandSchema,
   branch: BranchSchema,
   staff: z.array(StaffSchema).min(2),
   riders: z.array(RiderSchema).default([]),
-  seedStarterMenu: z.boolean().default(true)
+  seedStarterMenu: z.boolean().default(true),
+  dineIn: DineInSchema
 });
 
 type ParsedBody = z.infer<typeof Body>;
@@ -283,7 +298,18 @@ export async function POST(req: NextRequest) {
           status: 'ACTIVE',
           approvedAt: new Date(),
           ownerUserId: ownerUser.id,
-          brandId
+          brandId,
+          // Dine-in reservations config (snapshotted onto the restaurant). When
+          // the toggle is off these defaults are harmless since dineInEnabled
+          // gates the whole feature.
+          dineInEnabled: body.dineIn.enabled,
+          ...(body.dineIn.enabled
+            ? {
+                reservationDeposit: new Prisma.Decimal(body.dineIn.deposit),
+                reservationDiscountPct: body.dineIn.discountPct,
+                reservationDurationMin: body.dineIn.durationMin
+              }
+            : {})
         }
       });
 
@@ -311,6 +337,18 @@ export async function POST(req: NextRequest) {
           perKmDeliveryFee: new Prisma.Decimal(body.branch.perKmDeliveryFee)
         }
       });
+
+      // 5b. Initial dine-in tables (only when reservations are enabled).
+      if (body.dineIn.enabled && body.dineIn.tables.length > 0) {
+        await tx.restaurantTable.createMany({
+          data: body.dineIn.tables.map((t, i) => ({
+            branchId: branch.id,
+            name: t.name.trim(),
+            capacity: t.capacity,
+            sortOrder: i
+          }))
+        });
+      }
 
       // 6. Additional staff (kitchen) + BranchUser
       for (const k of kitchenHashed) {
@@ -422,7 +460,9 @@ export async function POST(req: NextRequest) {
       adminEmail: result.adminCredentials.email,
       kitchenEmails: result.kitchenCredentials.map((k) => k.email),
       riderCount: result.riderCount,
-      seededStarterMenu: body.seedStarterMenu
+      seededStarterMenu: body.seedStarterMenu,
+      dineInEnabled: body.dineIn.enabled,
+      dineInTableCount: body.dineIn.enabled ? body.dineIn.tables.length : 0
     },
     ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
     userAgent: req.headers.get('user-agent')

@@ -210,6 +210,12 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
           <div className="flex items-center gap-1.5 text-muted-foreground"><Star className="size-4 fill-warning text-warning" /> {rating} <span className="hidden md:inline">· 200+ ratings</span></div>
           <div className="flex items-center gap-1.5 text-muted-foreground"><MapPin className="size-4" /> {branch.city}</div>
           <div className="flex items-center gap-1.5 text-muted-foreground"><ShieldCheck className="size-4 text-success" /> Verified</div>
+          {/* Reserve-a-table CTA — only when the restaurant has dine-in enabled. */}
+          {(restaurant as any).dineInEnabled && (
+            <Button asChild size="sm" variant="outline" className="shrink-0">
+              <Link href={`/r/${slug}/reserve`}>Reserve a table</Link>
+            </Button>
+          )}
           {/* Per-restaurant sign-in CTA — only shown to anonymous visitors. */}
           {!isAuthed && (
             <Button asChild size="sm" className="ml-auto shrink-0">

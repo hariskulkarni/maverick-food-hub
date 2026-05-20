@@ -252,12 +252,19 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
           <Card key={o.id}>
             <CardContent className="p-5 grid gap-4 md:grid-cols-[1fr_auto] items-start">
               <div className="space-y-2">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Link href={`/admin/orders/${o.id}`} className="font-semibold hover:text-primary">{o.code}</Link>
                   <OrderStatusBadge status={o.status} />
+                  <FulfillmentPill type={o.fulfillmentType} />
+                  {o.scheduledFor && (
+                    <span className="rounded-full border bg-muted px-2 py-0.5 text-[11px] font-medium">🕒 {fmtSlot(o.scheduledFor)}</span>
+                  )}
+                  {o.fulfillmentType === 'PICKUP' && o.pickupCode && (
+                    <span className="rounded-full border bg-muted px-2 py-0.5 text-[11px] font-mono font-medium">Code {o.pickupCode}</span>
+                  )}
                   <span className="text-xs text-muted-foreground">{fmtDate(o.placedAt)}</span>
                 </div>
-                <div className="text-sm">{o.customer.name ?? o.customer.phone} · {o.address ? `${o.address.line1}, ${o.address.city}` : 'No address'}</div>
+                <div className="text-sm">{o.customer.name ?? o.customer.phone} · {o.address ? `${o.address.line1}, ${o.address.city}` : (o.fulfillmentType === 'PICKUP' ? 'Self-pickup' : o.fulfillmentType === 'DINE_IN' ? 'Dine-in' : 'No address')}</div>
                 <div className="text-sm text-muted-foreground">{o.items.map((i: any) => `${i.quantity}× ${i.name}`).join(', ')}</div>
                 <div className="text-sm">
                   Total <span className="font-semibold">{money(o.total)}</span> · {o.paymentMethod}
@@ -299,6 +306,24 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
 
     </>
   );
+}
+
+/** Fulfillment type pill for the admin order card. */
+function FulfillmentPill({ type }: { type?: string | null }) {
+  const map: Record<string, string> = {
+    DELIVERY: '🛵 Delivery',
+    PICKUP: '🥡 Pickup',
+    DINE_IN: '🍽️ Dine-in'
+  };
+  return <span className="rounded-full border bg-muted px-2 py-0.5 text-[11px] font-medium">{map[type ?? 'DELIVERY'] ?? '🛵 Delivery'}</span>;
+}
+
+/** Short scheduled-slot label, e.g. "Scheduled 7:30 PM". */
+function fmtSlot(iso: string): string {
+  const d = new Date(iso);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+  return sameDay ? `Scheduled ${time}` : `Scheduled ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} ${time}`;
 }
 
 /**
