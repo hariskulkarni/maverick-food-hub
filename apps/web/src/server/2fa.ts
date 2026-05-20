@@ -36,6 +36,10 @@ export interface PlatformSecurity {
   totpPending?: string;
   allowlist?: string[];
   lockoutMinutes?: number;
+  // Platform-wide customer discovery radius (km). Stored here to avoid a
+  // dedicated settings table/migration; it is NOT a secret. Read/written via
+  // server/platform-settings.ts. Defaults applied there when unset.
+  discoveryRadiusKm?: number;
 }
 
 /** Make sure the sentinel Restaurant row exists so the FK on IntegrationCredential holds. */

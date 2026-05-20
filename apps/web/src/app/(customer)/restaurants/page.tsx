@@ -1,12 +1,24 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { prisma } from '@/server/db';
+import { auth } from '@/server/auth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ChefHat, Clock, MapPin, Star, ArrowUpDown } from 'lucide-react';
+import { ChefHat, Clock, MapPin, Star, ArrowUpDown, Navigation } from 'lucide-react';
 import { FOOD_FALLBACK } from '@/lib/food-images';
+import { readDeliveryLocation } from '@/server/discovery';
+import { filterNearbyRestaurants } from '@/server/discovery';
+import { getDiscoveryRadiusKm } from '@/server/platform-settings';
+import { LocationGate } from './location-gate';
+import { DeliverToHeader } from './deliver-to-header';
+import { ChangeLocationButton } from './change-location-button';
+import type { SavedAddressOption } from './location-picker-dialog';
 
 export const metadata = { title: 'All restaurants' };
+
+// Discovery is per-customer (location cookie) — never cache the render.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 type SortKey = 'newest' | 'name';
 
@@ -15,42 +27,113 @@ interface SearchParams {
   sort?: string;
 }
 
+/** Format a distance in metres as a short human string ("0.4 km", "2.3 km"). */
+function formatDistance(distanceM: number): string {
+  const km = distanceM / 1000;
+  if (km < 1) return `${Math.max(0.1, Math.round(km * 10) / 10).toFixed(1)} km`;
+  return `${(Math.round(km * 10) / 10).toFixed(1)} km`;
+}
+
 /**
- * Marketplace directory — fully server-rendered.
+ * Marketplace directory — location-gated discovery.
  *
- * Filtering / sorting is driven by URL params so each filter state is a real
- * URL (good for sharing + back-button). The cuisine chips below the header
- * just re-link to a new URL.
+ * Gate vs list:
+ *   - No location cookie  → render the LocationGate (no list at all).
+ *   - Location set        → load active restaurants + their branch geo, filter
+ *                           to the ones that can deliver here, and render the
+ *                           nearby set with cuisine chips + sort applied to it.
  */
 export default async function RestaurantsListPage({
   searchParams
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const loc = await readDeliveryLocation();
+
+  // Saved addresses are a quick-pick option in the picker (logged-in users with
+  // geocoded addresses only). Serialized to plain numbers for the client.
+  let savedAddresses: SavedAddressOption[] = [];
+  const session = await auth();
+  if (session?.user) {
+    const rows = await prisma.address.findMany({
+      where: { userId: session.user.id, latitude: { not: null }, longitude: { not: null } },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+      select: { id: true, label: true, line1: true, city: true, latitude: true, longitude: true }
+    });
+    savedAddresses = rows
+      .filter((a) => a.latitude != null && a.longitude != null)
+      .map((a) => ({
+        id: a.id,
+        label: a.label,
+        line1: a.line1,
+        city: a.city,
+        latitude: a.latitude as number,
+        longitude: a.longitude as number
+      }));
+  }
+
+  // ── GATE: no location set yet ──────────────────────────────────────────────
+  if (!loc) {
+    return <LocationGate savedAddresses={savedAddresses} />;
+  }
+
+  // ── LIST: location set → discover nearby restaurants ───────────────────────
   const sp = (await searchParams) ?? {};
   const selectedCuisine = typeof sp.cuisine === 'string' && sp.cuisine.length > 0 ? sp.cuisine : null;
   const sort: SortKey = sp.sort === 'name' ? 'name' : 'newest';
 
-  // We always pull the full active set so we can build the cuisine chip list
-  // and the totals on the same query — this list is short and bounded.
-  const all = await prisma.restaurant.findMany({
-    where: { status: 'ACTIVE' },
-    include: { _count: { select: { branches: true } } },
-    orderBy: sort === 'name' ? { name: 'asc' } : { createdAt: 'desc' }
-  });
+  const [active, radiusKm] = await Promise.all([
+    prisma.restaurant.findMany({
+      where: { status: 'ACTIVE' },
+      include: {
+        branches: { select: { id: true, latitude: true, longitude: true, serviceRadiusKm: true, city: true } },
+        _count: { select: { branches: true } }
+      }
+    }),
+    getDiscoveryRadiusKm()
+  ]);
 
+  // Filter to restaurants that can deliver to `loc`; nearest-first.
+  const matches = filterNearbyRestaurants(loc, radiusKm, active);
+
+  // Cuisine chips + counts are built from the NEARBY set (not the whole platform).
   const cuisineCounts = new Map<string, number>();
-  for (const r of all) {
-    if (!r.cuisine) continue;
-    cuisineCounts.set(r.cuisine, (cuisineCounts.get(r.cuisine) ?? 0) + 1);
+  for (const m of matches) {
+    const c = m.restaurant.cuisine;
+    if (!c) continue;
+    cuisineCounts.set(c, (cuisineCounts.get(c) ?? 0) + 1);
   }
   const cuisines = Array.from(cuisineCounts.entries()).sort((a, b) => b[1] - a[1]);
 
-  const filtered = selectedCuisine
-    ? all.filter((r) => r.cuisine === selectedCuisine)
-    : all;
+  // Apply cuisine filter (preserving nearest-first order).
+  const filteredMatches = selectedCuisine
+    ? matches.filter((m) => m.restaurant.cuisine === selectedCuisine)
+    : matches;
 
-  // Build chip link targets while preserving the current sort.
+  // Apply sort. "newest" keeps the discovery (nearest-first) order, which is the
+  // most useful default for location-based browsing; "name" sorts alphabetically.
+  const sortedMatches =
+    sort === 'name'
+      ? [...filteredMatches].sort((a, b) => a.restaurant.name.localeCompare(b.restaurant.name))
+      : filteredMatches;
+
+  // Serialize for the cards (Decimal-free: only the geo fields we used, dropped here).
+  const cards = sortedMatches.map((m) => {
+    const r = m.restaurant;
+    return {
+      id: r.id,
+      slug: r.slug,
+      name: r.name,
+      tagline: r.tagline,
+      cuisine: r.cuisine,
+      coverImageUrl: r.coverImageUrl,
+      logoUrl: r.logoUrl,
+      branchCount: r._count.branches,
+      distanceLabel: formatDistance(m.distanceM),
+      ratingTenth: (r.id.charCodeAt(0) % 5) + 4
+    };
+  });
+
   const chipHref = (cuisine: string | null) => {
     const params = new URLSearchParams();
     if (cuisine) params.set('cuisine', cuisine);
@@ -69,8 +152,13 @@ export default async function RestaurantsListPage({
 
   return (
     <div className="container py-6 md:py-8">
+      {/* Deliver-to header with a Change affordance (reopens the picker). */}
+      <div className="mb-4 reveal">
+        <DeliverToHeader label={loc.label} savedAddresses={savedAddresses} />
+      </div>
+
       <header className="mb-4 md:mb-6 reveal">
-        <div className="text-xs font-semibold uppercase tracking-wider text-primary">All restaurants</div>
+        <div className="text-xs font-semibold uppercase tracking-wider text-primary">Restaurants near you</div>
         <h1 className="display text-xl md:text-2xl lg:text-3xl font-semibold">Pick what you&apos;re hungry for</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {selectedCuisine ? (
@@ -80,13 +168,11 @@ export default async function RestaurantsListPage({
             </>
           ) : null}
           Sorted by{' '}
-          <span className="font-semibold text-foreground">{sort === 'name' ? 'name' : 'newest'}</span>
+          <span className="font-semibold text-foreground">{sort === 'name' ? 'name' : 'nearest'}</span>
         </p>
       </header>
 
-      {/* Sticky search-like header — full-width rounded-full input on mobile,
-          sits just below the top nav. On md+ this becomes a non-sticky
-          decorative element above the chip rail. */}
+      {/* Sticky search-like header (mobile only). */}
       <div className="sticky top-12 md:top-16 z-20 -mx-4 md:mx-0 px-4 md:px-0 py-2 md:py-0 mb-3 bg-background/85 backdrop-blur md:bg-transparent md:backdrop-blur-none border-b md:border-0">
         <form action="/restaurants" method="get" className="md:hidden">
           {selectedCuisine && <input type="hidden" name="cuisine" value={selectedCuisine} />}
@@ -100,8 +186,7 @@ export default async function RestaurantsListPage({
         </form>
       </div>
 
-      {/* Filter chip row.
-          Mobile: horizontal scroll (sticky just under search). Desktop: wraps. */}
+      {/* Filter chip row. */}
       <div className="sticky top-[88px] md:static z-10 -mx-4 md:mx-0 mb-6 md:mb-8 bg-background/85 md:bg-transparent backdrop-blur md:backdrop-blur-none">
         <div className="flex md:flex-wrap items-center gap-2 overflow-x-auto md:overflow-visible no-scrollbar px-4 md:px-0 py-2 md:py-0">
           <Link
@@ -112,7 +197,7 @@ export default async function RestaurantsListPage({
                 : 'bg-card hover:border-primary/40 hover:text-foreground text-muted-foreground'
             }`}
           >
-            All ({all.length})
+            All ({matches.length})
           </Link>
           {cuisines.map(([c, count]) => {
             const active = selectedCuisine === c;
@@ -131,8 +216,7 @@ export default async function RestaurantsListPage({
             );
           })}
 
-          {/* Sort group — drops to a separate flex-line on mobile via ml-auto +
-              the parent's overflow-x-auto. */}
+          {/* Sort group. */}
           <div className="ml-auto hidden md:inline-flex items-center gap-1 text-xs">
             <ArrowUpDown className="size-3.5 text-muted-foreground" />
             <span className="text-muted-foreground">Sort:</span>
@@ -140,7 +224,7 @@ export default async function RestaurantsListPage({
               href={sortHref('newest')}
               className={`rounded-md px-2 py-1 ${sort === 'newest' ? 'bg-accent text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'}`}
             >
-              Newest
+              Nearest
             </Link>
             <Link
               href={sortHref('name')}
@@ -152,74 +236,92 @@ export default async function RestaurantsListPage({
         </div>
       </div>
 
-      {filtered.length === 0 && (
-        <div className="rounded-xl border border-dashed bg-muted/30 p-10 text-center text-muted-foreground">
-          {all.length === 0
-            ? 'No restaurants are open on the platform yet.'
-            : <>No restaurants match this filter. <Link href={chipHref(null)} className="text-primary underline">Clear filters</Link>.</>}
+      {cards.length === 0 && (
+        <div className="rounded-xl border border-dashed bg-muted/30 p-10 text-center">
+          {matches.length === 0 ? (
+            <>
+              <div className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-muted text-muted-foreground">
+                <MapPin className="size-6" />
+              </div>
+              <p className="font-medium">No restaurants deliver to this location yet</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Try a different spot or widen later.
+              </p>
+              <ChangeLocationButton savedAddresses={savedAddresses} />
+            </>
+          ) : (
+            <p className="text-muted-foreground">
+              No nearby restaurants match this filter.{' '}
+              <Link href={chipHref(null)} className="text-primary underline">
+                Clear filters
+              </Link>
+              .
+            </p>
+          )}
         </div>
       )}
 
-      {/* Responsive grid: 1 / 2 / 3 / 4 cols. Cards: rounded-2xl on mobile
-          (chunky reads premium), rounded-xl on desktop. */}
+      {/* Responsive grid: 1 / 2 / 3 / 4 cols. */}
       <div className="grid gap-4 md:gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 reveal-stagger">
-        {filtered.map((r) => {
-          const ratingTenth = (r.id.charCodeAt(0) % 5) + 4;
-          return (
-            <Link key={r.id} href={`/r/${r.slug}`} className="group block tap-press">
-              <Card className="overflow-hidden h-full card-lift rounded-2xl md:rounded-xl">
-                {/* 16:9 on mobile (full-bleed feel), 4:3 on desktop (denser grid) */}
-                <div className="relative aspect-[16/9] md:aspect-[4/3] bg-muted overflow-hidden">
-                  <Image
-                    src={r.coverImageUrl || r.logoUrl || FOOD_FALLBACK}
-                    alt={r.name}
-                    fill
-                    loading="lazy"
-                    sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-                  {r.cuisine && (
-                    <Badge variant="muted" className="absolute top-3 left-3 bg-white/95 text-foreground backdrop-blur">
-                      {r.cuisine}
-                    </Badge>
-                  )}
-                  <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white">
-                    <div className="flex items-center gap-1 rounded-full bg-black/30 backdrop-blur px-2 py-0.5 text-[11px]">
-                      <Clock className="size-3" /> ~35 min
-                    </div>
-                    <div className="flex items-center gap-1 rounded-full bg-black/30 backdrop-blur px-2 py-0.5 text-[11px]">
-                      <Star className="size-3 fill-warning text-warning" /> 4.{ratingTenth}
-                    </div>
+        {cards.map((r) => (
+          <Link key={r.id} href={`/r/${r.slug}`} className="group block tap-press">
+            <Card className="overflow-hidden h-full card-lift rounded-2xl md:rounded-xl">
+              <div className="relative aspect-[16/9] md:aspect-[4/3] bg-muted overflow-hidden">
+                <Image
+                  src={r.coverImageUrl || r.logoUrl || FOOD_FALLBACK}
+                  alt={r.name}
+                  fill
+                  loading="lazy"
+                  sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+                {r.cuisine && (
+                  <Badge variant="muted" className="absolute top-3 left-3 bg-white/95 text-foreground backdrop-blur">
+                    {r.cuisine}
+                  </Badge>
+                )}
+                {/* Distance badge from the nearest qualifying branch. */}
+                <Badge variant="muted" className="absolute top-3 right-3 bg-white/95 text-foreground backdrop-blur">
+                  <Navigation className="size-3" /> {r.distanceLabel}
+                </Badge>
+                <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white">
+                  <div className="flex items-center gap-1 rounded-full bg-black/30 backdrop-blur px-2 py-0.5 text-[11px]">
+                    <Clock className="size-3" /> ~35 min
+                  </div>
+                  <div className="flex items-center gap-1 rounded-full bg-black/30 backdrop-blur px-2 py-0.5 text-[11px]">
+                    <Star className="size-3 fill-warning text-warning" /> 4.{r.ratingTenth}
                   </div>
                 </div>
-                <CardContent className="p-4 md:p-5">
-                  <div className="display text-base md:text-lg font-semibold group-hover:text-primary transition-colors">
-                    {r.name}
-                  </div>
-                  {r.tagline && <p className="mt-1 text-xs md:text-sm text-muted-foreground line-clamp-2">{r.tagline}</p>}
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                    {/* Inline cuisine + ETA + rating pills */}
-                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
-                      <Clock className="size-3" /> ~35 min
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
-                      <Star className="size-3 fill-warning text-warning" /> 4.{ratingTenth}
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
-                      <ChefHat className="size-3" />
-                      {r.cuisine ?? 'Multi-cuisine'}
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-muted-foreground">
-                      <MapPin className="size-3" />
-                      {r._count.branches} {r._count.branches === 1 ? 'branch' : 'branches'}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          );
-        })}
+              </div>
+              <CardContent className="p-4 md:p-5">
+                <div className="display text-base md:text-lg font-semibold group-hover:text-primary transition-colors">
+                  {r.name}
+                </div>
+                {r.tagline && <p className="mt-1 text-xs md:text-sm text-muted-foreground line-clamp-2">{r.tagline}</p>}
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                    <Navigation className="size-3" /> {r.distanceLabel}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                    <Clock className="size-3" /> ~35 min
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                    <Star className="size-3 fill-warning text-warning" /> 4.{r.ratingTenth}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                    <ChefHat className="size-3" />
+                    {r.cuisine ?? 'Multi-cuisine'}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                    <MapPin className="size-3" />
+                    {r.branchCount} {r.branchCount === 1 ? 'branch' : 'branches'}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
       </div>
     </div>
   );

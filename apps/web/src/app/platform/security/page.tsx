@@ -2,9 +2,16 @@ import { Shield } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { getPlatformSecurity } from '@/server/2fa';
+import {
+  getDiscoveryRadiusKm,
+  MIN_DISCOVERY_RADIUS_KM,
+  MAX_DISCOVERY_RADIUS_KM,
+  DEFAULT_DISCOVERY_RADIUS_KM
+} from '@/server/platform-settings';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SecurityClient } from './security-client';
+import { DiscoveryRadiusClient } from './discovery-radius-client';
 
 export const metadata = { title: 'Platform · Security' };
 export const dynamic = 'force-dynamic';
@@ -12,6 +19,7 @@ export const dynamic = 'force-dynamic';
 export default async function PlatformSecurityPage() {
   await requireSuperAdmin();
   const sec = await getPlatformSecurity();
+  const discoveryRadiusKm = await getDiscoveryRadiusKm();
   const recentFailures = await prisma.auditLog.findMany({
     where: { action: { in: ['auth.login.failed', 'auth.login.locked'] } },
     orderBy: { createdAt: 'desc' },
@@ -34,6 +42,15 @@ export default async function PlatformSecurityPage() {
           totpEnabled: Boolean(sec.totpSecret),
           allowlist: sec.allowlist ?? [],
           lockoutMinutes: sec.lockoutMinutes ?? 15
+        }}
+      />
+
+      <DiscoveryRadiusClient
+        initial={{
+          radiusKm: discoveryRadiusKm,
+          min: MIN_DISCOVERY_RADIUS_KM,
+          max: MAX_DISCOVERY_RADIUS_KM,
+          default: DEFAULT_DISCOVERY_RADIUS_KM
         }}
       />
 
