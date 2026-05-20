@@ -17,6 +17,7 @@ interface OrderFlowSettings {
   reservationDeposit: number;
   reservationDiscountPct: number;
   reservationDurationMin: number;
+  allowFreebies: boolean;
 }
 
 export function OrderFlowForm({ initial }: { initial: OrderFlowSettings }) {
@@ -41,7 +42,8 @@ export function OrderFlowForm({ initial }: { initial: OrderFlowSettings }) {
           dineInEnabled: f.dineInEnabled,
           reservationDeposit: f.reservationDeposit,
           reservationDiscountPct: f.reservationDiscountPct,
-          reservationDurationMin: f.reservationDurationMin
+          reservationDurationMin: f.reservationDurationMin,
+          allowFreebies: f.allowFreebies
         })
       });
       if (!r.ok) return toast.error('Save failed: ' + (await r.text()));
@@ -115,6 +117,14 @@ export function OrderFlowForm({ initial }: { initial: OrderFlowSettings }) {
           </Field>
         </div>
       )}
+
+      <Separator />
+      <ToggleRow
+        label="Freebies / gifts"
+        hint="Reward customers with a free gift item when their order clears a spend threshold. Configure rules under Freebies."
+        checked={f.allowFreebies}
+        onChange={(v) => set('allowFreebies', v)}
+      />
 
       <div className="flex justify-end pt-4">
         <Button onClick={save} disabled={busy}>

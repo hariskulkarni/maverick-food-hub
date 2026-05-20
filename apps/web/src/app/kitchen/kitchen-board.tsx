@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useSSE } from '@/hooks/use-sse';
-import { ChefHat, Package, Clock, Printer, AlertTriangle, BellRing, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { ChefHat, Package, Clock, Printer, AlertTriangle, BellRing, RefreshCw, Wifi, WifiOff, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 import { KotLine } from './kot-line';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
@@ -257,6 +257,14 @@ export function KitchenBoard({ branchId, initial }: { branchId: string; initial:
                         {o.fulfillmentType === 'PICKUP' && o.pickupCode && (
                           <Badge variant="muted" className="font-mono">Code {o.pickupCode}</Badge>
                         )}
+                        {(() => {
+                          const gift = (o.items ?? []).find((i: any) => i.isFreebie);
+                          return gift ? (
+                            <Badge variant="muted" className="text-success">
+                              <Gift className="size-3 mr-1" /> Free: {gift.name}
+                            </Badge>
+                          ) : null;
+                        })()}
                       </div>
                       <ul className="mt-3 text-sm space-y-1">
                         {o.items.map((i: any) => (

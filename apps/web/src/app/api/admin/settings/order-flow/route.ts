@@ -24,7 +24,8 @@ const Body = z.object({
   dineInEnabled: z.boolean().optional(),
   reservationDeposit: z.number().min(0).max(100000).optional(),
   reservationDiscountPct: z.number().int().min(0).max(100).optional(),
-  reservationDurationMin: z.number().int().min(15).max(600).optional()
+  reservationDurationMin: z.number().int().min(15).max(600).optional(),
+  allowFreebies: z.boolean().optional()
 });
 
 export async function PATCH(req: NextRequest) {
@@ -43,12 +44,14 @@ export async function PATCH(req: NextRequest) {
   if (data.reservationDeposit !== undefined) patch.reservationDeposit = data.reservationDeposit;
   if (data.reservationDiscountPct !== undefined) patch.reservationDiscountPct = data.reservationDiscountPct;
   if (data.reservationDurationMin !== undefined) patch.reservationDurationMin = data.reservationDurationMin;
+  if (data.allowFreebies !== undefined) patch.allowFreebies = data.allowFreebies;
 
   const before = await prisma.restaurant.findUnique({
     where: { id: restaurant.id },
     select: {
       autoAcceptOrders: true, scheduledOrdersEnabled: true, selfPickupEnabled: true,
-      dineInEnabled: true, reservationDeposit: true, reservationDiscountPct: true, reservationDurationMin: true
+      dineInEnabled: true, reservationDeposit: true, reservationDiscountPct: true, reservationDurationMin: true,
+      allowFreebies: true
     }
   });
 
@@ -57,7 +60,8 @@ export async function PATCH(req: NextRequest) {
     data: patch,
     select: {
       autoAcceptOrders: true, scheduledOrdersEnabled: true, selfPickupEnabled: true,
-      dineInEnabled: true, reservationDeposit: true, reservationDiscountPct: true, reservationDurationMin: true
+      dineInEnabled: true, reservationDeposit: true, reservationDiscountPct: true, reservationDurationMin: true,
+      allowFreebies: true
     }
   });
 

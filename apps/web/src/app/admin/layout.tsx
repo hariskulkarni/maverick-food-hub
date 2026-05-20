@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { currentRestaurant } from '@/server/tenancy';
-import { LayoutDashboard, ScrollText, Utensils, BarChart3, Tag, Settings, Building2, Radio, Sparkles, Layers, Clock, Trophy, Package, Mail, History, MessageSquare, Bike, ShieldAlert, MessagesSquare, CalendarClock, Armchair } from 'lucide-react';
+import { LayoutDashboard, ScrollText, Utensils, BarChart3, Tag, Settings, Building2, Radio, Sparkles, Layers, Clock, Trophy, Package, Mail, History, MessageSquare, Bike, ShieldAlert, MessagesSquare, CalendarClock, Armchair, Gift } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -46,6 +46,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <NavLink href="/admin/menu" icon={Utensils}>Menu</NavLink>
           <NavLink href="/admin/combos" icon={Package}>Combos</NavLink>
           <NavLink href="/admin/coupons" icon={Tag}>Coupons</NavLink>
+          {restaurant.allowFreebies && <NavLink href="/admin/freebies" icon={Gift}>Freebies</NavLink>}
           <NavLink href="/admin/offers" icon={Sparkles}>Offers</NavLink>
           <NavLink href="/admin/coupon-campaigns" icon={Mail}>Coupon Campaigns</NavLink>
           <NavLink href="/admin/happy-hours" icon={Clock}>Happy Hours</NavLink>

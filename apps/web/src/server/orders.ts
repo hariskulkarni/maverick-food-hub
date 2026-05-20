@@ -20,6 +20,7 @@ import { loadAndApplyOffers, loadOfferByCode, recordRedemption, type OfferCartLi
 import { audit } from './audit';
 import { notifyRidersOfNewOrder } from './rider-push';
 import { maybeOfferAsBatch } from './batch-dispatch';
+import { resolveQualifyingFreebie, grantFreebieTx, restoreFreebieStock } from './freebies';
 import { clampTwo } from '@/lib/utils';
 import { loadRulesForRestaurant, priceForItem, priceForCombo } from './happy-hours';
 import { refreshChallengeProgressForOrder } from './challenges';
@@ -116,7 +117,7 @@ export async function placeOrder(input: PlaceOrderInput) {
   // higher price, the order ledger uses what's active *now*.
   const branchWithRestaurant = await prisma.branch.findUnique({
     where: { id: input.branchId },
-    select: { restaurantId: true }
+    select: { restaurantId: true, restaurant: { select: { allowFreebies: true } } }
   });
   const hhNow = new Date();
   const hhRules = branchWithRestaurant
@@ -275,6 +276,17 @@ export async function placeOrder(input: PlaceOrderInput) {
   const subtotalForBonus = clampTwo(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0));
   const bonusPreview = await previewSignupBonusForUser(input.customerId, subtotalForBonus);
 
+  // Freebie/gift resolution — does this order's subtotal earn a free gift?
+  // Read-only selection here (best qualifying in-stock rule); the actual
+  // stock claim + ₹0 line insert happens atomically inside the order txn so
+  // concurrent qualifying orders can't both grab the last unit. The freebie
+  // does NOT change pricing — it's a ₹0 line, revenue is unaffected.
+  const qualifyingFreebie = await resolveQualifyingFreebie(
+    branch.id,
+    subtotalForBonus,
+    branchWithRestaurant?.restaurant?.allowFreebies ?? false
+  );
+
   // ── Fulfillment resolution ─────────────────────────────────────────────────
   const fulfillmentType: FulfillmentType = input.fulfillmentType ?? FulfillmentType.DELIVERY;
   const isDelivery = fulfillmentType === FulfillmentType.DELIVERY;
@@ -340,6 +352,33 @@ export async function placeOrder(input: PlaceOrderInput) {
   const finalDiscount = clampTwo(priced.discountAmount + dineInDiscountAdded);
 
   const order = await prisma.$transaction(async (tx) => {
+    // Claim the freebie atomically (conditional stock decrement). If we win a
+    // unit, build the ₹0 gift line + record the rule id on the order so we can
+    // restore stock on cancel/removal. If the last unit was lost to a race,
+    // freebieLine is null and the order simply ships without a gift.
+    const freebieLine = qualifyingFreebie ? await grantFreebieTx(tx, qualifyingFreebie) : null;
+    const grantedFreebieRuleId = freebieLine ? qualifyingFreebie!.ruleId : null;
+
+    const itemCreates = lines.map((l) => ({
+      name: l.name,
+      unitPrice: l.unitPrice as any,
+      quantity: l.quantity,
+      notes: l.notes,
+      menuItemId: l.menuItemId,
+      comboId: l.comboId
+    }));
+    if (freebieLine) {
+      itemCreates.push({
+        name: freebieLine.name,
+        unitPrice: freebieLine.unitPrice as any,
+        quantity: freebieLine.quantity,
+        notes: undefined,
+        menuItemId: freebieLine.menuItemId,
+        comboId: undefined,
+        isFreebie: true
+      } as any);
+    }
+
     const o = await tx.order.create({
       data: {
         code: genOrderCode(),
@@ -364,7 +403,8 @@ export async function placeOrder(input: PlaceOrderInput) {
         scheduledFor: scheduledFor,
         reservationId: reservation?.id ?? null,
         reservationDepositApplied: reservationDepositApplied as any,
-        items: { create: lines.map((l) => ({ name: l.name, unitPrice: l.unitPrice as any, quantity: l.quantity, notes: l.notes, menuItemId: l.menuItemId, comboId: l.comboId })) },
+        freebieRuleId: grantedFreebieRuleId,
+        items: { create: itemCreates },
         statusEvents: { create: [{ status: OrderStatus.RECEIVED, note: 'Placed by customer' }] }
       }
     });
@@ -645,6 +685,12 @@ export async function transitionOrder(orderId: string, next: OrderStatus, opts: 
     await restoreSignupBonusForOrder(orderId).catch((e) =>
       log.error({ err: (e as Error).message, orderId }, 'signup bonus restore failed')
     );
+    // Restore freebie stock so the gift becomes available to another order.
+    if (order.freebieRuleId) {
+      await restoreFreebieStock(order.freebieRuleId).catch((e) =>
+        log.error({ err: (e as Error).message, orderId, ruleId: order.freebieRuleId }, 'freebie stock restore failed')
+      );
+    }
   }
   if (order.customer?.phone) {
     await notify.sms({

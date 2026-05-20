@@ -374,6 +374,10 @@ model Restaurant {
   scheduledOrdersEnabled Boolean @default(true)
   // Customers may choose self-pickup (no rider, no delivery fee, handover code).
   selfPickupEnabled      Boolean @default(true)
+  // Master switch for the freebie/gift engine. When on, the restaurant can
+  // define FreebieRules (threshold → free gift item) with their own stock; a
+  // qualifying order auto-receives the gift (admin can override/remove).
+  allowFreebies          Boolean @default(false)
 
   // ── Dine-in reservation (master toggle, set at creation) ─────────────────
   // dineInEnabled is the single switch that unlocks the whole reservation
@@ -584,6 +588,7 @@ model Branch {
   offers         Offer[]
   tables         RestaurantTable[]
   reservations   Reservation[]
+  freebieRules   FreebieRule[]
 
   @@index([isActive])
 }
@@ -697,6 +702,32 @@ model Reservation {
   @@index([status, reservedAt])
 }
 
+/// A freebie/gift rule: orders at or above `minOrderAmount` earn `menuItem` as
+/// a free gift (added to the order at ₹0). Each rule carries its OWN stock that
+/// auto-decrements on grant and is restored on order-cancel / freebie-removal.
+/// At stock 0 the rule stops qualifying (the order still goes through, just no
+/// gift). Gated by Restaurant.allowFreebies.
+model FreebieRule {
+  id             String   @id @default(cuid())
+  branchId       String
+  menuItemId     String // the gift item handed out free
+  name           String // "Free dessert over ₹399"
+  minOrderAmount Decimal  @db.Decimal(10, 2)
+  stock          Int      @default(0) // remaining freebie inventory
+  totalGranted   Int      @default(0) // lifetime granted (reporting)
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  branch   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  orders   Order[]
+
+  @@index([branchId, isActive])
+  @@index([branchId, minOrderAmount])
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Catalog
 // ─────────────────────────────────────────────────────────────────────────────
@@ -787,6 +818,7 @@ model MenuItem {
   crossSellAsParent CrossSell[]            @relation("CrossSellParent")
   crossSellAsTarget CrossSell[]            @relation("CrossSellSuggested")
   happyHourRules    HappyHourRule[]
+  freebieRules      FreebieRule[]
 
   @@unique([branchId, slug])
   @@index([branchId, categoryId])
@@ -883,6 +915,9 @@ model Order {
   // Dine-in: the reservation this order redeems (1:1) + the deposit credited.
   reservationId             String?         @unique
   reservationDepositApplied Decimal         @default(0.00) @db.Decimal(10, 2)
+  // Freebie attribution — which FreebieRule granted this order's gift (if any).
+  // Lets us restore stock if the order is cancelled or the freebie is removed.
+  freebieRuleId             String?
 
   placedAt           DateTime            @default(now())
   acceptedAt         DateTime?
@@ -919,6 +954,7 @@ model Order {
   feedback          OrderFeedback?
   batchInvitations  BatchInvitation[]
   reservation       Reservation?         @relation(fields: [reservationId], references: [id])
+  freebieRule       FreebieRule?         @relation(fields: [freebieRuleId], references: [id])
 
   @@index([branchId, status])
   @@index([branchId, status, createdAt])
@@ -998,6 +1034,10 @@ model OrderItem {
   quantity   Int
   unitPrice  Decimal @db.Decimal(10, 2)
   notes      String?
+  // Freebie line: a gift item added at ₹0 because the order qualified for a
+  // FreebieRule. Flagged so invoices/KOT/reports can label it "FREE GIFT" and
+  // so it's excluded from revenue math (unitPrice is already 0).
+  isFreebie  Boolean @default(false)
 
   order    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   menuItem MenuItem? @relation(fields: [menuItemId], references: [id])

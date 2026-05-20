@@ -110,7 +110,8 @@ const Body = z.object({
   staff: z.array(StaffSchema).min(2),
   riders: z.array(RiderSchema).default([]),
   seedStarterMenu: z.boolean().default(true),
-  dineIn: DineInSchema
+  dineIn: DineInSchema,
+  allowFreebies: z.boolean().default(false)
 });
 
 type ParsedBody = z.infer<typeof Body>;
@@ -303,6 +304,7 @@ export async function POST(req: NextRequest) {
           // the toggle is off these defaults are harmless since dineInEnabled
           // gates the whole feature.
           dineInEnabled: body.dineIn.enabled,
+          allowFreebies: body.allowFreebies,
           ...(body.dineIn.enabled
             ? {
                 reservationDeposit: new Prisma.Decimal(body.dineIn.deposit),
@@ -462,7 +464,8 @@ export async function POST(req: NextRequest) {
       riderCount: result.riderCount,
       seededStarterMenu: body.seedStarterMenu,
       dineInEnabled: body.dineIn.enabled,
-      dineInTableCount: body.dineIn.enabled ? body.dineIn.tables.length : 0
+      dineInTableCount: body.dineIn.enabled ? body.dineIn.tables.length : 0,
+      allowFreebies: body.allowFreebies
     },
     ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
     userAgent: req.headers.get('user-agent')

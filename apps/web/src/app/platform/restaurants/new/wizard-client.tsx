@@ -98,6 +98,7 @@ interface WizardState {
   riders: RiderRow[];
   seedStarterMenu: boolean;
   dineIn: DineInState;
+  allowFreebies: boolean;
 }
 
 const STEPS = [
@@ -125,6 +126,7 @@ type Action =
   | { type: 'rider:update'; id: string; patch: Partial<RiderRow> }
   | { type: 'rider:remove'; id: string }
   | { type: 'seedMenu'; value: boolean }
+  | { type: 'allowFreebies'; value: boolean }
   | { type: 'dineIn'; patch: Partial<DineInState> }
   | { type: 'dineIn:table:add'; row: DineInTableRow }
   | { type: 'dineIn:table:update'; id: string; patch: Partial<DineInTableRow> }
@@ -167,6 +169,8 @@ function reducer(state: WizardState, action: Action): WizardState {
       return { ...state, riders: state.riders.filter((r) => r.id !== action.id) };
     case 'seedMenu':
       return { ...state, seedStarterMenu: action.value };
+    case 'allowFreebies':
+      return { ...state, allowFreebies: action.value };
     case 'dineIn':
       return { ...state, dineIn: { ...state.dineIn, ...action.patch } };
     case 'dineIn:table:add':
@@ -225,7 +229,8 @@ function initialState(defaults: Defaults): WizardState {
     ],
     riders: [],
     seedStarterMenu: true,
-    dineIn: { enabled: false, deposit: 200, discountPct: 10, durationMin: 90, tables: [] }
+    dineIn: { enabled: false, deposit: 200, discountPct: 10, durationMin: 90, tables: [] },
+    allowFreebies: false
   };
 }
 
@@ -323,6 +328,10 @@ export function WizardClient({ brands, unownedAdmins, defaults }: { brands: Bran
           // the default so the new step renders without crashing.
           if (!parsed.dineIn) {
             parsed.dineIn = { enabled: false, deposit: 200, discountPct: 10, durationMin: 90, tables: [] };
+          }
+          // Drafts saved before the freebies toggle won't carry it — backfill.
+          if (typeof parsed.allowFreebies !== 'boolean') {
+            parsed.allowFreebies = false;
           }
           dispatch({ type: 'replace', state: parsed });
         }
@@ -423,7 +432,10 @@ export function WizardClient({ brands, unownedAdmins, defaults }: { brands: Bran
           tables: state.dineIn.tables
             .filter((t) => t.name.trim())
             .map((t) => ({ name: t.name.trim(), capacity: t.capacity }))
-        }
+        },
+        // Master freebies toggle. Rules are configured later from the admin
+        // console; this just turns the feature on for the new restaurant.
+        allowFreebies: state.allowFreebies
       };
 
       const res = await fetch('/api/platform/restaurants/wizard', {
@@ -1011,6 +1023,22 @@ function ReviewStep({ state, brands, issues, dispatch, onEdit, onSeedToggle }: {
       </Card>
 
       <DineInConfig state={state.dineIn} dispatch={dispatch} />
+
+      <Card>
+        <CardContent className="p-4 flex items-start gap-3">
+          <Switch
+            checked={state.allowFreebies}
+            onCheckedChange={(v) => dispatch({ type: 'allowFreebies', value: v })}
+            id="allow-freebies"
+          />
+          <label htmlFor="allow-freebies" className="text-sm flex-1 cursor-pointer">
+            <span className="font-medium">Freebies / gifts</span>
+            <span className="block text-muted-foreground text-xs">
+              Let this restaurant reward customers with a free gift when an order clears a spend threshold. Rules are set up later from the admin console.
+            </span>
+          </label>
+        </CardContent>
+      </Card>
 
       {issues.length > 0 && (
         <Card>

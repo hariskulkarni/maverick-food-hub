@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { useCart } from '../cart-context';
 import { money } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Wallet, Sparkles, Bike, ShoppingBag, UtensilsCrossed, MapPin, CalendarClock } from 'lucide-react';
+import { Wallet, Sparkles, Bike, ShoppingBag, UtensilsCrossed, MapPin, CalendarClock, Gift } from 'lucide-react';
 
 interface Addr { id: string; label: string; line1: string; line2?: string | null; city: string; postalCode: string; isDefault?: boolean; }
 
@@ -57,6 +57,14 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
   const [notes, setNotes] = useState('');
   const [pricing, setPricing] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+
+  // Freebie/gift nudge — driven off the cart subtotal. `qualifying` is the
+  // gift the cart has already earned; `nextThreshold` is the "spend ₹X more"
+  // teaser toward the next tier. Both null when freebies are off / unavailable.
+  const [freebie, setFreebie] = useState<{
+    qualifying: { itemName: string } | null;
+    nextThreshold: { itemName: string; amountAway: number } | null;
+  } | null>(null);
 
   // ── Fulfillment + scheduling state ─────────────────────────────────────────
   const [fulfillmentType, setFulfillmentType] = useState<FulfillmentType>('DELIVERY');
@@ -121,6 +129,26 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
     })();
     return () => { cancelled = true; };
   }, [lines, addressId, appliedCoupon, walletApply, loyaltyApply, branchId, walletBalance, loyaltyPoints, isDelivery]);
+
+  // Re-check the qualifying freebie whenever the subtotal changes. Public
+  // endpoint, resolved by restaurant slug — reuses the core selection engine.
+  const subtotal = pricing?.subtotal;
+  useEffect(() => {
+    if (typeof subtotal !== 'number' || subtotal <= 0) { setFreebie(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/r/${fulfillment.restaurantSlug}/freebies?subtotal=${subtotal}`, { cache: 'no-store' });
+        const j = await r.json();
+        if (!cancelled) {
+          setFreebie(j.allowFreebies ? { qualifying: j.qualifying, nextThreshold: j.nextThreshold } : null);
+        }
+      } catch {
+        if (!cancelled) setFreebie(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [subtotal, fulfillment.restaurantSlug]);
 
   if (lines.length === 0) {
     return <div>Your cart is empty. <Link className="text-primary underline" href="/menu">Browse menu</Link></div>;
@@ -390,6 +418,18 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
                 <div className="flex justify-between border-t pt-2 mt-2 font-semibold text-base">
                   <span>Total</span><span>{money(pricing.total)}</span>
                 </div>
+                {freebie?.qualifying && (
+                  <div className="mt-2 flex items-start gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+                    <Gift className="size-4 shrink-0 mt-0.5" />
+                    <span>You've earned a free <span className="font-semibold">{freebie.qualifying.itemName}</span>! It'll be added to your order.</span>
+                  </div>
+                )}
+                {!freebie?.qualifying && freebie?.nextThreshold && (
+                  <div className="mt-2 flex items-start gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+                    <Gift className="size-4 shrink-0 mt-0.5 text-primary" />
+                    <span>Spend {money(freebie.nextThreshold.amountAway)} more for a free <span className="font-medium text-foreground">{freebie.nextThreshold.itemName}</span>.</span>
+                  </div>
+                )}
                 {isDineIn && selectedReservation && (
                   <p className="mt-2 text-xs text-success">
                     Dine-in: {selectedReservation.discountPct}% off applied at checkout

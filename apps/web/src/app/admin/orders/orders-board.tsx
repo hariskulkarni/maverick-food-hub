@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { OrderStatusBadge } from '@/components/order-status-badge';
 import { useSSE } from '@/hooks/use-sse';
 import { money, fmtDate } from '@/lib/utils';
-import { Printer, X, Check, Bike, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { Printer, X, Check, Bike, RefreshCw, Wifi, WifiOff, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { SoundToggle } from '@/components/sound-toggle';
@@ -210,6 +210,30 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
     }
   }
 
+  // Remove the free gift from an order (only allowed RECEIVED/ACCEPTED — the
+  // API enforces this too). Snapshot polling reconciles the line list shortly
+  // after; we optimistically clear it so the badge disappears immediately.
+  async function removeFreebie(id: string) {
+    if (busy[id]) return;
+    if (!confirm('Remove the free gift from this order?')) return;
+    setBusy((b) => ({ ...b, [id]: true }));
+    try {
+      const r = await fetch(`/api/admin/orders/${id}/freebie`, { method: 'DELETE' });
+      if (!r.ok) {
+        toast.error('Failed: ' + (await r.text()));
+        return;
+      }
+      setOrders((prev) => prev.map((o) =>
+        o.id === id
+          ? { ...o, freebieRuleId: null, items: (o.items ?? []).filter((i: any) => !i.isFreebie) }
+          : o
+      ));
+      toast.success('Gift removed');
+    } finally {
+      setBusy((b) => ({ ...b, [id]: false }));
+    }
+  }
+
   return (
     <>
       {alerts.length > 0 && (
@@ -256,6 +280,11 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
                   <Link href={`/admin/orders/${o.id}`} className="font-semibold hover:text-primary">{o.code}</Link>
                   <OrderStatusBadge status={o.status} />
                   <FulfillmentPill type={o.fulfillmentType} />
+                  {freebieItem(o) && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
+                      <Gift className="size-3" /> Free: {freebieItem(o)!.name}
+                    </span>
+                  )}
                   {o.scheduledFor && (
                     <span className="rounded-full border bg-muted px-2 py-0.5 text-[11px] font-medium">🕒 {fmtSlot(o.scheduledFor)}</span>
                   )}
@@ -281,6 +310,11 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
                   </>
                 )}
                 {o.status === 'ACCEPTED' && <Button size="sm" disabled={busy[o.id]} onClick={() => transition(o.id, 'PREPARING')}>Start preparing</Button>}
+                {['RECEIVED', 'ACCEPTED'].includes(o.status) && freebieItem(o) && (
+                  <Button size="sm" variant="outline" disabled={busy[o.id]} onClick={() => removeFreebie(o.id)}>
+                    <Gift className="size-4" /> Remove gift
+                  </Button>
+                )}
                 {o.status === 'PREPARING' && <Button size="sm" disabled={busy[o.id]} onClick={() => transition(o.id, 'READY')}>Mark ready — release to rider pool</Button>}
                 {o.status === 'READY' && !o.assignment && (
                   <span className="inline-flex items-center gap-2 rounded-md bg-warning/10 px-3 py-1.5 text-xs text-warning font-medium">
@@ -306,6 +340,11 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
 
     </>
   );
+}
+
+/** The free-gift line on an order (an OrderItem flagged isFreebie), or null. */
+function freebieItem(o: any): { name: string } | null {
+  return (o.items ?? []).find((i: any) => i.isFreebie) ?? null;
 }
 
 /** Fulfillment type pill for the admin order card. */

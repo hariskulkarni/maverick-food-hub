@@ -16,7 +16,8 @@ export default async function OrderFlowSettingsPage() {
     dineInEnabled: restaurant.dineInEnabled,
     reservationDeposit: Number(restaurant.reservationDeposit),
     reservationDiscountPct: restaurant.reservationDiscountPct,
-    reservationDurationMin: restaurant.reservationDurationMin
+    reservationDurationMin: restaurant.reservationDurationMin,
+    allowFreebies: restaurant.allowFreebies
   };
 
   return (
