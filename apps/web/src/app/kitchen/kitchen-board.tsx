@@ -273,6 +273,9 @@ export function KitchenBoard({ branchId, channels, multi = false, initial }: { b
                         </div>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {o._label && (
+                          <Badge variant="secondary" className="font-medium">{o._label.restaurantName}</Badge>
+                        )}
                         <FulfillmentBadge type={o.fulfillmentType} />
                         {o.scheduledFor && (
                           <Badge variant="muted">🕒 {fmtSlot(o.scheduledFor)}</Badge>

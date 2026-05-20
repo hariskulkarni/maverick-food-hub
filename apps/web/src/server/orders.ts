@@ -128,7 +128,20 @@ export async function placeOrder(input: PlaceOrderInput) {
   // higher price, the order ledger uses what's active *now*.
   const branchWithRestaurant = await prisma.branch.findUnique({
     where: { id: input.branchId },
-    select: { restaurantId: true, restaurant: { select: { allowFreebies: true, parentId: true } } }
+    select: {
+      restaurantId: true,
+      restaurant: {
+        select: {
+          allowFreebies: true,
+          parentId: true,
+          // Order-flow toggles — enforced server-side below so a direct API call
+          // can't use a fulfillment mode the restaurant has switched off.
+          selfPickupEnabled: true,
+          scheduledOrdersEnabled: true,
+          dineInEnabled: true
+        }
+      }
+    }
   });
   const hhNow = new Date();
   const hhRules = branchWithRestaurant
@@ -337,6 +350,17 @@ export async function placeOrder(input: PlaceOrderInput) {
   const fulfillmentType: FulfillmentType = input.fulfillmentType ?? FulfillmentType.DELIVERY;
   const isDelivery = fulfillmentType === FulfillmentType.DELIVERY;
 
+  // Server-side enforcement of the restaurant's order-flow toggles. The UI gates
+  // these too, but a direct API caller must not be able to use a mode the
+  // restaurant has switched off.
+  const flow = branchWithRestaurant?.restaurant;
+  if (fulfillmentType === FulfillmentType.PICKUP && flow && !flow.selfPickupEnabled) {
+    throw new Error('Self-pickup is not available at this restaurant');
+  }
+  if (fulfillmentType === FulfillmentType.DINE_IN && flow && !flow.dineInEnabled) {
+    throw new Error('Dine-in is not available at this restaurant');
+  }
+
   // DINE_IN must carry a CONFIRMED reservation belonging to this customer +
   // branch, not already redeemed by another order. We snapshot its deposit +
   // discount % (the reservation honours what was agreed at booking time).
@@ -357,9 +381,17 @@ export async function placeOrder(input: PlaceOrderInput) {
     };
   }
 
-  // Scheduled-order guard: only honour a future scheduledFor when the
-  // restaurant allows scheduling. (UI also gates this; this is server-side.)
-  const scheduledFor = input.scheduledFor ? new Date(input.scheduledFor) : null;
+  // Scheduled-order guard: only honour a future scheduledFor when the restaurant
+  // allows scheduling AND the slot is genuinely in the future. Otherwise the
+  // order is placed for "now" (scheduledFor stays null). Server-authoritative —
+  // the UI gates this too, but a direct API call can't schedule when disabled.
+  let scheduledFor: Date | null = null;
+  if (input.scheduledFor && flow?.scheduledOrdersEnabled) {
+    const when = new Date(input.scheduledFor);
+    if (!Number.isNaN(when.getTime()) && when.getTime() > Date.now()) {
+      scheduledFor = when;
+    }
+  }
 
   const priced = pricing({
     lines: lines.map((l) => ({ unitPrice: l.unitPrice, quantity: l.quantity })),
