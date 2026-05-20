@@ -11,6 +11,9 @@ import { remainingBalance } from '@/server/signup-bonus';
 import { LogoutButton } from './logout-button';
 
 export const metadata = { title: 'Profile' };
+// Always render the live profile (addresses, balances) from the DB.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function ProfilePage() {
   const session = await auth();
@@ -82,7 +85,8 @@ export default async function ProfilePage() {
               { href: '/profile/favorites', label: 'Favorites' },
               { href: '/profile/rewards', label: 'Rewards' },
               ...(bonus && !bonus.revoked ? [{ href: '/profile/signup-bonus', label: 'Signup Bonus' }] : []),
-              { href: '/profile/referrals', label: 'Referrals' }
+              { href: '/profile/referrals', label: 'Referrals' },
+              { href: '/profile/security', label: 'Security & sessions' }
             ].map((t) => (
               <Link
                 key={t.href}

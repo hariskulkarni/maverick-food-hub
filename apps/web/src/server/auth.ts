@@ -23,6 +23,8 @@ import {
   verifyTotp
 } from './2fa';
 import { audit } from './audit';
+import { headers } from 'next/headers';
+import { startSession, isSessionActive, revokeSession } from './sessions';
 
 declare module 'next-auth' {
   interface Session {
@@ -35,6 +37,17 @@ declare module 'next-auth' {
       branchId?: string | null;
     };
   }
+}
+
+/**
+ * Whether an unknown phone/email may self-register a CUSTOMER account on first
+ * login. Default ON (a storefront needs open signup). Set
+ * ALLOW_CUSTOMER_SELF_SIGNUP=false to lock the platform down so ONLY
+ * pre-registered/invited accounts can log in anywhere. Staff (email-password)
+ * and riders (rider auth) already require pre-existing accounts regardless.
+ */
+function allowCustomerSelfSignup(): boolean {
+  return process.env.ALLOW_CUSTOMER_SELF_SIGNUP !== 'false';
 }
 
 export const authConfig: NextAuthConfig = {
@@ -58,6 +71,13 @@ export const authConfig: NextAuthConfig = {
         // We need to know whether this is a *new* customer to decide whether
         // to issue a signup bonus, so check before upserting.
         const existing = await prisma.user.findUnique({ where: { phone } });
+        if (!existing && !allowCustomerSelfSignup()) {
+          // Locked-down mode: an unregistered phone cannot create an account by
+          // logging in. (Even though the OTP was valid.) They must be onboarded
+          // first. Audit so admins can see attempts.
+          await audit('auth.login.unregistered', { entityType: 'User', after: { phone, provider: 'phone-otp' } }).catch(() => {});
+          return null;
+        }
         const user = existing ?? await prisma.user.create({ data: { phone, role: Role.CUSTOMER } });
         if (!existing) {
           // First-time OTP verification = signup. Phone is known here (and is
@@ -154,6 +174,11 @@ export const authConfig: NextAuthConfig = {
           (user as any).id = existing.id;
           return true;
         }
+        if (!allowCustomerSelfSignup()) {
+          // Locked-down mode: unknown Google account cannot self-register.
+          await audit('auth.login.unregistered', { entityType: 'User', after: { email, provider: 'google' } }).catch(() => {});
+          return false;
+        }
         const created = await prisma.user.create({
           data: { email, name: user.name ?? null, role: Role.CUSTOMER }
         });
@@ -171,8 +196,33 @@ export const authConfig: NextAuthConfig = {
       return true;
     },
     async jwt({ token, user }) {
-      if (user?.id) token.uid = user.id;
+      // Fresh login: `user` is only present on the first call right after
+      // authorize(). Mint a new session (revoking the user's other devices) and
+      // stamp its id into the token. Capture device/IP best-effort for history.
+      if (user?.id) {
+        token.uid = user.id;
+        let userAgent: string | null = null;
+        let ipAddress: string | null = null;
+        try {
+          const h = await headers();
+          userAgent = h.get('user-agent');
+          ipAddress = (h.get('x-forwarded-for') ?? '').split(',')[0]!.trim() || null;
+        } catch {
+          /* no request context — fine */
+        }
+        const sid = await startSession(user.id, { userAgent, ipAddress });
+        if (sid) token.sid = sid;
+      }
       if (token.uid) {
+        // Single-active-session gate: if this token's sid is no longer the
+        // user's current session (a newer login superseded it, or it was
+        // terminated), invalidate the token so session() returns null below.
+        const active = await isSessionActive(token.uid as string, token.sid as string | undefined);
+        if (!active) {
+          // Strip identity entirely so neither node guards nor edge middleware
+          // see a usable role — the next request lands on /login.
+          return { invalid: true } as typeof token;
+        }
         const u = await prisma.user.findUnique({
           where: { id: token.uid as string },
           include: { branchMemberships: { take: 1 } }
@@ -188,6 +238,11 @@ export const authConfig: NextAuthConfig = {
       return token;
     },
     async session({ session, token }) {
+      // Token was invalidated by single-session enforcement (logged out from
+      // another device, or session terminated) → no session at all.
+      if ((token as any).invalid || !token.uid) {
+        return null as unknown as Session;
+      }
       const s = session as Session;
       s.user.id = (token.uid as string) ?? '';
       s.user.role = (token.role as Role) ?? Role.CUSTOMER;
@@ -196,6 +251,14 @@ export const authConfig: NextAuthConfig = {
       s.user.name = (token.name as string | null) ?? null;
       s.user.branchId = (token.branchId as string | null) ?? null;
       return s;
+    }
+  },
+  events: {
+    // Revoke the DB session on explicit sign-out so login history reflects it
+    // and the sid can never be reused. Best-effort — never blocks logout.
+    async signOut(message) {
+      const sid = (message as { token?: { sid?: string } })?.token?.sid;
+      if (sid) await revokeSession(sid, 'logout');
     }
   }
 };

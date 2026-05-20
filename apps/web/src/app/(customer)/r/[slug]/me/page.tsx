@@ -17,6 +17,11 @@ import { prisma } from '@/server/db';
 import { Role } from '@prisma/client';
 import { MeClient } from './me-client';
 
+// Customer account dashboard reads live per-user data (addresses, orders) — keep
+// it dynamic so a second device never paints a cached, stale view.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const r = await prisma.restaurant.findUnique({ where: { slug }, select: { name: true } });

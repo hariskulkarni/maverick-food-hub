@@ -11,6 +11,11 @@ import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 
+// Per-user data: never cache the response anywhere (browser, proxy, CDN). This
+// guarantees a second device always pulls the freshest address list.
+export const dynamic = 'force-dynamic';
+const NO_STORE = { 'Cache-Control': 'no-store, max-age=0, must-revalidate' } as const;
+
 const CreateBody = z.object({
   label: z.string().min(1).max(40),
   line1: z.string().min(2).max(200),
@@ -31,7 +36,7 @@ export async function GET() {
     where: { userId: session.user.id },
     orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }]
   });
-  return Response.json(list);
+  return Response.json(list, { headers: NO_STORE });
 }
 
 export async function POST(req: NextRequest) {

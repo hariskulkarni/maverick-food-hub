@@ -10,6 +10,12 @@ import { prisma } from '@/server/db';
 import { AddressesClient, type AddressRow } from './addresses-client';
 
 export const metadata = { title: 'Saved addresses' };
+// Always render live from the database. Without this a cached render can be
+// served to a second device after an edit, so the two devices disagree about
+// the saved address — the DB is the single source of truth and must be re-read
+// on every request. (Matches the other profile pages.)
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function AddressesPage() {
   const session = await auth();

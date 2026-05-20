@@ -215,16 +215,20 @@ enum InventoryMovementType {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model User {
-  id           String    @id @default(cuid())
-  role         Role      @default(CUSTOMER)
-  name         String?
-  phone        String?   @unique
-  email        String?   @unique
-  passwordHash String? // only set for ADMIN/KITCHEN
-  avatarUrl    String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+  id               String    @id @default(cuid())
+  role             Role      @default(CUSTOMER)
+  name             String?
+  phone            String?   @unique
+  email            String?   @unique
+  passwordHash     String? // only set for ADMIN/KITCHEN
+  avatarUrl        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  // Single-active-session pointer. The JWT carries a session id (sid); a request
+  // is only honoured while its sid matches this. A new login rotates it, which
+  // invalidates every other device's token on its next request (forced logout).
+  currentSessionId String?
 
   addresses             Address[]
   orders                Order[]              @relation("CustomerOrders")
@@ -246,10 +250,31 @@ model User {
   favoriteRestaurants   FavoriteRestaurant[]
   favoriteItems         FavoriteItem[]
   reservations          Reservation[]        @relation("CustomerReservations")
+  sessions              UserSession[]
 
   @@index([role])
   @@index([phone])
   @@index([email])
+}
+
+/// Login session record — one row per successful login, used for single-active-
+/// session enforcement, the security/login-history UI, and remote termination.
+/// `revokedAt` set ⇒ the session is dead (superseded by a newer login, or the
+/// user terminated it). The active session is the one User.currentSessionId
+/// points at; all others should be revoked.
+model UserSession {
+  id            String    @id @default(cuid())
+  userId        String
+  userAgent     String? // raw UA string of the device that logged in
+  ipAddress     String? // best-effort client IP (x-forwarded-for first hop)
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  revokedAt     DateTime?
+  revokedReason String? // "superseded" | "user_terminated" | "logout"
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model OtpToken {

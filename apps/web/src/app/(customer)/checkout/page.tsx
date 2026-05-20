@@ -4,6 +4,10 @@ import { prisma } from '@/server/db';
 import { CheckoutForm } from './checkout-form';
 
 export const metadata = { title: 'Checkout' };
+// Read addresses live every time — never serve a cached render that could show
+// a stale delivery address across devices.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function CheckoutPage() {
   const session = await auth();
