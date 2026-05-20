@@ -57,8 +57,7 @@ export default async function AdminOrdersPage({ searchParams: _sp }: { searchPar
       />
       <OrdersBoard
         branchId={primaryBranchId}
-        channel={`branch:${primaryBranchId}:orders`}
-        channels={scope.channels}
+        channel={scope.groupChannel}
         isGroup={scope.multi}
         restaurantOptions={restaurantOptions}
         initial={JSON.parse(JSON.stringify(annotated))}

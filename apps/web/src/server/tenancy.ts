@@ -208,8 +208,16 @@ export interface OrderScope {
   restaurants: { id: string; name: string }[];
   /** branchId → its source restaurant, for labelling every order row. */
   labelByBranchId: Record<string, { restaurantId: string; restaurantName: string; branchName: string }>;
-  /** The realtime channels to subscribe to (one per branch). */
+  /** Per-branch channels (legacy; prefer `groupChannel` to avoid opening one SSE per branch). */
   channels: string[];
+  /**
+   * A SINGLE realtime channel covering the active restaurant's whole group
+   * (`group:{rootId}:orders`, where root = the active restaurant's parent or
+   * itself). Orders fan out here on placement + every status change, so ONE SSE
+   * connection covers parent + all children — critical because browsers cap
+   * HTTP/1.1 at ~6 connections per host, and one-per-branch exhausts that pool.
+   */
+  groupChannel: string;
   /** The caller's active/primary restaurant + its first branch (for pause controls etc.). */
   activeRestaurantId: string;
   primaryBranchId: string | null;
@@ -255,6 +263,11 @@ export async function accessibleOrderScope(): Promise<OrderScope | null> {
   const primaryBranchId =
     branches.find((b) => b.restaurantId === active?.id)?.id ?? branchIds[0] ?? null;
 
+  // ONE channel for the active restaurant's whole group. Orders publish to
+  // group:{parentId ?? selfId}:orders, so a parent owner subscribing here gets
+  // parent + every child over a single SSE connection (no per-branch fan-out).
+  const groupRootId = active?.parentId ?? active?.id ?? restaurantIds[0];
+
   return {
     restaurantIds,
     branchIds,
@@ -262,6 +275,7 @@ export async function accessibleOrderScope(): Promise<OrderScope | null> {
     restaurants: ordered.map((id) => ({ id, name: nameById.get(id) ?? '' })),
     labelByBranchId,
     channels: branchIds.map((id) => `branch:${id}:orders`),
+    groupChannel: `group:${groupRootId}:orders`,
     activeRestaurantId: active?.id ?? restaurantIds[0],
     primaryBranchId,
   };

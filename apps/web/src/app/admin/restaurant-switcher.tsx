@@ -70,9 +70,10 @@ export function RestaurantSwitcher({
         return;
       }
       setOpen(false);
-      // Re-read the active restaurant everywhere, then land on the dashboard.
-      router.push('/admin');
-      router.refresh();
+      // Hard navigation to /admin — guarantees every server component re-reads
+      // the new active-restaurant cookie from a clean render (a soft
+      // router.refresh() on the same route can leave the page/ spinner stuck).
+      window.location.assign('/admin');
     } catch {
       setPendingId(null);
     }

@@ -58,7 +58,7 @@ export default async function KitchenPage() {
   return (
     <KitchenBoard
       branchId={scope.primaryBranchId ?? scope.branchIds[0]!}
-      channels={scope.channels}
+      channel={scope.groupChannel}
       multi={scope.multi}
       initial={JSON.parse(JSON.stringify(decorated))}
     />

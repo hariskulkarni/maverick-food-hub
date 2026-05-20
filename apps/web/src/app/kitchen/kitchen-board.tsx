@@ -23,7 +23,7 @@ const COLUMNS = [
   { key: 'READY', title: 'Ready', icon: Package }
 ] as const;
 
-export function KitchenBoard({ branchId, channels, multi = false, initial }: { branchId: string; channels?: string[]; multi?: boolean; initial: any[] }) {
+export function KitchenBoard({ branchId, channel, channels, multi = false, initial }: { branchId: string; channel?: string; channels?: string[]; multi?: boolean; initial: any[] }) {
   const [orders, setOrders] = useState<any[]>(initial);
   const [now, setNow] = useState(Date.now());
   const [unacked, setUnacked] = useState<Set<string>>(new Set());
@@ -150,7 +150,7 @@ export function KitchenBoard({ branchId, channels, multi = false, initial }: { b
     };
   }, [refreshSnapshot]);
 
-  useSSE(`branch:${branchId}:orders`, {
+  useSSE(channel ?? `branch:${branchId}:orders`, {
     onMessage: async (e: any) => {
       if (!e.orderId) return;
       // Multi-restaurant: the per-order endpoint is single-branch scoped, so an
