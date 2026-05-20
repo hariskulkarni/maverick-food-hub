@@ -9,7 +9,6 @@ import { FOOD_FALLBACK } from '@/lib/food-images';
 import { readDeliveryLocation } from '@/server/discovery';
 import { filterNearbyRestaurants } from '@/server/discovery';
 import { getDiscoveryRadiusKm } from '@/server/platform-settings';
-import { LocationGate } from './location-gate';
 import { DeliverToHeader } from './deliver-to-header';
 import { ChangeLocationButton } from './change-location-button';
 import type { SavedAddressOption } from './location-picker-dialog';
@@ -72,12 +71,12 @@ export default async function RestaurantsListPage({
       }));
   }
 
-  // ── GATE: no location set yet ──────────────────────────────────────────────
-  if (!loc) {
-    return <LocationGate savedAddresses={savedAddresses} />;
-  }
-
-  // ── LIST: location set → discover nearby restaurants ───────────────────────
+  // ── Discover restaurants ───────────────────────────────────────────────────
+  // With a location we filter to deliverable + nearest-first. WITHOUT one we do
+  // NOT block: browser geolocation is unavailable on insecure (http) origins and
+  // not every customer grants it, so we show ALL active restaurants and let them
+  // set a location any time for delivery estimates + nearby filtering. (The old
+  // hard gate trapped customers who couldn't share their location.)
   const sp = (await searchParams) ?? {};
   const selectedCuisine = typeof sp.cuisine === 'string' && sp.cuisine.length > 0 ? sp.cuisine : null;
   const sort: SortKey = sp.sort === 'name' ? 'name' : 'newest';
@@ -93,8 +92,9 @@ export default async function RestaurantsListPage({
     getDiscoveryRadiusKm()
   ]);
 
-  // Filter to restaurants that can deliver to `loc`; nearest-first.
-  const matches = filterNearbyRestaurants(loc, radiusKm, active);
+  const matches: { restaurant: (typeof active)[number]; distanceM: number | null }[] = loc
+    ? filterNearbyRestaurants(loc, radiusKm, active).map((m) => ({ restaurant: m.restaurant, distanceM: m.distanceM }))
+    : active.map((restaurant) => ({ restaurant, distanceM: null }));
 
   // Cuisine chips + counts are built from the NEARBY set (not the whole platform).
   const cuisineCounts = new Map<string, number>();
@@ -129,7 +129,7 @@ export default async function RestaurantsListPage({
       coverImageUrl: r.coverImageUrl,
       logoUrl: r.logoUrl,
       branchCount: r._count.branches,
-      distanceLabel: formatDistance(m.distanceM),
+      distanceLabel: m.distanceM != null ? formatDistance(m.distanceM) : null,
       ratingTenth: (r.id.charCodeAt(0) % 5) + 4
     };
   });
@@ -152,9 +152,19 @@ export default async function RestaurantsListPage({
 
   return (
     <div className="container py-6 md:py-8">
-      {/* Deliver-to header with a Change affordance (reopens the picker). */}
+      {/* Deliver-to header (location set) OR a non-blocking prompt to set one. */}
       <div className="mb-4 reveal">
-        <DeliverToHeader label={loc.label} savedAddresses={savedAddresses} />
+        {loc ? (
+          <DeliverToHeader label={loc.label} savedAddresses={savedAddresses} />
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed bg-muted/30 p-3">
+            <span className="flex items-center gap-2 text-sm text-muted-foreground">
+              <MapPin className="size-4 text-primary" />
+              Showing all restaurants. Set your delivery location for accurate delivery estimates &amp; nearby filtering.
+            </span>
+            <ChangeLocationButton savedAddresses={savedAddresses} />
+          </div>
+        )}
       </div>
 
       <header className="mb-4 md:mb-6 reveal">
@@ -281,10 +291,12 @@ export default async function RestaurantsListPage({
                     {r.cuisine}
                   </Badge>
                 )}
-                {/* Distance badge from the nearest qualifying branch. */}
-                <Badge variant="muted" className="absolute top-3 right-3 bg-white/95 text-foreground backdrop-blur">
-                  <Navigation className="size-3" /> {r.distanceLabel}
-                </Badge>
+                {/* Distance badge from the nearest qualifying branch (only when a location is set). */}
+                {r.distanceLabel && (
+                  <Badge variant="muted" className="absolute top-3 right-3 bg-white/95 text-foreground backdrop-blur">
+                    <Navigation className="size-3" /> {r.distanceLabel}
+                  </Badge>
+                )}
                 <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white">
                   <div className="flex items-center gap-1 rounded-full bg-black/30 backdrop-blur px-2 py-0.5 text-[11px]">
                     <Clock className="size-3" /> ~35 min
@@ -300,9 +312,11 @@ export default async function RestaurantsListPage({
                 </div>
                 {r.tagline && <p className="mt-1 text-xs md:text-sm text-muted-foreground line-clamp-2">{r.tagline}</p>}
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
-                    <Navigation className="size-3" /> {r.distanceLabel}
-                  </span>
+                  {r.distanceLabel && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                      <Navigation className="size-3" /> {r.distanceLabel}
+                    </span>
+                  )}
                   <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
                     <Clock className="size-3" /> ~35 min
                   </span>
