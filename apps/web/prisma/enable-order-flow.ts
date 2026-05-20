@@ -1,11 +1,15 @@
 /**
- * One-off operational script: turn ON self-pickup + scheduled ordering for all
- * ACTIVE restaurants, and print a before/after report.
+ * One-off operational script: turn ON the three order-flow features for all
+ * ACTIVE restaurants — self-pickup, scheduled ordering, and dine-in / table
+ * reservations — and print a before/after report.
  *
  * Safe + idempotent: it only flips a toggle from OFF → ON, never the reverse, so
- * re-running it does nothing once everything is enabled. Dine-in is intentionally
- * left untouched (it pulls in the whole reservation/table suite and should be
- * opted into per restaurant).
+ * re-running it does nothing once everything is enabled.
+ *
+ * Note on dine-in: enabling the toggle makes the Dine-in option appear at
+ * checkout and unlocks the admin Tables + Reservations pages. Each restaurant
+ * still needs to add its table inventory (Admin → Tables) before customers can
+ * actually book — this script just switches the capability on.
  *
  * Run from apps/web on the machine that can reach the database:
  *   npx tsx prisma/enable-order-flow.ts            # enable everywhere
@@ -19,10 +23,15 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 const DRY_RUN = process.argv.includes('--dry-run');
 
+const onoff = (b: boolean) => (b ? 'ON ' : 'off');
+
 async function main() {
   const restaurants = await prisma.restaurant.findMany({
     where: { status: 'ACTIVE' },
-    select: { id: true, name: true, slug: true, selfPickupEnabled: true, scheduledOrdersEnabled: true },
+    select: {
+      id: true, name: true, slug: true,
+      selfPickupEnabled: true, scheduledOrdersEnabled: true, dineInEnabled: true,
+    },
     orderBy: { name: 'asc' },
   });
 
@@ -34,13 +43,15 @@ async function main() {
   console.log(`\nFound ${restaurants.length} active restaurant(s). Current state:\n`);
   for (const r of restaurants) {
     console.log(
-      `  ${r.name.padEnd(28)}  pickup=${r.selfPickupEnabled ? 'ON ' : 'off'}  scheduled=${r.scheduledOrdersEnabled ? 'ON ' : 'off'}`
+      `  ${r.name.padEnd(28)}  pickup=${onoff(r.selfPickupEnabled)}  scheduled=${onoff(r.scheduledOrdersEnabled)}  dine-in=${onoff(r.dineInEnabled)}`
     );
   }
 
-  const needsUpdate = restaurants.filter((r) => !r.selfPickupEnabled || !r.scheduledOrdersEnabled);
+  const needsUpdate = restaurants.filter(
+    (r) => !r.selfPickupEnabled || !r.scheduledOrdersEnabled || !r.dineInEnabled
+  );
   if (needsUpdate.length === 0) {
-    console.log('\n✓ Every active restaurant already has self-pickup AND scheduled ordering ON. Nothing to do.\n');
+    console.log('\n✓ Every active restaurant already has self-pickup, scheduled ordering AND dine-in ON. Nothing to do.\n');
     return;
   }
 
@@ -51,10 +62,14 @@ async function main() {
   }
 
   const res = await prisma.restaurant.updateMany({
-    where: { status: 'ACTIVE', OR: [{ selfPickupEnabled: false }, { scheduledOrdersEnabled: false }] },
-    data: { selfPickupEnabled: true, scheduledOrdersEnabled: true },
+    where: {
+      status: 'ACTIVE',
+      OR: [{ selfPickupEnabled: false }, { scheduledOrdersEnabled: false }, { dineInEnabled: false }],
+    },
+    data: { selfPickupEnabled: true, scheduledOrdersEnabled: true, dineInEnabled: true },
   });
-  console.log(`\n✓ Updated ${res.count} restaurant(s). Self-pickup + scheduled ordering are now ON.\n`);
+  console.log(`\n✓ Updated ${res.count} restaurant(s). Self-pickup + scheduled ordering + dine-in are now ON.`);
+  console.log('  Reminder: add table inventory under Admin → Tables so customers can actually reserve.\n');
 }
 
 main()
