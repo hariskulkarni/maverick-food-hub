@@ -39,11 +39,19 @@ export async function POST(req: NextRequest) {
   });
   if (!restaurant) return Response.json({ error: 'Restaurant not found' }, { status: 404 });
 
+  // `secure` must follow the ACTUAL request protocol, not NODE_ENV: a browser
+  // silently DROPS a Secure cookie on a plain-HTTP page, which would make the
+  // switch appear to "reset" on every reload. Match the request's scheme (and
+  // honour the proxy's x-forwarded-proto) so it works on both http and https.
+  const isHttps =
+    req.nextUrl.protocol === 'https:' ||
+    req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() === 'https';
+
   const res = NextResponse.json({ restaurant });
   res.cookies.set(ACTIVE_RESTAURANT_COOKIE, restaurantId, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: isHttps,
     path: '/',
     maxAge: 60 * 60 * 24 * 90, // 90 days
   });

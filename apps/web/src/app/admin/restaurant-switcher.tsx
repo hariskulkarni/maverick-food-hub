@@ -36,6 +36,14 @@ export function RestaurantSwitcher({
   ]);
   const active = flat.find((r) => r.id === activeId) ?? flat[0] ?? null;
 
+  // When the active restaurant is a CHILD, surface its parent group so the header
+  // reads e.g. "Wrap n Roll" with "in Combo Nation" underneath.
+  const activeGroup = active
+    ? groups.find((g) => g.parent?.id === active.id || g.members.some((m) => m.id === active.id))
+    : null;
+  const activeParentName =
+    activeGroup?.parent && active && activeGroup.parent.id !== active.id ? activeGroup.parent.name : null;
+
   // Click-outside + Escape to close.
   useEffect(() => {
     if (!open) return;
@@ -88,8 +96,15 @@ export function RestaurantSwitcher({
         aria-expanded={open}
         className="flex w-full items-center justify-between gap-2 rounded-md text-left -mx-1 px-1 py-0.5 hover:bg-accent transition-colors"
       >
-        <span className="display text-lg font-bold text-primary truncate">
-          {active?.name ?? 'Select restaurant'}
+        <span className="min-w-0">
+          <span className="display block text-lg font-bold text-primary truncate">
+            {active?.name ?? 'Select restaurant'}
+          </span>
+          {activeParentName && (
+            <span className="block text-[11px] font-medium text-muted-foreground truncate">
+              in {activeParentName}
+            </span>
+          )}
         </span>
         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
       </button>
