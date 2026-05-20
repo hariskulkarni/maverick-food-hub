@@ -39,6 +39,7 @@ interface Defaults {
   taxRatePct: number;
   baseDeliveryFee: number;
   perKmDeliveryFee: number;
+  packagingFee: number;
 }
 
 interface IdentityState {
@@ -74,6 +75,7 @@ interface BranchState {
   taxRatePct: number;
   baseDeliveryFee: number;
   perKmDeliveryFee: number;
+  packagingFee: number;
 }
 interface StaffRow { id: string; role: 'ADMIN' | 'KITCHEN'; email: string; name: string; tempPassword: string }
 interface RiderRow { id: string; phone: string; name: string; vehicleType: 'BIKE' | 'SCOOTER' | 'BICYCLE'; vehicleNumber: string }
@@ -221,7 +223,8 @@ function initialState(defaults: Defaults): WizardState {
       serviceRadiusKm: defaults.serviceRadiusKm,
       taxRatePct: defaults.taxRatePct,
       baseDeliveryFee: defaults.baseDeliveryFee,
-      perKmDeliveryFee: defaults.perKmDeliveryFee
+      perKmDeliveryFee: defaults.perKmDeliveryFee,
+      packagingFee: defaults.packagingFee
     },
     staff: [
       { id: 'admin-1', role: 'ADMIN', email: '', name: '', tempPassword: generateTempPassword() },
@@ -272,6 +275,7 @@ function validateBranch(s: BranchState): string[] {
   if (s.taxRatePct < 0 || s.taxRatePct > 40) issues.push('Tax rate must be 0–40%.');
   if (s.baseDeliveryFee < 0) issues.push('Base delivery fee must be ≥ 0.');
   if (s.perKmDeliveryFee < 0) issues.push('Per-km delivery fee must be ≥ 0.');
+  if (s.packagingFee < 0) issues.push('Packaging fee must be ≥ 0.');
   return issues;
 }
 
@@ -407,7 +411,8 @@ export function WizardClient({ brands, unownedAdmins, defaults }: { brands: Bran
           serviceRadiusKm: state.branch.serviceRadiusKm,
           taxRatePct: state.branch.taxRatePct,
           baseDeliveryFee: state.branch.baseDeliveryFee,
-          perKmDeliveryFee: state.branch.perKmDeliveryFee
+          perKmDeliveryFee: state.branch.perKmDeliveryFee,
+          packagingFee: state.branch.packagingFee
         },
         staff: state.staff.map((s) => ({
           role: s.role,
@@ -805,6 +810,11 @@ function BranchStep({ state, dispatch, issues }: { state: BranchState; dispatch:
         <Label>Per-km delivery fee (₹)</Label>
         <Input type="number" step="0.5" min={0} value={state.perKmDeliveryFee}
                onChange={(e) => dispatch({ type: 'branch', patch: { perKmDeliveryFee: Number(e.target.value) } })} />
+      </div>
+      <div>
+        <Label>Packaging fee (₹)</Label>
+        <Input type="number" step="1" min={0} value={state.packagingFee}
+               onChange={(e) => dispatch({ type: 'branch', patch: { packagingFee: Number(e.target.value) } })} />
       </div>
 
       <IssueList issues={issues} />

@@ -70,7 +70,8 @@ const BranchSchema = z.object({
   serviceRadiusKm:  z.number().min(0.5).max(50).default(7),
   taxRatePct:       z.number().min(0).max(40).default(5),
   baseDeliveryFee:  z.number().min(0).max(2000).default(40),
-  perKmDeliveryFee: z.number().min(0).max(200).default(8)
+  perKmDeliveryFee: z.number().min(0).max(200).default(8),
+  packagingFee:     z.number().min(0).max(1000).default(20)
 });
 
 const StaffSchema = z.object({
@@ -336,7 +337,8 @@ export async function POST(req: NextRequest) {
           serviceRadiusKm: body.branch.serviceRadiusKm,
           taxRatePct: body.branch.taxRatePct,
           baseDeliveryFee: new Prisma.Decimal(body.branch.baseDeliveryFee),
-          perKmDeliveryFee: new Prisma.Decimal(body.branch.perKmDeliveryFee)
+          perKmDeliveryFee: new Prisma.Decimal(body.branch.perKmDeliveryFee),
+          packagingFee: new Prisma.Decimal(body.branch.packagingFee)
         }
       });
 

@@ -18,6 +18,7 @@
     "db:seed:cuisines": "tsx prisma/seed-brand-mavericks.ts",
     "db:seed:rider-features": "tsx prisma/seed-rider-features.ts",
     "db:enable-order-flow": "tsx prisma/enable-order-flow.ts",
+    "db:set-packaging-fee": "tsx prisma/set-packaging-fee.ts",
     "db:group-restaurants": "tsx prisma/group-restaurants.ts",
     "db:studio": "prisma studio",
     "test": "vitest run",

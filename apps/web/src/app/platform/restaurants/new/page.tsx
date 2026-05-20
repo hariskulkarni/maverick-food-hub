@@ -40,7 +40,8 @@ export default async function NewRestaurantPage() {
     serviceRadiusKm: 7,
     taxRatePct: 5,
     baseDeliveryFee: 40,
-    perKmDeliveryFee: 8
+    perKmDeliveryFee: 8,
+    packagingFee: 20
   };
 
   return (
