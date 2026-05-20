@@ -15,6 +15,7 @@ import { log } from './log';
 import { getConfig } from './integrations';
 import { sendMsg91 } from './notifications/msg91';
 import { sendFast2Sms } from './notifications/fast2sms';
+import { sendTwoFactor } from './notifications/twofactor';
 import { sendTextlocal } from './notifications/textlocal';
 import { sendZohoSmtp } from './notifications/smtp-zoho';
 import { sendBrevoSmtp } from './notifications/smtp-brevo';
@@ -114,6 +115,15 @@ async function sendOnChannel(channel: Channel, args: SendArgs): Promise<SendResu
   //    EMAIL priority order: ZOHO_SMTP → BREVO_SMTP → SMTP.
   if (args.restaurantId) {
     if (channel === 'SMS') {
+      // 2Factor first — cheapest India SMS (~₹0.16). Per-tenant credentials
+      // stored under the TWOFACTOR provider key. `safeGetConfig` swallows the
+      // enum-validation error if TWOFACTOR isn't in the generated Prisma enum
+      // yet (same pattern as the other India providers), so this is safe to
+      // ship before the schema enum is updated.
+      const tf = await safeGetConfig(args.restaurantId, 'TWOFACTOR');
+      if (tf?.apiKey) {
+        return sendTwoFactor({ apiKey: tf.apiKey, senderId: tf.senderId, templateName: tf.templateName }, args);
+      }
       const msg91 = await safeGetConfig(args.restaurantId, 'MSG91');
       if (msg91?.authKey && msg91?.senderId) {
         return sendMsg91({ authKey: msg91.authKey, senderId: msg91.senderId, route: msg91.route, dltTemplateId: msg91.dltTemplateId }, args);
@@ -150,6 +160,13 @@ async function sendOnChannel(channel: Channel, args: SendArgs): Promise<SendResu
   // 2. Env fallback (legacy paths + new India-friendly env routes)
   if (channel === 'SMS') {
     const provider = process.env.NOTIFIER_SMS || process.env.SMS_PROVIDER;
+    if (provider === '2factor' && process.env.TWOFACTOR_API_KEY) {
+      return sendTwoFactor({
+        apiKey: process.env.TWOFACTOR_API_KEY!,
+        senderId: process.env.TWOFACTOR_SENDER_ID,
+        templateName: process.env.TWOFACTOR_TEMPLATE_NAME
+      }, args);
+    }
     if (provider === 'msg91' && process.env.MSG91_AUTH_KEY) {
       return sendMsg91({
         authKey: process.env.MSG91_AUTH_KEY!,
