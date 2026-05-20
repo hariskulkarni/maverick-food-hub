@@ -182,7 +182,15 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
           branchId,
           // Address only travels with a delivery order.
           addressId: isDelivery ? addressId : undefined,
-          items: lines.map((l) => ({ menuItemId: l.kind === 'item' ? l.refId : undefined, comboId: l.kind === 'combo' ? l.refId : undefined, quantity: l.quantity, notes: l.notes })),
+          items: lines.map((l) => ({
+            menuItemId: l.kind === 'item' ? l.refId : undefined,
+            comboId: l.kind === 'combo' ? l.refId : undefined,
+            quantity: l.quantity,
+            notes: l.notes,
+            // Variant + modifier selections — the server re-prices from these.
+            selectedVariantId: l.selectedVariantId ?? undefined,
+            selectedModifierOptionIds: l.selectedModifierOptionIds ?? undefined
+          })),
           couponCode: appliedCoupon || undefined,
           paymentMethod,
           customerNotes: notes,

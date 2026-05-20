@@ -98,6 +98,11 @@ export function CartClient({ branchId }: { branchId: string | null }) {
                     )}
                     <div className="font-medium truncate">{l.name}</div>
                   </div>
+                  {(l.variantName || l.modifiersSummary) && (
+                    <div className="mt-0.5 text-xs text-muted-foreground truncate">
+                      {[l.variantName, l.modifiersSummary].filter(Boolean).join(' • ')}
+                    </div>
+                  )}
                   <div className="mt-1 text-sm text-muted-foreground">{money(l.unitPrice)} each</div>
                 </div>
                 <div className="flex flex-col items-end gap-2">

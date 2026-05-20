@@ -819,10 +819,69 @@ model MenuItem {
   crossSellAsTarget CrossSell[]            @relation("CrossSellSuggested")
   happyHourRules    HappyHourRule[]
   freebieRules      FreebieRule[]
+  variants          MenuItemVariant[]
+  modifierGroups    ModifierGroup[]
 
   @@unique([branchId, slug])
   @@index([branchId, categoryId])
   @@index([branchId, isAvailable])
+}
+
+/// A priced, mutually-exclusive size/option of a menu item (Half/Full, S/M/L,
+/// 250ml/500ml/1L). When an item has variants, the customer must pick exactly
+/// one and its `price` REPLACES the item's base price. Items with no variants
+/// fall back to MenuItem.price (existing behaviour, unchanged).
+model MenuItemVariant {
+  id          String   @id @default(cuid())
+  menuItemId  String
+  name        String // "Half", "Full", "Large"
+  price       Decimal  @db.Decimal(10, 2) // absolute price for this variant
+  isDefault   Boolean  @default(false)
+  isAvailable Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@index([menuItemId, sortOrder])
+}
+
+/// A group of optional add-ons attached to a menu item ("Add toppings",
+/// "Choose spice level"). minSelect/maxSelect drive the picker: 0/1 = optional
+/// single, 1/1 = required single, 0/N = optional multi, etc.
+model ModifierGroup {
+  id         String   @id @default(cuid())
+  menuItemId String
+  name       String
+  minSelect  Int      @default(0)
+  maxSelect  Int      @default(1)
+  required   Boolean  @default(false)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  menuItem MenuItem         @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  options  ModifierOption[]
+
+  @@index([menuItemId, sortOrder])
+}
+
+/// One selectable add-on inside a ModifierGroup, e.g. "Extra cheese (+₹30)".
+model ModifierOption {
+  id              String   @id @default(cuid())
+  modifierGroupId String
+  name            String
+  priceDelta      Decimal  @default(0.00) @db.Decimal(10, 2) // added to line price
+  isDefault       Boolean  @default(false)
+  isAvailable     Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  group ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+
+  @@index([modifierGroupId, sortOrder])
 }
 
 model MenuItemAvailability {
@@ -1026,18 +1085,23 @@ model OrderFeedback {
 }
 
 model OrderItem {
-  id         String  @id @default(cuid())
-  orderId    String
-  menuItemId String?
-  comboId    String?
-  name       String // snapshot for invoice
-  quantity   Int
-  unitPrice  Decimal @db.Decimal(10, 2)
-  notes      String?
+  id                  String  @id @default(cuid())
+  orderId             String
+  menuItemId          String?
+  comboId             String?
+  name                String // snapshot for invoice
+  quantity            Int
+  unitPrice           Decimal @db.Decimal(10, 2)
+  notes               String?
   // Freebie line: a gift item added at ₹0 because the order qualified for a
   // FreebieRule. Flagged so invoices/KOT/reports can label it "FREE GIFT" and
   // so it's excluded from revenue math (unitPrice is already 0).
-  isFreebie  Boolean @default(false)
+  isFreebie           Boolean @default(false)
+  // Variant + modifier selection snapshot. `unitPrice` already reflects the
+  // chosen variant price + modifier deltas (server-computed at order time);
+  // these fields preserve WHAT was chosen for the kitchen ticket + invoice.
+  selectedVariantName String? // e.g. "Full"
+  modifiersSummary    String? // e.g. "Extra cheese, No onion" (display snapshot)
 
   order    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   menuItem MenuItem? @relation(fields: [menuItemId], references: [id])

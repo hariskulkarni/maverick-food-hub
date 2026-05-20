@@ -8,7 +8,16 @@ import { log } from '@/server/log';
 const Body = z.object({
   branchId: z.string(),
   addressId: z.string().optional(),
-  items: z.array(z.object({ menuItemId: z.string().optional(), comboId: z.string().optional(), quantity: z.number().int().positive(), notes: z.string().optional() })).min(1),
+  items: z.array(z.object({
+    menuItemId: z.string().optional(),
+    comboId: z.string().optional(),
+    quantity: z.number().int().positive(),
+    notes: z.string().optional(),
+    // Variant (size) + modifier (add-on) selections. Server re-prices from
+    // these — client-sent prices are never trusted.
+    selectedVariantId: z.string().optional().nullable(),
+    selectedModifierOptionIds: z.array(z.string()).optional()
+  })).min(1),
   couponCode: z.string().optional(),
   paymentMethod: z.nativeEnum(PaymentMethod),
   customerNotes: z.string().optional(),

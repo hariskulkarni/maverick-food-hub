@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { ImageUploader } from '@/components/image-uploader';
 import { Badge } from '@/components/ui/badge';
 import { CategorySchedulePanel } from './category-schedule-panel';
+import { VariantModifierEditor } from './variant-modifier-editor';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -299,6 +300,7 @@ function ItemDialog({ item, categories, onClose }: { item: any; categories: any[
           </Button>
         </form>
 
+        {!isNew && <VariantModifierEditor menuItemId={item.id} itemName={data.name || item.name} />}
         {!isNew && <ScheduleSection itemId={item.id} />}
       </DialogContent>
     </Dialog>

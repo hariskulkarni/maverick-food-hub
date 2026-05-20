@@ -87,7 +87,19 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
       where: { branchId: branch.id, isActive: true },
       orderBy: { sortOrder: 'asc' },
       include: {
-        menuItems: { where: { isAvailable: true }, orderBy: { sortOrder: 'asc' } },
+        menuItems: {
+          where: { isAvailable: true },
+          orderBy: { sortOrder: 'asc' },
+          // Variants (sizes) + modifier groups (add-ons) so the customer can
+          // customize before adding to cart. Ordered for stable rendering.
+          include: {
+            variants: { orderBy: { sortOrder: 'asc' } },
+            modifierGroups: {
+              orderBy: { sortOrder: 'asc' },
+              include: { options: { orderBy: { sortOrder: 'asc' } } }
+            }
+          }
+        },
         availabilities: true
       }
     }),
@@ -400,6 +412,30 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
                       happyHourRules,
                       now
                     );
+                    // Project variants + modifier groups, converting Decimal→Number
+                    // so the client receives plain numbers (not Decimal/string).
+                    const mAny = m as any;
+                    const variants = (mAny.variants ?? []).map((v: any) => ({
+                      id: v.id,
+                      name: v.name,
+                      price: Number(v.price),
+                      isDefault: v.isDefault,
+                      isAvailable: v.isAvailable
+                    }));
+                    const modifierGroups = (mAny.modifierGroups ?? []).map((g: any) => ({
+                      id: g.id,
+                      name: g.name,
+                      minSelect: g.minSelect,
+                      maxSelect: g.maxSelect,
+                      required: g.required,
+                      options: (g.options ?? []).map((o: any) => ({
+                        id: o.id,
+                        name: o.name,
+                        priceDelta: Number(o.priceDelta),
+                        isDefault: o.isDefault,
+                        isAvailable: o.isAvailable
+                      }))
+                    }));
                     return {
                       ...m,
                       // Replace the unit price with the happy-hour price so the
@@ -410,7 +446,9 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
                       happyHourLabel: hh.label,
                       isAvailable: status.available && m.isAvailable,
                       isAuthed,
-                      isFavorited: favItemSet.has(m.id)
+                      isFavorited: favItemSet.has(m.id),
+                      variants,
+                      modifierGroups
                     };
                   })
                 };

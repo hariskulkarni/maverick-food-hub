@@ -1,6 +1,7 @@
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
 import { MenuManager } from './menu-manager';
+import { ImportExportPanel } from './import-export-panel';
 import { isCategoryAvailableNow } from '@/server/category-availability';
 
 export const metadata = { title: 'Admin · Menu' };
@@ -33,6 +34,7 @@ export default async function AdminMenuPage() {
   return (
     <div className="p-6">
       <h1 className="display text-2xl font-semibold mb-4">Menu</h1>
+      <ImportExportPanel />
       <MenuManager
         branchId={branch.id}
         categories={JSON.parse(JSON.stringify(decorated))}

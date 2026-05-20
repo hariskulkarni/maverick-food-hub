@@ -26,6 +26,7 @@ import { loadRulesForRestaurant, priceForItem, priceForCombo } from './happy-hou
 import { refreshChallengeProgressForOrder } from './challenges';
 import { previewSignupBonusForUser, holdSignupBonusForOrder, commitSignupBonusForOrder, restoreSignupBonusForOrder } from './signup-bonus';
 import { sendDeliveryOtpSms } from './notify-templates';
+import { resolveLineSelections } from './menu-selections';
 
 // State machine. Cancellation is allowed from any pre-delivery state into the
 // matching CANCELLED_BY_* terminal. Legacy CANCELLED is kept for back-compat.
@@ -71,7 +72,16 @@ export interface PlaceOrderInput {
   branchId: string;
   customerId: string;
   addressId?: string | null;
-  items: { menuItemId?: string; comboId?: string; quantity: number; notes?: string }[];
+  items: {
+    menuItemId?: string;
+    comboId?: string;
+    quantity: number;
+    notes?: string;
+    /** Chosen variant (size) for this menu item. Its price replaces the base. */
+    selectedVariantId?: string | null;
+    /** Chosen modifier option ids (add-ons etc.). Deltas add to the line price. */
+    selectedModifierOptionIds?: string[];
+  }[];
   /** Legacy /admin/coupons-style code. Kept for back-compat. */
   couponCode?: string;
   /**
@@ -127,14 +137,18 @@ export async function placeOrder(input: PlaceOrderInput) {
   // audit log. Map by index into `lines` so we can attribute savings back.
   const hhAppliedByLine: { ruleId: string; ruleName: string; originalPrice: number; effectivePrice: number; quantity: number }[] = [];
 
-  const lines: { name: string; unitPrice: number; quantity: number; menuItemId?: string; categoryId?: string | null; comboId?: string; notes?: string }[] = [];
+  const lines: { name: string; unitPrice: number; quantity: number; menuItemId?: string; categoryId?: string | null; comboId?: string; notes?: string; selectedVariantName?: string | null; modifiersSummary?: string | null }[] = [];
   for (const it of input.items) {
     if (it.menuItemId) {
       // Include the parent category + its availability rows so we can enforce
       // both the item-level and category-level windows in one round-trip.
       const m = await prisma.menuItem.findUniqueOrThrow({
         where: { id: it.menuItemId },
-        include: { category: { include: { availabilities: true } } }
+        include: {
+          category: { include: { availabilities: true } },
+          variants: { orderBy: { sortOrder: 'asc' } },
+          modifierGroups: { orderBy: { sortOrder: 'asc' }, include: { options: { orderBy: { sortOrder: 'asc' } } } }
+        }
       });
       if (!m.isAvailable) throw new Error(`Item not available: ${m.name}`);
       // Category schedule guard: if the parent category is disabled or
@@ -156,9 +170,30 @@ export async function placeOrder(input: PlaceOrderInput) {
             : `category "${m.category.name}" has no active schedule`;
         throw new Error(`Cannot order ${m.name}: ${reason}`);
       }
-      // Apply happy-hour pricing. When no rule matches, effectivePrice === Number(m.price).
+      // Variant + modifier resolution. Server-authoritative: the chosen variant
+      // price REPLACES the base, and modifier deltas ADD on top. Validation of
+      // min/max/required + availability happens here — we never trust client
+      // prices. Throws on any invalid selection.
+      const selections = resolveLineSelections(
+        m.name,
+        m.variants.map((v) => ({ id: v.id, name: v.name, price: Number(v.price), isDefault: v.isDefault, isAvailable: v.isAvailable })),
+        m.modifierGroups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          minSelect: g.minSelect,
+          maxSelect: g.maxSelect,
+          required: g.required,
+          options: g.options.map((o) => ({ id: o.id, name: o.name, priceDelta: Number(o.priceDelta), isAvailable: o.isAvailable }))
+        })),
+        { selectedVariantId: it.selectedVariantId, selectedModifierOptionIds: it.selectedModifierOptionIds }
+      );
+      // The base for happy-hour pricing is the variant price when a variant is
+      // chosen, otherwise the item's own price. Happy-hour discounts the
+      // size-level price; modifier add-ons are never discounted, so we add the
+      // modifier delta AFTER the happy-hour resolver runs.
+      const lineBasePrice = selections.variant ? selections.variant.price : Number(m.price);
       const priced = priceForItem(
-        { id: m.id, categoryId: m.category.id, price: Number(m.price) },
+        { id: m.id, categoryId: m.category.id, price: lineBasePrice },
         hhRules,
         hhNow
       );
@@ -171,7 +206,17 @@ export async function placeOrder(input: PlaceOrderInput) {
           quantity: it.quantity
         });
       }
-      lines.push({ name: m.name, unitPrice: priced.effectivePrice, quantity: it.quantity, menuItemId: m.id, categoryId: m.category.id, notes: it.notes });
+      const lineUnitPrice = clampTwo(priced.effectivePrice + selections.modifierDelta);
+      lines.push({
+        name: m.name,
+        unitPrice: lineUnitPrice,
+        quantity: it.quantity,
+        menuItemId: m.id,
+        categoryId: m.category.id,
+        notes: it.notes,
+        selectedVariantName: selections.variantName,
+        modifiersSummary: selections.modifiersSummary
+      });
     } else if (it.comboId) {
       const c = await prisma.combo.findUniqueOrThrow({
         where: { id: it.comboId },
@@ -365,7 +410,9 @@ export async function placeOrder(input: PlaceOrderInput) {
       quantity: l.quantity,
       notes: l.notes,
       menuItemId: l.menuItemId,
-      comboId: l.comboId
+      comboId: l.comboId,
+      selectedVariantName: l.selectedVariantName ?? null,
+      modifiersSummary: l.modifiersSummary ?? null
     }));
     if (freebieLine) {
       itemCreates.push({
