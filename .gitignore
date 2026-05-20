@@ -20,6 +20,11 @@ dist/
 .turbo/
 *.tsbuildinfo
 next-env.d.ts
+# Next.js standalone output (server.js + generated package.json). A stray build
+# once wrote these into a doubly-nested "apps/Restaurant Manager/" path — ignore
+# any such accidental nesting so it can never be committed again.
+apps/Restaurant Manager/
+**/standalone/
 
 # ── Capacitor / Android build artifacts ───────────────────────────────────
 apps/android-rider/android/app/build/
