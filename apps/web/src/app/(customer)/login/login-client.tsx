@@ -169,11 +169,22 @@ export function LoginClient({
     // the user can't access, so a wrong pick just falls back to their default —
     // it never blocks login.
     if (role === 'staff' && selectedRestaurantId) {
-      await fetch('/api/admin/active-restaurant', {
+      const resp = await fetch('/api/admin/active-restaurant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ restaurantId: selectedRestaurantId })
-      }).catch(() => {});
+      }).catch(() => null);
+      // Be honest when the credentials don't manage the picked restaurant —
+      // otherwise we'd silently drop the user on a different restaurant and they'd
+      // think the dropdown is broken.
+      if (resp && !resp.ok) {
+        const picked = restaurants.find((x) => x.id === selectedRestaurantId);
+        toast.error(
+          `This account doesn't manage ${picked?.name ?? 'that restaurant'}. Use that restaurant's owner login, or link it under a parent you own.`
+        );
+        setBusy(false);
+        return; // stay on the login page so they can use the right account
+      }
     }
     setBusy(false);
     await routeByRole(role === 'super' ? '/platform' : '/admin');
