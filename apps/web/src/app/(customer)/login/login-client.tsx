@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,7 +68,24 @@ export function LoginClient({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
+  // Restaurant picker (staff only): pick which restaurant you're signing in to.
+  // Populated from the public top-level-restaurants endpoint. Optional — it just
+  // pre-selects the active restaurant after login so you land in the right place.
+  const [restaurants, setRestaurants] = useState<{ id: string; name: string; slug: string }[]>([]);
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState('');
+
   const [busy, setBusy] = useState(false);
+
+  // Lazy-load the restaurant list the first time the staff tile is selected.
+  useEffect(() => {
+    if (role !== 'staff' || restaurants.length > 0) return;
+    let cancelled = false;
+    fetch('/api/auth/restaurants', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => { if (!cancelled) setRestaurants(Array.isArray(list) ? list : []); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [role, restaurants.length]);
 
   const activeSpec = ROLES.find((r) => r.id === role)!;
 
@@ -143,8 +160,19 @@ export function LoginClient({
   async function loginEmail() {
     setBusy(true);
     const r = await signIn('email-password', { email, password, redirect: false });
+    if (r?.error) { setBusy(false); return toast.error('Invalid credentials'); }
+    // If a restaurant was chosen, set it as the active one now that we're
+    // authenticated. The endpoint validates membership and ignores a restaurant
+    // the user can't access, so a wrong pick just falls back to their default —
+    // it never blocks login.
+    if (role === 'staff' && selectedRestaurantId) {
+      await fetch('/api/admin/active-restaurant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ restaurantId: selectedRestaurantId })
+      }).catch(() => {});
+    }
     setBusy(false);
-    if (r?.error) return toast.error('Invalid credentials');
     await routeByRole(role === 'super' ? '/platform' : '/admin');
   }
 
@@ -253,6 +281,27 @@ export function LoginClient({
                 )
               ) : (
                 <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); loginEmail(); }}>
+                  {role === 'staff' && (
+                    <div>
+                      <Label htmlFor="restaurant">Restaurant</Label>
+                      <select
+                        id="restaurant"
+                        value={selectedRestaurantId}
+                        onChange={(e) => setSelectedRestaurantId(e.target.value)}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <option value="">
+                          {restaurants.length === 0 ? 'Loading restaurants…' : 'Select your restaurant'}
+                        </option>
+                        {restaurants.map((r) => (
+                          <option key={r.id} value={r.id}>{r.name}</option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Pick the restaurant you manage, then sign in with your staff credentials.
+                      </p>
+                    </div>
+                  )}
                   <div>
                     <Label htmlFor="email">Email</Label>
                     <Input
