@@ -51,6 +51,8 @@ interface Rider {
   vehicleType: string | null;
   vehicleNumber: string | null;
   approvedAt: string | null;
+  /** Which group restaurant the rider is dedicated to — shown only in a group. */
+  restaurantName?: string | null;
 }
 
 interface Dispatch {
@@ -81,17 +83,20 @@ const MODE_OPTIONS: { value: DispatchMode; label: string; description: string }[
 
 export function DedicatedRidersClient({
   initialRiders,
-  initialDispatch
+  initialDispatch,
+  isGroup = false
 }: {
   initialRiders: Rider[];
   initialDispatch: Dispatch;
+  /** True when the active restaurant is a group parent — riders span the group. */
+  isGroup?: boolean;
 }) {
   const [riders, setRiders] = useState<Rider[]>(initialRiders);
 
   return (
     <div className="space-y-6">
       <DispatchModeCard initial={initialDispatch} />
-      <RosterCard riders={riders} setRiders={setRiders} />
+      <RosterCard riders={riders} setRiders={setRiders} isGroup={isGroup} />
     </div>
   );
 }
@@ -214,10 +219,12 @@ function DispatchModeCard({ initial }: { initial: Dispatch }) {
 
 function RosterCard({
   riders,
-  setRiders
+  setRiders,
+  isGroup
 }: {
   riders: Rider[];
   setRiders: React.Dispatch<React.SetStateAction<Rider[]>>;
+  isGroup: boolean;
 }) {
   const [addOpen, setAddOpen] = useState(false);
   const [removing, setRemoving] = useState<Rider | null>(null);
@@ -231,7 +238,11 @@ function RosterCard({
           </div>
           <div>
             <h2 className="display text-xl font-semibold">Dedicated riders ({riders.length})</h2>
-            <p className="text-xs text-muted-foreground">Riders that work exclusively for your restaurant.</p>
+            <p className="text-xs text-muted-foreground">
+              {isGroup
+                ? 'Riders dedicated across your group — shared by every restaurant in it.'
+                : 'Riders that work exclusively for your restaurant.'}
+            </p>
           </div>
         </div>
         <Button onClick={() => setAddOpen(true)} size="sm">
@@ -260,6 +271,7 @@ function RosterCard({
                 <thead className="bg-muted/40 border-b">
                   <tr>
                     <Th>Rider</Th>
+                    {isGroup ? <Th>Restaurant</Th> : null}
                     <Th>Phone</Th>
                     <Th>Status</Th>
                     <Th>Rating</Th>
@@ -272,6 +284,11 @@ function RosterCard({
                   {riders.map((r) => (
                     <tr key={r.id} className="hover:bg-muted/30">
                       <td className="px-4 py-3 font-medium">{r.name ?? '—'}</td>
+                      {isGroup ? (
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          {r.restaurantName ?? '—'}
+                        </td>
+                      ) : null}
                       <td className="px-4 py-3 font-mono text-xs">{r.phone ?? '—'}</td>
                       <td className="px-4 py-3">
                         {r.isOnline ? (

@@ -10,6 +10,8 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     where: { id },
     include: {
       owner: true,
+      parent: { select: { id: true, name: true, slug: true } },
+      children: { orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true, status: true } },
       branches: { include: { _count: { select: { menuItems: true, orders: true } } } },
       members: { include: { user: { select: { id: true, name: true, email: true, role: true } } } },
       integrations: { select: { provider: true, status: true, summary: true, lastTestedAt: true } }

@@ -3,7 +3,7 @@ import { prisma } from '@/server/db';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RestaurantsExplorer } from './explorer';
-import { Building2, CheckCircle2, Clock, Pause, XCircle, Plus } from 'lucide-react';
+import { Building2, CheckCircle2, Clock, Pause, XCircle, Plus, Network } from 'lucide-react';
 
 export const metadata = { title: 'Platform · Restaurants' };
 export const dynamic = 'force-dynamic';
@@ -26,14 +26,20 @@ export default async function PlatformRestaurantsPage({ searchParams }: { search
     ];
   }
 
-  const [rows, statusGroups, cuisines] = await Promise.all([
+  const [rows, statusGroups, cuisines, groupTops] = await Promise.all([
     prisma.restaurant.findMany({
       where,
       include: { owner: { select: { name: true, email: true } }, _count: { select: { branches: true } } },
       orderBy: [{ status: 'asc' }, { createdAt: 'desc' }]
     }),
     prisma.restaurant.groupBy({ by: ['status'], _count: true }),
-    prisma.restaurant.findMany({ where: { cuisine: { not: null } }, distinct: ['cuisine'], select: { cuisine: true } })
+    prisma.restaurant.findMany({ where: { cuisine: { not: null } }, distinct: ['cuisine'], select: { cuisine: true } }),
+    // Group tree: top-level restaurants that actually have children.
+    prisma.restaurant.findMany({
+      where: { parentId: null, children: { some: {} } },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, children: { orderBy: { name: 'asc' }, select: { id: true, name: true, status: true } } }
+    })
   ]);
 
   const counts = { ALL: 0, PENDING: 0, ACTIVE: 0, SUSPENDED: 0, REJECTED: 0 } as Record<string, number>;
@@ -58,6 +64,27 @@ export default async function PlatformRestaurantsPage({ searchParams }: { search
         <StatCard icon={Pause}       label="Suspended" value={counts.SUSPENDED}  tone="destructive" />
         <StatCard icon={XCircle}     label="Rejected"  value={counts.REJECTED}   tone="destructive" />
       </div>
+
+      {groupTops.length > 0 && (
+        <Card><CardContent className="p-5">
+          <h3 className="font-semibold mb-3 flex items-center gap-2"><Network className="size-4" /> Restaurant groups</h3>
+          <div className="grid gap-4 md:grid-cols-2">
+            {groupTops.map((g) => (
+              <div key={g.id} className="rounded-lg border p-3">
+                <div className="font-medium flex items-center gap-2">{g.name}<span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">Parent · {g.children.length}</span></div>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {g.children.map((c) => (
+                    <li key={c.id} className="flex items-center justify-between pl-4 border-l ml-1 py-0.5">
+                      <span className="text-muted-foreground">↳ {c.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{c.status}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </CardContent></Card>
+      )}
 
       <RestaurantsExplorer
         initial={JSON.parse(JSON.stringify(rows))}

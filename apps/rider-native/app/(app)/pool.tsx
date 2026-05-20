@@ -48,6 +48,14 @@ function PoolCard({
           <Text style={styles.branch} numberOfLines={1}>
             {order.branch} · {order.code}
           </Text>
+          {order.branchAddress ? (
+            <View style={styles.pickupRow}>
+              <Ionicons name="storefront-outline" size={13} color={colors.textMuted} />
+              <Text style={styles.pickupText} numberOfLines={1}>
+                Collect from {order.branchAddress}
+              </Text>
+            </View>
+          ) : null}
         </View>
         <View style={styles.payoutPill}>
           <Text style={styles.payoutAmount}>{rupees(order.payout)}</Text>
@@ -335,6 +343,17 @@ const styles = StyleSheet.create({
   branch: {
     marginTop: 1,
     fontSize: font.size.sm,
+    color: colors.textMuted,
+  },
+  pickupRow: {
+    marginTop: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  pickupText: {
+    flex: 1,
+    fontSize: font.size.xs,
     color: colors.textMuted,
   },
   payoutPill: {

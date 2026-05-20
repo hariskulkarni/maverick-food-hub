@@ -10,7 +10,7 @@ import { AssignmentStatus, OrderStatus } from '@prisma/client';
 import { transitionOrder } from '@/server/orders';
 import { computeBasePayout } from '@/server/payouts';
 import { publish } from '@/server/realtime';
-import { riderCanClaimOrder } from '@/server/rider-sourcing';
+import { riderCanClaimOrder, resolveDedicatedGroup } from '@/server/rider-sourcing';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
@@ -32,8 +32,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ or
 
   // Enforce the restaurant's rider-dispatch policy: a fleet rider can't grab a
   // dedicated-only order, a dedicated rider can't grab a fleet-only order, and
-  // for DEDICATED_FIRST the fleet must wait out the fallback window.
-  if (!riderCanClaimOrder(profile, order)) {
+  // for DEDICATED_FIRST the fleet must wait out the fallback window. We resolve
+  // the rider's group first so a rider dedicated to any restaurant in a group
+  // may claim orders from any restaurant in that same group.
+  const groupProfile = await resolveDedicatedGroup(profile);
+  if (!riderCanClaimOrder(groupProfile, order)) {
     return new Response('This order is not available to you', { status: 403 });
   }
 

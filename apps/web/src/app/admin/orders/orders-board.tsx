@@ -27,9 +27,30 @@ const FILTERS = [
 
 type PendingAlert = { orderId: string; code: string };
 
-export function OrdersBoard({ branchId, initial }: { branchId: string; initial: Order[] }) {
+type RestaurantOption = { id: string; name: string; isParent: boolean };
+
+export function OrdersBoard({
+  branchId,
+  channel,
+  isGroup = false,
+  restaurantOptions = [],
+  initial
+}: {
+  branchId: string;
+  /** Channel to subscribe to: group channel when grouped, else branch channel. */
+  channel?: string;
+  /** True when the active restaurant is a group parent spanning children. */
+  isGroup?: boolean;
+  /** Group restaurants for the per-restaurant filter (empty when not grouped). */
+  restaurantOptions?: RestaurantOption[];
+  initial: Order[];
+}) {
   const [orders, setOrders] = useState<Order[]>(initial);
   const [filter, setFilter] = useState<string>('all');
+  // Per-restaurant filter for group mode: 'all' or a restaurantId.
+  const [restaurantFilter, setRestaurantFilter] = useState<string>('all');
+  // Fall back to the legacy branch channel when no channel prop is passed.
+  const activeChannel = channel ?? `branch:${branchId}:orders`;
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [alerts, setAlerts] = useState<PendingAlert[]>([]);
   // Sync safety net — tracks last successful pull from /api/admin/orders/snapshot.
@@ -153,10 +174,20 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
     return () => clearInterval(id);
   }, []);
 
-  useSSE(`branch:${branchId}:orders`, {
+  useSSE(activeChannel, {
     onMessage: async (e: any) => {
-      // Refetch the affected order on any event for simplicity
       if (!e.orderId) return;
+      // Group channel events span multiple branches. The per-order endpoint is
+      // single-branch scoped, so for the group board we reconcile via the
+      // group-aware snapshot endpoint instead (same safety-net pattern as the
+      // poll). It also surfaces the chime + alert for genuinely new orders.
+      if (isGroup) {
+        // refreshSnapshot detects orders we haven't seen and fires the chime +
+        // alert for any RECEIVED arrival, so no duplicate alerting needed here.
+        await refreshSnapshot(true);
+        return;
+      }
+      // Solo / single-branch: refetch just the affected order (unchanged path).
       const r = await fetch(`/api/admin/orders/${e.orderId}`);
       if (!r.ok) return;
       const updated = await r.json();
@@ -194,10 +225,15 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
   }
 
   const filtered = useMemo(() => {
+    let list = orders;
+    // Per-restaurant filter (group mode only): match the order's source label.
+    if (isGroup && restaurantFilter !== 'all') {
+      list = list.filter((o) => o._label?.restaurantId === restaurantFilter);
+    }
     const f = FILTERS.find((x) => x.key === filter);
-    if (!f || filter === 'all') return orders;
-    return orders.filter((o) => (f as any).match(o));
-  }, [orders, filter]);
+    if (!f || filter === 'all') return list;
+    return list.filter((o) => (f as any).match(o));
+  }, [orders, filter, restaurantFilter, isGroup]);
 
   async function transition(id: string, next: string, opts: { note?: string } = {}) {
     if (busy[id]) return; // guard against rapid double-clicks
@@ -252,6 +288,30 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
         </div>
       )}
 
+      {isGroup && restaurantOptions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Restaurant:</span>
+          <button
+            onClick={() => setRestaurantFilter('all')}
+            className={`rounded-full border px-3 py-1.5 text-sm ${restaurantFilter === 'all' ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-accent'}`}
+          >
+            All
+          </button>
+          {restaurantOptions.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => setRestaurantFilter(r.id)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm ${restaurantFilter === r.id ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-accent'}`}
+            >
+              {r.name}
+              {r.isParent && (
+                <span className="rounded bg-primary/15 px-1 text-[10px] font-semibold uppercase tracking-wide text-primary">HQ</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         {FILTERS.map((f) => (
           <button
@@ -278,6 +338,7 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <Link href={`/admin/orders/${o.id}`} className="font-semibold hover:text-primary">{o.code}</Link>
+                  {isGroup && o._label && <RestaurantLabel label={o._label} />}
                   <OrderStatusBadge status={o.status} />
                   <FulfillmentPill type={o.fulfillmentType} />
                   {freebieItem(o) && (
@@ -339,6 +400,27 @@ export function OrdersBoard({ branchId, initial }: { branchId: string; initial: 
       </div>
 
     </>
+  );
+}
+
+/**
+ * Per-order source-restaurant badge for the group board. Shows the restaurant
+ * name; the parent's own ("HQ") orders get a subtle distinguishing badge so the
+ * group operator can tell at a glance which restaurant an order belongs to.
+ */
+function RestaurantLabel({ label }: { label: { restaurantName: string; isParent: boolean } }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+        label.isParent ? 'border-primary/40 bg-primary/10 text-primary' : 'bg-muted'
+      }`}
+      title={label.isParent ? `${label.restaurantName} (parent / HQ)` : label.restaurantName}
+    >
+      {label.restaurantName}
+      {label.isParent && (
+        <span className="rounded bg-primary/20 px-1 text-[9px] font-semibold uppercase tracking-wide">HQ</span>
+      )}
+    </span>
   );
 }
 

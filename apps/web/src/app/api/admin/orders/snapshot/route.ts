@@ -1,5 +1,6 @@
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
+import { resolveGroupContext } from '@/server/group-scope';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,8 +20,14 @@ export async function GET() {
     where: { restaurantId: restaurant.id },
     orderBy: { createdAt: 'asc' }
   });
+
+  // For a group parent, span every branch across the group; otherwise keep the
+  // single-branch behaviour. Auth is the same currentRestaurant() guard, and
+  // resolveGroupContext only widens to children of the active restaurant.
+  const group = await resolveGroupContext(restaurant.id);
+
   const orders = await prisma.order.findMany({
-    where: { branchId: branch.id },
+    where: group.isGroup ? { branchId: { in: group.branchIds } } : { branchId: branch.id },
     include: {
       customer: true,
       items: true,
@@ -30,9 +37,15 @@ export async function GET() {
     orderBy: { placedAt: 'desc' },
     take: 100
   });
+  // Annotate each order with its source-restaurant label (null when not grouped).
+  const annotated = orders.map((o) => ({
+    ...o,
+    _label: group.labelByBranchId[o.branchId] ?? null
+  }));
   return Response.json({
     at: new Date().toISOString(),
     branchId: branch.id,
-    orders: JSON.parse(JSON.stringify(orders))
+    isGroup: group.isGroup,
+    orders: JSON.parse(JSON.stringify(annotated))
   });
 }

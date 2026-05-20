@@ -364,6 +364,20 @@ model Restaurant {
   fleetFallbackMinutes Int               @default(5) // DEDICATED_FIRST: wait before opening to fleet
   // Optional umbrella brand. NULL ⇒ solo restaurant (existing behaviour).
   brandId              String?
+  // ── Restaurant hierarchy (parent ↔ children) ─────────────────────────────
+  // A restaurant may be a CHILD of another (its parent). The parent is itself a
+  // real, orderable restaurant. NULL parentId ⇒ a top-level restaurant (the
+  // existing behaviour for every current tenant). Children are accessed by
+  // admins via explicit RestaurantUser grants + the account switcher.
+  parentId             String?
+  // Group sharing toggles — set on the PARENT, govern the whole group, and are
+  // flippable by the parent admin at any time. All default OFF so a freshly
+  // linked group behaves as fully-independent restaurants until the owner opts
+  // in. groupShareReports rolls children's metrics up into the parent's reports;
+  // groupShareMenu/groupShareRiders gate the (follow-up) menu + rider sharing.
+  groupShareMenu       Boolean           @default(false)
+  groupShareRiders     Boolean           @default(false)
+  groupShareReports    Boolean           @default(false)
 
   // ── Order-flow toggles (set at restaurant creation; admin-editable) ──────
   // When true, a customer's RECEIVED order auto-transitions to ACCEPTED with
@@ -399,6 +413,10 @@ model Restaurant {
 
   owner             User                    @relation("RestaurantOwner", fields: [ownerUserId], references: [id])
   brand             Brand?                  @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  // Self-relation: parent is the group root; children hang off it. Detaching a
+  // parent (SetNull) leaves children as independent top-level restaurants.
+  parent            Restaurant?             @relation("RestaurantHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children          Restaurant[]            @relation("RestaurantHierarchy")
   branches          Branch[]
   members           RestaurantUser[]
   riderApplications RiderApplication[]
@@ -413,6 +431,7 @@ model Restaurant {
 
   @@index([status])
   @@index([brandId])
+  @@index([parentId])
 }
 
 model RestaurantUser {

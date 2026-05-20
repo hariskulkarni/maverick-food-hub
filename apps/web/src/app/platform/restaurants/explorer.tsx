@@ -10,7 +10,7 @@ import { DetailDrawer, DrawerSection } from '@/components/admin/detail-drawer';
 import { QrCard } from '@/components/qr-card';
 import { toast } from 'sonner';
 import {
-  Search, X, RefreshCw, Check, Pause, Play, ArrowUpRight, Building2, MapPin, Users, Utensils, Wallet, Plug, Save, Loader2, AlertTriangle, ExternalLink
+  Search, X, RefreshCw, Check, Pause, Play, ArrowUpRight, Building2, MapPin, Users, Utensils, Wallet, Plug, Save, Loader2, AlertTriangle, ExternalLink, Network, Link2Off
 } from 'lucide-react';
 
 const STATUSES = ['ALL', 'PENDING', 'ACTIVE', 'SUSPENDED', 'REJECTED'] as const;
@@ -114,6 +114,9 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
   const [loading, setLoading] = useState(true);
   const [commission, setCommission] = useState(15);
   const [saving, setSaving] = useState(false);
+  const [eligibleParents, setEligibleParents] = useState<{ id: string; name: string }[]>([]);
+  const [parentSel, setParentSel] = useState<string>('');
+  const [savingParent, setSavingParent] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -122,10 +125,28 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
       const j = await r.json();
       setData(j);
       setCommission(Number(j.restaurant.commissionPct ?? 15));
+      setParentSel(j.restaurant.parentId ?? '');
     }
     setLoading(false);
   }
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+  useEffect(() => {
+    fetch('/api/platform/restaurants/groups', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => j && setEligibleParents(j.eligibleParents))
+      .catch(() => {});
+  }, []);
+
+  async function saveParent(parentId: string | null) {
+    setSavingParent(true);
+    const r = await fetch(`/api/platform/restaurants/${id}/parent`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parentId }),
+    });
+    setSavingParent(false);
+    if (!r.ok) return toast.error('Failed: ' + (await r.text()));
+    toast.success(parentId ? 'Assigned to parent' : 'Detached from group');
+    load(); onChanged();
+  }
 
   async function lifecycle(action: 'approve' | 'reject' | 'suspend', body?: any) {
     const r = await fetch(`/api/platform/restaurants/${id}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
@@ -219,6 +240,46 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
           <Button size="sm" disabled={saving || commission === Number(r.commissionPct)} onClick={saveCommission}>
             <Save className="size-3.5" /> {saving ? 'Saving…' : 'Save commission'}
           </Button>
+        </div>
+      </DrawerSection>
+
+      <DrawerSection title="Group / parent" action={r.children.length > 0 ? <Badge>Parent · {r.children.length}</Badge> : r.parent ? <Badge variant="muted">Child</Badge> : <Badge variant="muted">Standalone</Badge>}>
+        <div className="p-4 space-y-3 text-sm">
+          {r.children.length > 0 ? (
+            <>
+              <div className="flex items-center gap-2 text-muted-foreground"><Network className="size-4" /> Heads a group of {r.children.length} restaurant{r.children.length === 1 ? '' : 's'}.</div>
+              <ul className="rounded-md border divide-y">
+                {r.children.map((c: any) => (
+                  <li key={c.id} className="flex items-center justify-between px-3 py-2">
+                    <span>{c.name}</span><StatusBadge status={c.status} />
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted-foreground">Detach all children before this restaurant can become a child of another.</p>
+            </>
+          ) : r.parent ? (
+            <>
+              <div className="flex items-center gap-2"><Network className="size-4 text-primary" /> Child of <strong>{r.parent.name}</strong></div>
+              <div className="flex flex-wrap gap-2">
+                <select value={parentSel} onChange={(e) => setParentSel(e.target.value)} className="h-9 rounded-md border bg-card px-2 text-sm flex-1 min-w-[180px]">
+                  {eligibleParents.filter((p) => p.id !== r.id).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <Button size="sm" disabled={savingParent || parentSel === r.parentId} onClick={() => saveParent(parentSel || null)}><Save className="size-3.5" /> Move</Button>
+                <Button size="sm" variant="outline" disabled={savingParent} onClick={() => saveParent(null)}><Link2Off className="size-3.5" /> Detach</Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground">Standalone restaurant. Assign it under a top-level parent to operate it as part of a group.</p>
+              <div className="flex flex-wrap gap-2">
+                <select value={parentSel} onChange={(e) => setParentSel(e.target.value)} className="h-9 rounded-md border bg-card px-2 text-sm flex-1 min-w-[180px]">
+                  <option value="">Select a parent…</option>
+                  {eligibleParents.filter((p) => p.id !== r.id).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <Button size="sm" disabled={savingParent || !parentSel} onClick={() => saveParent(parentSel)}><Network className="size-3.5" /> Assign</Button>
+              </div>
+            </>
+          )}
         </div>
       </DrawerSection>
 

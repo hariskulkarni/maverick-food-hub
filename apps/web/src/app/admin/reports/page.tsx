@@ -5,6 +5,8 @@ import { salesSeries, bestSellers, leastSellers, riderPerformance, customerInsig
 import { ChartsClient } from '../charts-client';
 import { money } from '@/lib/utils';
 import { ReportRangePicker } from '@/app/_components/report-range-picker';
+import { resolveGroupReport, groupSalesSeries, childBreakdownRange } from './_group-metrics';
+import { Network, Info } from 'lucide-react';
 
 export const metadata = { title: 'Admin · Reports' };
 
@@ -20,20 +22,74 @@ const REPORTS = [
 export default async function ReportsPage() {
   const restaurant = await requireRestaurant();
   const branch = await prisma.branch.findFirstOrThrow({ where: { restaurantId: restaurant.id, isActive: true }, orderBy: { createdAt: 'asc' } });
-  const [sales, bs, ls, rp, ci] = await Promise.all([
-    salesSeries(branch.id, 30), bestSellers(branch.id, 10), leastSellers(branch.id, 5), riderPerformance(branch.id), customerInsights(branch.id)
+
+  // Group scope: roll the sales chart + per-restaurant breakdown up across the
+  // group when this is a parent with rollup enabled; otherwise stay single-branch.
+  const report = await resolveGroupReport(restaurant.id, branch.id);
+
+  const [sales, bs, ls, rp, ci, breakdown] = await Promise.all([
+    report.rollup ? groupSalesSeries(report.branchIds, 30) : salesSeries(branch.id, 30),
+    bestSellers(branch.id, 10), leastSellers(branch.id, 5), riderPerformance(branch.id), customerInsights(branch.id),
+    report.rollup ? childBreakdownRange(report.ctx, 30) : Promise.resolve([]),
   ]);
 
   return (
     <div className="p-6 space-y-6">
       <header>
         <h1 className="display text-2xl font-semibold">Reports</h1>
-        <p className="text-sm text-muted-foreground">Pick a date range, then download the report you need.</p>
+        <p className="text-sm text-muted-foreground">
+          Pick a date range, then download the report you need.
+          {report.rollup && (
+            <span className="ml-1 inline-flex items-center gap-1 text-primary">
+              <Network className="size-3.5" /> Rolled up across your group ({report.ctx.restaurants.length} restaurants).
+            </span>
+          )}
+        </p>
       </header>
+
+      {report.rollupAvailableButOff && (
+        <div className="flex items-start gap-2 rounded-lg border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground">
+          <Info className="size-4 mt-0.5 shrink-0 text-primary" />
+          <span>
+            This restaurant heads a group of {report.ctx.restaurants.length} restaurants. Reports show only its own
+            data — enable <span className="font-medium">group report sharing</span> to roll up every child.
+          </span>
+        </div>
+      )}
 
       <ReportRangePicker apiBase="/api/admin/reports" reports={REPORTS} />
 
-      <Card><CardContent className="p-5"><h3 className="font-semibold mb-3">Sales (30 days)</h3><ChartsClient kind="sales" data={sales as any} /></CardContent></Card>
+      <Card><CardContent className="p-5"><h3 className="font-semibold mb-3">Sales (30 days){report.rollup ? ' · group' : ''}</h3><ChartsClient kind="sales" data={sales as any} /></CardContent></Card>
+
+      {report.rollup && breakdown.length > 0 && (
+        <Card><CardContent className="p-5">
+          <h3 className="font-semibold mb-3 flex items-center gap-2"><Network className="size-4" /> By restaurant (30 days)</h3>
+          <table className="w-full text-sm">
+            <thead className="text-left text-muted-foreground">
+              <tr><th className="py-2">Restaurant</th><th className="text-right">Orders</th><th className="text-right">Revenue</th></tr>
+            </thead>
+            <tbody>
+              {breakdown.map((row) => (
+                <tr key={row.restaurantId} className="border-t">
+                  <td className="py-2">
+                    {row.restaurantName}
+                    {row.isParent && <span className="ml-2 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">Parent</span>}
+                  </td>
+                  <td className="text-right tabular-nums">{row.orders}</td>
+                  <td className="text-right tabular-nums font-medium">{money(row.revenue)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t font-semibold">
+                <td className="py-2">Group total</td>
+                <td className="text-right tabular-nums">{breakdown.reduce((s, r) => s + r.orders, 0)}</td>
+                <td className="text-right tabular-nums">{money(breakdown.reduce((s, r) => s + r.revenue, 0))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </CardContent></Card>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card><CardContent className="p-5">

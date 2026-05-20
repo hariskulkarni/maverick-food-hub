@@ -1,5 +1,6 @@
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
+import { resolveGroupContext } from '@/server/group-scope';
 import { OrdersBoard } from './orders-board';
 import { PauseControl } from './pause-control';
 import { isPaused } from '@/server/branch-pause';
@@ -21,12 +22,29 @@ export default async function AdminOrdersPage({ searchParams: _sp }: { searchPar
   // can resume it. Fall back to any branch for this restaurant.
   const branch = await prisma.branch.findFirstOrThrow({ where: { restaurantId: restaurant.id }, orderBy: { createdAt: 'asc' } });
   const pause = await isPaused(branch.id);
+
+  // Resolve the group rooted at the active restaurant. When it's a real group
+  // (parent with children), span every branch across the group; otherwise keep
+  // exactly the single-branch behaviour for solo tenants / a child viewed directly.
+  const group = await resolveGroupContext(restaurant.id);
+
   const orders = await prisma.order.findMany({
-    where: { branchId: branch.id },
+    where: group.isGroup ? { branchId: { in: group.branchIds } } : { branchId: branch.id },
     include: { customer: true, items: true, address: true, assignment: { include: { rider: { include: { user: true } } } } },
     orderBy: { placedAt: 'desc' },
     take: 100
   });
+  // Annotate each order with its source restaurant for the board's label/filter.
+  const annotated = orders.map((o) => ({
+    ...o,
+    _label: group.labelByBranchId[o.branchId] ?? null
+  }));
+
+  // Restaurant options for the group filter (parent first, then children).
+  const restaurantOptions = group.isGroup
+    ? group.restaurants.map((r) => ({ id: r.id, name: r.name, isParent: r.isParent }))
+    : [];
+
   return (
     <div className="p-6 space-y-4">
       <h1 className="display text-2xl font-semibold">Orders</h1>
@@ -39,7 +57,13 @@ export default async function AdminOrdersPage({ searchParams: _sp }: { searchPar
           indefinite: pause.indefinite
         }}
       />
-      <OrdersBoard branchId={branch.id} initial={JSON.parse(JSON.stringify(orders))} />
+      <OrdersBoard
+        branchId={branch.id}
+        channel={group.isGroup ? group.channel : `branch:${branch.id}:orders`}
+        isGroup={group.isGroup}
+        restaurantOptions={restaurantOptions}
+        initial={JSON.parse(JSON.stringify(annotated))}
+      />
     </div>
   );
 }

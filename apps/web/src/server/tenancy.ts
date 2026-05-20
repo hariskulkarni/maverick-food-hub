@@ -1,34 +1,249 @@
 /**
  * Multi-tenant helpers.
  *
- *   currentRestaurant()  — returns the active restaurant for the logged-in
- *                          ADMIN/KITCHEN user, or null if super-admin/customer.
- *   requireRestaurant()  — same, but throws 404 if the user is not a restaurant member.
- *   requireSuperAdmin()  — throws 403 if not SUPER_ADMIN.
+ *   currentRestaurant()      — the ACTIVE restaurant for the logged-in
+ *                              ADMIN/KITCHEN user (honours the account switcher
+ *                              cookie), or null if super-admin/customer.
+ *   requireRestaurant()      — same, but throws 404 if the user is not a member.
+ *   accessibleRestaurants()  — every restaurant the user may switch into
+ *                              (their RestaurantUser grants), grouped parent→child.
+ *   resolveGroupSharing()    — effective group sharing flags for a restaurant
+ *                              (a child inherits its parent's toggles).
+ *   requireSuperAdmin()      — throws 403 if not SUPER_ADMIN.
+ *
+ * Account switching: a user may have RestaurantUser grants to several
+ * restaurants (e.g. a parent + its children). The active one is stored in the
+ * `active_restaurant` cookie, written by POST /api/admin/active-restaurant.
+ * currentRestaurant() only READS the cookie (safe in a Server Component) and
+ * always validates the id against the caller's memberships before honouring it,
+ * so a forged cookie can never grant access to a restaurant the user isn't a
+ * member of. If the cookie is missing/invalid we fall back to the first grant.
  */
 
+import { cookies } from 'next/headers';
 import { auth } from './auth';
 import { prisma } from './db';
 import { Role } from '@prisma/client';
 
+export const ACTIVE_RESTAURANT_COOKIE = 'active_restaurant';
+
+const TENANT_ROLES: Role[] = [Role.ADMIN, Role.KITCHEN];
+
+type RestaurantRecord = Awaited<ReturnType<typeof prisma.restaurant.findFirstOrThrow>>;
+interface AccessEntry {
+  restaurant: RestaurantRecord;
+  role: Role;
+  /** true when access is implied by owning/administering the parent (not an explicit grant). */
+  implied: boolean;
+}
+
+/** Membership rows (restaurant + the caller's role in it) for the current user. */
+async function membershipsForUser(userId: string) {
+  return prisma.restaurantUser.findMany({
+    where: { userId },
+    include: { restaurant: true },
+    orderBy: { createdAt: 'asc' },
+  });
+}
+
+/**
+ * The full set of restaurants a user may operate, in stable order:
+ *   1. explicit RestaurantUser grants (their primary first, by createdAt)
+ *   2. restaurants they OWN (ownerUserId) even without a grant row
+ *   3. CHILDREN of any restaurant they own or ADMIN — the parent-owner "sees
+ *      all" rule, so a group owner reaches every child without per-child grants.
+ * KITCHEN-only members get just their explicit grants (no implied child access).
+ * Keyed by restaurantId; insertion order defines the switcher fallback order.
+ */
+async function accessibleSet(userId: string): Promise<Map<string, AccessEntry>> {
+  const map = new Map<string, AccessEntry>();
+
+  const memberships = await membershipsForUser(userId);
+  for (const m of memberships) {
+    map.set(m.restaurantId, { restaurant: m.restaurant, role: m.role, implied: false });
+  }
+
+  // Roots whose children this user implicitly reaches: restaurants they own, or
+  // are an ADMIN member of. (KITCHEN grants don't cascade to children.)
+  const owned = await prisma.restaurant.findMany({ where: { ownerUserId: userId } });
+  for (const r of owned) {
+    if (!map.has(r.id)) map.set(r.id, { restaurant: r, role: Role.ADMIN, implied: false });
+  }
+  const rootIds = new Set<string>([
+    ...owned.map((r) => r.id),
+    ...memberships.filter((m) => m.role === Role.ADMIN).map((m) => m.restaurantId),
+  ]);
+  if (rootIds.size > 0) {
+    const children = await prisma.restaurant.findMany({ where: { parentId: { in: [...rootIds] } } });
+    for (const c of children) {
+      if (!map.has(c.id)) map.set(c.id, { restaurant: c, role: Role.ADMIN, implied: true });
+    }
+  }
+  return map;
+}
+
+/** Whether the user may operate the given restaurant (explicit grant or implied via ownership). */
+export async function userCanAccessRestaurant(userId: string, restaurantId: string): Promise<boolean> {
+  const set = await accessibleSet(userId);
+  return set.has(restaurantId);
+}
+
 export async function currentRestaurant() {
   const session = await auth();
   if (!session?.user) return null;
-  const tenantRoles: Role[] = [Role.ADMIN, Role.KITCHEN];
-  if (!tenantRoles.includes(session.user.role)) return null;
+  if (!TENANT_ROLES.includes(session.user.role)) return null;
 
-  // Pick the first membership; multi-restaurant per user can be added later.
-  const membership = await prisma.restaurantUser.findFirst({
-    where: { userId: session.user.id },
-    include: { restaurant: true }
-  });
-  return membership?.restaurant ?? null;
+  const set = await accessibleSet(session.user.id);
+  if (set.size === 0) return null;
+  const entries = [...set.values()];
+
+  // Honour the account-switcher cookie ONLY when it points at a restaurant the
+  // user can actually access (defends against a tampered cookie).
+  const cookieStore = await cookies();
+  const activeId = cookieStore.get(ACTIVE_RESTAURANT_COOKIE)?.value;
+  if (activeId && set.has(activeId)) {
+    return set.get(activeId)!.restaurant;
+  }
+  // Fallback: first accessible restaurant (explicit grants ordered first).
+  return entries[0].restaurant;
 }
 
 export async function requireRestaurant() {
   const r = await currentRestaurant();
   if (!r) throw new Response('No restaurant for this user', { status: 404 });
   return r;
+}
+
+export interface AccessibleRestaurant {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  role: Role;
+  parentId: string | null;
+  /** Convenience flag — this restaurant is the root of a group (has children OR no parent but others point to it). */
+  isParent: boolean;
+}
+
+export interface AccessibleGroup {
+  /** The parent restaurant the caller can access, if any (else null = ungrouped). */
+  parent: AccessibleRestaurant | null;
+  /** Children (or, for the null group, standalone restaurants) the caller can access. */
+  members: AccessibleRestaurant[];
+}
+
+/**
+ * Every restaurant the current user may switch into, plus a grouped view for
+ * the dropdown. Access is membership-based (explicit RestaurantUser grants) —
+ * being a parent does NOT auto-grant the children; each must be granted.
+ */
+export async function accessibleRestaurants(): Promise<{
+  flat: AccessibleRestaurant[];
+  groups: AccessibleGroup[];
+  activeId: string | null;
+}> {
+  const session = await auth();
+  if (!session?.user || !TENANT_ROLES.includes(session.user.role)) {
+    return { flat: [], groups: [], activeId: null };
+  }
+  const set = await accessibleSet(session.user.id);
+  const entries = [...set.values()];
+  const accessibleIds = new Set(entries.map((e) => e.restaurant.id));
+
+  const flat: AccessibleRestaurant[] = entries.map((e) => ({
+    id: e.restaurant.id,
+    name: e.restaurant.name,
+    slug: e.restaurant.slug,
+    status: e.restaurant.status,
+    role: e.role,
+    parentId: e.restaurant.parentId,
+    // A restaurant is shown as a group root if it has no parent of its own AND
+    // at least one accessible sibling names it as parent.
+    isParent:
+      e.restaurant.parentId === null &&
+      entries.some((other) => other.restaurant.parentId === e.restaurant.id),
+  }));
+
+  // Build grouped view. A child whose parent the caller can also access nests
+  // under that parent; everything else lands in the null (ungrouped) bucket.
+  const byId = new Map(flat.map((r) => [r.id, r]));
+  const groupsMap = new Map<string | null, AccessibleGroup>();
+  const groupKeyFor = (r: AccessibleRestaurant): string | null =>
+    r.parentId && accessibleIds.has(r.parentId) ? r.parentId : null;
+
+  for (const r of flat) {
+    const key = groupKeyFor(r);
+    if (!groupsMap.has(key)) {
+      groupsMap.set(key, { parent: key ? byId.get(key) ?? null : null, members: [] });
+    }
+    // The parent itself is the group header, not a member of its own children bucket.
+    if (key !== null && r.id === key) continue;
+    groupsMap.get(key)!.members.push(r);
+  }
+  // Ensure a parent that the caller accesses but that has no accessible children
+  // still appears (as its own group with itself as the sole member).
+  for (const r of flat) {
+    const key = groupKeyFor(r);
+    if (key === null && r.isParent && !groupsMap.has(r.id)) {
+      groupsMap.set(r.id, { parent: r, members: [] });
+    }
+  }
+
+  const cookieStore = await cookies();
+  const cookieId = cookieStore.get(ACTIVE_RESTAURANT_COOKIE)?.value ?? null;
+  const activeId =
+    cookieId && accessibleIds.has(cookieId) ? cookieId : entries[0]?.restaurant.id ?? null;
+
+  return { flat, groups: Array.from(groupsMap.values()), activeId };
+}
+
+export interface GroupSharing {
+  /** The restaurant whose toggles are in effect (self if top-level, else the parent). */
+  sourceRestaurantId: string;
+  isChild: boolean;
+  shareMenu: boolean;
+  shareRiders: boolean;
+  shareReports: boolean;
+}
+
+/**
+ * Resolve the EFFECTIVE group sharing flags for a restaurant. A child inherits
+ * its parent's toggles (the parent owns the group policy); a top-level
+ * restaurant uses its own. Returns all-false when there's no grouping.
+ */
+export async function resolveGroupSharing(restaurantId: string): Promise<GroupSharing> {
+  const r = await prisma.restaurant.findUnique({
+    where: { id: restaurantId },
+    select: {
+      id: true,
+      parentId: true,
+      groupShareMenu: true,
+      groupShareRiders: true,
+      groupShareReports: true,
+      parent: {
+        select: { id: true, groupShareMenu: true, groupShareRiders: true, groupShareReports: true },
+      },
+    },
+  });
+  if (!r) {
+    return { sourceRestaurantId: restaurantId, isChild: false, shareMenu: false, shareRiders: false, shareReports: false };
+  }
+  if (r.parentId && r.parent) {
+    return {
+      sourceRestaurantId: r.parent.id,
+      isChild: true,
+      shareMenu: r.parent.groupShareMenu,
+      shareRiders: r.parent.groupShareRiders,
+      shareReports: r.parent.groupShareReports,
+    };
+  }
+  return {
+    sourceRestaurantId: r.id,
+    isChild: false,
+    shareMenu: r.groupShareMenu,
+    shareRiders: r.groupShareRiders,
+    shareReports: r.groupShareReports,
+  };
 }
 
 export async function requireSuperAdmin() {

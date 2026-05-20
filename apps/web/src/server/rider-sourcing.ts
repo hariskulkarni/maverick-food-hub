@@ -15,15 +15,61 @@
  */
 import { prisma } from './db';
 import { RiderType, RiderDispatchMode } from '@prisma/client';
+import { resolveGroupContext } from './group-scope';
 
 /**
  * The minimal rider identity the dispatch rules need. Callers typically
  * `select` exactly these three columns off `RiderProfile`.
+ *
+ * GROUP SHARING: a DEDICATED rider belongs to ONE restaurant
+ * (`dedicatedRestaurantId`), but when that restaurant is part of a group
+ * (parent + children) the rider is effectively shared across the whole group —
+ * they may take orders from any restaurant in it. `dedicatedGroupRestaurantIds`
+ * carries that resolved set (always includes `dedicatedRestaurantId` itself).
+ * When omitted, the rules fall back to the single `dedicatedRestaurantId`, so
+ * solo restaurants behave exactly as before.
  */
 export interface RiderSourcingProfile {
   id: string;
   riderType: RiderType;
   dedicatedRestaurantId: string | null;
+  /**
+   * Every restaurant id in the rider's dedicated restaurant's group (root +
+   * children). Optional: when absent we treat the rider as dedicated only to
+   * `dedicatedRestaurantId`. Use `resolveDedicatedGroup()` to populate it.
+   */
+  dedicatedGroupRestaurantIds?: string[];
+}
+
+/**
+ * Resolve the set of restaurant ids a DEDICATED rider is effectively dedicated
+ * to once group-sharing is applied: their `dedicatedRestaurantId` plus every
+ * other restaurant in the same group (parent + children). For a solo
+ * restaurant this is just the one id. For a FLEET rider (or a rider with no
+ * dedicated restaurant) the set is empty.
+ *
+ * Returns a `RiderSourcingProfile` augmented with `dedicatedGroupRestaurantIds`
+ * so callers can pass it straight into `filterOrdersForRider` /
+ * `riderCanClaimOrder`.
+ */
+export async function resolveDedicatedGroup(
+  profile: RiderSourcingProfile
+): Promise<RiderSourcingProfile> {
+  if (
+    profile.riderType !== RiderType.DEDICATED ||
+    !profile.dedicatedRestaurantId
+  ) {
+    return { ...profile, dedicatedGroupRestaurantIds: [] };
+  }
+  const group = await resolveGroupContext(profile.dedicatedRestaurantId);
+  // resolveGroupContext.restaurantIds is [root, ...children]; ensure the
+  // rider's own restaurant is always present even on the degenerate path.
+  const ids = group.restaurantIds.length
+    ? group.restaurantIds
+    : [profile.dedicatedRestaurantId];
+  const set = new Set(ids);
+  set.add(profile.dedicatedRestaurantId);
+  return { ...profile, dedicatedGroupRestaurantIds: [...set] };
 }
 
 /**
@@ -72,10 +118,20 @@ export function riderCanClaimOrder(
 ): boolean {
   const restaurant = order.branch.restaurant;
   const isDedicated = profile.riderType === RiderType.DEDICATED;
-  // A DEDICATED rider is "this restaurant's" only when their
-  // dedicatedRestaurantId matches the order's restaurant.
+  // A DEDICATED rider is "this restaurant's" when the order's restaurant is in
+  // the rider's effective dedicated set. With group-sharing that set spans the
+  // rider's whole group (parent + children); a rider dedicated to ANY
+  // restaurant in a group can take orders from ANY restaurant in it. When the
+  // group set wasn't resolved we fall back to an exact dedicatedRestaurantId
+  // match — preserving solo behaviour and never widening accidentally.
+  const dedicatedRestaurantIds =
+    profile.dedicatedGroupRestaurantIds && profile.dedicatedGroupRestaurantIds.length
+      ? profile.dedicatedGroupRestaurantIds
+      : profile.dedicatedRestaurantId
+        ? [profile.dedicatedRestaurantId]
+        : [];
   const isDedicatedToThisRestaurant =
-    isDedicated && profile.dedicatedRestaurantId === restaurant.id;
+    isDedicated && dedicatedRestaurantIds.includes(restaurant.id);
 
   switch (restaurant.riderDispatchMode) {
     case RiderDispatchMode.FLEET_ONLY:
@@ -170,15 +226,22 @@ export async function targetRidersForNewOrder(
       break;
 
     case RiderDispatchMode.DEDICATED_ONLY:
-    case RiderDispatchMode.DEDICATED_FIRST:
-      // Both modes ping this restaurant's dedicated riders at creation time.
+    case RiderDispatchMode.DEDICATED_FIRST: {
+      // Both modes ping dedicated riders at creation time. With group-sharing,
+      // that's every dedicated rider across the order restaurant's group
+      // (parent + children), not just riders dedicated to this one restaurant.
       // (For DEDICATED_FIRST, fleet riders pick it up later via polling.)
+      const group = await resolveGroupContext(restaurant.id);
+      const groupIds = group.restaurantIds.length
+        ? group.restaurantIds
+        : [restaurant.id];
       where = {
         ...onlineWithToken,
         riderType: RiderType.DEDICATED,
-        dedicatedRestaurantId: restaurant.id,
+        dedicatedRestaurantId: { in: groupIds },
       };
       break;
+    }
 
     default:
       return [];

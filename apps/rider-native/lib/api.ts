@@ -178,6 +178,9 @@ export interface AssignmentOrder {
     longitude: number | null;
     line1: string;
     city: string;
+    /** The SOURCE restaurant this branch belongs to — where the rider collects. */
+    restaurantId: string | null;
+    restaurantName: string | null;
   } | null;
 }
 
@@ -201,6 +204,8 @@ export interface PoolOrder {
   code: string;
   restaurant: string;
   branch: string;
+  /** Pickup branch street address ("line1, city"), if known. */
+  branchAddress: string | null;
   branchLoc: { lat: number; lng: number } | null;
   delivery: { line: string; lat: number | null; lng: number | null } | null;
   itemSummary: string; // "2× Margherita, 1× Garlic Bread"

@@ -27,6 +27,7 @@ import { refreshChallengeProgressForOrder } from './challenges';
 import { previewSignupBonusForUser, holdSignupBonusForOrder, commitSignupBonusForOrder, restoreSignupBonusForOrder } from './signup-bonus';
 import { sendDeliveryOtpSms } from './notify-templates';
 import { resolveLineSelections } from './menu-selections';
+import { groupOrderChannel } from './group-scope';
 
 // State machine. Cancellation is allowed from any pre-delivery state into the
 // matching CANCELLED_BY_* terminal. Legacy CANCELLED is kept for back-compat.
@@ -127,7 +128,7 @@ export async function placeOrder(input: PlaceOrderInput) {
   // higher price, the order ledger uses what's active *now*.
   const branchWithRestaurant = await prisma.branch.findUnique({
     where: { id: input.branchId },
-    select: { restaurantId: true, restaurant: { select: { allowFreebies: true } } }
+    select: { restaurantId: true, restaurant: { select: { allowFreebies: true, parentId: true } } }
   });
   const hhNow = new Date();
   const hhRules = branchWithRestaurant
@@ -507,8 +508,13 @@ export async function placeOrder(input: PlaceOrderInput) {
     return o;
   });
 
-  // Realtime: surface to admin/kitchen
+  // Realtime: surface to admin/kitchen. Also fan out to the group channel so a
+  // parent restaurant's unified board receives orders from every child. The
+  // root is the restaurant's parent when it's a child, else itself (so a solo
+  // restaurant's group channel is simply its own id — no behaviour change).
   publish(`branch:${branch.id}:orders`, { kind: 'order:new', orderId: order.id, branchId: branch.id });
+  const groupRootId = branchWithRestaurant?.restaurant?.parentId ?? branch.restaurantId;
+  publish(groupOrderChannel(groupRootId), { kind: 'order:new', orderId: order.id, branchId: branch.id });
   publish(`order:${order.id}`, { kind: 'status', orderId: order.id, status: 'RECEIVED', at: new Date().toISOString() });
 
   // Audit each applied offer. audit() is best-effort and never throws — we
@@ -635,7 +641,7 @@ export async function maybeAutoAccept(orderId: string, restaurantId: string, act
 export async function transitionOrder(orderId: string, next: OrderStatus, opts: { actorId?: string; note?: string } = {}) {
   const order = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },
-    include: { customer: true, branch: { select: { restaurantId: true } } }
+    include: { customer: true, branch: { select: { restaurantId: true, restaurant: { select: { parentId: true } } } } }
   });
   // Idempotent: a double-click or replay that targets the current state is a no-op success.
   if (order.status === next) return order;
@@ -683,6 +689,9 @@ export async function transitionOrder(orderId: string, next: OrderStatus, opts: 
 
   publish(`order:${orderId}`, { kind: 'status', orderId, status: next, at: new Date().toISOString() });
   publish(`branch:${order.branchId}:orders`, { kind: 'status', orderId, status: next, at: new Date().toISOString() });
+  // Mirror the status change to the group channel for the parent's unified board.
+  const transRootId = order.branch.restaurant?.parentId ?? order.branch.restaurantId;
+  publish(groupOrderChannel(transRootId), { kind: 'status', orderId, status: next, at: new Date().toISOString() });
   // OUT_FOR_DELIVERY → send the customer their delivery OTP via SMS so they
   // can hand it to the rider at the door. Fire-and-forget: a notification
   // failure must never roll back or block the transition. The previous-state

@@ -181,7 +181,12 @@ function RouteBlock({ a }: { a: Assignment }) {
         <View style={[styles.routeDot, { backgroundColor: colors.primary }]} />
         <View style={styles.routeBody}>
           <Text style={styles.routeLabel}>PICKUP</Text>
-          <Text style={styles.routeValue}>{o.branch?.name ?? 'Restaurant'}</Text>
+          <Text style={styles.routeValue}>
+            {o.branch?.restaurantName ?? o.branch?.name ?? 'Restaurant'}
+          </Text>
+          {o.branch?.restaurantName && o.branch?.name ? (
+            <Text style={styles.routeSub}>{o.branch.name}</Text>
+          ) : null}
         </View>
       </View>
       <View style={styles.routeConnector} />

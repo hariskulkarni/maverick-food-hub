@@ -1,14 +1,16 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
-import { currentRestaurant } from '@/server/tenancy';
+import { currentRestaurant, accessibleRestaurants } from '@/server/tenancy';
 import { LayoutDashboard, ScrollText, Utensils, BarChart3, Tag, Settings, Building2, Radio, Sparkles, Layers, Clock, Trophy, Package, Mail, History, MessageSquare, Bike, ShieldAlert, MessagesSquare, CalendarClock, Armchair, Gift } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
+import { RestaurantSwitcher } from './restaurant-switcher';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   if (!session?.user || session.user.role !== 'ADMIN') redirect('/login?next=/admin&mode=admin');
   const restaurant = await currentRestaurant();
+  const { groups, flat, activeId } = await accessibleRestaurants();
   if (!restaurant) {
     return (
       <div className="grid min-h-dvh place-items-center p-8 text-center">
@@ -34,7 +36,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="grid min-h-dvh grid-cols-[240px_1fr]">
       <aside className="border-r bg-card flex flex-col">
         <div className="p-5 border-b">
-          <Link href="/admin" className="display text-lg font-bold text-primary">{restaurant.name}</Link>
+          {flat.length > 1 ? (
+            <RestaurantSwitcher groups={groups} activeId={activeId} />
+          ) : (
+            <Link href="/admin" className="display text-lg font-bold text-primary">{restaurant.name}</Link>
+          )}
           <div className="text-xs text-muted-foreground mt-0.5">Restaurant admin</div>
         </div>
         <nav className="flex-1 p-3 space-y-1 text-sm">

@@ -1,5 +1,6 @@
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
+import { resolveGroupContext } from '@/server/group-scope';
 import { LivePlatformClient } from '@/components/live-tracking/live-platform-client';
 import { Radio } from 'lucide-react';
 
@@ -9,10 +10,26 @@ export const dynamic = 'force-dynamic';
 export default async function AdminLivePage() {
   const restaurant = await requireRestaurant();
 
-  // Restaurant-scoped: only riders working orders for one of *our* branches.
+  // Group-scoped: when the active restaurant is a group parent, span every
+  // restaurant in the group (parent + children) — riders are shared across the
+  // group so the parent must see riders working ANY group restaurant's orders.
+  // Solo restaurants resolve to just themselves (unchanged).
+  const group = await resolveGroupContext(restaurant.id);
+  const groupRestaurantIds = group.restaurantIds.length
+    ? group.restaurantIds
+    : [restaurant.id];
+
   const branches = await prisma.branch.findMany({
-    where: { restaurantId: restaurant.id, isActive: true },
-    select: { id: true, name: true, latitude: true, longitude: true }
+    where: { restaurantId: { in: groupRestaurantIds }, isActive: true },
+    select: {
+      id: true,
+      name: true,
+      latitude: true,
+      longitude: true,
+      // The branch's restaurant — so each pin can be labelled with the SOURCE
+      // restaurant a rider is collecting from when the group spans many.
+      restaurant: { select: { name: true } }
+    }
   });
   const branchIds = branches.map((b) => b.id);
 
@@ -49,7 +66,14 @@ export default async function AdminLivePage() {
 
   const branchPins = branches
     .filter((b) => b.latitude != null && b.longitude != null)
-    .map((b) => ({ id: b.id, name: b.name, lat: b.latitude!, lng: b.longitude! }));
+    .map((b) => ({
+      id: b.id,
+      // In a real group, prefix the pickup pin with its restaurant so the parent
+      // can tell which group restaurant each rider is collecting from.
+      name: group.isGroup && b.restaurant?.name ? `${b.restaurant.name} — ${b.name}` : b.name,
+      lat: b.latitude!,
+      lng: b.longitude!
+    }));
 
   const customers: { id: string; name?: string; lat: number; lng: number }[] = [];
   const destinations: { riderId: string; lat: number; lng: number }[] = [];
@@ -87,7 +111,9 @@ export default async function AdminLivePage() {
           <Radio className="size-7 text-primary" /> Live tracking
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Every rider working an order for your restaurant. Click any pin for ETA, trail, and contact info.
+          {group.isGroup
+            ? 'Every rider working an order across your group. Click any pin for ETA, trail, and contact info.'
+            : 'Every rider working an order for your restaurant. Click any pin for ETA, trail, and contact info.'}
         </p>
       </header>
 

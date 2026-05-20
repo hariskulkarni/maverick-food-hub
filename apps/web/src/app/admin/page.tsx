@@ -5,8 +5,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { dashboardKpis, salesSeries, bestSellers, peakHours, paymentMixToday, customerInsights } from '@/server/analytics';
 import { money } from '@/lib/utils';
 import { ChartsClient } from './charts-client';
-import { ArrowRight, ScrollText, Truck, Wallet, Users, History } from 'lucide-react';
+import { ArrowRight, ScrollText, Truck, Wallet, Users, History, Network, Info } from 'lucide-react';
 import { requireRestaurant } from '@/server/tenancy';
+import {
+  resolveGroupReport, groupKpis, groupSalesSeries, groupPaymentMixToday, childBreakdownToday,
+  type ChildBreakdownRow,
+} from './reports/_group-metrics';
 
 export const metadata = { title: 'Admin · Dashboard' };
 
@@ -14,17 +18,23 @@ export default async function AdminDashboardPage() {
   const session = await auth();
   const restaurant = await requireRestaurant();
   const branch = await prisma.branch.findFirstOrThrow({ where: { restaurantId: restaurant.id, isActive: true }, orderBy: { createdAt: 'asc' } });
-  const [kpi, sales, sellers, peak, mix, ci, latest, recentActivity] = await Promise.all([
-    dashboardKpis(branch.id),
-    salesSeries(branch.id, 14),
+
+  // Group scope: when this restaurant is a parent with rollup enabled, headline
+  // metrics span every branch in the group; otherwise scope to the single branch.
+  const report = await resolveGroupReport(restaurant.id, branch.id);
+  const scopedBranchIds = report.branchIds;
+
+  const [kpi, sales, sellers, peak, mix, ci, latest, recentActivity, breakdown] = await Promise.all([
+    report.rollup ? groupKpis(scopedBranchIds) : dashboardKpis(branch.id),
+    report.rollup ? groupSalesSeries(scopedBranchIds, 14) : salesSeries(branch.id, 14),
     bestSellers(branch.id, 6),
     peakHours(branch.id),
-    paymentMixToday(branch.id),
+    report.rollup ? groupPaymentMixToday(scopedBranchIds) : paymentMixToday(branch.id),
     customerInsights(branch.id),
-    prisma.order.findMany({ where: { branchId: branch.id }, orderBy: { placedAt: 'desc' }, take: 6, include: { customer: true } }),
+    prisma.order.findMany({ where: { branchId: { in: scopedBranchIds } }, orderBy: { placedAt: 'desc' }, take: 6, include: { customer: true } }),
     prisma.auditLog.findMany({
       where: {
-        restaurantId: restaurant.id,
+        restaurantId: { in: report.rollup ? report.ctx.restaurantIds : [restaurant.id] },
         OR: [
           { action: { startsWith: 'menu.' } },
           { action: { startsWith: 'integration.' } }
@@ -32,7 +42,8 @@ export default async function AdminDashboardPage() {
       },
       orderBy: { createdAt: 'desc' },
       take: 5
-    })
+    }),
+    report.rollup ? childBreakdownToday(report.ctx) : Promise.resolve([] as ChildBreakdownRow[]),
   ]);
 
   return (
@@ -40,9 +51,26 @@ export default async function AdminDashboardPage() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="display text-2xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Welcome back, {session?.user.name?.split(' ')[0]}.</p>
+          <p className="text-sm text-muted-foreground">
+            Welcome back, {session?.user.name?.split(' ')[0]}.
+            {report.rollup && (
+              <span className="ml-1 inline-flex items-center gap-1 text-primary">
+                <Network className="size-3.5" /> Showing your group ({report.ctx.restaurants.length} restaurants).
+              </span>
+            )}
+          </p>
         </div>
       </header>
+
+      {report.rollupAvailableButOff && (
+        <div className="flex items-start gap-2 rounded-lg border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground">
+          <Info className="size-4 mt-0.5 shrink-0 text-primary" />
+          <span>
+            This restaurant heads a group of {report.ctx.restaurants.length} restaurants. You're seeing only its own
+            numbers — enable <span className="font-medium">group report sharing</span> to roll up every child here.
+          </span>
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-4">
         <Kpi title="Orders today" icon={ScrollText} value={String(kpi.todayOrders)} />
@@ -50,6 +78,36 @@ export default async function AdminDashboardPage() {
         <Kpi title="Pending" icon={ScrollText} value={String(kpi.pending)} hint={kpi.pending > 0 ? 'Action required' : 'All caught up'} />
         <Kpi title="Out for delivery" icon={Truck} value={String(kpi.activeDeliveries)} />
       </div>
+
+      {report.rollup && breakdown.length > 0 && (
+        <Card><CardContent className="p-5">
+          <h3 className="font-semibold mb-3 flex items-center gap-2"><Network className="size-4" /> By restaurant (today)</h3>
+          <table className="w-full text-sm">
+            <thead className="text-left text-muted-foreground">
+              <tr><th className="py-2">Restaurant</th><th className="text-right">Orders</th><th className="text-right">Revenue</th></tr>
+            </thead>
+            <tbody>
+              {breakdown.map((row) => (
+                <tr key={row.restaurantId} className="border-t">
+                  <td className="py-2">
+                    {row.restaurantName}
+                    {row.isParent && <span className="ml-2 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">Parent</span>}
+                  </td>
+                  <td className="text-right tabular-nums">{row.orders}</td>
+                  <td className="text-right tabular-nums font-medium">{money(row.revenue)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t font-semibold">
+                <td className="py-2">Group total</td>
+                <td className="text-right tabular-nums">{breakdown.reduce((s, r) => s + r.orders, 0)}</td>
+                <td className="text-right tabular-nums">{money(breakdown.reduce((s, r) => s + r.revenue, 0))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </CardContent></Card>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="md:col-span-2"><CardContent className="p-5">

@@ -120,8 +120,13 @@ function AssignmentCard({ a }: { a: Assignment }) {
           <View style={styles.routeText}>
             <Text style={styles.routeLabel}>PICKUP</Text>
             <Text style={styles.routeValue} numberOfLines={1}>
-              {o.branch?.name ?? 'Restaurant'}
+              {o.branch?.restaurantName ?? o.branch?.name ?? 'Restaurant'}
             </Text>
+            {o.branch?.restaurantName && o.branch?.name ? (
+              <Text style={styles.routeSub} numberOfLines={1}>
+                {o.branch.name}
+              </Text>
+            ) : null}
           </View>
         </View>
         <View style={styles.routeConnector} />
@@ -623,6 +628,11 @@ const styles = StyleSheet.create({
     fontSize: font.size.md,
     color: colors.text,
     fontWeight: font.weight.medium,
+    marginTop: 1,
+  },
+  routeSub: {
+    fontSize: font.size.sm,
+    color: colors.textMuted,
     marginTop: 1,
   },
   routeConnector: {
