@@ -28,7 +28,12 @@ const nextConfig = {
     ]
   },
   async headers() {
-    const isProd = process.env.NODE_ENV === 'production';
+    // HTTPS-only directives (upgrade-insecure-requests, HSTS) must NOT be sent
+    // when the site is served over plain HTTP — upgrade-insecure-requests would
+    // force every CSS/JS/image to load over https:// and break the whole page.
+    // Gate them on NEXTAUTH_URL being an https:// origin, so they switch on
+    // automatically once you put the site behind TLS (no code change needed).
+    const httpsEnabled = (process.env.NEXTAUTH_URL || '').startsWith('https://');
 
     // Content-Security-Policy. Pragmatic, allowlist-based: it locks down framing,
     // object/base/form targets and bounds where scripts/styles/images/connections
@@ -51,7 +56,8 @@ const nextConfig = {
       "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com https://*.razorpay.com https://maps.googleapis.com https://nominatim.openstreetmap.org https://*.tile.openstreetmap.org",
       "frame-src 'self' https://checkout.razorpay.com https://api.razorpay.com https://accounts.google.com",
       "worker-src 'self' blob:",
-      ...(isProd ? ['upgrade-insecure-requests'] : []),
+      // Only force https upgrades when the site actually serves over https.
+      ...(httpsEnabled ? ['upgrade-insecure-requests'] : []),
     ].join('; ');
 
     const securityHeaders = [
@@ -60,8 +66,8 @@ const nextConfig = {
       { key: 'X-Content-Type-Options', value: 'nosniff' },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
       { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self), payment=(self)' },
-      // HSTS only in production (and only meaningful over HTTPS). 2 years + preload.
-      ...(isProd
+      // HSTS only when actually serving over HTTPS (meaningless/ignored over HTTP). 2 years + preload.
+      ...(httpsEnabled
         ? [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }]
         : []),
     ];
