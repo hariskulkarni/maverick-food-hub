@@ -117,6 +117,16 @@ rm -rf .next
 line "8. build (raise fd limit so a large route tree can't hit EMFILE)"
 ulimit -n 8192 || true
 npm run build
+BUILD_RC=$?
+if [ "$BUILD_RC" != "0" ]; then
+  echo ""
+  echo "(!) BUILD FAILED (exit $BUILD_RC). NOT restarting pm2 — the previously"
+  echo "    running build is left intact so the site stays up. Fix the build"
+  echo "    error above, then re-run this script."
+  echo "    (If .next was cleared and the site is already down, the last good"
+  echo "     build must be rebuilt — fix the error and re-run.)"
+  exit 1
+fi
 
 line "9. restart pm2"
 pm2 restart "$PM2_APP" --update-env

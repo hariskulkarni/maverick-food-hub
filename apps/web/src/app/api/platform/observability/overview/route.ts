@@ -6,6 +6,7 @@
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { OBS_AREAS, areaForPath } from '@/server/observability/registry';
+import { startObservabilityRunner } from '@/server/observability/runner';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -15,6 +16,10 @@ const CRITICAL = new Set(['db', 'app', 'system']);
 
 export async function GET() {
   await requireSuperAdmin();
+  // Ensure the background probe runner is going (idempotent — only starts once
+  // per process). Started lazily here instead of from instrumentation.ts, which
+  // can't be Edge-bundled when it reaches Node-only probe code.
+  startObservabilityRunner();
   const now = Date.now();
   const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
   const hourAgo = new Date(now - 60 * 60 * 1000);
