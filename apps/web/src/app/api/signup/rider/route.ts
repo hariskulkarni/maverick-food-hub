@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
+import { rateLimit } from '@/server/http/rate-limit';
 
 const Body = z.object({
   restaurantId: z.string().optional(),    // optional hint only
@@ -13,6 +14,9 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const rl = await rateLimit(req, { name: 'signup-rider', limit: 5, windowMs: 600_000 });
+  if (!rl.ok) return rl.response;
+
   const data = Body.parse(await req.json());
   const existing = await prisma.riderApplication.findUnique({ where: { phone: data.phone } }).catch(() => null);
   if (existing) {

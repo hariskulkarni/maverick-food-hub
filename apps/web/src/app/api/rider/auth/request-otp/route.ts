@@ -14,6 +14,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { sendOtp, OtpRateLimitedError } from '@/server/otp';
+import { rateLimit } from '@/server/http/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,9 @@ function clientIp(req: NextRequest): string | undefined {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = await rateLimit(req, { name: 'rider-otp-send', limit: 10, windowMs: 60_000 });
+  if (!rl.ok) return rl.response;
+
   try {
     const { phone } = Body.parse(await req.json());
 

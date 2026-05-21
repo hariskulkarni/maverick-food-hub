@@ -59,19 +59,30 @@ export async function POST(req: NextRequest) {
     ? await prisma.payment.findFirst({ where: { providerRef: razorpayOrderId } })
     : null;
 
-  // Persist the raw event first so a crash below can still be replayed
-  const stored = await prisma.paymentWebhookEvent.create({
-    data: {
-      provider: 'razorpay',
-      eventType,
-      paymentId,
-      orderId: payment?.orderId ?? null,
-      providerEventId,
-      signature,
-      rawPayload: event,
-      processed: false
+  // Persist the raw event first so a crash below can still be replayed.
+  // Guard the concurrent-duplicate race: two identical deliveries can both pass
+  // the findUnique check above, then race to insert. The unique constraint on
+  // providerEventId makes the loser throw P2002 — treat that as a safe dedupe.
+  let stored;
+  try {
+    stored = await prisma.paymentWebhookEvent.create({
+      data: {
+        provider: 'razorpay',
+        eventType,
+        paymentId,
+        orderId: payment?.orderId ?? null,
+        providerEventId,
+        signature,
+        rawPayload: event,
+        processed: false
+      }
+    });
+  } catch (e: unknown) {
+    if (typeof e === 'object' && e !== null && (e as { code?: string }).code === 'P2002') {
+      return Response.json({ ok: true, deduped: true, eventId: providerEventId });
     }
-  });
+    throw e;
+  }
 
   // Best-effort processing — failures get recorded but the webhook still 200s
   try {

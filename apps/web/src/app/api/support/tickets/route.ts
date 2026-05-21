@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { Role, TicketType } from '@prisma/client';
+import { rateLimit } from '@/server/http/rate-limit';
 
 const Body = z.object({
   orderId: z.string().optional(),
@@ -16,6 +17,9 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const rl = await rateLimit(req, { name: 'support-tickets', limit: 10, windowMs: 600_000 });
+  if (!rl.ok) return rl.response;
+
   const session = await auth();
   if (!session?.user) return new Response('Unauthorized', { status: 401 });
   const body = Body.parse(await req.json());

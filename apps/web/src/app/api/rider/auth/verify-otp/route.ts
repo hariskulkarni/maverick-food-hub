@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { verifyOtp } from '@/server/otp';
 import { signRiderToken } from '@/server/rider-auth';
+import { rateLimit } from '@/server/http/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,6 +26,9 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const rl = await rateLimit(req, { name: 'rider-otp-verify', limit: 20, windowMs: 60_000 });
+  if (!rl.ok) return rl.response;
+
   try {
     const { phone, code } = Body.parse(await req.json());
 

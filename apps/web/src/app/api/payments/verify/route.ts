@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { paymentProvider } from '@/server/payments';
 import { PaymentStatus } from '@prisma/client';
+import { rateLimit } from '@/server/http/rate-limit';
 
 const Body = z.object({
   orderId: z.string(),
@@ -12,6 +13,9 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const rl = await rateLimit(req, { name: 'payment-verify', limit: 30, windowMs: 60_000 });
+  if (!rl.ok) return rl.response;
+
   const data = Body.parse(await req.json());
   // Look up the order's restaurant so we pick the tenant's payment creds.
   const orderRow = await prisma.order.findUnique({
