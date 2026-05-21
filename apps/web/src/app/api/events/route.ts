@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { bus } from '@/server/realtime';
+import { auth } from '@/server/rider-auth';
+import { authorizeRealtimeChannel } from '@/server/realtime-authz';
 
 export const dynamic = 'force-dynamic';
 // Edge would be faster, but we need Node's EventEmitter bus.
@@ -8,6 +10,16 @@ export const runtime = 'nodejs';
 export async function GET(req: NextRequest) {
   const channel = req.nextUrl.searchParams.get('channel');
   if (!channel) return new Response('Missing channel', { status: 400 });
+
+  // Authorize the subscription. `auth()` here is the rider-aware variant: it
+  // accepts a rider Bearer token (native app) and falls back to the NextAuth
+  // cookie session (web). Unauthenticated or unauthorized → 401/403, never a
+  // silent subscription to someone else's order/branch/rider stream.
+  const session = await auth();
+  if (!session?.user) return new Response('Unauthorized', { status: 401 });
+  if (!(await authorizeRealtimeChannel(session.user, channel))) {
+    return new Response('Forbidden', { status: 403 });
+  }
 
   const stream = new ReadableStream({
     start(controller) {

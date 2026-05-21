@@ -55,7 +55,7 @@ async function membershipsForUser(userId: string) {
  * KITCHEN-only members get just their explicit grants (no implied child access).
  * Keyed by restaurantId; insertion order defines the switcher fallback order.
  */
-async function accessibleSet(userId: string): Promise<Map<string, AccessEntry>> {
+export async function accessibleSet(userId: string): Promise<Map<string, AccessEntry>> {
   const map = new Map<string, AccessEntry>();
 
   const memberships = await membershipsForUser(userId);

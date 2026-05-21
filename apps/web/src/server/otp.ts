@@ -26,6 +26,20 @@ const MAX_FAILED_VERIFY      = 5;
 const LOCKOUT_MS             = 30 * 60 * 1000;
 const SMS_DAILY_BUDGET       = Number(process.env.SMS_DAILY_BUDGET ?? '500'); // total SMS the platform will send today
 
+const IS_PROD = process.env.NODE_ENV === 'production';
+const OTP_DEBUG = process.env.OTP_DEBUG_LOG === 'true';
+
+// Production safety guard: leaking OTPs (in logs or API responses) is a full
+// account-takeover vector. We refuse to run with the debug surface enabled in
+// production — fail loud at module load so a misconfigured deploy is caught
+// immediately instead of silently leaking codes.
+if (IS_PROD && OTP_DEBUG) {
+  throw new Error(
+    'OTP_DEBUG_LOG=true is not allowed in production (it would leak OTP codes in logs and API responses). ' +
+      'Set OTP_DEBUG_LOG=false (or remove it) and wire a real SMS provider.'
+  );
+}
+
 function genCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
@@ -150,12 +164,17 @@ export async function sendOtp(args: { phone: string; purpose?: string; ipAddress
     template: 'otp.login'
   });
 
-  // In non-prod, OR when OTP_DEBUG_LOG=true is set (demo / pre-SMS-provider
-  // deployments), surface the code: log it server-side AND return it in the
-  // response so it can be read without an SMS gateway. Set the flag back to
-  // false / remove it the moment a real SMS provider (MSG91 etc.) is wired up.
-  if (process.env.NODE_ENV !== 'production' || process.env.OTP_DEBUG_LOG === 'true') {
-    log.info({ phone: args.phone, purpose, code }, 'OTP issued (debug-log)');
+  // DEV/TEST ONLY: surface the code (log it + return devCode) so local flows
+  // work without an SMS gateway. This branch is unreachable in production —
+  // IS_PROD short-circuits it, and OTP_DEBUG with IS_PROD hard-fails at module
+  // load above. In production the code is NEVER logged and NEVER returned.
+  if (!IS_PROD && OTP_DEBUG) {
+    log.info({ phone: args.phone, purpose, code }, 'OTP issued (debug-log, dev only)');
+    return { ok: true, devCode: code };
+  }
+  if (!IS_PROD) {
+    // Local dev without the debug flag: still return the code for convenience,
+    // but don't log it. (Production returns nothing.)
     return { ok: true, devCode: code };
   }
   return { ok: true };
