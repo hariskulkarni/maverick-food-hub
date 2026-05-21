@@ -2979,3 +2979,63 @@ model RiderConversationMessage {
 
   @@index([conversationId, createdAt])
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Observability (super-admin)
+//  Self-contained telemetry — no relations to business models, purely additive.
+//    ObsErrorLog   — deduped errors (fingerprint), with count + first/last seen.
+//    ObsProbe      — current health state per target (one row per target).
+//    ObsProbeEvent — probe history, for trend lines + incident timelines.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ObsErrorLog {
+  id          String    @id @default(cuid())
+  // hash(source + message + digest) — collapses repeats into one row.
+  fingerprint String    @unique
+  level       String    @default("ERROR") // ERROR | WARN | INFO
+  source      String                       // route path / component / module ("where")
+  message     String                       // the error text ("what")
+  digest      String?                      // Next.js error digest (correlates with the page error UI)
+  sampleStack String?                      // truncated stack from the most recent occurrence
+  method      String?                      // HTTP method, if request-scoped
+  path        String?                      // request path, if request-scoped
+  statusCode  Int?
+  userId      String?                      // best-effort actor (not a FK — survives user deletion)
+  count       Int       @default(1)
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  resolvedAt  DateTime?
+
+  @@index([lastSeenAt])
+  @@index([level])
+  @@index([resolvedAt])
+}
+
+model ObsProbe {
+  id                  String   @id @default(cuid())
+  target              String   @unique // "db" | "ssl" | "dns" | "system" | "app" | "integration:razorpay" | "route:/" ...
+  category            String                // SYSTEM | DATABASE | SSL | DOMAIN | INTEGRATION | ROUTE | APP | REALTIME
+  label               String
+  status              String   @default("UNKNOWN") // UP | DEGRADED | DOWN | UNKNOWN
+  latencyMs           Int?
+  detail              String?
+  meta                Json?
+  consecutiveFailures Int      @default(0)
+  checkedAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([category])
+  @@index([status])
+}
+
+model ObsProbeEvent {
+  id        String   @id @default(cuid())
+  target    String
+  status    String
+  latencyMs Int?
+  detail    String?
+  at        DateTime @default(now())
+
+  @@index([target, at])
+  @@index([at])
+}

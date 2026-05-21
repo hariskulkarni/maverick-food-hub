@@ -35,6 +35,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           <NavLink href="/platform/security" icon={Shield}>Security</NavLink>
           <NavLink href="/platform/audit-log" icon={History}>Audit log</NavLink>
           <NavLink href="/platform/system-health" icon={Activity}>System health</NavLink>
+          <NavLink href="/platform/observability" icon={Activity}>Observability</NavLink>
 
           <NavSection>Rider operations</NavSection>
           <NavLink href="/platform/messages" icon={MessagesSquare}>Messages</NavLink>
