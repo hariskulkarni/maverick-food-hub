@@ -27,16 +27,41 @@ const LOCKOUT_MS             = 30 * 60 * 1000;
 const SMS_DAILY_BUDGET       = Number(process.env.SMS_DAILY_BUDGET ?? '500'); // total SMS the platform will send today
 
 const IS_PROD = process.env.NODE_ENV === 'production';
-const OTP_DEBUG = process.env.OTP_DEBUG_LOG === 'true';
 
-// Production safety guard: leaking OTPs (in logs or API responses) is a full
-// account-takeover vector. We refuse to run with the debug surface enabled in
-// production — fail loud at module load so a misconfigured deploy is caught
-// immediately instead of silently leaking codes.
-if (IS_PROD && OTP_DEBUG) {
+// Is a REAL SMS provider configured? (anything other than the no-op "mock")
+const SMS_PROVIDER = (process.env.NOTIFIER_SMS ?? 'mock').toLowerCase().trim();
+const SMS_IS_REAL = SMS_PROVIDER !== '' && SMS_PROVIDER !== 'mock';
+
+// Demo mode: deliberately surface OTP codes (in the API response + server log)
+// so you can run a live demo before buying an SMS gateway. Opt-in via
+// OTP_DEMO_MODE=true; the legacy OTP_DEBUG_LOG=true is honoured as an alias so
+// existing demo deployments keep working.
+const OTP_DEMO_MODE =
+  process.env.OTP_DEMO_MODE === 'true' || process.env.OTP_DEBUG_LOG === 'true';
+
+// ── Plug-and-play safety guard ──────────────────────────────────────────────
+// Surfacing codes is fine while there are no real users (mock SMS). But the
+// moment a REAL provider is configured, surfacing would leak genuine users'
+// OTPs — a full account-takeover vector. So we HARD-FAIL at boot on that exact
+// misconfiguration: real provider + demo surfacing both on. The plug-and-play
+// switch to production is therefore: set NOTIFIER_SMS=<provider> (+ creds) and
+// set OTP_DEMO_MODE=false (remove OTP_DEBUG_LOG) — codes stop surfacing
+// automatically; no code change needed.
+if (SMS_IS_REAL && OTP_DEMO_MODE) {
   throw new Error(
-    'OTP_DEBUG_LOG=true is not allowed in production (it would leak OTP codes in logs and API responses). ' +
-      'Set OTP_DEBUG_LOG=false (or remove it) and wire a real SMS provider.'
+    `OTP demo mode is enabled (OTP_DEMO_MODE/OTP_DEBUG_LOG) while a real SMS provider ` +
+      `(NOTIFIER_SMS=${SMS_PROVIDER}) is configured. This would leak real users' OTP codes. ` +
+      `Set OTP_DEMO_MODE=false and remove OTP_DEBUG_LOG before going live with real SMS.`
+  );
+}
+
+// Loud, repeated reminder when demo mode is live in production (mock SMS). This
+// is acceptable ONLY for a pre-launch demo with no real users.
+if (IS_PROD && OTP_DEMO_MODE) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[otp] DEMO MODE ACTIVE — OTP codes are surfaced in API responses/logs (no real SMS gateway). ' +
+      'Configure NOTIFIER_SMS + set OTP_DEMO_MODE=false before launch.'
   );
 }
 
@@ -164,17 +189,17 @@ export async function sendOtp(args: { phone: string; purpose?: string; ipAddress
     template: 'otp.login'
   });
 
-  // DEV/TEST ONLY: surface the code (log it + return devCode) so local flows
-  // work without an SMS gateway. This branch is unreachable in production —
-  // IS_PROD short-circuits it, and OTP_DEBUG with IS_PROD hard-fails at module
-  // load above. In production the code is NEVER logged and NEVER returned.
-  if (!IS_PROD && OTP_DEBUG) {
-    log.info({ phone: args.phone, purpose, code }, 'OTP issued (debug-log, dev only)');
+  // Surface the code only when it's safe to do so:
+  //   - Demo mode (OTP_DEMO_MODE/OTP_DEBUG_LOG) with a mock SMS provider — the
+  //     real-provider + demo combination is rejected at module load above, so
+  //     reaching here in demo mode guarantees there are no real users to leak.
+  //   - Local dev convenience (non-production), regardless of flag.
+  // With a real SMS provider in production, the code is NEVER logged or returned.
+  if (OTP_DEMO_MODE) {
+    log.info({ phone: args.phone, purpose, code }, 'OTP issued (demo mode — code surfaced)');
     return { ok: true, devCode: code };
   }
   if (!IS_PROD) {
-    // Local dev without the debug flag: still return the code for convenience,
-    // but don't log it. (Production returns nothing.)
     return { ok: true, devCode: code };
   }
   return { ok: true };
