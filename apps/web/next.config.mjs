@@ -1,7 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
-  outputFileTracingRoot: new URL('.', import.meta.url).pathname,
+  // NOTE: do NOT set `output: 'standalone'`. Production runs via `pm2 → next start`
+  // (see scripts/deploy-remote.sh + the rm-web pm2 process). Standalone mode emits
+  // `.next/standalone/server.js` and makes `next start` serve an inconsistent build
+  // ("next start does not work with output: standalone"), which caused stale/old
+  // pages to be served after deploys. With standalone off, `next start` serves the
+  // freshly built `.next` correctly.
   // Lint runs in CI / local dev — it should not gate a production build.
   // TypeScript errors still block the build (ignoreBuildErrors stays false).
   eslint: { ignoreDuringBuilds: true },
