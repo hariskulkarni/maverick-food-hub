@@ -57,6 +57,41 @@ echo "HEAD is now: $(git log --oneline -1)"
 
 cd "$WEB_DIR"
 
+line "1.5 preflight: required production env"
+# Fail FAST (before building) on env that would otherwise hard-crash the app at
+# boot, with an actionable message instead of a cryptic runtime error.
+PREFLIGHT_OK=1
+envval() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2-; }
+
+ENC_KEY="$(envval INTEGRATION_ENCRYPTION_KEY)"
+if [ -z "$ENC_KEY" ]; then
+  echo "  (!) INTEGRATION_ENCRYPTION_KEY is missing/empty in .env — REQUIRED in production."
+  echo "      Generate + add it with:"
+  echo "        echo \"INTEGRATION_ENCRYPTION_KEY=\$(openssl rand -base64 32)\" >> $WEB_DIR/.env"
+  PREFLIGHT_OK=0
+else
+  echo "  OK — INTEGRATION_ENCRYPTION_KEY is set"
+fi
+
+SMS_PROVIDER="$(envval NOTIFIER_SMS)"
+OTP_DEMO="$(envval OTP_DEMO_MODE)"
+OTP_DEBUG="$(envval OTP_DEBUG_LOG)"
+if [ -n "$SMS_PROVIDER" ] && [ "$SMS_PROVIDER" != "mock" ] && { [ "$OTP_DEMO" = "true" ] || [ "$OTP_DEBUG" = "true" ]; }; then
+  echo "  (!) OTP demo mode is ON while a REAL SMS provider ($SMS_PROVIDER) is configured."
+  echo "      This leaks real users' OTPs and the app refuses to boot. Set OTP_DEMO_MODE=false"
+  echo "      and remove OTP_DEBUG_LOG in $WEB_DIR/.env."
+  PREFLIGHT_OK=0
+else
+  echo "  OK — OTP mode is consistent with the SMS provider"
+fi
+
+if [ "$PREFLIGHT_OK" != "1" ]; then
+  echo ""
+  echo "Preflight failed — fix the env above and re-run. Not building (the current"
+  echo "running build is left untouched so the site stays up)."
+  exit 1
+fi
+
 line "2. schema.prisma: does it define packagingFee?"
 grep -n "packagingFee" prisma/schema.prisma || echo "  (!) packagingFee NOT in schema — code/schema mismatch"
 
