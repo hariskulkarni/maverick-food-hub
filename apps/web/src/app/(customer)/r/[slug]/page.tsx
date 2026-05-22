@@ -19,6 +19,10 @@ import { HappyHourBanner } from './happy-hour-banner';
 import { DeliveryEtaCard } from './delivery-eta-card';
 import { BrandRibbon } from './brand-ribbon';
 import { CategoryFab, type CategoryFabEntry } from './category-fab';
+import { JsonLd } from '@/components/seo/json-ld';
+import { brand } from '@/lib/brand';
+
+const SITE = 'https://flavrly.in';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -172,6 +176,48 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
 
   return (
     <div>
+      <JsonLd
+        data={[
+          {
+            '@context': 'https://schema.org',
+            '@type': 'Restaurant',
+            name: restaurant.name,
+            description: restaurant.tagline || `${restaurant.name} on ${brand.name}`,
+            url: `${SITE}/r/${slug}`,
+            image: heroImage,
+            ...(restaurant.cuisine ? { servesCuisine: restaurant.cuisine } : {}),
+            priceRange: '₹₹',
+            address: {
+              '@type': 'PostalAddress',
+              addressLocality: branch.city || 'Guntur',
+              addressRegion: 'Andhra Pradesh',
+              addressCountry: 'IN'
+            },
+            areaServed: {
+              '@type': 'City',
+              name: 'Guntur',
+              containedInPlace: {
+                '@type': 'AdministrativeArea',
+                name: 'Andhra Pradesh'
+              }
+            },
+            aggregateRating: {
+              '@type': 'AggregateRating',
+              ratingValue: rating,
+              ratingCount: 200
+            }
+          },
+          {
+            '@context': 'https://schema.org',
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+              { '@type': 'ListItem', position: 1, name: brand.name, item: SITE },
+              { '@type': 'ListItem', position: 2, name: 'Restaurants', item: `${SITE}/restaurants` },
+              { '@type': 'ListItem', position: 3, name: restaurant.name, item: `${SITE}/r/${slug}` }
+            ]
+          }
+        ]}
+      />
       {/* ───────────────────────── Restaurant Hero ───────────────────────── */}
       <section className="relative h-64 md:h-[22rem] bg-muted overflow-hidden">
         <Image src={heroImage} alt={restaurant.name} fill priority sizes="100vw" className="object-cover" />

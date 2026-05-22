@@ -8,11 +8,34 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swa
 const display = Bricolage_Grotesque({ subsets: ['latin'], variable: '--font-display', display: 'swap', weight: ['400', '500', '600', '700', '800'] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://flavrly.in'),
   title: { default: brand.name, template: `%s · ${brand.name}` },
   description: brand.tagline,
+  keywords: [
+    'food delivery',
+    'order food online',
+    'Guntur restaurants',
+    'Guntur food delivery',
+    'Andhra Pradesh food delivery',
+    brand.name,
+    'restaurants near me'
+  ],
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, title: brand.name, statusBarStyle: 'default' },
-  icons: { icon: '/icon.svg', apple: '/icon-180.png' }
+  icons: { icon: '/icon.svg', apple: '/icon-180.png' },
+  openGraph: {
+    type: 'website',
+    siteName: brand.name,
+    title: brand.name,
+    description: brand.tagline,
+    url: 'https://flavrly.in',
+    locale: 'en_IN'
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: brand.name,
+    description: brand.tagline
+  }
 };
 
 export const viewport: Viewport = {

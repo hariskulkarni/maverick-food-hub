@@ -24,6 +24,9 @@ import {
 } from 'lucide-react';
 import { brand } from '@/lib/brand';
 import { FOOD_FALLBACK } from '@/lib/food-images';
+import { JsonLd } from '@/components/seo/json-ld';
+
+const SITE = 'https://flavrly.in';
 
 /**
  * Reshee Tech — platform home (marketing surface).
@@ -61,6 +64,48 @@ export default async function HomePage() {
 
   return (
     <div>
+      <JsonLd
+        data={[
+          {
+            '@context': 'https://schema.org',
+            '@type': 'Organization',
+            name: brand.name,
+            url: SITE,
+            slogan: brand.tagline,
+            logo: `${SITE}/icon-512.png`,
+            telephone: brand.supportPhone,
+            areaServed: {
+              '@type': 'City',
+              name: 'Guntur',
+              containedInPlace: {
+                '@type': 'AdministrativeArea',
+                name: 'Andhra Pradesh'
+              }
+            },
+            address: {
+              '@type': 'PostalAddress',
+              addressLocality: 'Guntur',
+              addressRegion: 'Andhra Pradesh',
+              addressCountry: 'IN'
+            }
+          },
+          {
+            '@context': 'https://schema.org',
+            '@type': 'WebSite',
+            name: brand.name,
+            url: SITE,
+            description: brand.tagline,
+            potentialAction: {
+              '@type': 'SearchAction',
+              target: {
+                '@type': 'EntryPoint',
+                urlTemplate: `${SITE}/restaurants?q={search_term_string}`
+              },
+              'query-input': 'required name=search_term_string'
+            }
+          }
+        ]}
+      />
       {/* ────────────────────────── Hero ────────────────────────── */}
       <section className="gradient-hero relative overflow-hidden border-b">
         <div className="pointer-events-none absolute -top-24 -right-24 size-80 rounded-full bg-primary/15 blur-3xl float-soft" />
