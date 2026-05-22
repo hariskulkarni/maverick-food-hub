@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ChefHat, Clock, MapPin, Star, ArrowUpDown, Navigation, Sparkles, Percent, Tag, Gift } from 'lucide-react';
 import { FOOD_FALLBACK } from '@/lib/food-images';
+import { ImageWithFallback } from '@/components/image-with-fallback';
 import { readDeliveryLocation } from '@/server/discovery';
 import { filterNearbyRestaurants } from '@/server/discovery';
 import { getDiscoveryRadiusKm } from '@/server/platform-settings';
@@ -377,7 +378,7 @@ export default async function RestaurantsListPage({
           <Link key={r.id} href={`/r/${r.slug}`} className="group block tap-press">
             <Card className="overflow-hidden h-full card-lift rounded-2xl md:rounded-xl">
               <div className="relative aspect-[16/9] md:aspect-[4/3] bg-muted overflow-hidden">
-                <Image
+                <ImageWithFallback
                   src={r.coverImageUrl || r.logoUrl || FOOD_FALLBACK}
                   alt={r.name}
                   fill
