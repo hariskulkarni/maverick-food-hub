@@ -4,7 +4,7 @@ import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ChefHat, Clock, MapPin, Star, ArrowUpDown, Navigation } from 'lucide-react';
+import { ChefHat, Clock, MapPin, Star, ArrowUpDown, Navigation, Sparkles, Percent, Tag, Gift } from 'lucide-react';
 import { FOOD_FALLBACK } from '@/lib/food-images';
 import { readDeliveryLocation } from '@/server/discovery';
 import { filterNearbyRestaurants } from '@/server/discovery';
@@ -31,6 +31,24 @@ function formatDistance(distanceM: number): string {
   const km = distanceM / 1000;
   if (km < 1) return `${Math.max(0.1, Math.round(km * 10) / 10).toFixed(1)} km`;
   return `${(Math.round(km * 10) / 10).toFixed(1)} km`;
+}
+
+type TopOffer = { id: string; name: string; type: string; code: string | null; percentOff: number | null; flatOff: number | null };
+
+/** Short headline value for a "Top offers today" tile. */
+function offerValue(o: TopOffer): string {
+  if (o.percentOff && o.percentOff > 0) return `${o.percentOff}% OFF`;
+  if (o.flatOff && o.flatOff > 0) return `₹${o.flatOff} OFF`;
+  if (o.type === 'BUY_X_GET_Y') return 'Buy 1 Get 1';
+  if (o.type === 'FREE_ITEM_ABOVE') return 'Free item';
+  if (o.type === 'COMBO_DISCOUNT') return 'Combo deal';
+  return 'Special offer';
+}
+
+function offerIcon(o: TopOffer) {
+  if (o.percentOff && o.percentOff > 0) return Percent;
+  if (o.type === 'BUY_X_GET_Y' || o.type === 'FREE_ITEM_ABOVE' || o.type === 'COMBO_DISCOUNT') return Gift;
+  return Tag;
 }
 
 /**
@@ -81,7 +99,8 @@ export default async function RestaurantsListPage({
   const selectedCuisine = typeof sp.cuisine === 'string' && sp.cuisine.length > 0 ? sp.cuisine : null;
   const sort: SortKey = sp.sort === 'name' ? 'name' : 'newest';
 
-  const [active, radiusKm] = await Promise.all([
+  const now = new Date();
+  const [active, radiusKm, rawOffers] = await Promise.all([
     prisma.restaurant.findMany({
       where: { status: 'ACTIVE' },
       include: {
@@ -89,8 +108,24 @@ export default async function RestaurantsListPage({
         _count: { select: { branches: true } }
       }
     }),
-    getDiscoveryRadiusKm()
+    getDiscoveryRadiusKm(),
+    // Active offers across the platform (platform-wide + per-restaurant), most
+    // prominent first — powers the "Top offers today" strip.
+    (prisma as any).offer.findMany({
+      where: { isActive: true, validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gt: now } }] },
+      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+      take: 10
+    }).catch(() => [])
   ]);
+
+  const topOffers: TopOffer[] = (rawOffers as any[]).map((o) => ({
+    id: o.id,
+    name: o.name,
+    type: o.type,
+    code: o.code ?? null,
+    percentOff: o.percentOff ?? null,
+    flatOff: o.flatOff != null ? Number(o.flatOff) : null
+  }));
 
   const matches: { restaurant: (typeof active)[number]; distanceM: number | null }[] = loc
     ? filterNearbyRestaurants(loc, radiusKm, active).map((m) => ({ restaurant: m.restaurant, distanceM: m.distanceM }))
@@ -152,6 +187,37 @@ export default async function RestaurantsListPage({
 
   return (
     <div className="container py-6 md:py-8">
+      {/* ───────────────────────── Promo hero ───────────────────────── */}
+      <section className="mb-5 reveal">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-[#e0286f] to-berry text-white">
+          {/* Food image bleeds in from the right, faded into the gradient. */}
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-3/5 md:w-1/2">
+            <Image
+              src="https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=1200&auto=format&fit=crop&q=80"
+              alt=""
+              fill
+              priority
+              sizes="(min-width: 768px) 50vw, 60vw"
+              className="object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-primary via-primary/70 to-transparent" />
+          </div>
+          {/* lime pop glow */}
+          <div className="pointer-events-none absolute -bottom-16 -left-10 size-56 rounded-full bg-pop/30 blur-3xl" />
+          <div className="relative max-w-md p-6 md:p-10">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur">
+              <Sparkles className="size-3.5" /> Fresh on Flavrly
+            </span>
+            <h2 className="display mt-3 text-2xl md:text-4xl font-extrabold leading-[1.1]">
+              Your city&apos;s best kitchens, <span className="text-pop">delivered hot.</span>
+            </h2>
+            <p className="mt-2 text-sm md:text-base text-white/85">
+              Order in three taps and track every bite to your door.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* Deliver-to header (location set) OR a non-blocking prompt to set one. */}
       <div className="mb-4 reveal">
         {loc ? (
@@ -166,6 +232,40 @@ export default async function RestaurantsListPage({
           </div>
         )}
       </div>
+
+      {/* ───────────────────────── Top offers today ───────────────────────── */}
+      {topOffers.length > 0 && (
+        <section className="mb-6 reveal">
+          <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+            <Sparkles className="size-3.5" /> Top offers today
+          </div>
+          <div className="-mx-4 md:mx-0 overflow-x-auto no-scrollbar">
+            <div className="flex gap-3 px-4 md:px-0">
+              {topOffers.map((o) => {
+                const Icon = offerIcon(o);
+                return (
+                  <div key={o.id} className="shrink-0 w-44 rounded-2xl border bg-card p-4 card-lift">
+                    <div className="grid size-9 place-items-center rounded-full bg-primary/10 text-primary">
+                      <Icon className="size-4" />
+                    </div>
+                    <div className="display mt-2 text-lg font-bold leading-none">{offerValue(o)}</div>
+                    <div className="mt-1 truncate text-xs font-medium text-foreground">{o.name}</div>
+                    {o.code ? (
+                      <div className="mt-2 inline-block rounded-md border border-dashed border-primary/40 px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-wider text-primary">
+                        {o.code}
+                      </div>
+                    ) : (
+                      <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+                        <Sparkles className="size-3" /> Auto-applied
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
 
       <header className="mb-4 md:mb-6 reveal">
         <div className="text-xs font-semibold uppercase tracking-wider text-primary">Restaurants near you</div>

@@ -13,9 +13,11 @@ import { LocationPickerDialog, type SavedAddressOption } from './location-picker
 interface Props {
   label: string;
   savedAddresses: SavedAddressOption[];
+  /** Estimated delivery window shown above the address, e.g. "15–25 mins". */
+  eta?: string;
 }
 
-export function DeliverToHeader({ label, savedAddresses }: Props) {
+export function DeliverToHeader({ label, savedAddresses, eta = '15–25 mins' }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -25,10 +27,10 @@ export function DeliverToHeader({ label, savedAddresses }: Props) {
           <MapPin className="size-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Deliver to
+          <div className="text-sm font-semibold leading-tight">
+            Delivery in {eta}
           </div>
-          <div className="truncate text-sm font-medium">{label}</div>
+          <div className="truncate text-xs text-muted-foreground">{label}</div>
         </div>
         <Button variant="secondary" size="sm" onClick={() => setOpen(true)} className="tap-press shrink-0">
           Change
