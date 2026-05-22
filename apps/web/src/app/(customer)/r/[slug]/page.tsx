@@ -239,7 +239,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
 
       {/* ───────────────────────── Sign-in CTA (anonymous only) ───────────────────────── */}
       {!isAuthed && (
-        <div className="sticky top-12 z-20 border-b bg-gradient-to-r from-primary/10 via-warning/5 to-primary/10 backdrop-blur">
+        <div className="sticky top-12 z-20 border-b bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 backdrop-blur">
           <div className="container py-2.5 flex items-center justify-between gap-3">
             <div className="text-xs md:text-sm text-foreground/90 truncate">
               <span className="font-medium">Sign in</span>
