@@ -72,7 +72,8 @@ export function FavoritesClient({
                         src={r.logoUrl || FOOD_FALLBACK}
                         alt={r.name}
                         fill
-                        sizes="(min-width: 1024px) 33vw, 50vw"
+                        loading="lazy"
+                        sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                         className="object-cover"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
@@ -130,7 +131,8 @@ export function FavoritesClient({
                         src={i.imageUrl || FOOD_FALLBACK}
                         alt={i.name}
                         fill
-                        sizes="(min-width: 1024px) 33vw, 50vw"
+                        loading="lazy"
+                        sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                         className="object-cover"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />

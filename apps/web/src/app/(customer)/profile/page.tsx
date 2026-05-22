@@ -91,7 +91,7 @@ export default async function ProfilePage() {
               <Link
                 key={t.href}
                 href={t.href}
-                className="shrink-0 snap-start rounded-full md:rounded-md border md:border-0 bg-card md:bg-transparent px-4 py-2 md:px-3 md:py-2 font-medium md:font-normal hover:bg-accent md:hover:bg-accent transition-colors"
+                className="shrink-0 snap-start inline-flex items-center min-h-10 md:min-h-0 rounded-full md:rounded-md border md:border-0 bg-card md:bg-transparent px-4 py-2 md:px-3 md:py-2 font-medium md:font-normal hover:bg-accent md:hover:bg-accent transition-colors"
               >
                 {t.label}
               </Link>
