@@ -33,22 +33,9 @@ export function HeroStage() {
 
       {/* The tilted device frame */}
       <div className="hero-device card-lift relative aspect-[4/5] overflow-hidden rounded-[2rem] border border-white/40 bg-card shadow-2xl ring-1 ring-black/5">
-        {/* Optional video — painted UNDER the photo so a missing /hero.mp4
-            never shows a broken element. Photo always covers it. */}
-        <video
-          className="absolute inset-0 size-full object-cover"
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="none"
-          aria-hidden
-          tabIndex={-1}
-        >
-          <source src="/hero.mp4" type="video/mp4" />
-        </video>
-
-        {/* Hero food photo — the always-present, never-broken visual. */}
+        {/* Hero food photo — the always-present fallback BENEATH the video, so
+            if /hero.mp4 is ever missing or blocked the device still shows a
+            real visual instead of an empty box. */}
         <ImageWithFallback
           src="https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=900&auto=format&fit=crop&q=80"
           alt="A steaming plate of biryani, fresh from a Flavrly kitchen"
@@ -57,6 +44,22 @@ export function HeroStage() {
           sizes="(min-width: 1024px) 32rem, 90vw"
           className="object-cover"
         />
+
+        {/* Branded Flavrly motion loop — plays ON TOP of the photo. The poster
+            paints instantly; a missing/blocked file just reveals the photo. */}
+        <video
+          className="absolute inset-0 size-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          poster="/hero-poster.jpg"
+          aria-hidden
+          tabIndex={-1}
+        >
+          <source src="/hero.mp4" type="video/mp4" />
+        </video>
 
         {/* Cinematic gradient so overlaid UI stays legible */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/5 to-transparent" />
