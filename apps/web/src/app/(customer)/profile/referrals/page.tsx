@@ -10,7 +10,7 @@ export const metadata = { title: 'Referrals' };
 
 export default async function ReferralsPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login?next=/profile/referrals');
+  if (!session?.user?.id) redirect('/login?next=/profile/referrals');
   let referral = await prisma.referral.findFirst({ where: { referrerId: session.user.id, referredId: null } });
   if (!referral) {
     referral = await prisma.referral.create({ data: { referrerId: session.user.id, code: 'REF-' + nanoid(6).toUpperCase() } });

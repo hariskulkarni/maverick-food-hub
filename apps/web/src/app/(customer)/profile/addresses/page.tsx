@@ -19,7 +19,7 @@ export const revalidate = 0;
 
 export default async function AddressesPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login?next=/profile/addresses');
+  if (!session?.user?.id) redirect('/login?next=/profile/addresses');
 
   const rows = await prisma.address.findMany({
     where: { userId: session.user.id },

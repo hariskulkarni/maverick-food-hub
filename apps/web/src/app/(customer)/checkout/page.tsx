@@ -11,7 +11,7 @@ export const revalidate = 0;
 
 export default async function CheckoutPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login?next=/checkout');
+  if (!session?.user?.id) redirect('/login?next=/checkout');
 
   const branch = await prisma.branch.findFirstOrThrow({
     where: { isActive: true },

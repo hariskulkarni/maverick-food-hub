@@ -9,7 +9,7 @@ export const metadata = { title: 'Order' };
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await auth();
-  if (!session?.user) redirect(`/login?next=/orders/${id}`);
+  if (!session?.user?.id) redirect(`/login?next=/orders/${id}`);
   const o = await prisma.order.findUnique({
     where: { id },
     include: { items: true, statusEvents: { orderBy: { createdAt: 'asc' } }, address: true, branch: true, payments: true, assignment: { include: { rider: { include: { user: true } } } } }

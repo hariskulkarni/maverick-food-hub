@@ -14,7 +14,7 @@ export const revalidate = 0;
 
 export default async function SecurityPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login?next=/profile/security');
+  if (!session?.user?.id) redirect('/login?next=/profile/security');
 
   const raw = await listSessions(session.user.id);
 

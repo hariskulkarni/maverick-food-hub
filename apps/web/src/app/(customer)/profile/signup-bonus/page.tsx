@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function CustomerSignupBonusPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login?next=/profile/signup-bonus');
+  if (!session?.user?.id) redirect('/login?next=/profile/signup-bonus');
 
   const grant = await (prisma as any).signupBonusGrant.findUnique({
     where: { userId: session.user.id }

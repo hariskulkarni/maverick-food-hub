@@ -40,7 +40,7 @@ export default async function MyReservationsPage({ params }: { params: Promise<{
   if (!restaurant || restaurant.status !== 'ACTIVE') return notFound();
 
   const session = await auth();
-  if (!session?.user) redirect(`/r/${slug}/login`);
+  if (!session?.user?.id) redirect(`/r/${slug}/login`);
   if (session.user.role !== Role.CUSTOMER) redirect(`/r/${slug}/login`);
 
   const branchIds = (

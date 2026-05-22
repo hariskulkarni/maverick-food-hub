@@ -17,7 +17,7 @@ export const revalidate = 0;
 
 export default async function ProfilePage() {
   const session = await auth();
-  if (!session?.user) redirect('/login?next=/profile');
+  if (!session?.user?.id) redirect('/login?next=/profile');
 
   const [user, wallet, loyalty, addresses, recentOrders, referrals, signupGrant] = await Promise.all([
     prisma.user.findUnique({ where: { id: session.user.id } }),

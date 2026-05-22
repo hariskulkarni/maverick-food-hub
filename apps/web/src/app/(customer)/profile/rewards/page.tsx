@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function RewardsPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login?next=/profile/rewards');
+  if (!session?.user?.id) redirect('/login?next=/profile/rewards');
 
   const [challenges, rewards] = await Promise.all([
     listChallengesForCustomer(session.user.id),

@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function FavoritesPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login?next=/profile/favorites');
+  if (!session?.user?.id) redirect('/login?next=/profile/favorites');
 
   const [favRestaurants, favItems] = await Promise.all([
     prisma.favoriteRestaurant.findMany({

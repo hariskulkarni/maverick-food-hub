@@ -7,7 +7,7 @@ export const metadata = { title: 'My orders' };
 
 export default async function OrdersPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login?next=/orders');
+  if (!session?.user?.id) redirect('/login?next=/orders');
 
   // Pull orders + their feedback (if any) + deliveredAt so the client can
   // pick the right CTA without a per-row round-trip. The Prisma client is

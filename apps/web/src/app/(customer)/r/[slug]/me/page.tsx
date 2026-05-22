@@ -41,7 +41,7 @@ export default async function CustomerMePage({ params }: { params: Promise<{ slu
   if (!restaurant || restaurant.status !== 'ACTIVE') return notFound();
 
   const session = await auth();
-  if (!session?.user) redirect(`/r/${slug}/login`);
+  if (!session?.user?.id) redirect(`/r/${slug}/login`);
   // The dashboard is a customer surface. Staff have their own admin/kitchen
   // dashboards — escort them to the customer login if they somehow land here.
   if (session.user.role !== Role.CUSTOMER) redirect(`/r/${slug}/login`);
