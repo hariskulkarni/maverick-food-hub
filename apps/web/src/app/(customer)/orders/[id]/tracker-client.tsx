@@ -752,7 +752,7 @@ function TipCard({ order }: { order: any }) {
 
 /* Confetti burst on DELIVERED — 24 colored pieces falling once */
 function Confetti() {
-  const colors = ['#ea5b1f', '#f8a04a', '#16a34a', '#3a73c1', '#d97706'];
+  const colors = ['#f23e5c', '#ff7aa0', '#16a34a', '#3a73c1', '#c026d3'];
   const pieces = Array.from({ length: 24 }, (_, i) => ({
     i,
     left: Math.random() * 100,

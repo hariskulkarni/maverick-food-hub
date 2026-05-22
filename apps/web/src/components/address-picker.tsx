@@ -60,7 +60,7 @@ const DEFAULT_CENTER = { lat: 16.3067, lng: 80.4365 };
 function pinIcon() {
   return L.divIcon({
     html:
-      '<div style="font-size:22px;line-height:1;display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#ea5b1f;box-shadow:0 2px 6px rgba(0,0,0,.25);border:2px solid white">📍</div>',
+      '<div style="font-size:22px;line-height:1;display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#f23e5c;box-shadow:0 2px 6px rgba(0,0,0,.25);border:2px solid white">📍</div>',
     className: '',
     iconSize: [36, 36],
     iconAnchor: [18, 32]

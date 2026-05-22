@@ -1,5 +1,5 @@
 /**
- * First-launch walkthrough overlay for the Oak & Sizzler rider app.
+ * First-launch walkthrough overlay for the Flavrly rider app.
  *
  * A full-screen, paged set of intro cards shown once on the very first launch.
  * The "seen" flag is persisted in expo-secure-store under `oas_tour_seen` so

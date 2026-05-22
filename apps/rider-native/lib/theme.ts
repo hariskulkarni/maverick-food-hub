@@ -1,24 +1,24 @@
 /**
- * Brand design tokens for the Oak & Sizzler rider app.
- * Warm, food-forward palette — saffron on cream — matching the web platform.
+ * Brand design tokens for the Flavrly rider app.
+ * Vibrant Coral + Berry — matching the Flavrly web platform.
  */
 
 export const colors = {
-  primary: '#ea5b1f',        // saffron — primary actions, brand
-  primaryDark: '#c94a14',    // pressed state
-  primarySoft: '#fdede4',    // tinted backgrounds, chips
+  primary: '#f23e5c',        // coral-raspberry — primary actions, brand
+  primaryDark: '#c01e44',    // pressed state
+  primarySoft: '#ffe4ea',    // tinted backgrounds, chips
 
-  bg: '#f5f1e8',             // warm cream — app background
+  bg: '#fff7f8',             // warm pink-white — app background
   card: '#ffffff',           // surfaces, inputs
-  text: '#1f1b16',           // primary text — graphite
-  textMuted: '#7a7060',      // secondary text
-  border: '#e4ddcd',         // hairlines, input borders
+  text: '#26121f',           // primary text — berry-ink
+  textMuted: '#8a6f7b',      // secondary text
+  border: '#f1dfe6',         // hairlines, input borders
 
-  success: '#3f7d3f',        // moss green — online, delivered
-  successSoft: '#e8f1e8',
-  danger: '#c0392b',         // errors, failed states
-  dangerSoft: '#fbeae8',
-  warning: '#d98a1f',
+  success: '#17a06b',        // fresh green — online, delivered
+  successSoft: '#e6f6ef',
+  danger: '#dc2640',         // errors, failed states
+  dangerSoft: '#fdeaec',
+  warning: '#e0892a',
 
   white: '#ffffff',
   black: '#000000',

@@ -57,7 +57,7 @@ force a trace on a flaky run, pass `--trace on`.
 | `super-admin.spec.ts`        | KPI tiles, restaurants list, live tracking map render                |
 | `integrations-wizard.spec.ts`| Razorpay wizard test connection with bogus creds → failure banner    |
 | `rate-limit.spec.ts`         | `/api/auth/otp` second-call within 30s → 429 + `retryAfter`          |
-| `branding.spec.ts`           | Anon home: "Maverick's Food Hub" wordmark, cuisine marquee, partner CTA |
+| `branding.spec.ts`           | Anon home: "Flavrly" wordmark, cuisine marquee, partner CTA |
 | `role-isolation.spec.ts`     | Rider session bounced from `/`, `/r/...`, `/profile`, `/checkout` → `/rider`; anon can still reach `/r/saffron-smoke` |
 | `tenant-storefront.spec.ts`  | Anon storefront shows "Sign in to order" CTA → `/login?role=customer&next=...`; signed-in customer no longer sees it |
 | `role-picker.spec.ts`        | `/login` 4-tile picker (Customer/Rider/Staff/Super Admin), per-tile form swap, `?role=staff` deep link, customer sign-in end-to-end |
@@ -72,7 +72,7 @@ These lock in the platform-first marketplace rebrand and the role-aware
 routing layer:
 
 - **`branding.spec.ts`** — anonymous home must carry the platform brand
-  "Maverick's Food Hub", a cuisine marquee on the discovery surface, and a
+  "Flavrly", a cuisine marquee on the discovery surface, and a
   "For partners" / "List your restaurant" link in the header. Asserts the
   page is NOT branded as any one restaurant ("Saffron & Smoke" may appear
   as a featured card but never as the wordmark).
@@ -94,7 +94,7 @@ routing layer:
 These specs cover the premium landing rebuild, the per-restaurant login
 routes, and the redesigned `/login` split layout:
 
-- **`landing-comprehensive.spec.ts`** — anonymous `/` carries the "Maverick's
+- **`landing-comprehensive.spec.ts`** — anonymous `/` carries the "Flavrly's
   Food Hub" brand, a restaurant directory section with at least one card,
   three value-prop sections (Customer / Restaurant Owner / Rider — soft
   asserts), and a `<footer>` (`role="contentinfo"`) with nav links. A

@@ -1,5 +1,5 @@
 /**
- * Safety & SOS API module for the Oak & Sizzler rider app.
+ * Safety & SOS API module for the Flavrly rider app.
  *
  * Wraps the /api/rider/sos, /emergency-contacts, /incidents and /trip-share
  * endpoints. Auth-header plumbing is handled by `apiRequest` from lib/api.ts —

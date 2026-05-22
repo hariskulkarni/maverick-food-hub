@@ -77,7 +77,7 @@ export default function SafetyScreen() {
     try {
       const res = await safety.createTripShare();
       await Share.share({
-        message: `Follow my live delivery trip on Oak & Sizzler: ${res.shareUrl}\n\nThis link is active for the next 4 hours.`,
+        message: `Follow my live delivery trip on Flavrly: ${res.shareUrl}\n\nThis link is active for the next 4 hours.`,
         url: res.shareUrl,
       });
     } catch (e) {

@@ -4,71 +4,78 @@
 
 @layer base {
   :root {
-    /* Saffron-warm but timeless. Tuned for accessibility (AA on white). */
-    --background: 36 33% 98%;
-    --foreground: 20 14% 12%;
+    /* Flavrly — Vibrant Coral + Berry. Craveable, modern, distinctly not
+       Swiggy/Zomato. Tuned for accessibility (AA on white). */
+    --background: 350 60% 99%;       /* warm pink-white */
+    --foreground: 318 30% 13%;       /* deep berry-ink */
 
     --card: 0 0% 100%;
-    --card-foreground: 20 14% 12%;
+    --card-foreground: 318 30% 13%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 20 14% 12%;
+    --popover-foreground: 318 30% 13%;
 
-    --primary: 16 86% 52%;          /* saffron-cinnabar */
+    --primary: 349 84% 58%;          /* coral-raspberry */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 35 92% 96%;
-    --secondary-foreground: 20 25% 18%;
+    --secondary: 350 90% 96%;
+    --secondary-foreground: 318 28% 20%;
 
-    --accent: 35 92% 90%;
-    --accent-foreground: 20 25% 18%;
+    --accent: 349 90% 93%;
+    --accent-foreground: 318 28% 20%;
 
-    --muted: 30 8% 94%;
-    --muted-foreground: 20 8% 40%;
+    --muted: 340 18% 95%;
+    --muted-foreground: 320 10% 42%;
 
-    --destructive: 0 75% 50%;
+    --destructive: 0 74% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 152 60% 36%;
+    --success: 158 62% 38%;
     --success-foreground: 0 0% 100%;
 
     --warning: 38 92% 50%;
     --warning-foreground: 20 25% 12%;
 
-    --border: 30 10% 90%;
-    --input: 30 10% 90%;
-    --ring: 16 86% 52%;
+    /* Brand accents (used in gradients, badges, highlights) */
+    --berry: 308 42% 24%;            /* deep berry-plum */
+    --pop: 76 78% 60%;               /* fresh lime pop */
 
-    --radius: 0.75rem;
+    --border: 340 22% 91%;
+    --input: 340 22% 91%;
+    --ring: 349 84% 58%;
+
+    --radius: 1rem;
 
     --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-    --font-display: 'Fraunces', ui-serif, Georgia, serif;
+    --font-display: 'Bricolage Grotesque', 'Inter', ui-sans-serif, system-ui, sans-serif;
   }
 
   .dark {
-    --background: 20 14% 8%;
-    --foreground: 36 30% 96%;
-    --card: 20 14% 11%;
-    --card-foreground: 36 30% 96%;
-    --popover: 20 14% 11%;
-    --popover-foreground: 36 30% 96%;
-    --primary: 16 86% 56%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 20 14% 18%;
-    --secondary-foreground: 36 30% 96%;
-    --accent: 20 14% 22%;
-    --accent-foreground: 36 30% 96%;
-    --muted: 20 14% 18%;
-    --muted-foreground: 36 12% 65%;
-    --destructive: 0 70% 45%;
+    --background: 312 28% 8%;
+    --foreground: 350 30% 96%;
+    --card: 312 24% 11%;
+    --card-foreground: 350 30% 96%;
+    --popover: 312 24% 11%;
+    --popover-foreground: 350 30% 96%;
+    --primary: 349 86% 63%;
+    --primary-foreground: 318 40% 10%;
+    --secondary: 312 20% 18%;
+    --secondary-foreground: 350 30% 96%;
+    --accent: 312 20% 22%;
+    --accent-foreground: 350 30% 96%;
+    --muted: 312 16% 18%;
+    --muted-foreground: 340 12% 68%;
+    --destructive: 0 70% 48%;
     --destructive-foreground: 0 0% 100%;
-    --success: 152 50% 42%;
+    --success: 158 52% 44%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 80% 50%;
+    --warning: 38 82% 52%;
     --warning-foreground: 20 25% 12%;
-    --border: 20 14% 22%;
-    --input: 20 14% 22%;
-    --ring: 16 86% 56%;
+    --berry: 308 38% 30%;
+    --pop: 76 74% 62%;
+    --border: 312 16% 22%;
+    --input: 312 16% 22%;
+    --ring: 349 86% 63%;
   }
 
   * { @apply border-border; }
@@ -176,30 +183,32 @@
   .card-lift { transition: transform 280ms cubic-bezier(0.2,0.7,0.3,1), box-shadow 280ms ease, border-color 280ms ease; }
   .card-lift:hover {
     transform: translateY(-3px);
-    box-shadow: 0 18px 40px -16px rgba(186, 100, 30, 0.25), 0 4px 12px -8px rgba(0,0,0,0.08);
+    box-shadow: 0 18px 40px -16px rgba(242, 62, 92, 0.28), 0 4px 12px -8px rgba(59,30,58,0.10);
   }
 
   /* Pressed state for tappable cards */
   .tap-press { transition: transform 120ms ease; }
   .tap-press:active { transform: scale(0.97); }
 
-  /* Animated gradient — hero backdrop */
+  /* Animated gradient — hero backdrop (coral + lime + berry) */
   .gradient-hero {
     background:
-      radial-gradient(60% 50% at 20% 10%, rgba(234, 91, 31, 0.20), transparent 60%),
-      radial-gradient(50% 40% at 90% 20%, rgba(248, 160, 74, 0.22), transparent 60%),
-      radial-gradient(60% 50% at 50% 90%, rgba(91, 140, 90, 0.12), transparent 65%);
+      radial-gradient(60% 50% at 18% 8%, rgba(242, 62, 92, 0.22), transparent 60%),
+      radial-gradient(48% 40% at 92% 16%, rgba(199, 242, 80, 0.18), transparent 62%),
+      radial-gradient(64% 52% at 52% 92%, rgba(59, 30, 58, 0.12), transparent 66%);
     background-color: hsl(var(--background));
   }
 
-  /* Saffron glow — for active step rings */
-  .ring-saffron {
-    box-shadow: 0 0 0 4px rgba(234, 91, 31, 0.18), 0 0 0 10px rgba(234, 91, 31, 0.08);
+  /* Brand glow — for active step rings. (legacy name `ring-saffron` kept so
+     existing markup keeps working; now coral.) */
+  .ring-saffron, .ring-brand {
+    box-shadow: 0 0 0 4px rgba(242, 62, 92, 0.20), 0 0 0 10px rgba(242, 62, 92, 0.08);
   }
 
-  /* Text gradient — for marketing hero numbers */
-  .text-gradient-saffron {
-    background: linear-gradient(135deg, #ea5b1f 0%, #f8a04a 60%, #d97706 100%);
+  /* Text gradient — for marketing hero numbers (coral → magenta). Legacy name
+     `text-gradient-saffron` kept as an alias of `text-gradient-brand`. */
+  .text-gradient-saffron, .text-gradient-brand {
+    background: linear-gradient(135deg, #f23e5c 0%, #ff6b8b 45%, #c026d3 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -211,7 +220,7 @@
   /* Nicer focus rings */
   :focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(234, 91, 31, 0.22), 0 0 0 5px rgba(234, 91, 31, 0.06);
+    box-shadow: 0 0 0 3px rgba(242, 62, 92, 0.24), 0 0 0 5px rgba(242, 62, 92, 0.06);
     border-radius: 6px;
   }
 

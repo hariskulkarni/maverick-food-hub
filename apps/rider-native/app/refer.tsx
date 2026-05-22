@@ -45,7 +45,7 @@ const STEPS = [
   {
     icon: 'share-social-outline' as const,
     title: 'Share your code',
-    body: 'Send your referral code to friends who want to ride with Oak & Sizzler.',
+    body: 'Send your referral code to friends who want to ride with Flavrly.',
   },
   {
     icon: 'person-add-outline' as const,
@@ -115,7 +115,7 @@ export default function ReferScreen() {
     try {
       await Share.share({
         message:
-          `Ride with Oak & Sizzler and earn on every delivery! ` +
+          `Ride with Flavrly and earn on every delivery! ` +
           `Use my referral code ${data.code} when you sign up as a delivery partner.`,
       });
     } catch {

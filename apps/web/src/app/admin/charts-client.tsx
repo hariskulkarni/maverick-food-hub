@@ -1,7 +1,7 @@
 'use client';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 
-const COLORS = ['#ea5b1f', '#b53d10', '#f8a04a', '#5b8c5a', '#3a73c1', '#9b59b6'];
+const COLORS = ['#f23e5c', '#c01e44', '#ff7aa0', '#5b8c5a', '#3a73c1', '#9b59b6'];
 
 export function ChartsClient({ kind, data }: { kind: 'sales' | 'sellers' | 'paymix' | 'peak'; data: any[] }) {
   if (kind === 'sales')
@@ -12,7 +12,7 @@ export function ChartsClient({ kind, data }: { kind: 'sales' | 'sellers' | 'paym
           <XAxis dataKey="day" tickFormatter={(d) => d.slice(5)} fontSize={11} />
           <YAxis fontSize={11} />
           <Tooltip />
-          <Line type="monotone" dataKey="revenue" stroke="#ea5b1f" strokeWidth={2.5} dot={{ r: 3 }} />
+          <Line type="monotone" dataKey="revenue" stroke="#f23e5c" strokeWidth={2.5} dot={{ r: 3 }} />
         </LineChart>
       </ResponsiveContainer>
     );
@@ -23,7 +23,7 @@ export function ChartsClient({ kind, data }: { kind: 'sales' | 'sellers' | 'paym
           <XAxis type="number" hide />
           <YAxis dataKey="name" type="category" fontSize={11} width={120} />
           <Tooltip />
-          <Bar dataKey="qty" fill="#ea5b1f" radius={[0, 6, 6, 0]} />
+          <Bar dataKey="qty" fill="#f23e5c" radius={[0, 6, 6, 0]} />
         </BarChart>
       </ResponsiveContainer>
     );
@@ -46,7 +46,7 @@ export function ChartsClient({ kind, data }: { kind: 'sales' | 'sellers' | 'paym
           <XAxis dataKey="hour" fontSize={11} />
           <YAxis fontSize={11} />
           <Tooltip />
-          <Bar dataKey="count" fill="#b53d10" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="count" fill="#c01e44" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     );

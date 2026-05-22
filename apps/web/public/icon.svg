@@ -1,11 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Flavrly">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ea5b1f"/>
-      <stop offset="1" stop-color="#b53d10"/>
+    <linearGradient id="flavrly-g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f23e5c"/>
+      <stop offset="0.55" stop-color="#e0286f"/>
+      <stop offset="1" stop-color="#c026d3"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="14" fill="url(#g)"/>
-  <path d="M20 18c5-3 19-3 24 0v8c0 6-12 9-12 9s-12-3-12-9z" fill="#fff"/>
-  <circle cx="32" cy="44" r="6" fill="#fff"/>
+  <rect width="64" height="64" rx="16" fill="url(#flavrly-g)"/>
+  <!-- Flavrly "F" monogram, friendly geometric -->
+  <rect x="23" y="17" width="8"  height="30" rx="4" fill="#fff"/>
+  <rect x="23" y="17" width="21" height="8"  rx="4" fill="#fff"/>
+  <rect x="23" y="29" width="15" height="7"  rx="3.5" fill="#fff"/>
+  <!-- lime "pop" — a sprinkle of flavor -->
+  <circle cx="43.5" cy="43.5" r="5.5" fill="#c7f250"/>
 </svg>

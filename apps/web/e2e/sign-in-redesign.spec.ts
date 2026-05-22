@@ -27,7 +27,7 @@ test.describe('Premium /login redesign', () => {
     // contain the actual form inputs.
     const marketing = page
       .locator(
-        '[data-testid="login-marketing"], aside, section:has-text("Maverick"), [aria-label*="marketing" i]'
+        '[data-testid="login-marketing"], aside, section:has-text("Flavrly"), [aria-label*="marketing" i]'
       )
       .first();
     await expect(marketing).toBeVisible({ timeout: 10_000 });

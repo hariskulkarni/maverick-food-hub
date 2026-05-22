@@ -100,13 +100,13 @@ export default function DeliveryMapInner({ orderId, branch, delivery, initialRid
       maxZoom: 19
     }).addTo(map);
 
-    if (branch) branchMarkerRef.current = L.marker([branch.lat, branch.lng], { icon: makeIcon('🍽️', '#ea5b1f') }).bindPopup('Restaurant kitchen').addTo(map);
+    if (branch) branchMarkerRef.current = L.marker([branch.lat, branch.lng], { icon: makeIcon('🍽️', '#f23e5c') }).bindPopup('Restaurant kitchen').addTo(map);
     if (delivery) deliveryMarkerRef.current = L.marker([delivery.lat, delivery.lng], { icon: makeIcon('🏠', '#3a73c1') }).bindPopup('Delivery to you').addTo(map);
     if (seedRider) riderMarkerRef.current = L.marker([seedRider.lat, seedRider.lng], { icon: makeIcon('🛵', '#16a34a') }).bindPopup('Your rider').addTo(map);
 
     if (initialTrail.length >= 2) {
       trailLineRef.current = L.polyline(initialTrail.map((p) => [p.lat, p.lng] as [number, number]), {
-        color: '#ea5b1f', weight: 4, opacity: 0.7, dashArray: '6 6'
+        color: '#f23e5c', weight: 4, opacity: 0.7, dashArray: '6 6'
       }).addTo(map);
     }
 
@@ -145,7 +145,7 @@ export default function DeliveryMapInner({ orderId, branch, delivery, initialRid
       if (trailLineRef.current) {
         trailLineRef.current.setLatLngs(pos);
       } else {
-        trailLineRef.current = L.polyline(pos, { color: '#ea5b1f', weight: 4, opacity: 0.7, dashArray: '6 6' }).addTo(map);
+        trailLineRef.current = L.polyline(pos, { color: '#f23e5c', weight: 4, opacity: 0.7, dashArray: '6 6' }).addTo(map);
       }
     }
   }, [rider, trail]);

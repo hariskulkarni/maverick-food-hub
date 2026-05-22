@@ -16,7 +16,7 @@ export async function exportEarningsStatement(): Promise<void> {
       return;
     }
     await Share.share({
-      title: 'Oak & Sizzler — earnings statement',
+      title: 'Flavrly — earnings statement',
       message: csv,
     });
   } catch (e) {

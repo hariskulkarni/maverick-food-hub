@@ -65,8 +65,12 @@ export default async function HomePage() {
       <section className="gradient-hero relative overflow-hidden border-b">
         <div className="pointer-events-none absolute -top-24 -right-24 size-80 rounded-full bg-primary/15 blur-3xl float-soft" />
         <div
-          className="pointer-events-none absolute top-1/2 -left-20 size-72 rounded-full bg-warning/20 blur-3xl float-soft"
+          className="pointer-events-none absolute top-1/2 -left-20 size-72 rounded-full bg-pop/30 blur-3xl float-soft"
           style={{ animationDelay: '1.2s' }}
+        />
+        <div
+          className="pointer-events-none absolute -bottom-24 right-1/4 size-72 rounded-full bg-berry/15 blur-3xl float-soft"
+          style={{ animationDelay: '2.1s' }}
         />
 
         <div className="container py-16 md:py-28 relative">

@@ -52,7 +52,9 @@ const config: Config = {
         warning: {
           DEFAULT: 'hsl(var(--warning))',
           foreground: 'hsl(var(--warning-foreground))'
-        }
+        },
+        berry: 'hsl(var(--berry))',
+        pop: 'hsl(var(--pop))'
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -61,7 +63,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
-        display: ['var(--font-display)', 'serif']
+        display: ['var(--font-display)', 'system-ui', 'sans-serif']
       },
       keyframes: {
         'accordion-down': { from: { height: '0' }, to: { height: 'var(--radix-accordion-content-height)' } },

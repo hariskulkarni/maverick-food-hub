@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
  *
  * The home page is the marketing / discovery surface for the food-ordering
  * platform itself — NOT for any one restaurant. We lock in:
- *   1. The platform brand "Maverick's Food Hub" is present (title or H1).
+ *   1. The platform brand "Flavrly" is present (title or H1).
  *   2. The cuisine marquee element renders (discovery surface).
  *   3. A "For partners" / "List your restaurant" link is in the header.
  *   4. No restaurant-specific branding bleeds through — "Saffron & Smoke"
@@ -31,7 +31,7 @@ test.describe('Anonymous home: platform branding', () => {
       /maverick'?s food hub/i.test(title) || /maverick'?s food hub/i.test(h1Text);
     expect(
       hasBrand,
-      `Expected "Maverick's Food Hub" in <title> or wordmark. title="${title}" h1="${h1Text}"`
+      `Expected "Flavrly" in <title> or wordmark. title="${title}" h1="${h1Text}"`
     ).toBe(true);
 
     // ── 2. The cuisine marquee. We try the most likely hooks first

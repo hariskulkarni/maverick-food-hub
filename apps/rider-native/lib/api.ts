@@ -1,13 +1,13 @@
 /**
- * API client for the Oak & Sizzler rider app.
+ * API client for the Flavrly rider app.
  *
  * Talks to the web backend's /api/rider/* endpoints. The Bearer token is held
  * in a module-level variable (set by lib/auth.ts on sign-in / app launch) and
  * attached automatically to every request — so screens never deal with auth
  * headers directly.
  *
- * NOTE: API_BASE is the raw VPS IP for now. Once oakandsizzler.com has DNS +
- * SSL, change this one line to https://oakandsizzler.com and rebuild.
+ * NOTE: API_BASE is the raw VPS IP for now. Once flavrly.in has DNS +
+ * SSL, change this one line to https://flavrly.in and rebuild.
  */
 
 export const API_BASE = 'http://148.230.66.124';
@@ -75,7 +75,7 @@ async function request<T = unknown>(path: string, opts: RequestOptions = {}): Pr
       // A 5xx, or an HTML error page (e.g. nginx 502/503/504 while the API is
       // down or restarting). Never surface raw markup or a bare status code to
       // the rider — give them a calm, actionable message instead.
-      msg = "Oak & Sizzler servers are briefly unavailable. Please try again in a moment.";
+      msg = "Flavrly servers are briefly unavailable. Please try again in a moment.";
     } else if (typeof body === 'string' && body.trim() && body.trim().length <= 200) {
       // Some routes (e.g. pool claim) return a short plain-text reason, not JSON.
       msg = body.trim();

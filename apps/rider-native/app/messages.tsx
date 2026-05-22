@@ -1,5 +1,5 @@
 /**
- * Messages — the rider's two conversation threads with Oak & Sizzler staff.
+ * Messages — the rider's two conversation threads with Flavrly staff.
  *
  * Two logical threads:
  *   • Platform Support (party SUPER_ADMIN) — always available.
@@ -233,7 +233,7 @@ export default function MessagesScreen() {
               icon="headset-outline"
               tint={colors.primary}
               title="Platform Support"
-              subtitle="Oak & Sizzler support desk"
+              subtitle="Flavrly support desk"
               conversation={platformConv}
               onPress={() => openThread('SUPER_ADMIN', platformConv)}
             />

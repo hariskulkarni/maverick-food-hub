@@ -1,5 +1,5 @@
 /**
- * Earnings & Payments API module for the Oak & Sizzler rider app.
+ * Earnings & Payments API module for the Flavrly rider app.
  *
  * Wraps the /api/rider/{payouts,incentives,surge,cod} endpoints. Built on the
  * shared `apiRequest` helper — Bearer auth and JSON in/out are handled there,

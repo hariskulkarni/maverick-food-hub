@@ -3,7 +3,7 @@ import { test, expect, devices } from '@playwright/test';
 /**
  * Premium landing page at `/` — anonymous visit.
  *
- * Asserts the platform-grade landing surface for "Maverick's Food Hub":
+ * Asserts the platform-grade landing surface for "Flavrly":
  *   1. Brand wordmark / page title.
  *   2. Restaurant directory section with at least one card.
  *   3. Three value-prop sections — Customer / Restaurant Owner / Rider
@@ -19,7 +19,7 @@ test.describe('Landing page: premium platform surface', () => {
   }) => {
     await page.goto('/');
 
-    // ── 1. Brand: <title> or h1/wordmark must mention "Maverick's Food Hub".
+    // ── 1. Brand: <title> or h1/wordmark must mention "Flavrly".
     const title = await page.title();
     const h1Text = await page
       .locator('h1, [data-testid="wordmark"], header [aria-label]')
@@ -30,7 +30,7 @@ test.describe('Landing page: premium platform surface', () => {
       /maverick'?s food hub/i.test(title) || /maverick'?s food hub/i.test(h1Text);
     expect(
       hasBrand,
-      `Expected "Maverick's Food Hub" in <title> or wordmark. title="${title}" h1="${h1Text}"`
+      `Expected "Flavrly" in <title> or wordmark. title="${title}" h1="${h1Text}"`
     ).toBe(true);
 
     // ── 2. Restaurant directory. We try the obvious testid hooks first, then
