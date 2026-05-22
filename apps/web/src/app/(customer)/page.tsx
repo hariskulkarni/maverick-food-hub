@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { BrandMark } from '@/components/brand-mark';
 import { RestaurantAcquisitionGrid } from '@/components/landing/restaurant-acquisition';
 import { RiderAcquisition } from '@/components/landing/rider-acquisition';
+import { HeroStage } from '@/components/hero/hero-stage';
+import { HeroPulse } from '@/components/landing/hero-pulse';
 import {
   ChefHat,
   ArrowRight,
@@ -108,6 +110,9 @@ export default async function HomePage() {
       />
       {/* ────────────────────────── Hero ────────────────────────── */}
       <section className="gradient-hero relative overflow-hidden border-b">
+        {/* Living animated gradient mesh — the premium, breathing backdrop. */}
+        <div className="gradient-mesh pointer-events-none absolute inset-0 -z-10" aria-hidden />
+
         <div className="pointer-events-none absolute -top-24 -right-24 size-80 rounded-full bg-primary/15 blur-3xl float-soft" />
         <div
           className="pointer-events-none absolute top-1/2 -left-20 size-72 rounded-full bg-pop/30 blur-3xl float-soft"
@@ -118,77 +123,73 @@ export default async function HomePage() {
           style={{ animationDelay: '2.1s' }}
         />
 
-        <div className="container py-16 md:py-28 relative">
-          <div className="mx-auto max-w-3xl text-center reveal-stagger">
-            <Badge variant="default" className="w-fit mx-auto float-soft">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="relative inline-flex">
-                  <span className="size-2 rounded-full bg-white" />
-                  <span className="absolute inset-0 size-2 rounded-full bg-white/80 pulse-soft" />
+        <div className="container relative py-16 md:py-24 lg:py-28">
+          <div className="grid items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-10">
+            {/* Copy column — centered on mobile, left-aligned beside the
+                showpiece on desktop. */}
+            <div className="reveal-stagger text-center lg:text-left">
+              <Badge variant="default" className="w-fit mx-auto lg:mx-0 float-soft">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="relative inline-flex">
+                    <span className="size-2 rounded-full bg-white" />
+                    <span className="absolute inset-0 size-2 rounded-full bg-white/80 pulse-soft" />
+                  </span>
+                  Now onboarding kitchens & riders
                 </span>
-                Now onboarding kitchens & riders
-              </span>
-            </Badge>
+              </Badge>
 
-            <h1 className="display mt-6 text-4xl font-bold tracking-tight md:text-6xl text-balance leading-[1.05]">
-              <span className="block text-foreground/90">Run your kitchen on</span>
-              <BrandMark variant="hero" className="text-5xl md:text-7xl mt-1" />
-            </h1>
+              <h1 className="display mt-6 text-4xl font-bold tracking-tight md:text-6xl text-balance leading-[1.05]">
+                <span className="block text-foreground/90">Run your kitchen on</span>
+                <BrandMark
+                  variant="hero"
+                  className="text-5xl md:text-7xl mt-1 justify-center lg:justify-start"
+                />
+              </h1>
 
-            {/* Body copy: 14px on mobile, 18px on tablet+. Tightens info
-                density on a phone. */}
-            <p className="mt-6 text-sm md:text-lg text-muted-foreground max-w-xl mx-auto">
-              Get your kitchen online in 10 minutes. We bring you orders, our riders deliver,
-              you cook.
-            </p>
+              {/* Body copy: 14px on mobile, 18px on tablet+. Tightens info
+                  density on a phone. */}
+              <p className="mt-6 text-sm md:text-lg text-muted-foreground max-w-xl mx-auto lg:mx-0">
+                Get your kitchen online in 10 minutes. We bring you orders, our riders deliver,
+                you cook.
+              </p>
 
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <Button size="lg" asChild className="group">
-                <Link href="/signup/restaurant">
-                  List your restaurant
-                  <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+              <div className="mt-8 flex flex-wrap items-center justify-center lg:justify-start gap-3">
+                <Button size="lg" asChild className="group">
+                  <Link href="/signup/restaurant">
+                    List your restaurant
+                    <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+                  </Link>
+                </Button>
+                {/* Secondary CTA hidden below the fold on mobile so the hero
+                    reads as a single decisive action — bottom nav + the rider
+                    card further down still pick this up. */}
+                <Button size="lg" variant="outline" asChild className="group hidden md:inline-flex">
+                  <Link href="/signup/rider">
+                    Become a rider
+                    <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+                  </Link>
+                </Button>
+              </div>
+
+              <p className="mt-4 text-sm text-muted-foreground">
+                Already a partner?{' '}
+                <Link href="/login?role=staff" className="text-primary font-medium hover:underline">
+                  Sign in
                 </Link>
-              </Button>
-              {/* Secondary CTA hidden below the fold on mobile so the hero
-                  reads as a single decisive action — bottom nav + the rider
-                  card further down still pick this up. */}
-              <Button size="lg" variant="outline" asChild className="group hidden md:inline-flex">
-                <Link href="/signup/rider">
-                  Become a rider
-                  <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-                </Link>
-              </Button>
+                .
+              </p>
             </div>
 
-            <p className="mt-4 text-sm text-muted-foreground">
-              Already a partner?{' '}
-              <Link href="/login?role=staff" className="text-primary font-medium hover:underline">
-                Sign in
-              </Link>
-              .
-            </p>
+            {/* Showpiece — order-flow device, floating dish chips, optional
+                /hero.mp4. Looks great with no video asset present. */}
+            <div className="reveal order-first lg:order-none">
+              <HeroStage />
+            </div>
           </div>
 
-          {/* Live stats strip — numbers only, no cart. */}
-          <div className="mt-12 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-2">
-              <span className="relative inline-flex">
-                <span className="size-2 rounded-full bg-success" />
-                <span className="absolute inset-0 size-2 rounded-full bg-success pulse-soft" />
-              </span>
-              <span className="font-semibold text-foreground">{totalActive}</span>{' '}
-              {totalActive === 1 ? 'restaurant live' : 'restaurants live'}
-            </span>
-            <span className="text-border">·</span>
-            <span>
-              <span className="font-semibold text-foreground">{ridersDisplay}</span> riders in
-              your city
-            </span>
-            <span className="text-border">·</span>
-            <span>
-              <span className="font-semibold text-foreground">~35 min</span> average delivery
-            </span>
-          </div>
+          {/* Dynamic, "alive" stats element — replaces the old static strip.
+              Word-cycler + count-up numbers, all motion-aware. */}
+          <HeroPulse restaurants={totalActive} riders={ridersDisplay} />
         </div>
       </section>
 
