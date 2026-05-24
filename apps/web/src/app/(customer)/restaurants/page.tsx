@@ -13,6 +13,7 @@ import { DeliverToHeader } from './deliver-to-header';
 import { ChangeLocationButton } from './change-location-button';
 import type { SavedAddressOption } from './location-picker-dialog';
 import { FeatureCarousel } from '@/components/landing/feature-carousel';
+import { WhatsOnYourMind } from '@/components/discovery/whats-on-your-mind';
 
 export const metadata = { title: 'All restaurants' };
 
@@ -241,6 +242,9 @@ export default async function RestaurantsListPage({
           </div>
         </section>
       )}
+
+      {/* ─────── What's on your mind? — cross-restaurant food categories ─────── */}
+      <WhatsOnYourMind />
 
       <header className="mb-4 md:mb-6 reveal">
         <div className="text-xs font-semibold uppercase tracking-wider text-primary">Restaurants near you</div>
