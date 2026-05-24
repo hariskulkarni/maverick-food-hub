@@ -345,10 +345,32 @@
     100% { transform: translateX(-50%) scale(1.18) rotate(3deg); opacity: 1; }
   }
 
+  /* ───────── Cart savings celebration ───────── */
+
+  /* Expanding radial splash behind the savings number. */
+  .savings-splash { animation: savings-splash 0.8s cubic-bezier(0.2,0.7,0.3,1) both; }
+  @keyframes savings-splash {
+    0%   { transform: scale(0.2); opacity: 0.55; }
+    100% { transform: scale(1.9); opacity: 0; }
+  }
+
+  /* The savings card popping into view (bouncy). */
+  .savings-card { animation: savings-card 0.5s cubic-bezier(0.2,0.7,0.3,1.5) both; }
+  @keyframes savings-card {
+    0%   { opacity: 0; transform: scale(0.7) translateY(12px); }
+    60%  { opacity: 1; transform: scale(1.04) translateY(0); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  /* Gentle backdrop fade for the celebration overlay. */
+  .savings-overlay { animation: fade-in-overlay 0.3s ease-out both; }
+  @keyframes fade-in-overlay { 0% { opacity: 0; } 100% { opacity: 1; } }
+
   @media (prefers-reduced-motion: reduce) {
     .reveal, .reveal-stagger > *, .float-soft, .pulse-soft, .marquee, .burst,
     .confetti-piece, .shimmer, .gradient-mesh, .hero-sheen, .hero-rail-crawl,
-    .hero-device, .fc-pop, .fc-ripple, .fc-ride, .fc-steam, .fc-flame { animation: none !important; }
+    .hero-device, .fc-pop, .fc-ripple, .fc-ride, .fc-steam, .fc-flame,
+    .savings-splash, .savings-card, .savings-overlay { animation: none !important; }
     .hero-device { transform: perspective(1200px) rotateY(-7deg) rotateX(3deg); }
     .card-lift, .tap-press, .hero-pulse-card { transition: none; }
     html { scroll-behavior: auto; }

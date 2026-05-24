@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useEffect, useState } from 'react';
 import { OffersSection } from './offers-section';
 import { CrossSellStrip } from '../menu/cross-sell-strip';
+import { CartSavingsCelebration } from '@/components/cart/savings-celebration';
 
 // Live preview of the signup-bonus the customer would get applied to this
 // cart. The hook handles the 401 (logged-out) case by silently returning
@@ -45,7 +46,11 @@ function useSignupBonusPreview(cartSubtotal: number) {
 export function CartClient({ branchId }: { branchId: string | null }) {
   const { lines, setQty, remove, subtotal } = useCart();
   const [notes, setNotes] = useState('');
+  const [offerSavings, setOfferSavings] = useState(0);
   const bonus = useSignupBonusPreview(subtotal);
+
+  // Combined savings for the celebration: signup bonus + offer/coupon savings.
+  const totalSavings = (bonus?.appliedAmount ?? 0) + offerSavings;
 
   if (lines.length === 0)
     return (
@@ -78,6 +83,10 @@ export function CartClient({ branchId }: { branchId: string | null }) {
         <h1 className="display text-xl md:text-2xl font-semibold mb-4">
           Your cart ({lines.length} item{lines.length === 1 ? '' : 's'})
         </h1>
+
+        {/* Savings celebration — confetti + splash popup + replayable chip. */}
+        <CartSavingsCelebration savings={totalSavings} />
+
         <Card className="rounded-2xl md:rounded-xl">
           <CardContent className="p-0 divide-y">
             {lines.map((l) => (
@@ -160,7 +169,7 @@ export function CartClient({ branchId }: { branchId: string | null }) {
             <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
           </summary>
           <div className="px-4 pb-4 space-y-4">
-            <OffersSection branchId={branchId} />
+            <OffersSection branchId={branchId} onSavings={setOfferSavings} />
             <dl className="space-y-2 text-sm">
               <Row label="Subtotal" value={money(subtotal)} />
               {bonus && bonus.appliedAmount > 0 && (
@@ -189,7 +198,7 @@ export function CartClient({ branchId }: { branchId: string | null }) {
 
       {/* Desktop sticky sidebar (md+) */}
       <aside className="hidden md:block md:sticky md:top-20 self-start space-y-4">
-        <OffersSection branchId={branchId} />
+        <OffersSection branchId={branchId} onSavings={setOfferSavings} />
 
         <Card>
           <CardContent className="p-5">

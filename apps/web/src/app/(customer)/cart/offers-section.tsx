@@ -92,9 +92,12 @@ function humanizeReason(reason: string): { msg: string; isUpsell: boolean } {
 
 export interface OffersSectionProps {
   branchId: string | null;
+  /** Reports total offer savings (auto-applied + non-duplicate coupon) upward,
+   *  so the cart can celebrate the combined savings. */
+  onSavings?: (amount: number) => void;
 }
 
-export function OffersSection({ branchId }: OffersSectionProps) {
+export function OffersSection({ branchId, onSavings }: OffersSectionProps) {
   const { lines, subtotal } = useCart();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<EligibleResponse | null>(null);
@@ -107,6 +110,7 @@ export function OffersSection({ branchId }: OffersSectionProps) {
     code: string;
     name: string;
     amountOff: number;
+    offerId: string;
   } | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
 
@@ -157,6 +161,15 @@ export function OffersSection({ branchId }: OffersSectionProps) {
   const totalSaved = data?.bestPick?.totalAmountOff ?? 0;
   const winnerIds = new Set(winners.map((w) => w.offer.id));
 
+  // Total offer savings to surface to the cart: auto-applied best-pick plus an
+  // applied coupon ONLY when it isn't already counted among the auto winners
+  // (avoids double-counting a code that the resolver also auto-picked).
+  const reportedSavings =
+    totalSaved + (appliedCode && !winnerIds.has(appliedCode.offerId) ? appliedCode.amountOff : 0);
+  useEffect(() => {
+    onSavings?.(reportedSavings);
+  }, [reportedSavings, onSavings]);
+
   // Bucket evaluations:
   //   - Available to claim: eligible but not auto-picked (often code-only)
   //   - Coming up: ineligible but the resolver hinted an upsell
@@ -193,7 +206,8 @@ export function OffersSection({ branchId }: OffersSectionProps) {
       setAppliedCode({
         code: trimmed.toUpperCase(),
         name: payload.winner.offer.name,
-        amountOff: payload.winner.result.amountOff
+        amountOff: payload.winner.result.amountOff,
+        offerId: payload.winner.offer.id
       });
       setCode('');
     } catch {
