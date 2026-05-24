@@ -294,6 +294,7 @@ function MostOrderedCard({ items }: { items: MostOrderedProp[] }) {
                       id: it.id,
                       refId: it.id,
                       kind: 'item',
+                      branchId: it.branchId,
                       name: it.name,
                       unitPrice: it.price,
                       imageUrl: it.imageUrl,

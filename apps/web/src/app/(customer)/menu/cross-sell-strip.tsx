@@ -169,6 +169,7 @@ export function CrossSellStrip(props: CrossSellStripProps) {
               id: s.id,
               refId: s.id,
               kind: 'item',
+              branchId: props.branchId ?? null,
               name: s.name,
               unitPrice: Number(s.price),
               imageUrl: s.imageUrl ?? undefined,

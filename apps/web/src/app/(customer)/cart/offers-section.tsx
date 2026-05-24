@@ -194,6 +194,11 @@ export function OffersSection({ branchId, onSavings }: OffersSectionProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: trimmed, branchId, cart: cartPayload })
       });
+      if (res.status === 401) {
+        setAppliedCode(null);
+        setCodeError('Please sign in to use a coupon code.');
+        return;
+      }
       const payload: ApplyCodeResponse = await res.json();
       if (!res.ok || !payload.winner) {
         const reason = payload.evaluation && !payload.evaluation.result.eligible

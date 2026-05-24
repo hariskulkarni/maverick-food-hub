@@ -49,6 +49,12 @@ export function CartClient({ branchId }: { branchId: string | null }) {
   const [offerSavings, setOfferSavings] = useState(0);
   const bonus = useSignupBonusPreview(subtotal);
 
+  // The branch the cart's items actually belong to. Lines carry their branchId
+  // at add-time; we use that so offers/coupons scope to the RIGHT restaurant.
+  // Falls back to the server-resolved branch for legacy carts (items added
+  // before branchId tracking existed).
+  const effectiveBranchId = lines.find((l) => l.branchId)?.branchId ?? branchId;
+
   // Combined savings for the celebration: signup bonus + offer/coupon savings.
   const totalSavings = (bonus?.appliedAmount ?? 0) + offerSavings;
 
@@ -75,7 +81,13 @@ export function CartClient({ branchId }: { branchId: string | null }) {
   // The actual "Place order" CTA lives outside the accordion as a fixed bar so
   // it's always reachable regardless of accordion state.
   const totalDue = Math.max(0, subtotal - (bonus?.appliedAmount ?? 0));
-  const checkoutHref = `/checkout${notes ? `?notes=${encodeURIComponent(notes)}` : ''}`;
+  const checkoutHref = (() => {
+    const params = new URLSearchParams();
+    if (effectiveBranchId) params.set('branchId', effectiveBranchId);
+    if (notes) params.set('notes', notes);
+    const qs = params.toString();
+    return qs ? `/checkout?${qs}` : '/checkout';
+  })();
 
   return (
     <div className="container py-6 md:py-8 grid gap-6 md:gap-8 md:grid-cols-[1fr_360px] pb-[120px] md:pb-8">
@@ -141,8 +153,8 @@ export function CartClient({ branchId }: { branchId: string | null }) {
         </Card>
 
         {/* Cross-sell row — silently hides if API returns empty */}
-        {branchId && cartItemIds.length > 0 && (
-          <CrossSellStrip surface="cart" branchId={branchId} itemIds={cartItemIds} />
+        {effectiveBranchId && cartItemIds.length > 0 && (
+          <CrossSellStrip surface="cart" branchId={effectiveBranchId} itemIds={cartItemIds} />
         )}
 
         <Card className="mt-4 rounded-2xl md:rounded-xl">
@@ -169,7 +181,7 @@ export function CartClient({ branchId }: { branchId: string | null }) {
             <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
           </summary>
           <div className="px-4 pb-4 space-y-4">
-            <OffersSection branchId={branchId} onSavings={setOfferSavings} />
+            <OffersSection branchId={effectiveBranchId} onSavings={setOfferSavings} />
             <dl className="space-y-2 text-sm">
               <Row label="Subtotal" value={money(subtotal)} />
               {bonus && bonus.appliedAmount > 0 && (
@@ -198,7 +210,7 @@ export function CartClient({ branchId }: { branchId: string | null }) {
 
       {/* Desktop sticky sidebar (md+) */}
       <aside className="hidden md:block md:sticky md:top-20 self-start space-y-4">
-        <OffersSection branchId={branchId} onSavings={setOfferSavings} />
+        <OffersSection branchId={effectiveBranchId} onSavings={setOfferSavings} />
 
         <Card>
           <CardContent className="p-5">

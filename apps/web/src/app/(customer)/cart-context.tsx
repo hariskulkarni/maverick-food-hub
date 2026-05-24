@@ -13,6 +13,10 @@ export interface CartLine {
   notes?: string;
   kind: 'item' | 'combo';
   refId: string;       // menuItemId | comboId
+  /** The branch this item belongs to. Lets the cart scope offers/coupons to the
+   *  correct restaurant in the multi-tenant marketplace (instead of guessing the
+   *  oldest active branch). All lines in a single cart share one branch. */
+  branchId?: string | null;
   // ── Variant (size) + modifier (add-on) selections ──────────────────────────
   // The server re-prices authoritatively from the IDs below; `unitPrice`,
   // `variantName` and `modifiersSummary` are display-only snapshots.

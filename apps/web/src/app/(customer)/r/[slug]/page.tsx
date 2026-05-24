@@ -413,7 +413,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
                           </>
                         )}
                       </div>
-                      <ComboAddButton id={c.id} name={c.name} price={hh.effectivePrice} imageUrl={c.imageUrl ?? COMBO_IMAGES[c.slug]} />
+                      <ComboAddButton id={c.id} name={c.name} price={hh.effectivePrice} imageUrl={c.imageUrl ?? COMBO_IMAGES[c.slug]} branchId={branch.id} />
                     </div>
                   </CardContent>
                 </Card>
@@ -428,6 +428,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
           <h2 className="display mt-1 text-2xl font-semibold mb-6">{dishCount} dishes</h2>
         </div>
         <MenuClient
+          branchId={branch.id}
           data={JSON.parse(
             JSON.stringify(
               categories.map((c) => {

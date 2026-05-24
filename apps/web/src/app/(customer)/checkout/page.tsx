@@ -9,15 +9,39 @@ export const metadata = { title: 'Checkout' };
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function CheckoutPage() {
+export default async function CheckoutPage({
+  searchParams
+}: {
+  searchParams: Promise<{ branchId?: string; notes?: string }>;
+}) {
+  const sp = (await searchParams) ?? {};
   const session = await auth();
-  if (!session?.user?.id) redirect('/login?next=/checkout');
+  if (!session?.user?.id) {
+    // Preserve the branch (and notes) through the login round-trip so the
+    // correct restaurant's offers still apply when the customer returns.
+    const params = new URLSearchParams();
+    if (sp.branchId) params.set('branchId', sp.branchId);
+    if (sp.notes) params.set('notes', sp.notes);
+    const qs = params.toString();
+    redirect(`/login?next=${encodeURIComponent(`/checkout${qs ? `?${qs}` : ''}`)}`);
+  }
 
-  const branch = await prisma.branch.findFirstOrThrow({
-    where: { isActive: true },
-    orderBy: { createdAt: 'asc' },
-    include: { restaurant: { select: { slug: true, scheduledOrdersEnabled: true, selfPickupEnabled: true, dineInEnabled: true, reservationDiscountPct: true } } }
-  });
+  const branchInclude = {
+    restaurant: { select: { slug: true, scheduledOrdersEnabled: true, selfPickupEnabled: true, dineInEnabled: true, reservationDiscountPct: true } }
+  };
+  // Prefer the branch the cart is actually ordering from (passed as ?branchId=).
+  // This is what makes offers/coupons resolve to the right restaurant in the
+  // multi-tenant marketplace. Fall back to the first active branch for legacy
+  // links that don't carry it.
+  const branch =
+    (sp.branchId
+      ? await prisma.branch.findFirst({ where: { id: sp.branchId, isActive: true }, include: branchInclude })
+      : null) ??
+    (await prisma.branch.findFirstOrThrow({
+      where: { isActive: true },
+      orderBy: { createdAt: 'asc' },
+      include: branchInclude
+    }));
   const addresses = await prisma.address.findMany({ where: { userId: session.user.id }, orderBy: { isDefault: 'desc' } });
   const wallet = await prisma.wallet.findUnique({ where: { userId: session.user.id } });
   const loyalty = await prisma.loyaltyAccount.findUnique({ where: { userId: session.user.id } });

@@ -38,7 +38,7 @@ export interface MenuItemForCard {
   modifierGroups?: ModalGroup[];
 }
 
-export function MenuItemCard({ item }: { item: MenuItemForCard }) {
+export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branchId: string }) {
   const { lines, add, setQty, remove } = useCart();
   const [customizeOpen, setCustomizeOpen] = useState(false);
 
@@ -62,6 +62,7 @@ export function MenuItemCard({ item }: { item: MenuItemForCard }) {
         id: item.id, // recomputed inside add() from the selection signature
         refId: item.id,
         kind: 'item',
+        branchId,
         name: item.name,
         unitPrice: sel.unitPrice,
         imageUrl: item.imageUrl,
@@ -153,7 +154,7 @@ export function MenuItemCard({ item }: { item: MenuItemForCard }) {
             size="sm"
             variant="outline"
             className="tap-press shadow-sm hover:border-primary hover:text-primary h-11 min-w-[44px] px-4 md:h-9 md:px-3"
-            onClick={() => add({ id: item.id, refId: item.id, kind: 'item', name: item.name, unitPrice: Number(item.price), imageUrl: item.imageUrl, isVeg: item.isVeg })}
+            onClick={() => add({ id: item.id, refId: item.id, kind: 'item', branchId, name: item.name, unitPrice: Number(item.price), imageUrl: item.imageUrl, isVeg: item.isVeg })}
           >
             <Plus className="size-4" /> Add
           </Button>
@@ -184,7 +185,7 @@ export function MenuItemCard({ item }: { item: MenuItemForCard }) {
           and silently hides when no suggestions are configured. */}
       {qty > 0 && (
         <div className="px-4 pb-3 -mt-1">
-          <CrossSellStrip surface="pdp" parentItemId={item.id} />
+          <CrossSellStrip surface="pdp" parentItemId={item.id} branchId={branchId} />
         </div>
       )}
 

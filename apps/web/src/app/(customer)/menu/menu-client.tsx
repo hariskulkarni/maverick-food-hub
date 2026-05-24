@@ -17,7 +17,7 @@ interface CategoryGroup {
 
 type Diet = 'all' | 'veg' | 'nonveg';
 
-export function MenuClient({ data }: { data: CategoryGroup[] }) {
+export function MenuClient({ data, branchId }: { data: CategoryGroup[]; branchId: string }) {
   const [q, setQ] = useState('');
   const [diet, setDiet] = useState<Diet>('all');
   const [activeCat, setActiveCat] = useState<string | null>(null);
@@ -160,7 +160,7 @@ export function MenuClient({ data }: { data: CategoryGroup[] }) {
               )}
               {cat.items.length > 0 && (
                 <div className={`grid gap-3 lg:grid-cols-2 ${unavailable ? 'opacity-60 pointer-events-none select-none' : ''}`}>
-                  {cat.items.map((item) => <MenuItemCard key={item.id} item={item} />)}
+                  {cat.items.map((item) => <MenuItemCard key={item.id} item={item} branchId={branchId} />)}
                 </div>
               )}
             </section>
