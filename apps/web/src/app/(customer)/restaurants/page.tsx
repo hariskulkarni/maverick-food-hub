@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,6 +12,7 @@ import { getDiscoveryRadiusKm } from '@/server/platform-settings';
 import { DeliverToHeader } from './deliver-to-header';
 import { ChangeLocationButton } from './change-location-button';
 import type { SavedAddressOption } from './location-picker-dialog';
+import { FeatureCarousel } from '@/components/landing/feature-carousel';
 
 export const metadata = { title: 'All restaurants' };
 
@@ -188,36 +188,8 @@ export default async function RestaurantsListPage({
 
   return (
     <div className="container py-6 md:py-8">
-      {/* ───────────────────────── Promo hero ───────────────────────── */}
-      <section className="mb-5 reveal">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-[#e0286f] to-berry text-white">
-          {/* Food image bleeds in from the right, faded into the gradient. */}
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-3/5 md:w-1/2">
-            <Image
-              src="https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=1200&auto=format&fit=crop&q=80"
-              alt=""
-              fill
-              priority
-              sizes="(min-width: 768px) 50vw, 60vw"
-              className="object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-primary via-primary/70 to-transparent" />
-          </div>
-          {/* lime pop glow */}
-          <div className="pointer-events-none absolute -bottom-16 -left-10 size-56 rounded-full bg-pop/30 blur-3xl" />
-          <div className="relative max-w-md p-6 md:p-10">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur">
-              <Sparkles className="size-3.5" /> Fresh on Flavrly
-            </span>
-            <h2 className="display mt-3 text-2xl md:text-4xl font-extrabold leading-[1.1]">
-              Your city&apos;s best kitchens, <span className="text-pop">delivered hot.</span>
-            </h2>
-            <p className="mt-2 text-sm md:text-base text-white/85">
-              Order in three taps and track every bite to your door.
-            </p>
-          </div>
-        </div>
-      </section>
+      {/* ───────────────── Promo carousel (auto-rotating showpiece) ───────────────── */}
+      <FeatureCarousel />
 
       {/* Deliver-to header (location set) OR a non-blocking prompt to set one. */}
       <div className="mb-4 reveal">

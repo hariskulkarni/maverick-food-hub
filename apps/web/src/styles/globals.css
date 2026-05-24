@@ -303,10 +303,52 @@
     box-shadow: 0 16px 44px -16px rgba(242, 62, 92, 0.40);
   }
 
+  /* ───────── Feature carousel slide illustrations (discovery banner) ───────── */
+
+  /* Pop-in: chips, cart pill and offer coins springing into place. */
+  .fc-pop { animation: fc-pop 0.6s cubic-bezier(0.2,0.7,0.3,1.4) both; }
+  @keyframes fc-pop {
+    0%   { opacity: 0; transform: scale(0.7) translateY(8px); }
+    60%  { opacity: 1; transform: scale(1.06) translateY(0); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  /* Tap ripple over the "add to cart" hotspot. */
+  .fc-ripple { animation: fc-ripple 1.8s ease-out infinite; }
+  @keyframes fc-ripple {
+    0%   { transform: scale(0.6); opacity: 0; }
+    25%  { opacity: 0.9; }
+    100% { transform: scale(1.8); opacity: 0; }
+  }
+
+  /* Rider scooting along the delivery route. */
+  .fc-ride { animation: fc-ride 3.4s cubic-bezier(0.4,0,0.2,1) infinite; }
+  @keyframes fc-ride {
+    0%   { transform: translate(0, 0); }
+    45%  { transform: translate(70px, -42px); }
+    55%  { transform: translate(78px, -44px); }
+    100% { transform: translate(150px, -56px); opacity: 0; }
+  }
+
+  /* Steam wisps rising off the pan. */
+  .fc-steam { animation: fc-steam 2.4s ease-in-out infinite; }
+  @keyframes fc-steam {
+    0%   { transform: translateY(8px) scaleY(0.6); opacity: 0; }
+    35%  { opacity: 0.8; }
+    100% { transform: translateY(-22px) scaleY(1.1); opacity: 0; }
+  }
+
+  /* Flame flicker under the pan. */
+  .fc-flame { animation: fc-flame 0.5s ease-in-out infinite alternate; transform-origin: bottom center; }
+  @keyframes fc-flame {
+    0%   { transform: translateX(-50%) scale(1) rotate(-3deg); opacity: 0.9; }
+    100% { transform: translateX(-50%) scale(1.18) rotate(3deg); opacity: 1; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .reveal, .reveal-stagger > *, .float-soft, .pulse-soft, .marquee, .burst,
     .confetti-piece, .shimmer, .gradient-mesh, .hero-sheen, .hero-rail-crawl,
-    .hero-device { animation: none !important; }
+    .hero-device, .fc-pop, .fc-ripple, .fc-ride, .fc-steam, .fc-flame { animation: none !important; }
     .hero-device { transform: perspective(1200px) rotateY(-7deg) rotateX(3deg); }
     .card-lift, .tap-press, .hero-pulse-card { transition: none; }
     html { scroll-behavior: auto; }
