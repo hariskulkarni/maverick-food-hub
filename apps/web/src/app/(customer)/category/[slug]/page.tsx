@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import { ChevronLeft, MapPin, Navigation, Clock, Star, Percent, Gift, Tag, Leaf, Drumstick, UtensilsCrossed } from 'lucide-react';
 import { ImageWithFallback } from '@/components/image-with-fallback';
 import { FOOD_FALLBACK } from '@/lib/food-images';
-import { getDiscoveryCategory, DISCOVERY_CATEGORIES, type DiscoveryCategory } from '@/lib/discovery-categories';
+import { getDiscoveryCategory, type DiscoveryCategory } from '@/lib/discovery-categories';
 import { readDeliveryLocation } from '@/server/discovery';
 import { getDiscoveryRadiusKm } from '@/server/platform-settings';
 import {
@@ -328,7 +328,3 @@ function FilterPill({
     </Link>
   );
 }
-
-// Keep the static list referenced so tree-shaking doesn't drop the config in
-// dev edge-cases; also handy for future static generation of category routes.
-export const knownCategories = DISCOVERY_CATEGORIES.map((c) => c.slug);
