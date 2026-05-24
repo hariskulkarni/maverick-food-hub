@@ -187,10 +187,12 @@ export default async function RestaurantsListPage({
   };
 
   return (
-    <div className="container py-6 md:py-8">
-      {/* ───────────────── Promo carousel (auto-rotating showpiece) ───────────────── */}
+    <>
+      {/* ─── Full-bleed promo carousel — spans the viewport on mobile (native-app
+          feel), contained card on desktop. Lives OUTSIDE the container. ─── */}
       <FeatureCarousel />
 
+      <div className="container pt-4 md:pt-6 pb-6 md:pb-8">
       {/* Deliver-to header (location set) OR a non-blocking prompt to set one. */}
       <div className="mb-4 reveal">
         {loc ? (
@@ -255,9 +257,15 @@ export default async function RestaurantsListPage({
         </p>
       </header>
 
-      {/* Sticky search-like header (mobile only). */}
-      <div className="sticky top-12 md:top-16 z-20 -mx-4 md:mx-0 px-4 md:px-0 py-2 md:py-0 mb-3 bg-background/85 backdrop-blur md:bg-transparent md:backdrop-blur-none border-b md:border-0">
-        <form action="/restaurants" method="get" className="md:hidden">
+      {/* ─── Sticky toolbar: search (mobile) + cuisine chips as ONE unit ───
+          Both move together and stick directly beneath the global header
+          (h-12 mobile / h-16 desktop) at z-30 — below the header's z-40 but
+          above page content — so the chips can never tuck under the search.
+          Full-bleed on mobile with a near-opaque backdrop so cards scroll
+          cleanly behind it (native-app sticky-header feel). */}
+      <div className="sticky top-12 md:top-16 z-30 -mx-4 md:mx-0 mb-6 md:mb-8 border-b md:border-0 bg-background/95 backdrop-blur md:bg-transparent md:backdrop-blur-none">
+        {/* Search — mobile only (desktop search lives elsewhere). */}
+        <form action="/restaurants" method="get" className="md:hidden px-4 pt-2.5 pb-1.5">
           {selectedCuisine && <input type="hidden" name="cuisine" value={selectedCuisine} />}
           <input
             type="search"
@@ -267,11 +275,9 @@ export default async function RestaurantsListPage({
             aria-label="Search restaurants"
           />
         </form>
-      </div>
 
-      {/* Filter chip row. */}
-      <div className="sticky top-[88px] md:static z-10 -mx-4 md:mx-0 mb-6 md:mb-8 bg-background/85 md:bg-transparent backdrop-blur md:backdrop-blur-none">
-        <div className="flex md:flex-wrap items-center gap-2 overflow-x-auto md:overflow-visible no-scrollbar px-4 md:px-0 py-2 md:py-0">
+        {/* Cuisine chips + sort — horizontally scrollable on mobile. */}
+        <div className="flex md:flex-wrap items-center gap-2 overflow-x-auto md:overflow-visible no-scrollbar px-4 md:px-0 pb-2.5 pt-1 md:py-0">
           <Link
             href={chipHref(null)}
             className={`inline-flex h-9 items-center rounded-full border px-3.5 text-xs font-medium transition-colors shrink-0 tap-press ${
@@ -410,6 +416,7 @@ export default async function RestaurantsListPage({
           </Link>
         ))}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

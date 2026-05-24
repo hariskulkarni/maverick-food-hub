@@ -6,6 +6,8 @@ import { BrandMark } from '@/components/brand-mark';
 import { PlatformNav } from '@/components/landing/platform-nav';
 import { MobileBottomNav } from '@/components/mobile/bottom-nav';
 import { StickyCartBar } from '@/components/mobile/sticky-cart-bar';
+import { SwRegister } from '@/components/pwa/sw-register';
+import { InstallPrompt } from '@/components/pwa/install-prompt';
 
 /**
  * Shared layout for the (customer) route group.
@@ -51,6 +53,11 @@ export default async function CustomerLayout({ children }: { children: React.Rea
             checkout) and on viewports ≥ md. */}
         <MobileBottomNav />
         <StickyCartBar />
+
+        {/* PWA: register the offline-shell SW + surface a branded install prompt.
+            Client islands; safe to render from this server component. */}
+        <SwRegister />
+        <InstallPrompt />
 
         {/* ─────────────── Footer (hidden on mobile, replaced by bottom nav) ─────────────── */}
         <footer role="contentinfo" className="hidden md:block border-t bg-muted/30 mt-12">

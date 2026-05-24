@@ -129,9 +129,12 @@ export function FeatureCarousel() {
   };
 
   return (
-    <section className="mb-5 reveal" aria-label="Flavrly highlights" aria-roledescription="carousel">
+    <section className="reveal md:pt-6" aria-label="Flavrly highlights" aria-roledescription="carousel">
+      {/* Full-bleed on mobile (edge-to-edge, flush under the sticky header so it
+          reads like a native app hero); contained + rounded card on desktop. */}
+      <div className="md:container">
       <div
-        className="relative overflow-hidden rounded-3xl"
+        className="relative overflow-hidden rounded-b-[1.75rem] md:rounded-3xl shadow-lg shadow-primary/10"
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
         onTouchStart={onTouchStart}
@@ -194,6 +197,7 @@ export function FeatureCarousel() {
             />
           ))}
         </div>
+      </div>
       </div>
     </section>
   );
