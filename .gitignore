@@ -129,3 +129,7 @@ deploy/*.keystore
 .netlify
 .serverless/
 .firebase/
+
+# ── Client billing / invoices (never commit — contains client PII) ────────
+Invoice-*.pdf
+/invoices/
