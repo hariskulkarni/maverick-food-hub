@@ -26,6 +26,7 @@ type SortKey = 'newest' | 'name';
 interface SearchParams {
   cuisine?: string;
   sort?: string;
+  q?: string;
 }
 
 /** Format a distance in metres as a short human string ("0.4 km", "2.3 km"). */
@@ -100,6 +101,8 @@ export default async function RestaurantsListPage({
   const sp = (await searchParams) ?? {};
   const selectedCuisine = typeof sp.cuisine === 'string' && sp.cuisine.length > 0 ? sp.cuisine : null;
   const sort: SortKey = sp.sort === 'name' ? 'name' : 'newest';
+  const query = typeof sp.q === 'string' ? sp.q.trim() : '';
+  const queryLower = query.toLowerCase();
 
   const now = new Date();
   const [active, radiusKm, rawOffers] = await Promise.all([
@@ -142,10 +145,38 @@ export default async function RestaurantsListPage({
   }
   const cuisines = Array.from(cuisineCounts.entries()).sort((a, b) => b[1] - a[1]);
 
+  // ── Text search (?q=) ──────────────────────────────────────────────────────
+  // Matches a restaurant by its name/tagline/cuisine OR by a DISH it serves
+  // (so "biryani" surfaces every restaurant with a biryani on the menu, not just
+  // ones literally named that). Dish matching is a best-effort DB lookup.
+  let searchMatches = matches;
+  if (query) {
+    let dishRestaurantIds = new Set<string>();
+    try {
+      const items = await prisma.menuItem.findMany({
+        where: {
+          isAvailable: true,
+          name: { contains: query, mode: 'insensitive' },
+          branch: { restaurant: { status: 'ACTIVE' } }
+        },
+        select: { branch: { select: { restaurantId: true } } },
+        take: 500
+      });
+      dishRestaurantIds = new Set(items.map((it) => it.branch.restaurantId));
+    } catch {
+      /* dish search is best-effort — fall back to name/cuisine matching only */
+    }
+    searchMatches = matches.filter((m) => {
+      const r = m.restaurant;
+      const hay = `${r.name} ${r.tagline ?? ''} ${r.cuisine ?? ''}`.toLowerCase();
+      return hay.includes(queryLower) || dishRestaurantIds.has(r.id);
+    });
+  }
+
   // Apply cuisine filter (preserving nearest-first order).
   const filteredMatches = selectedCuisine
-    ? matches.filter((m) => m.restaurant.cuisine === selectedCuisine)
-    : matches;
+    ? searchMatches.filter((m) => m.restaurant.cuisine === selectedCuisine)
+    : searchMatches;
 
   // Apply sort. "newest" keeps the discovery (nearest-first) order, which is the
   // most useful default for location-based browsing; "name" sorts alphabetically.
@@ -175,17 +206,28 @@ export default async function RestaurantsListPage({
     const params = new URLSearchParams();
     if (cuisine) params.set('cuisine', cuisine);
     if (sort !== 'newest') params.set('sort', sort);
-    const q = params.toString();
-    return q ? `/restaurants?${q}` : '/restaurants';
+    if (query) params.set('q', query);
+    const qs = params.toString();
+    return qs ? `/restaurants?${qs}` : '/restaurants';
   };
 
   const sortHref = (next: SortKey) => {
     const params = new URLSearchParams();
     if (selectedCuisine) params.set('cuisine', selectedCuisine);
     if (next !== 'newest') params.set('sort', next);
-    const q = params.toString();
-    return q ? `/restaurants?${q}` : '/restaurants';
+    if (query) params.set('q', query);
+    const qs = params.toString();
+    return qs ? `/restaurants?${qs}` : '/restaurants';
   };
+
+  // Same filters minus the search query — used by the "clear" search link.
+  const clearSearchHref = (() => {
+    const params = new URLSearchParams();
+    if (selectedCuisine) params.set('cuisine', selectedCuisine);
+    if (sort !== 'newest') params.set('sort', sort);
+    const qs = params.toString();
+    return qs ? `/restaurants?${qs}` : '/restaurants';
+  })();
 
   return (
     <>
@@ -250,14 +292,27 @@ export default async function RestaurantsListPage({
         <div className="text-xs font-semibold uppercase tracking-wider text-primary">Restaurants near you</div>
         <h1 className="display text-xl md:text-2xl lg:text-3xl font-semibold">Pick what you&apos;re hungry for</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {selectedCuisine ? (
+          {query ? (
             <>
-              <span className="font-semibold text-foreground">{selectedCuisine}</span>
+              {cards.length} {cards.length === 1 ? 'result' : 'results'} for{' '}
+              <span className="font-semibold text-foreground">&ldquo;{query}&rdquo;</span>
               {' · '}
+              <Link href={clearSearchHref} className="text-primary underline">
+                clear
+              </Link>
             </>
-          ) : null}
-          Sorted by{' '}
-          <span className="font-semibold text-foreground">{sort === 'name' ? 'name' : 'nearest'}</span>
+          ) : (
+            <>
+              {selectedCuisine ? (
+                <>
+                  <span className="font-semibold text-foreground">{selectedCuisine}</span>
+                  {' · '}
+                </>
+              ) : null}
+              Sorted by{' '}
+              <span className="font-semibold text-foreground">{sort === 'name' ? 'name' : 'nearest'}</span>
+            </>
+          )}
         </p>
       </header>
 
@@ -268,15 +323,18 @@ export default async function RestaurantsListPage({
           Full-bleed on mobile with a near-opaque backdrop so cards scroll
           cleanly behind it (native-app sticky-header feel). */}
       <div className="sticky top-12 md:top-16 z-30 -mx-4 md:mx-0 mb-6 md:mb-8 border-b md:border-0 bg-background/95 backdrop-blur md:bg-transparent md:backdrop-blur-none">
-        {/* Search — mobile only (desktop search lives elsewhere). */}
-        <form action="/restaurants" method="get" className="md:hidden px-4 pt-2.5 pb-1.5">
+        {/* Search — restaurants + dishes. Preserves the active cuisine/sort so a
+            search doesn't silently reset other filters. */}
+        <form action="/restaurants" method="get" className="px-4 md:px-0 pt-2.5 pb-1.5 md:pt-3">
           {selectedCuisine && <input type="hidden" name="cuisine" value={selectedCuisine} />}
+          {sort !== 'newest' && <input type="hidden" name="sort" value={sort} />}
           <input
             type="search"
             name="q"
-            placeholder="Search restaurants, cuisines…"
-            className="h-10 w-full rounded-full border border-input bg-card px-4 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-            aria-label="Search restaurants"
+            defaultValue={query}
+            placeholder="Search restaurants or dishes…"
+            className="h-10 w-full rounded-full border border-input bg-card px-4 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary md:max-w-md"
+            aria-label="Search restaurants or dishes"
           />
         </form>
 
@@ -342,6 +400,15 @@ export default async function RestaurantsListPage({
               </p>
               <ChangeLocationButton savedAddresses={savedAddresses} />
             </>
+          ) : query ? (
+            <p className="text-muted-foreground">
+              No restaurants or dishes match{' '}
+              <span className="font-semibold text-foreground">&ldquo;{query}&rdquo;</span>.{' '}
+              <Link href={clearSearchHref} className="text-primary underline">
+                Clear search
+              </Link>
+              .
+            </p>
           ) : (
             <p className="text-muted-foreground">
               No nearby restaurants match this filter.{' '}
