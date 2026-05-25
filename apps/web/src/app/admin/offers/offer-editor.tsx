@@ -549,15 +549,13 @@ function PreviewPanel({
         { menuItemId: 'sample-3', categoryId: null, unitPrice: 150, quantity: 1, name: 'Sample item C' }
       ];
       const channel = draft.redeemChannel === 'DINE_IN' ? 'DINE_IN' : 'ONLINE';
+      // The preview API expects `cart` as a flat array, with channel/branchId as
+      // sibling fields (NOT nested under cart).
       const body = {
         draft: buildBody(draft, restaurantId),
-        cart: {
-          lines: cannedCart,
-          subtotal: 500,
-          channel,
-          restaurantId,
-          branchId: draft.branchId || branches[0]?.id || null
-        },
+        cart: cannedCart,
+        channel,
+        branchId: draft.branchId || branches[0]?.id || null,
         customerOrderCount: draft.type === 'FIRST_ORDER' ? 0 : 1
       };
       const r = await fetch('/api/admin/offers/preview', {
@@ -570,9 +568,11 @@ function PreviewPanel({
         return;
       }
       const j = await r.json();
+      // Route returns { subtotal, result: { eligible, amountOff, reason } }.
+      const res = j.result ?? {};
       setPreview({
-        amountOff: Number(j.amountOff ?? 0),
-        reason: j.reason ?? (j.eligible === false ? 'Not eligible for sample cart' : undefined),
+        amountOff: Number(res.amountOff ?? 0),
+        reason: res.reason ?? (res.eligible === false ? 'Not eligible for sample cart' : undefined),
         loading: false
       });
     } catch (e: any) {
