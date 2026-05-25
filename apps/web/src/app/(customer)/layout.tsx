@@ -71,24 +71,6 @@ export default async function CustomerLayout({ children }: { children: React.Rea
                 deliver. Built and operated from Andhra Pradesh, India.
               </p>
 
-              {/* Currency selector */}
-              <div className="mt-5">
-                <label className="text-xs font-medium text-muted-foreground" htmlFor="footer-currency">
-                  Currency
-                </label>
-                <select
-                  id="footer-currency"
-                  defaultValue={brand.currency}
-                  className="mt-1 block w-full max-w-[8rem] rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                  aria-label="Select currency"
-                >
-                  <option value="INR">INR — ₹</option>
-                  <option value="USD">USD — $</option>
-                  <option value="EUR">EUR — €</option>
-                  <option value="GBP">GBP — £</option>
-                </select>
-              </div>
-
               {/* Socials */}
               <div className="mt-5 flex gap-3" aria-label="Social links">
                 <a href="#" aria-label="Twitter" className="grid size-8 place-items-center rounded-md border hover:bg-accent">

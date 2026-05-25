@@ -6,6 +6,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Menu, User, X } from 'lucide-react';
 import { BrandMark } from '@/components/brand-mark';
 import { CartButton } from '@/app/(customer)/cart-button';
+import { NavBackButton } from '@/components/nav-back-button';
 
 /**
  * Context-aware header for the (customer) route group.
@@ -68,6 +69,7 @@ function MarketingNav({
   return (
     // Mobile compresses py-2; desktop keeps the original h-16 rhythm.
     <div className="container flex items-center gap-4 h-12 py-2 md:h-16 md:py-3">
+      <NavBackButton />
       <Link href="/" className="flex items-center gap-2" aria-label="Reshee Tech home">
         {/* Logo: smaller on mobile (text-base) so the slim header reads as
             chrome and not as a hero. */}
@@ -219,6 +221,7 @@ function TenantNav({
   return (
     // Slimmer mobile header (h-12, py-2). Desktop keeps h-16.
     <div className="container flex items-center gap-4 h-12 py-2 md:h-16 md:py-3">
+      <NavBackButton />
       <Link href="/" className="flex items-center gap-2" aria-label="Reshee Tech home">
         <BrandMark className="text-base md:text-xl" />
       </Link>
