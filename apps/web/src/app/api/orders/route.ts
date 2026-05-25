@@ -51,7 +51,12 @@ export async function POST(req: NextRequest) {
       customerId: session.user.id,
       addressId: body.addressId,
       items: body.items,
+      // The customer-entered code is fed to BOTH engines: `couponCode` hits the
+      // legacy Coupon table, `offerCode` hits the new Offer engine (where codes
+      // like TEST99 / WELCOME50 live). Whichever recognises it applies; auto
+      // offers always resolve server-side regardless of any code.
       couponCode: body.couponCode,
+      offerCode: body.couponCode,
       paymentMethod: body.paymentMethod,
       customerNotes: body.customerNotes,
       walletApply: body.walletApply,

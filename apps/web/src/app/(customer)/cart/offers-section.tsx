@@ -215,6 +215,9 @@ export function OffersSection({ branchId, onSavings }: OffersSectionProps) {
         offerId: payload.winner.offer.id
       });
       setCode('');
+      // Hand the applied code off to checkout so it carries through and the
+      // discount is reflected in the real order total (not just the cart).
+      try { window.localStorage.setItem('flavrly_coupon', trimmed.toUpperCase()); } catch {}
     } catch {
       setCodeError('Could not apply code — please try again');
     } finally {
@@ -285,6 +288,7 @@ export function OffersSection({ branchId, onSavings }: OffersSectionProps) {
               onClick={() => {
                 setAppliedCode(null);
                 setCodeError(null);
+                try { window.localStorage.removeItem('flavrly_coupon'); } catch {}
               }}
             >
               <X className="size-4" />

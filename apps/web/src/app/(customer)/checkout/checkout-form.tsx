@@ -50,6 +50,18 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
   const [pricing, setPricing] = useState<any>(null);
   const [busy, setBusy] = useState(false);
 
+  // Carry a coupon applied in the cart through to checkout so its discount is
+  // reflected in the real order total (the cart stashes it in localStorage).
+  useEffect(() => {
+    try {
+      const carried = window.localStorage.getItem('flavrly_coupon');
+      if (carried) {
+        setCoupon(carried);
+        setAppliedCoupon(carried);
+      }
+    } catch {}
+  }, []);
+
   // Freebie/gift nudge — driven off the cart subtotal. `qualifying` is the
   // gift the cart has already earned; `nextThreshold` is the "spend ₹X more"
   // teaser toward the next tier. Both null when freebies are off / unavailable.
@@ -169,6 +181,7 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
       }
       const data = await res.json();
       clear();
+      try { window.localStorage.removeItem('flavrly_coupon'); } catch {}
       // Surface the pickup handover code immediately on a successful pickup order.
       if (data.fulfillmentType === 'PICKUP' && data.pickupCode) {
         toast.success(`Order placed! Your pickup code is ${data.pickupCode}`);
@@ -285,11 +298,14 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
               <Input placeholder="WELCOME50" value={coupon} onChange={(e) => setCoupon(e.target.value)} />
               <Button onClick={applyCoupon} variant="outline">Apply</Button>
             </div>
-            {appliedCoupon && pricing?.couponApplied && (
-              <p className="mt-2 text-sm text-success">✓ {appliedCoupon} applied — saved {money(pricing.discountAmount)}</p>
+            {/* "Applied" reflects the TOTAL discount (legacy coupon + new offer
+                engine), since codes like TEST99 live in the Offer engine and
+                never set the legacy couponApplied flag. */}
+            {appliedCoupon && pricing && pricing.discountAmount > 0 && (
+              <p className="mt-2 text-sm text-success">✓ Discount applied — you saved {money(pricing.discountAmount)}</p>
             )}
-            {appliedCoupon && pricing && !pricing.couponApplied && (
-              <p className="mt-2 text-sm text-destructive">Coupon "{appliedCoupon}" doesn't apply.</p>
+            {appliedCoupon && pricing && pricing.discountAmount === 0 && (
+              <p className="mt-2 text-sm text-destructive">Code "{appliedCoupon}" doesn't apply to this order.</p>
             )}
           </CardContent>
         </Card>
