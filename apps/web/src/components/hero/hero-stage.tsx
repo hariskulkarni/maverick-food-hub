@@ -1,5 +1,6 @@
 import { ImageWithFallback } from '@/components/image-with-fallback';
 import { CheckCircle2, ChefHat, Bike, MapPin } from 'lucide-react';
+import { HeroVideo } from '@/components/hero/hero-video';
 
 /**
  * HeroStage — the right-hand "showpiece" of the landing hero.
@@ -45,21 +46,10 @@ export function HeroStage() {
           className="object-cover"
         />
 
-        {/* Branded Flavrly motion loop — plays ON TOP of the photo. The poster
-            paints instantly; a missing/blocked file just reveals the photo. */}
-        <video
-          className="absolute inset-0 size-full object-cover"
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          poster="/hero-poster.jpg"
-          aria-hidden
-          tabIndex={-1}
-        >
-          <source src="/hero.mp4" type="video/mp4" />
-        </video>
+        {/* Branded Flavrly motion loop — plays ON TOP of the photo, but only on
+            capable connections (skipped on Save-Data / slow networks / reduced
+            motion, where the photo alone shows). See HeroVideo. */}
+        <HeroVideo />
 
         {/* Cinematic gradient so overlaid UI stays legible */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/5 to-transparent" />
