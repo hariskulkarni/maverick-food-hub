@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { MenuClient } from '../../menu/menu-client';
 import { Card, CardContent } from '@/components/ui/card';
 import { ComboAddButton } from '../../combos/combo-add-button';
+import { bannersForSlug } from '@/lib/storefront-banners';
+import { StorefrontHeroCarousel } from '@/components/storefront/hero-carousel';
 import { HeartButton } from '@/components/heart-button';
 import { money } from '@/lib/utils';
 import { COMBO_IMAGES, FOOD_FALLBACK } from '@/lib/food-images';
@@ -147,6 +149,8 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
   const favItemSet = new Set(favItemRows.map((r) => r.menuItemId));
 
   const heroImage = restaurant.coverImageUrl || restaurant.logoUrl || FOOD_FALLBACK;
+  // Per-restaurant full-bleed banner carousel (overrides the cover-image hero).
+  const banners = bannersForSlug(slug);
   const dishCount = categories.reduce((s, c) => s + c.menuItems.length, 0);
 
   // Floating categories FAB entries — projected from the same `categories`
@@ -219,6 +223,27 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
         ]}
       />
       {/* ───────────────────────── Restaurant Hero ───────────────────────── */}
+      {banners ? (
+        <>
+          {/* Full-bleed promo carousel replaces the cover image for this
+              restaurant. The banners are self-branded, so the name + tagline
+              are shown in a clean strip below instead of overlaid. */}
+          <StorefrontHeroCarousel
+            images={banners}
+            alt={restaurant.name}
+            restaurantId={restaurant.id}
+            isAuthed={isAuthed}
+            favInitial={Boolean(favRestaurant)}
+          />
+          <div className="container py-4 reveal">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="display text-2xl md:text-4xl font-semibold tracking-tight">{restaurant.name}</h1>
+              {restaurant.cuisine && <Badge variant="secondary" className="font-medium">{restaurant.cuisine}</Badge>}
+            </div>
+            {restaurant.tagline && <p className="mt-1 text-sm md:text-base text-muted-foreground max-w-2xl">{restaurant.tagline}</p>}
+          </div>
+        </>
+      ) : (
       <section className="relative h-64 md:h-[22rem] bg-muted overflow-hidden">
         <Image src={heroImage} alt={restaurant.name} fill priority sizes="100vw" className="object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/10" />
@@ -253,6 +278,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
           </div>
         </div>
       </section>
+      )}
 
       {/* ───────────────────────── Sticky Info Bar ───────────────────────── */}
       <div className="sticky top-0 z-30 glass border-b">
