@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Minus, Plus, Trash2, ShoppingBag, Gift, ChevronDown } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingBag, Gift, ChevronDown, Tag } from 'lucide-react';
 import { money } from '@/lib/utils';
 import { FOOD_FALLBACK } from '@/lib/food-images';
 import { Textarea } from '@/components/ui/textarea';
@@ -80,7 +80,10 @@ export function CartClient({ branchId }: { branchId: string | null }) {
   // Mobile order-summary accordion. Defaults closed; tapping the row toggles.
   // The actual "Place order" CTA lives outside the accordion as a fixed bar so
   // it's always reachable regardless of accordion state.
-  const totalDue = Math.max(0, subtotal - (bonus?.appliedAmount ?? 0));
+  // Estimated total reflects BOTH the signup bonus and the auto-applied
+  // offer/coupon savings (taxes + delivery are still added at checkout — hence
+  // the trailing "+").
+  const totalDue = Math.max(0, subtotal - (bonus?.appliedAmount ?? 0) - offerSavings);
   const checkoutHref = (() => {
     const params = new URLSearchParams();
     if (effectiveBranchId) params.set('branchId', effectiveBranchId);
@@ -192,12 +195,23 @@ export function CartClient({ branchId }: { branchId: string | null }) {
                   <dd className="font-medium font-tabular-nums">−{money(bonus.appliedAmount)}</dd>
                 </div>
               )}
+              {offerSavings > 0 && (
+                <div className="flex justify-between text-success">
+                  <dt className="flex items-center gap-1.5">
+                    <Tag className="size-3.5" /> Offers &amp; coupons
+                  </dt>
+                  <dd className="font-medium font-tabular-nums">−{money(offerSavings)}</dd>
+                </div>
+              )}
               <Row label="Tax & fees" value="Calculated at checkout" />
               <Row label="Delivery" value="Calculated at checkout" />
             </dl>
             <div className="flex items-center justify-between border-t pt-3">
               <div className="text-sm text-muted-foreground">Estimated total</div>
-              <div className="text-lg font-semibold font-tabular-nums">{money(totalDue)}+</div>
+              <div className="text-right">
+                <div className="text-lg font-semibold font-tabular-nums">{money(totalDue)}+</div>
+                <div className="text-[10px] font-normal text-muted-foreground">+ taxes &amp; delivery at checkout</div>
+              </div>
             </div>
             {bonus && bonus.appliedAmount > 0 && bonus.remainingOrders > 0 && (
               <p className="text-[11px] text-muted-foreground text-right">
@@ -225,12 +239,23 @@ export function CartClient({ branchId }: { branchId: string | null }) {
                   <dd className="font-medium tabular-nums">−{money(bonus.appliedAmount)}</dd>
                 </div>
               )}
+              {offerSavings > 0 && (
+                <div className="flex justify-between text-success">
+                  <dt className="flex items-center gap-1.5">
+                    <Tag className="size-3.5" /> Offers &amp; coupons
+                  </dt>
+                  <dd className="font-medium tabular-nums">−{money(offerSavings)}</dd>
+                </div>
+              )}
               <Row label="Tax & fees" value="Calculated at checkout" />
               <Row label="Delivery" value="Calculated at checkout" />
             </dl>
             <div className="mt-4 flex items-center justify-between border-t pt-3">
               <div className="text-sm text-muted-foreground">Estimated total</div>
-              <div className="text-lg font-semibold font-tabular-nums">{money(totalDue)}+</div>
+              <div className="text-right">
+                <div className="text-lg font-semibold font-tabular-nums">{money(totalDue)}+</div>
+                <div className="text-[10px] font-normal text-muted-foreground">+ taxes &amp; delivery at checkout</div>
+              </div>
             </div>
             {bonus && bonus.appliedAmount > 0 && bonus.remainingOrders > 0 && (
               <p className="mt-2 text-[11px] text-muted-foreground text-right">
