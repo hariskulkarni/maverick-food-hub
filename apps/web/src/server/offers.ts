@@ -43,6 +43,61 @@ import type { OfferType, ChannelScope } from '@prisma/client';
 import { clampTwo } from '@/lib/utils';
 import { prisma } from './db';
 
+/**
+ * Resolve the authoritative branch for an offer evaluation from the cart's menu
+ * items. A MenuItem belongs to exactly one Branch, so the items themselves are
+ * the source of truth for "which restaurant is this cart from" — far more
+ * reliable than a client-supplied branchId, which can be stale, guessed, or
+ * point at the wrong tenant in a multi-restaurant marketplace.
+ *
+ * Falls back to `fallbackBranchId` for carts with no resolvable menu items
+ * (e.g. combo-only carts), and returns null if nothing resolves.
+ */
+export async function resolveCartBranch(
+  menuItemIds: string[],
+  fallbackBranchId?: string | null
+): Promise<{ id: string; restaurantId: string } | null> {
+  const ids = menuItemIds.filter(Boolean);
+  if (ids.length > 0) {
+    const item = await prisma.menuItem.findFirst({
+      where: { id: { in: ids } },
+      select: { branch: { select: { id: true, restaurantId: true } } }
+    });
+    if (item?.branch) return { id: item.branch.id, restaurantId: item.branch.restaurantId };
+  }
+  if (fallbackBranchId) {
+    const b = await prisma.branch.findUnique({
+      where: { id: fallbackBranchId },
+      select: { id: true, restaurantId: true }
+    });
+    if (b) return b;
+  }
+  return null;
+}
+
+/**
+ * Does a coupon with this code exist ANYWHERE (any restaurant)? Used to give a
+ * precise "valid at a different restaurant" message instead of a flat "invalid"
+ * when a customer pastes a code that doesn't belong to their cart's restaurant.
+ */
+export async function couponCodeExistsElsewhere(code: string): Promise<boolean> {
+  const trimmed = code.trim();
+  if (!trimmed) return false;
+  const now = new Date();
+  const found = await (prisma as any).offer
+    .findFirst({
+      where: {
+        code: { equals: trimmed, mode: 'insensitive' },
+        isActive: true,
+        validFrom: { lte: now },
+        OR: [{ validTo: null }, { validTo: { gt: now } }]
+      },
+      select: { id: true }
+    })
+    .catch(() => null);
+  return Boolean(found);
+}
+
 // ── Public types ──────────────────────────────────────────────────────────
 
 export interface OfferCartLine {

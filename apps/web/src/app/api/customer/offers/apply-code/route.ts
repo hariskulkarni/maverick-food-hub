@@ -15,8 +15,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
-import { prisma } from '@/server/db';
-import { loadOfferByCode } from '@/server/offers';
+import { loadOfferByCode, resolveCartBranch, couponCodeExistsElsewhere } from '@/server/offers';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,10 +43,9 @@ export async function POST(req: NextRequest) {
 
   const data = Body.parse(await req.json());
 
-  const branch = await prisma.branch.findUnique({
-    where: { id: data.branchId },
-    select: { id: true, restaurantId: true }
-  });
+  // Authoritative branch derived from the cart's menu items — never trust a
+  // possibly-stale client branchId (see resolveCartBranch).
+  const branch = await resolveCartBranch(data.cart.map((l) => l.menuItemId), data.branchId);
   if (!branch) return new Response('Branch not found', { status: 404 });
 
   const subtotal = data.cart.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
@@ -62,10 +60,18 @@ export async function POST(req: NextRequest) {
   });
 
   if (!result || !result.evaluation) {
+    // The code wasn't found for THIS cart's restaurant. If it exists for a
+    // different restaurant, say so precisely instead of a flat "invalid".
+    const elsewhere = await couponCodeExistsElsewhere(data.code);
     return Response.json({
       winner: null,
       evaluation: null,
-      reason: 'Code not found',
+      reason: elsewhere
+        ? "This code is for a different restaurant. Add items from that restaurant to use it."
+        : 'Code not found',
+      error: elsewhere
+        ? "This code is for a different restaurant. Add items from that restaurant to use it."
+        : 'Code is invalid or not applicable',
       customerOrderCount: result?.customerOrderCount ?? 0
     });
   }

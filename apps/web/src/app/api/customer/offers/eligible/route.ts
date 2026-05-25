@@ -16,8 +16,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
-import { prisma } from '@/server/db';
-import { loadAndApplyOffers } from '@/server/offers';
+import { loadAndApplyOffers, resolveCartBranch } from '@/server/offers';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,10 +43,11 @@ export async function POST(req: NextRequest) {
 
   const data = Body.parse(await req.json());
 
-  const branch = await prisma.branch.findUnique({
-    where: { id: data.branchId },
-    select: { id: true, restaurantId: true }
-  });
+  // Authoritative branch: derive it from the cart's actual menu items. A menu
+  // item belongs to exactly one branch, so this can never mismatch the items
+  // the way a stale/guessed client branchId can. Fall back to the passed
+  // branchId only for carts with no resolvable items (e.g. combo-only).
+  const branch = await resolveCartBranch(data.cart.map((l) => l.menuItemId), data.branchId);
   if (!branch) return new Response('Branch not found', { status: 404 });
 
   const subtotal = data.cart.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
