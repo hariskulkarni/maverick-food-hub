@@ -6,8 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Save, MapPin, ExternalLink, ChevronDown } from 'lucide-react';
+import { Save, MapPin, ExternalLink, ChevronDown, ShieldCheck, AlertTriangle, FileCheck2 } from 'lucide-react';
 import { BranchLocationPicker, type BranchLocationChange } from '@/components/branch-location-picker';
+import { ImageUploader } from '@/components/image-uploader';
+import { licenseStatus, licenseStatusLabel } from '@/server/food-license';
 
 interface Hours { dayOfWeek: number; openMin: number; closeMin: number }
 interface Branch {
@@ -30,6 +32,23 @@ interface Branch {
   packagingFee: number | string;
   isActive: boolean;
   hours: Hours[];
+  // FSSAI food-license (all optional). Dates arrive as ISO strings via JSON.
+  fssaiLicenseNumber?: string | null;
+  fssaiLicenseHolder?: string | null;
+  fssaiLicenseType?: string | null;
+  fssaiLicenseAddress?: string | null;
+  fssaiIssuedOn?: string | null;
+  fssaiRenewedOn?: string | null;
+  fssaiExpiresOn?: string | null;
+  fssaiLicenseImageUrl?: string | null;
+  fssaiLicenseNotes?: string | null;
+}
+
+/** ISO datetime string → 'YYYY-MM-DD' for a <input type="date">, or ''. */
+function toDateInput(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -62,7 +81,17 @@ export function BranchForm({ branch }: { branch: Branch }) {
     baseDeliveryFee: Number(branch.baseDeliveryFee),
     perKmDeliveryFee: Number(branch.perKmDeliveryFee),
     packagingFee: Number(branch.packagingFee),
-    isActive: branch.isActive
+    isActive: branch.isActive,
+    // FSSAI food-license
+    fssaiLicenseNumber: branch.fssaiLicenseNumber ?? '',
+    fssaiLicenseHolder: branch.fssaiLicenseHolder ?? '',
+    fssaiLicenseType: branch.fssaiLicenseType ?? '',
+    fssaiLicenseAddress: branch.fssaiLicenseAddress ?? '',
+    fssaiIssuedOn: toDateInput(branch.fssaiIssuedOn),
+    fssaiRenewedOn: toDateInput(branch.fssaiRenewedOn),
+    fssaiExpiresOn: toDateInput(branch.fssaiExpiresOn),
+    fssaiLicenseImageUrl: branch.fssaiLicenseImageUrl ?? (null as string | null),
+    fssaiLicenseNotes: branch.fssaiLicenseNotes ?? ''
   });
   // Pre-fill hours: 7 days, defaulting closed if missing
   const initialHours: (Hours & { closed: boolean })[] = Array.from({ length: 7 }, (_, d) => {
@@ -256,10 +285,116 @@ export function BranchForm({ branch }: { branch: Branch }) {
         </div>
       </div>
 
+      {/* ── FSSAI Food License ── */}
+      <FoodLicenseSection f={f} set={set} />
+
       <div className="flex justify-end">
         <Button onClick={save} disabled={busy}>
           <Save className="size-4" /> {busy ? 'Saving…' : 'Save branch'}
         </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * FSSAI food-license editor for a branch: number, holder, type, premises
+ * address, the three lifecycle dates, a free-text notes box, and a photo of the
+ * certificate. A live status pill mirrors what the public footer + alert sweep
+ * compute, so the admin can see at a glance whether the licence is expiring.
+ */
+function FoodLicenseSection({
+  f,
+  set
+}: {
+  f: any;
+  set: (k: any, v: any) => void;
+}) {
+  const status = licenseStatus(f.fssaiExpiresOn || null, Boolean(f.fssaiLicenseNumber));
+  const pill =
+    status.state === 'expired'
+      ? 'bg-destructive/10 text-destructive border-destructive/30'
+      : status.state === 'expiring'
+        ? 'bg-warning/10 text-warning border-warning/30'
+        : status.state === 'valid'
+          ? 'bg-success/10 text-success border-success/30'
+          : 'bg-muted text-muted-foreground border-border';
+  const Icon = status.state === 'expired' || status.state === 'expiring' ? AlertTriangle : ShieldCheck;
+
+  return (
+    <div className="rounded-lg border bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 font-medium text-sm">
+          <FileCheck2 className="size-4 text-primary" /> FSSAI food licence
+        </div>
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${pill}`}>
+          <Icon className="size-3.5" />
+          {licenseStatusLabel(status)}
+        </span>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Licence number">
+          <Input
+            value={f.fssaiLicenseNumber}
+            onChange={(e) => set('fssaiLicenseNumber', e.target.value)}
+            placeholder="e.g. 10118007000780"
+            inputMode="numeric"
+          />
+        </Field>
+        <Field label="Licence type">
+          <select
+            value={f.fssaiLicenseType}
+            onChange={(e) => set('fssaiLicenseType', e.target.value)}
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">Select…</option>
+            <option value="Registration">Registration (Basic)</option>
+            <option value="State">State Licence</option>
+            <option value="Central">Central Licence</option>
+          </select>
+        </Field>
+        <Field label="Licensee / business name" className="md:col-span-2">
+          <Input
+            value={f.fssaiLicenseHolder}
+            onChange={(e) => set('fssaiLicenseHolder', e.target.value)}
+            placeholder="Name as printed on the certificate"
+          />
+        </Field>
+        <Field label="Premises address (as on licence)" className="md:col-span-2">
+          <Input value={f.fssaiLicenseAddress} onChange={(e) => set('fssaiLicenseAddress', e.target.value)} />
+        </Field>
+
+        <Field label="Issued on">
+          <Input type="date" value={f.fssaiIssuedOn} onChange={(e) => set('fssaiIssuedOn', e.target.value)} />
+        </Field>
+        <Field label="Last renewed on">
+          <Input type="date" value={f.fssaiRenewedOn} onChange={(e) => set('fssaiRenewedOn', e.target.value)} />
+        </Field>
+        <Field label="Expires on" className="md:col-span-2">
+          <Input type="date" value={f.fssaiExpiresOn} onChange={(e) => set('fssaiExpiresOn', e.target.value)} />
+          <p className="text-[11px] text-muted-foreground">
+            We&apos;ll alert you (in-app, email &amp; SMS) starting 30 days before this date.
+          </p>
+        </Field>
+
+        <Field label="Notes (kind of business, remarks)" className="md:col-span-2">
+          <Input value={f.fssaiLicenseNotes} onChange={(e) => set('fssaiLicenseNotes', e.target.value)} />
+        </Field>
+      </div>
+
+      <div>
+        <Label className="text-xs font-medium text-muted-foreground">Photo of the licence certificate</Label>
+        <p className="mb-2 text-[11px] text-muted-foreground">
+          Shown on your public storefront so customers can verify it. JPG/PNG/WebP, max 8 MB.
+        </p>
+        <ImageUploader
+          value={f.fssaiLicenseImageUrl}
+          onChange={(url) => set('fssaiLicenseImageUrl', url)}
+          folder="food-licenses"
+          aspect="wide"
+          hint="A clear, readable photo or scan of the full certificate."
+        />
       </div>
     </div>
   );

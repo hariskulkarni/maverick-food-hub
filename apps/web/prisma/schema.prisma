@@ -619,6 +619,23 @@ model Branch {
   // Not applied to DINE_IN orders (nothing is packaged for table service).
   packagingFee     Decimal  @default(20.00) @db.Decimal(10, 2)
   isActive         Boolean  @default(true)
+
+  // ── FSSAI food-license (per-premises → branch-scoped) ────────────────────
+  // An FSSAI licence is issued against a single set of premises, so it lives on
+  // the Branch, not the Restaurant. All fields nullable: a branch with no
+  // licence captured yet behaves exactly as before. The scan is a photo/image
+  // stored via the same storage adapter as menu images. Dates drive the
+  // expiry-soon banner + the daily email/SMS alert sweep.
+  fssaiLicenseNumber   String? // e.g. "10118007000780" (14-digit FSSAI no.)
+  fssaiLicenseHolder   String? // licensee / business name printed on the cert
+  fssaiLicenseType     String? // "State" | "Central" | "Registration"
+  fssaiLicenseAddress  String? // premises address as printed on the licence
+  fssaiIssuedOn        DateTime?
+  fssaiRenewedOn       DateTime?
+  fssaiExpiresOn       DateTime?
+  fssaiLicenseImageUrl String? // uploaded photo/scan of the certificate
+  fssaiLicenseNotes    String? // free-text (kind of business, remarks, etc.)
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

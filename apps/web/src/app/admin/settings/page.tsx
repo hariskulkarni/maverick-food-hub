@@ -7,6 +7,7 @@ import { BrandingForm } from './branding-form';
 import { BranchForm } from './branch-form';
 import { NotificationsTable } from './notifications-table';
 import { IntegrationsSection } from './integrations-section';
+import { LicenseExpiryBanner } from './license-expiry-banner';
 
 export const metadata = { title: 'Admin · Settings' };
 export const dynamic = 'force-dynamic';
@@ -25,6 +26,9 @@ export default async function SettingsPage() {
         <h1 className="display text-3xl font-semibold">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">Manage your storefront, branches, integrations, and notifications.</p>
       </header>
+
+      {/* FSSAI licence expiry warning — only renders when a branch needs attention. */}
+      <LicenseExpiryBanner branches={JSON.parse(JSON.stringify(branches))} />
 
       {/* ─── Branding ─── */}
       <section className="space-y-3">

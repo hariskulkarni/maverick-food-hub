@@ -21,6 +21,7 @@ import { HappyHourBanner } from './happy-hour-banner';
 import { DeliveryEtaCard } from './delivery-eta-card';
 import { BrandRibbon } from './brand-ribbon';
 import { CategoryFab, type CategoryFabEntry } from './category-fab';
+import { FoodLicenseFooter } from './food-license-footer';
 import { JsonLd } from '@/components/seo/json-ld';
 import { brand } from '@/lib/brand';
 
@@ -534,6 +535,13 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
           )}
         />
       </section>
+
+      {/* ───────────────────────── FSSAI licence footer ───────────────────────── */}
+      <FoodLicenseFooter
+        licenseNumber={(branch as any).fssaiLicenseNumber}
+        licenseImageUrl={(branch as any).fssaiLicenseImageUrl}
+        holder={(branch as any).fssaiLicenseHolder}
+      />
 
       {/* Floating Categories Menu (mobile-only). Mounted at the page root so it
           stays visible while the user scrolls through the menu sections. */}

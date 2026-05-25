@@ -223,6 +223,27 @@ export function isDebouncedNow(lastSentAt: Date | null, now: Date = new Date(), 
 
 // ── Recipient resolution (DB-aware) ───────────────────────────────────────
 
+export async function phoneRecipientsForRestaurant(restaurantId: string, branchId?: string | null): Promise<string[]> {
+  // Phone numbers to SMS for tenant-level alerts: the owner, every ADMIN member,
+  // the restaurant's public contact number, and the specific branch's number.
+  const set = new Set<string>();
+  const rest = await prisma.restaurant.findUnique({
+    where: { id: restaurantId },
+    include: {
+      owner: { select: { phone: true } },
+      members: { where: { role: 'ADMIN' }, include: { user: { select: { phone: true } } } }
+    }
+  });
+  if (rest?.owner?.phone) set.add(rest.owner.phone);
+  rest?.members.forEach((m) => m.user?.phone && set.add(m.user.phone));
+  if (rest?.contactPhone) set.add(rest.contactPhone);
+  if (branchId) {
+    const b = await prisma.branch.findUnique({ where: { id: branchId }, select: { phone: true } });
+    if (b?.phone) set.add(b.phone);
+  }
+  return Array.from(set).filter(Boolean);
+}
+
 export async function recipientsForRestaurant(restaurantId: string | null): Promise<string[]> {
   // ADMINs scoped to this restaurant (RestaurantUser ADMIN rows + the owner)
   // plus every SUPER_ADMIN user with an email. Returns deduped email addresses.
@@ -249,11 +270,11 @@ export async function recipientsForRestaurant(restaurantId: string | null): Prom
 
 // ── Debounce-aware senders ────────────────────────────────────────────────
 
-async function checkAndStamp(entityType: string, entityId: string, kind: string, payload: any): Promise<{ skipped: boolean }> {
+async function checkAndStamp(entityType: string, entityId: string, kind: string, payload: any, windowMin = DEBOUNCE_WINDOW_MIN): Promise<{ skipped: boolean }> {
   const existing = await (prisma as any).alertDebounce.findUnique({
     where: { entityType_entityId_kind: { entityType, entityId, kind } }
   });
-  if (existing && isDebouncedNow(existing.lastSentAt)) {
+  if (existing && isDebouncedNow(existing.lastSentAt, new Date(), windowMin)) {
     return { skipped: true };
   }
   const now = new Date();
@@ -326,4 +347,118 @@ export async function sendIntegrationAlert(opts: SendIntegrationAlertOpts): Prom
     }).catch((e) => log.error({ err: (e as Error).message, to }, 'integration alert email failed'));
   }
   return { sent: true, recipients };
+}
+
+// ── Food-license expiry alert (email + SMS) ───────────────────────────────
+
+/**
+ * Reminders repeat at most once every 3 days per branch, so a licence sitting
+ * inside the 30-day window doesn't email/SMS the admin daily. The daily sweep
+ * still runs every day; the debounce decides whether it actually notifies.
+ */
+export const LICENSE_REMIND_WINDOW_MIN = 3 * 24 * 60;
+
+export interface SendLicenseExpiryOpts {
+  restaurantId: string;
+  restaurantName: string;
+  branchId: string;
+  branchName: string;
+  licenseNumber: string | null;
+  expiresOn: Date;
+  daysLeft: number;            // negative ⇒ already expired
+  state: 'expiring' | 'expired';
+  detailUrl?: string | null;
+}
+
+export function formatLicenseExpiryEmail(ctx: SendLicenseExpiryOpts): { subject: string; html: string; text: string; sms: string } {
+  const expired = ctx.state === 'expired';
+  const whenPhrase = expired
+    ? `expired ${Math.abs(ctx.daysLeft)} day${Math.abs(ctx.daysLeft) === 1 ? '' : 's'} ago`
+    : ctx.daysLeft === 0
+      ? 'expires today'
+      : `expires in ${ctx.daysLeft} day${ctx.daysLeft === 1 ? '' : 's'}`;
+  const dateStr = ctx.expiresOn.toISOString().slice(0, 10);
+  const verb = expired ? 'FSSAI licence EXPIRED' : 'FSSAI licence expiring soon';
+  const subject = `[${ctx.restaurantName}] ${verb} — ${ctx.branchName}`.replace(/[\r\n]+/g, ' ');
+
+  const text = [
+    verb,
+    ``,
+    `Restaurant: ${ctx.restaurantName}`,
+    `Branch: ${ctx.branchName}`,
+    ctx.licenseNumber ? `Licence no.: ${ctx.licenseNumber}` : null,
+    `Expiry date: ${dateStr} (${whenPhrase})`,
+    ``,
+    expired
+      ? 'Your food licence has expired. Renew it and upload the new copy in Admin → Settings to stay compliant.'
+      : 'Apply for renewal at least 30 days before expiry. Upload the renewed copy in Admin → Settings.',
+    ctx.detailUrl ? `Update it here: ${ctx.detailUrl}` : null
+  ].filter(Boolean).join('\n');
+
+  const sms = `${ctx.restaurantName}: FSSAI licence for ${ctx.branchName} ${whenPhrase} (${dateStr}). ${expired ? 'Renew now' : 'Renew soon'} & re-upload in Admin > Settings.`;
+
+  const accent = expired ? '#b00020' : '#b34a00';
+  const bg = expired ? '#fff5f5' : '#fff4ec';
+  const html = `
+<div style="font-family:Inter,-apple-system,Segoe UI,Arial,sans-serif;max-width:560px;margin:0 auto;background:#fff;">
+  <div style="padding:24px;background:${bg};border-bottom:1px solid #f1e3d4;">
+    <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:${accent};font-weight:600;">Food licence ${expired ? 'expired' : 'expiring'}</div>
+    <h2 style="margin:6px 0 0;font-size:20px;color:#1a1a1a;">${escapeHtml(verb)}</h2>
+    <p style="margin:6px 0 0;color:#555;font-size:13px;">at <strong>${escapeHtml(ctx.restaurantName)}</strong> · ${escapeHtml(ctx.branchName)}</p>
+  </div>
+  <div style="padding:24px;">
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      ${ctx.licenseNumber ? row('Licence no.', escapeHtml(ctx.licenseNumber)) : ''}
+      ${row('Expiry date', escapeHtml(dateStr))}
+      ${row('Status', `<strong style="color:${accent};">${escapeHtml(whenPhrase)}</strong>`)}
+    </table>
+    <p style="margin-top:16px;color:#444;font-size:13px;">
+      ${expired
+        ? 'Your food licence has <strong>expired</strong>. Operating on an expired FSSAI licence is non-compliant — renew it and upload the new copy as soon as possible.'
+        : 'FSSAI requires you to apply for renewal at least 30 days before expiry. Renew it and upload the new copy to stay compliant.'}
+    </p>
+    ${ctx.detailUrl ? `<p style="margin-top:18px;"><a href="${escapeAttr(ctx.detailUrl)}" style="display:inline-block;padding:10px 16px;background:${accent};color:#fff;text-decoration:none;border-radius:6px;font-weight:500;">Update licence in admin →</a></p>` : ''}
+    <p style="margin-top:18px;color:#888;font-size:11px;">You administer this restaurant on ${escapeHtml(ctx.restaurantName)}. Reminders repeat at most once every 3 days until the licence is renewed.</p>
+  </div>
+</div>`.trim();
+
+  return { subject, html, text, sms };
+}
+
+export async function sendLicenseExpiryAlert(
+  opts: SendLicenseExpiryOpts
+): Promise<{ sent: boolean; emails: string[]; phones: string[]; reason?: string }> {
+  const gate = await checkAndStamp('Branch', opts.branchId, 'license.expiry', {
+    state: opts.state, daysLeft: opts.daysLeft, expiresOn: opts.expiresOn.toISOString()
+  }, LICENSE_REMIND_WINDOW_MIN).catch((e) => {
+    log.error({ err: (e as Error).message }, 'license alert debounce check failed');
+    return { skipped: false };
+  });
+  if (gate.skipped) return { sent: false, emails: [], phones: [], reason: 'debounced' };
+
+  const [emails, phones] = await Promise.all([
+    recipientsForRestaurant(opts.restaurantId),
+    phoneRecipientsForRestaurant(opts.restaurantId, opts.branchId)
+  ]);
+  if (emails.length === 0 && phones.length === 0) {
+    return { sent: false, emails: [], phones: [], reason: 'no recipients' };
+  }
+
+  const { subject, html, text, sms } = formatLicenseExpiryEmail(opts);
+
+  for (const to of emails) {
+    await notify.email({
+      to, subject, body: html, template: 'alert.license.expiry',
+      restaurantId: opts.restaurantId,
+      meta: { text, branchId: opts.branchId, state: opts.state, daysLeft: opts.daysLeft }
+    }).catch((e) => log.error({ err: (e as Error).message, to }, 'license alert email failed'));
+  }
+  for (const to of phones) {
+    await notify.sms({
+      to, body: sms, template: 'alert.license.expiry',
+      restaurantId: opts.restaurantId,
+      meta: { branchId: opts.branchId, state: opts.state }
+    }).catch((e) => log.error({ err: (e as Error).message, to }, 'license alert sms failed'));
+  }
+  return { sent: true, emails, phones };
 }

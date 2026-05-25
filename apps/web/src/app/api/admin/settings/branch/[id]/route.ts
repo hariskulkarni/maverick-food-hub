@@ -10,6 +10,30 @@ const HoursDay = z.object({
   closed:    z.boolean().optional()
 });
 
+// A date arriving from the form as 'YYYY-MM-DD' (or full ISO), '' or null.
+// Empty/blank clears the field; a value is parsed to a Date. Invalid strings
+// are rejected so we never silently store an "Invalid Date".
+const NullableDate = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((v) => {
+    if (v === undefined) return undefined; // absent → leave unchanged
+    if (v === null || v === '') return null; // explicit clear
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? undefined : d; // garbage → ignore
+  });
+
+// Nullable trimmed string: '' or null clears; absent leaves unchanged.
+const NullableText = (max: number) =>
+  z
+    .union([z.string().max(max), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined; // absent → leave unchanged
+      if (v === null) return null; // explicit clear
+      return v.trim() === '' ? null : v.trim();
+    });
+
 const Body = z.object({
   name:             z.string().min(2).max(80).optional(),
   phone:            z.string().max(40).optional().or(z.literal('').transform(() => undefined)),
@@ -27,7 +51,18 @@ const Body = z.object({
   perKmDeliveryFee: z.number().min(0).max(500).optional(),
   packagingFee:     z.number().min(0).max(1000).optional(),
   isActive:         z.boolean().optional(),
-  hours:            z.array(HoursDay).length(7).optional()
+  hours:            z.array(HoursDay).length(7).optional(),
+
+  // ── FSSAI food-license fields (all optional / nullable) ────────────────
+  fssaiLicenseNumber:   NullableText(40),
+  fssaiLicenseHolder:   NullableText(160),
+  fssaiLicenseType:     NullableText(40),
+  fssaiLicenseAddress:  NullableText(400),
+  fssaiIssuedOn:        NullableDate,
+  fssaiRenewedOn:       NullableDate,
+  fssaiExpiresOn:       NullableDate,
+  fssaiLicenseImageUrl: z.union([z.string().url(), z.literal(''), z.null()]).optional().transform((v) => (v === undefined ? undefined : v === null || v === '' ? null : v)),
+  fssaiLicenseNotes:    NullableText(500)
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
