@@ -112,7 +112,14 @@ else
 fi
 
 line "7. clear stale build cache"
-rm -rf .next
+# Clear ONLY the webpack build cache — NOT the whole .next. The live pm2
+# process keeps serving the current build during the rebuild below, and it
+# reads .next/required-server-files.json on every request. Deleting the whole
+# .next here pulls that file out from under the running process and throws
+# ENOENT on every request for the ~30-40s the build takes. `next build`
+# regenerates the production output in place, so clearing just the cache gives
+# a clean build with zero downtime window.
+rm -rf .next/cache
 
 line "8. build (raise fd limit so a large route tree can't hit EMFILE)"
 ulimit -n 8192 || true

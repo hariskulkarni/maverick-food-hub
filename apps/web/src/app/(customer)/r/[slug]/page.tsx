@@ -132,16 +132,20 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
 
   // Auth + favorites — used to seed the heart buttons on the hero and each menu card.
   const session = await auth();
-  const isAuthed = Boolean(session?.user);
+  // Key off the user *id*, not just session.user — a session can exist with an
+  // undefined id (NextAuth edge case), and passing userId: undefined to Prisma
+  // throws and 500s the whole storefront render for that visitor.
+  const userId = session?.user?.id ?? null;
+  const isAuthed = Boolean(userId);
   const [favRestaurant, favItemRows] = await Promise.all([
-    isAuthed
+    userId
       ? prisma.favoriteRestaurant.findUnique({
-          where: { userId_restaurantId: { userId: session!.user.id, restaurantId: restaurant.id } }
+          where: { userId_restaurantId: { userId, restaurantId: restaurant.id } }
         })
       : Promise.resolve(null),
-    isAuthed
+    userId
       ? prisma.favoriteItem.findMany({
-          where: { userId: session!.user.id, menuItem: { branchId: branch.id } },
+          where: { userId, menuItem: { branchId: branch.id } },
           select: { menuItemId: true }
         })
       : Promise.resolve([] as { menuItemId: string }[])
