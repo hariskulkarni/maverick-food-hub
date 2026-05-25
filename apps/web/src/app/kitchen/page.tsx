@@ -60,6 +60,7 @@ export default async function KitchenPage() {
       branchId={scope.primaryBranchId ?? scope.branchIds[0]!}
       channel={scope.groupChannel}
       multi={scope.multi}
+      restaurants={scope.restaurants}
       initial={JSON.parse(JSON.stringify(decorated))}
     />
   );

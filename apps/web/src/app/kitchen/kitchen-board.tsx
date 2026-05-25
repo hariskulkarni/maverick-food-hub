@@ -23,10 +23,59 @@ const COLUMNS = [
   { key: 'READY', title: 'Ready', icon: Package }
 ] as const;
 
-export function KitchenBoard({ branchId, channel, channels, multi = false, initial }: { branchId: string; channel?: string; channels?: string[]; multi?: boolean; initial: any[] }) {
+// Stable, high-contrast accent palette. Each restaurant in the group is
+// assigned one by its position in the `restaurants` list, so the same kitchen
+// always reads the same colour across the board (cards + filter tab).
+const ACCENT_PALETTE = ['#f23e5c', '#2563eb', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#db2777', '#65a30d'];
+
+export function KitchenBoard({
+  branchId,
+  channel,
+  channels,
+  multi = false,
+  restaurants = [],
+  initial
+}: {
+  branchId: string;
+  channel?: string;
+  channels?: string[];
+  multi?: boolean;
+  restaurants?: { id: string; name: string }[];
+  initial: any[];
+}) {
   const [orders, setOrders] = useState<any[]>(initial);
   const [now, setNow] = useState(Date.now());
   const [unacked, setUnacked] = useState<Set<string>>(new Set());
+  // Per-restaurant filter for the consolidated (umbrella) kitchen console.
+  // 'all' shows every kitchen's orders; selecting a restaurant narrows the
+  // board to just that kitchen. Only surfaced when the account spans >1.
+  const [restFilter, setRestFilter] = useState<string>('all');
+
+  // restaurantId → accent colour (stable by list position).
+  const accentByRest = useMemo(() => {
+    const m = new Map<string, string>();
+    restaurants.forEach((r, i) => m.set(r.id, ACCENT_PALETTE[i % ACCENT_PALETTE.length]));
+    return m;
+  }, [restaurants]);
+
+  // Live per-restaurant active-order counts (across all four columns), for the
+  // filter tab badges.
+  const countByRest = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const o of orders) {
+      const id = o?._label?.restaurantId;
+      if (id) m.set(id, (m.get(id) ?? 0) + 1);
+    }
+    return m;
+  }, [orders]);
+
+  // Orders shown after applying the restaurant filter.
+  const visibleOrders = useMemo(
+    () => (restFilter === 'all' ? orders : orders.filter((o) => o?._label?.restaurantId === restFilter)),
+    [orders, restFilter]
+  );
+
+  const showRestaurantFilter = multi && restaurants.length > 1;
   // Snapshot safety net — tracks the last time we successfully pulled the
   // full order list from /api/kitchen/orders. The badge in the header turns
   // amber if the snapshot is older than 30s, which is the operator's hint
@@ -237,9 +286,31 @@ export function KitchenBoard({ branchId, channel, channels, multi = false, initi
         <SyncIndicator lastSyncAt={lastSyncAt} now={now} onRefresh={() => refreshSnapshot(false)} refreshing={refreshing} />
         <SoundToggle enabled={chime.enabled} onToggle={chime.setEnabled} />
       </div>
+
+      {/* Per-restaurant filter tabs — classify the consolidated group board by
+          kitchen. Each shows a live active-order count; colours match the card
+          accents so an operator can tell kitchens apart at a glance. */}
+      {showRestaurantFilter && (
+        <div className="-mx-4 md:mx-0 mb-4 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-2 px-4 md:px-0">
+            <FilterTab label="All" count={orders.length} active={restFilter === 'all'} onClick={() => setRestFilter('all')} />
+            {restaurants.map((r) => (
+              <FilterTab
+                key={r.id}
+                label={r.name}
+                count={countByRest.get(r.id) ?? 0}
+                color={accentByRest.get(r.id)}
+                active={restFilter === r.id}
+                onClick={() => setRestFilter(r.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-4 md:grid-cols-3">
       {COLUMNS.map((col) => {
-        const items = orders.filter((o) => o.status === col.key);
+        const items = visibleOrders.filter((o) => o.status === col.key);
         return (
           <section key={col.key}>
             <header className="flex items-center gap-2 mb-3">
@@ -259,8 +330,15 @@ export function KitchenBoard({ branchId, channel, channels, multi = false, initi
                 const overdue =
                   (o.status === 'RECEIVED' && min > 5) ||
                   ((o.status === 'PREPARING' || o.status === 'ACCEPTED') && min > 25);
+                const accent = o?._label?.restaurantId ? accentByRest.get(o._label.restaurantId) : undefined;
                 return (
-                  <Card key={o.id} className={overdue ? 'border-destructive ring-2 ring-destructive/30' : ''}>
+                  <Card
+                    key={o.id}
+                    className={overdue ? 'border-destructive ring-2 ring-destructive/30' : ''}
+                    // Left colour accent ties the card to its kitchen on the
+                    // consolidated group board (only when >1 restaurant).
+                    style={showRestaurantFilter && accent ? { borderLeftColor: accent, borderLeftWidth: 4 } : undefined}
+                  >
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div>
@@ -274,7 +352,13 @@ export function KitchenBoard({ branchId, channel, channels, multi = false, initi
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         {o._label && (
-                          <Badge variant="secondary" className="font-medium">{o._label.restaurantName}</Badge>
+                          <Badge
+                            variant="secondary"
+                            className="font-medium"
+                            style={accent ? { backgroundColor: `${accent}1A`, color: accent, borderColor: `${accent}40` } : undefined}
+                          >
+                            {o._label.restaurantName}
+                          </Badge>
                         )}
                         <FulfillmentBadge type={o.fulfillmentType} />
                         {o.scheduledFor && (
@@ -321,6 +405,45 @@ export function KitchenBoard({ branchId, channel, channels, multi = false, initi
       })}
       </div>
     </>
+  );
+}
+
+/** Per-restaurant filter pill for the consolidated group kitchen console. */
+function FilterTab({
+  label,
+  count,
+  color,
+  active,
+  onClick
+}: {
+  label: string;
+  count: number;
+  color?: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors tap-press ${
+        active
+          ? 'bg-primary text-primary-foreground border-primary'
+          : 'bg-card text-muted-foreground hover:text-foreground hover:border-primary/40'
+      }`}
+      style={active && color ? { backgroundColor: color, borderColor: color, color: '#fff' } : undefined}
+    >
+      {color && !active && <span className="size-2 rounded-full" style={{ backgroundColor: color }} aria-hidden />}
+      <span className="max-w-[10rem] truncate">{label}</span>
+      <span
+        className={`inline-flex min-w-[1.25rem] justify-center rounded-full px-1.5 text-xs font-semibold ${
+          active ? 'bg-white/25' : 'bg-muted text-foreground'
+        }`}
+      >
+        {count}
+      </span>
+    </button>
   );
 }
 

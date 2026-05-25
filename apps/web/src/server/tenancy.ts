@@ -52,7 +52,9 @@ async function membershipsForUser(userId: string) {
  *   2. restaurants they OWN (ownerUserId) even without a grant row
  *   3. CHILDREN of any restaurant they own or ADMIN — the parent-owner "sees
  *      all" rule, so a group owner reaches every child without per-child grants.
- * KITCHEN-only members get just their explicit grants (no implied child access).
+ *   4. CHILDREN of any restaurant they have a KITCHEN grant on — so one kitchen
+ *      login attached to the umbrella covers every child kitchen (implied KITCHEN).
+ * A KITCHEN grant on a standalone restaurant (no children) is unaffected.
  * Keyed by restaurantId; insertion order defines the switcher fallback order.
  */
 export async function accessibleSet(userId: string): Promise<Map<string, AccessEntry>> {
@@ -77,6 +79,21 @@ export async function accessibleSet(userId: string): Promise<Map<string, AccessE
     const children = await prisma.restaurant.findMany({ where: { parentId: { in: [...rootIds] } } });
     for (const c of children) {
       if (!map.has(c.id)) map.set(c.id, { restaurant: c, role: Role.ADMIN, implied: true });
+    }
+  }
+
+  // A KITCHEN grant on a parent/umbrella restaurant cascades to its child
+  // restaurants — so ONE kitchen login attached to the umbrella covers every
+  // child kitchen (a single consolidated console), without per-child grants.
+  // Mirrors the ADMIN cascade but keeps the KITCHEN role on implied children.
+  // Explicit grants + ADMIN-implied entries set above always take precedence.
+  const kitchenRootIds = memberships
+    .filter((m) => m.role === Role.KITCHEN)
+    .map((m) => m.restaurantId);
+  if (kitchenRootIds.length > 0) {
+    const kitchenChildren = await prisma.restaurant.findMany({ where: { parentId: { in: kitchenRootIds } } });
+    for (const c of kitchenChildren) {
+      if (!map.has(c.id)) map.set(c.id, { restaurant: c, role: Role.KITCHEN, implied: true });
     }
   }
   return map;
