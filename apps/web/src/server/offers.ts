@@ -114,6 +114,10 @@ export interface OfferContext {
   subtotal: number;
   /** Channel the order is being placed on. */
   channel: 'ONLINE' | 'DINE_IN';
+  /** Fulfillment type of the order (delivery/pickup/dine-in). When provided and
+   *  an offer sets `fulfillmentScope`, the offer only fires for matching types.
+   *  Left null on the storefront carousel preview (so promos still display). */
+  fulfillmentType?: 'DELIVERY' | 'PICKUP' | 'DINE_IN' | null;
   /** Already-resolved branchId of the cart's branch (offers can scope here). */
   branchId: string | null;
   restaurantId: string | null;
@@ -167,6 +171,31 @@ export interface OfferRow {
   priority: number;
   autoApply: boolean;
   stackable: boolean;
+  /** Fulfillment targeting — empty/undefined ⇒ all types. */
+  fulfillmentScope?: ('DELIVERY' | 'PICKUP' | 'DINE_IN')[] | null;
+  /** Recurring day/time windows — empty/undefined ⇒ active any time in validity. */
+  schedules?: { dayOfWeek: number; startMin: number; endMin: number }[] | null;
+}
+
+/** Mark task #345 BOGO config shape (stored in Offer.rewardConfig JSON). */
+export interface BogoConfig {
+  buyQty?: number;
+  getQty?: number;
+  buyScope?: 'ALL' | 'CATEGORY' | 'ITEMS';
+  buyCategoryIds?: string[];
+  buyItemIds?: string[];
+  getScope?: 'ALL' | 'CATEGORY' | 'ITEMS';
+  getCategoryIds?: string[];
+  getItemIds?: string[];
+  /** Discount applied to each qualifying "get" unit. */
+  getDiscountType?: 'PERCENT' | 'FIXED' | 'FIXED_PRICE';
+  getDiscountValue?: number; // pct 1..100 | ₹ off per unit | ₹ fixed price
+  /** Which get-units to discount when more qualify than free slots. */
+  getItemSelect?: 'LOWER' | 'HIGHER' | 'SAME';
+  // ── Legacy single-item shape (still honoured) ──
+  buyItemId?: string;
+  getItemId?: string;
+  getDiscountPct?: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -203,6 +232,109 @@ function scopedLines(offer: OfferRow, cart: OfferCartLine[]): { lines: OfferCart
   return { lines: filtered, subtotal: filtered.reduce((s, l) => s + l.unitPrice * l.quantity, 0) };
 }
 
+// ── BOGO (Buy-X-Get-Y) computation ──────────────────────────────────────────
+
+type BogoScope = 'ALL' | 'CATEGORY' | 'ITEMS';
+
+function bogoMatch(line: { menuItemId: string; categoryId?: string | null }, scope: BogoScope, catIds: Set<string>, itemIds: Set<string>): boolean {
+  if (scope === 'ALL') return true;
+  if (scope === 'ITEMS') return itemIds.has(line.menuItemId);
+  return Boolean(line.categoryId && catIds.has(line.categoryId)); // CATEGORY
+}
+
+interface BogoUnit { menuItemId: string; price: number; categoryId?: string | null }
+
+/**
+ * Full Buy-X-Get-Y resolver supporting:
+ *  - buy/get targeting by ALL, CATEGORY, or specific ITEMS
+ *  - buyQty / getQty (e.g. BUY 2 GET 2)
+ *  - get discount as PERCENT (1..100, default 100 = free), FIXED (₹ off per
+ *    unit) or FIXED_PRICE (unit now costs ₹X)
+ *  - getItemSelect = LOWER (cheapest qualifying get-units, the standard BOGO),
+ *    HIGHER (priciest), or SAME (the get-unit's item must also be buy-eligible)
+ *  - overlapping pools (buy & get target the same items, e.g. BUY 1 GET 1 on a
+ *    whole category) handled via chunk allocation so a unit is never both paid
+ *    and free; disjoint pools (item A → item B) handled via set counting.
+ * Legacy single-item config { buyItemId, getItemId, getDiscountPct } still works.
+ */
+function computeBogo(cfgRaw: any, cart: OfferCartLine[], maxCap: number): OfferEvalResult {
+  const cfg = (cfgRaw ?? {}) as BogoConfig;
+
+  // Normalise legacy single-item config into the scope-based shape.
+  let buyScope = (cfg.buyScope ?? (cfg.buyItemId ? 'ITEMS' : 'ALL')) as BogoScope;
+  let getScope = (cfg.getScope ?? (cfg.getItemId ? 'ITEMS' : buyScope)) as BogoScope;
+  const buyItemIds = new Set<string>(cfg.buyItemIds ?? (cfg.buyItemId ? [cfg.buyItemId] : []));
+  const getItemIds = new Set<string>(cfg.getItemIds ?? (cfg.getItemId ? [cfg.getItemId] : []));
+  const buyCatIds = new Set<string>(cfg.buyCategoryIds ?? []);
+  const getCatIds = new Set<string>(cfg.getCategoryIds ?? []);
+
+  const buyQty = Math.max(1, Math.floor(Number(cfg.buyQty ?? 1)));
+  const getQty = Math.max(1, Math.floor(Number(cfg.getQty ?? 1)));
+  const discType = (cfg.getDiscountType ?? 'PERCENT') as 'PERCENT' | 'FIXED' | 'FIXED_PRICE';
+  const rawVal = Number(cfg.getDiscountValue ?? cfg.getDiscountPct ?? (discType === 'PERCENT' ? 100 : 0));
+  const select = (cfg.getItemSelect ?? 'LOWER') as 'LOWER' | 'HIGHER' | 'SAME';
+
+  // Validation per discount type.
+  if (discType === 'PERCENT' && (rawVal <= 0 || rawVal > 100)) return no('BOGO percent must be 1–100');
+  if ((discType === 'FIXED' || discType === 'FIXED_PRICE') && rawVal < 0) return no('BOGO amount misconfigured');
+  if (buyScope === 'ITEMS' && buyItemIds.size === 0) return no('BOGO buy items not set');
+  if (getScope === 'ITEMS' && getItemIds.size === 0) return no('BOGO get items not set');
+  if (buyScope === 'CATEGORY' && buyCatIds.size === 0) return no('BOGO buy category not set');
+  if (getScope === 'CATEGORY' && getCatIds.size === 0) return no('BOGO get category not set');
+
+  // Expand cart into individual units.
+  const units: BogoUnit[] = [];
+  for (const l of cart) {
+    for (let i = 0; i < l.quantity; i++) units.push({ menuItemId: l.menuItemId, price: l.unitPrice, categoryId: l.categoryId });
+  }
+  const isBuy = (u: BogoUnit) => bogoMatch(u, buyScope, buyCatIds, buyItemIds);
+  const isGet = (u: BogoUnit) => bogoMatch(u, getScope, getCatIds, getItemIds);
+  const buyUnits = units.filter(isBuy);
+  let getUnits = units.filter(isGet);
+  if (buyUnits.length === 0) return no(`add ${buyQty} qualifying item(s) to unlock this deal`);
+
+  const overlap = units.some((u) => isBuy(u) && isGet(u));
+
+  // SAME: the discounted get-unit's item must also be buy-eligible.
+  if (select === 'SAME') {
+    const buyItemSet = new Set(buyUnits.map((u) => u.menuItemId));
+    getUnits = getUnits.filter((u) => buyItemSet.has(u.menuItemId));
+  }
+
+  // Decide how many get-units are discounted.
+  let discountCount: number;
+  if (overlap) {
+    // Same/overlapping pool — pay buyQty, discount getQty per chunk so a unit is
+    // never both paid and free. Sets bounded by the get-eligible pool size.
+    const chunk = buyQty + getQty;
+    const sets = Math.floor(getUnits.length / chunk);
+    discountCount = sets * getQty;
+  } else {
+    // Disjoint pools — each buyQty of buy-units unlocks getQty get-units.
+    const sets = Math.floor(buyUnits.length / buyQty);
+    discountCount = Math.min(getUnits.length, sets * getQty);
+  }
+  if (discountCount <= 0) return no(`add more qualifying items to claim the deal`);
+
+  // Select which get-units get the discount.
+  const sorted = [...getUnits].sort((a, b) => (select === 'HIGHER' ? b.price - a.price : a.price - b.price));
+  const chosen = sorted.slice(0, discountCount);
+
+  const perUnit = (price: number) =>
+    discType === 'PERCENT' ? price * (rawVal / 100)
+    : discType === 'FIXED' ? Math.min(price, rawVal)
+    : /* FIXED_PRICE */ Math.max(0, price - rawVal);
+
+  const raw = chosen.reduce((s, u) => s + perUnit(u.price), 0);
+  const amt = Math.min(raw, maxCap);
+  const affected = Array.from(new Set(chosen.map((u) => u.menuItemId)));
+  return ok(amt, affected, {
+    type: 'BUY_X_GET_Y',
+    buyScope, getScope, buyQty, getQty, getDiscountType: discType, getDiscountValue: rawVal, getItemSelect: select,
+    discountedUnits: chosen.length, overlap, raw
+  });
+}
+
 // ── Gating ────────────────────────────────────────────────────────────────
 
 function checkGates(offer: OfferRow, ctx: OfferContext): OfferEvalFailure | null {
@@ -223,6 +355,26 @@ function checkGates(offer: OfferRow, ctx: OfferContext): OfferEvalFailure | null
   // Restaurant/branch scope
   if (offer.restaurantId && ctx.restaurantId !== offer.restaurantId) return no('offer is for a different restaurant');
   if (offer.branchId && ctx.branchId !== offer.branchId) return no('offer is for a different branch');
+
+  // Fulfillment targeting (delivery/pickup/dine-in). Only gates when the offer
+  // restricts AND the caller supplied a fulfillment type (storefront preview
+  // leaves it null so promos still display).
+  const fScope = offer.fulfillmentScope ?? [];
+  if (fScope.length > 0 && ctx.fulfillmentType && !fScope.includes(ctx.fulfillmentType)) {
+    return no(`offer is only valid for ${fScope.join(' / ').toLowerCase()} orders`);
+  }
+
+  // Recurring day/time windows. No schedule rows ⇒ always in-window. Otherwise
+  // "now" must fall inside one of the windows for the matching weekday.
+  const schedules = offer.schedules ?? [];
+  if (schedules.length > 0) {
+    const dow = now.getDay(); // 0..6 Sun..Sat
+    const mins = now.getHours() * 60 + now.getMinutes();
+    const inWindow = schedules.some(
+      (s) => s.dayOfWeek === dow && mins >= s.startMin && mins < s.endMin
+    );
+    if (!inWindow) return no('offer is outside its active hours');
+  }
 
   // Min order amount (gate on whole cart subtotal — even if scope is partial)
   const minOrder = num(offer.minOrderAmount, 0);
@@ -276,30 +428,10 @@ function evaluateReward(offer: OfferRow, ctx: OfferContext): OfferEvalResult {
       return ok(amt, lines.map((l) => l.menuItemId), { type: offer.type, raw });
     }
 
-    case 'BUY_X_GET_Y': {
-      // cfg: { buyItemId, buyQty, getItemId, getQty, getDiscountPct (default 100 = free) }
-      const buyItemId   = String(cfg.buyItemId   ?? '');
-      const getItemId   = String(cfg.getItemId   ?? '');
-      const buyQty      = Math.max(1, Number(cfg.buyQty ?? 1));
-      const getQty      = Math.max(1, Number(cfg.getQty ?? 1));
-      const getDiscPct  = Math.min(100, Math.max(0, Number(cfg.getDiscountPct ?? 100)));
-      if (!buyItemId || !getItemId) return no('BUY_X_GET_Y misconfigured (need buyItemId + getItemId)');
-
-      const buyLine = ctx.cart.find((l) => l.menuItemId === buyItemId);
-      const getLine = ctx.cart.find((l) => l.menuItemId === getItemId);
-      if (!buyLine || buyLine.quantity < buyQty) return no(`add ${buyQty}× to qualify`);
-      if (!getLine || getLine.quantity < getQty) return no(`add the free/discounted item to cart to claim`);
-
-      const eligibleSets = Math.floor(buyLine.quantity / buyQty);
-      const freeUnits = Math.min(getLine.quantity, eligibleSets * getQty);
-      const amt = freeUnits * getLine.unitPrice * (getDiscPct / 100);
-      const capped = Math.min(amt, maxCap);
-      return ok(capped, [getItemId], {
-        type: 'BUY_X_GET_Y',
-        buyItemId, getItemId, buyQty, getQty, getDiscountPct: getDiscPct,
-        eligibleSets, freeUnits
-      });
-    }
+    case 'BUY_X_GET_Y':
+      // Full BOGO: category/item buy+get scopes, qty, %/₹/fixed-price discount,
+      // lower/higher/same selection. Legacy single-item config still honoured.
+      return computeBogo(cfg, ctx.cart, maxCap);
 
     case 'COMBO_DISCOUNT': {
       // cfg: { items: [{ id, qty }], comboPrice }
@@ -444,7 +576,7 @@ export async function loadAndApplyOffers(
 
   const offers = await prisma.offer.findMany({
     where: whereScope,
-    include: { appliesToCategories: true, appliesToItems: true },
+    include: { appliesToCategories: true, appliesToItems: true, schedules: true },
     orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }]
   });
 
@@ -465,6 +597,7 @@ export async function loadAndApplyOffers(
     cart: ctx.cart,
     subtotal: ctx.subtotal,
     channel: ctx.channel,
+    fulfillmentType: ctx.fulfillmentType ?? null,
     branchId: ctx.branchId,
     restaurantId: ctx.restaurantId,
     customerOrderCount,

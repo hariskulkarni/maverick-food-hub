@@ -289,6 +289,9 @@ export async function placeOrder(input: PlaceOrderInput) {
     cart: offerCart,
     subtotal: offerSubtotal,
     channel: 'ONLINE' as const,
+    // Fulfillment targeting for BOGO + fulfillment-scoped offers. Defaults to
+    // DELIVERY — the same default applied during fulfillment resolution below.
+    fulfillmentType: (input.fulfillmentType ?? 'DELIVERY') as 'DELIVERY' | 'PICKUP' | 'DINE_IN',
     branchId: branch.id,
     restaurantId: branch.restaurantId,
     customerId: input.customerId,

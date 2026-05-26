@@ -31,6 +31,12 @@ const OfferType = z.enum([
 ]);
 
 const ChannelScope = z.enum(['ANY', 'ONLINE', 'DINE_IN']);
+const FulfillmentType = z.enum(['DELIVERY', 'PICKUP', 'DINE_IN']);
+const ScheduleRow = z.object({
+  dayOfWeek: z.number().int().min(0).max(6),
+  startMin: z.number().int().min(0).max(1440),
+  endMin: z.number().int().min(0).max(1440)
+});
 
 const Patch = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -42,9 +48,13 @@ const Patch = z.object({
   maxDiscount: z.number().nullable().optional(),
   minOrderAmount: z.number().nullable().optional(),
   rewardConfig: z.any().nullable().optional(),
+  imageUrl: z.union([z.string().max(2048), z.literal(''), z.null()]).optional(),
+  fulfillmentScope: z.array(FulfillmentType).optional(),
+  schedules: z.array(ScheduleRow).optional(),
   branchId: z.string().nullable().optional(),
   categoryIds: z.array(z.string()).optional(),
   menuItemIds: z.array(z.string()).optional(),
+  itemIds: z.array(z.string()).optional(),
   issuedChannel: ChannelScope.optional(),
   redeemChannel: ChannelScope.optional(),
   minCustomerOrders: z.number().int().min(0).optional(),
@@ -61,7 +71,7 @@ const Patch = z.object({
 async function fetchOwned(offerId: string, restaurantId: string) {
   const offer = await prisma.offer.findFirst({
     where: { id: offerId, restaurantId },
-    include: { appliesToCategories: true, appliesToItems: true }
+    include: { appliesToCategories: true, appliesToItems: true, schedules: true }
   });
   return offer;
 }
@@ -87,6 +97,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!before) return new Response('Offer not found', { status: 404 });
 
   const data = Patch.parse(await req.json());
+  // Editor sends `itemIds`; accept both as the per-item scope list.
+  const itemIdsProvided = data.menuItemIds ?? data.itemIds;
 
   // Validate branch ownership if changing
   if (data.branchId) {
@@ -105,12 +117,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return new Response('One or more categories do not belong to this restaurant', { status: 400 });
     }
   }
-  if (data.menuItemIds && data.menuItemIds.length > 0) {
+  if (itemIdsProvided && itemIdsProvided.length > 0) {
     const items = await prisma.menuItem.findMany({
-      where: { id: { in: data.menuItemIds }, branch: { restaurantId: r.id } },
+      where: { id: { in: itemIdsProvided }, branch: { restaurantId: r.id } },
       select: { id: true }
     });
-    if (items.length !== data.menuItemIds.length) {
+    if (items.length !== itemIdsProvided.length) {
       return new Response('One or more menu items do not belong to this restaurant', { status: 400 });
     }
   }
@@ -125,6 +137,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (data.maxDiscount !== undefined) patch.maxDiscount = data.maxDiscount != null ? (data.maxDiscount as any) : null;
   if (data.minOrderAmount !== undefined) patch.minOrderAmount = data.minOrderAmount != null ? (data.minOrderAmount as any) : null;
   if (data.rewardConfig !== undefined) patch.rewardConfig = data.rewardConfig ?? undefined;
+  if (data.imageUrl !== undefined) patch.imageUrl = data.imageUrl ? data.imageUrl : null;
+  if (data.fulfillmentScope !== undefined) patch.fulfillmentScope = data.fulfillmentScope as any;
   if (data.branchId !== undefined) patch.branchId = data.branchId;
   if (data.issuedChannel !== undefined) patch.issuedChannel = data.issuedChannel;
   if (data.redeemChannel !== undefined) patch.redeemChannel = data.redeemChannel;
@@ -152,18 +166,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           });
         }
       }
-      if (data.menuItemIds !== undefined) {
+      if (itemIdsProvided !== undefined) {
         await tx.offerItemScope.deleteMany({ where: { offerId: id } });
-        if (data.menuItemIds.length > 0) {
+        if (itemIdsProvided.length > 0) {
           await tx.offerItemScope.createMany({
-            data: data.menuItemIds.map((menuItemId) => ({ offerId: id, menuItemId }))
+            data: itemIdsProvided.map((menuItemId) => ({ offerId: id, menuItemId }))
+          });
+        }
+      }
+      if (data.schedules !== undefined) {
+        await tx.offerSchedule.deleteMany({ where: { offerId: id } });
+        if (data.schedules.length > 0) {
+          await tx.offerSchedule.createMany({
+            data: data.schedules.map((s) => ({ offerId: id, dayOfWeek: s.dayOfWeek, startMin: s.startMin, endMin: s.endMin }))
           });
         }
       }
 
       return tx.offer.findUnique({
         where: { id },
-        include: { appliesToCategories: true, appliesToItems: true }
+        include: { appliesToCategories: true, appliesToItems: true, schedules: true }
       });
     });
 

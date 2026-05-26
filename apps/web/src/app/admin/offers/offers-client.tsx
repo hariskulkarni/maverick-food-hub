@@ -66,11 +66,17 @@ export type Offer = {
   priority: number;
   autoApply: boolean;
   stackable: boolean;
+  imageUrl: string | null;
+  fulfillmentScope: FulfillmentType[];
+  schedules: OfferSchedule[];
   createdAt: string;
   appliesToCategories: { categoryId: string }[];
   appliesToItems: { menuItemId: string }[];
   _count?: { redemptions: number };
 };
+
+export type FulfillmentType = 'DELIVERY' | 'PICKUP' | 'DINE_IN';
+export type OfferSchedule = { dayOfWeek: number; startMin: number; endMin: number };
 
 export type Branch = { id: string; name: string; isActive: boolean };
 export type Category = { id: string; name: string; branchId: string };
@@ -410,7 +416,13 @@ function rewardSummary(o: Offer): React.ReactNode {
     }
     case 'BUY_X_GET_Y': {
       const cfg = o.rewardConfig ?? {};
-      return <span>Buy {cfg.buyQty ?? 1} get {cfg.getQty ?? 1} {cfg.getDiscountPct === 100 ? 'free' : `@ ${cfg.getDiscountPct ?? 100}% off`}</span>;
+      const dt = cfg.getDiscountType ?? 'PERCENT';
+      const val = Number(cfg.getDiscountValue ?? cfg.getDiscountPct ?? 100);
+      const reward =
+        dt === 'PERCENT' ? (val >= 100 ? 'free' : `@ ${val}% off`)
+        : dt === 'FIXED' ? `@ ${money(val)} off`
+        : `@ ${money(val)}`;
+      return <span>Buy {cfg.buyQty ?? 1} get {cfg.getQty ?? 1} {reward}</span>;
     }
     case 'COMBO_DISCOUNT': {
       const cfg = o.rewardConfig ?? {};

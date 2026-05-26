@@ -19,6 +19,26 @@ export interface OfferCardData {
   maxDiscount?: string | number | null;
   minOrderAmount?: string | number | null;
   validTo?: string | null;
+  /** Optional banner image (BOGO + promo offers). */
+  imageUrl?: string | null;
+  /** Type-specific config; used to summarise BOGO ("Buy 2 Get 2 free"). */
+  rewardConfig?: any;
+}
+
+/** Plain-English BOGO summary from a BUY_X_GET_Y rewardConfig. */
+function bogoSummary(cfg: any): string | null {
+  if (!cfg) return null;
+  const buyQty = Number(cfg.buyQty ?? 1);
+  const getQty = Number(cfg.getQty ?? 1);
+  const type = cfg.getDiscountType ?? 'PERCENT';
+  const val = Number(cfg.getDiscountValue ?? cfg.getDiscountPct ?? 100);
+  const deal =
+    type === 'PERCENT'
+      ? val >= 100 ? 'free' : `${val}% off`
+      : type === 'FIXED'
+        ? `₹${val} off`
+        : `at ₹${val}`;
+  return `Buy ${buyQty}, get ${getQty} ${deal}`;
 }
 
 function iconForType(type: string) {
@@ -88,6 +108,10 @@ function OfferCard({ offer }: { offer: OfferCardData }) {
   const Icon = iconForType(offer.type);
   const val = bigValue(offer);
   const validity = validityLabel(offer.validTo ?? null);
+  // BOGO offers without their own copy get an auto summary line.
+  const subtitle =
+    offer.description ||
+    (offer.type === 'BUY_X_GET_Y' ? bogoSummary(offer.rewardConfig) : null);
 
   const onCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -111,6 +135,15 @@ function OfferCard({ offer }: { offer: OfferCardData }) {
       <div className="pointer-events-none absolute -top-12 -right-12 size-40 rounded-full bg-white/20 blur-2xl" />
       <div className="pointer-events-none absolute -bottom-12 -left-12 size-40 rounded-full bg-black/10 blur-2xl" />
 
+      {/* Optional banner image (BOGO / promo). Sits above the content. */}
+      {offer.imageUrl && (
+        <div className="relative h-28 w-full overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={offer.imageUrl} alt={offer.name} className="absolute inset-0 h-full w-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+        </div>
+      )}
+
       <div className="relative p-5">
         <div className="flex items-start justify-between">
           <div className="inline-flex items-center justify-center size-10 rounded-full bg-white/20 backdrop-blur-sm">
@@ -129,8 +162,8 @@ function OfferCard({ offer }: { offer: OfferCardData }) {
         </div>
 
         <div className="mt-3 font-semibold text-base leading-snug line-clamp-1">{offer.name}</div>
-        {offer.description && (
-          <div className="mt-1 text-xs opacity-90 leading-snug line-clamp-2">{offer.description}</div>
+        {subtitle && (
+          <div className="mt-1 text-xs opacity-90 leading-snug line-clamp-2">{subtitle}</div>
         )}
 
         <div className="mt-4 flex items-center justify-between gap-2">

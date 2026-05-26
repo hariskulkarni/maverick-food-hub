@@ -31,8 +31,10 @@ import {
 import { Plus, X, Trash2, Sparkles, Search, Info } from 'lucide-react';
 import { money } from '@/lib/utils';
 import { toast } from 'sonner';
+import { ImageUploader } from '@/components/image-uploader';
 import {
   type Offer, type OfferType, type ChannelScope, type Branch, type Category, type MenuItem,
+  type FulfillmentType, type OfferSchedule,
   OFFER_TYPE_META, OFFER_TYPE_ORDER
 } from './offers-client';
 
@@ -70,11 +72,41 @@ type Draft = {
   minCustomerOrders: number;
   validFrom: string;
   validTo: string;
+  // offer-level controls (all types)
+  imageUrl: string | null;
+  fulfillmentScope: FulfillmentType[];
+  scheduleDays: number[];          // 0=Sun … 6=Sat
+  scheduleStart: string;           // 'HH:mm' or ''
+  scheduleEnd: string;             // 'HH:mm' or ''
 };
+
+const FULFILLMENT_OPTIONS: { value: FulfillmentType; label: string }[] = [
+  { value: 'DELIVERY', label: 'Delivery' },
+  { value: 'PICKUP', label: 'Pickup' },
+  { value: 'DINE_IN', label: 'Dine-in' }
+];
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function emptyDraft(seed: Partial<Offer> = {}): Draft {
   const type = (seed.type ?? 'PERCENTAGE') as OfferType;
   const lock = CHANNEL_LOCKS[type];
+
+  // Hydrate the day/time schedule controls from any existing schedule rows.
+  // We collapse the rows to one shared From/To window (the editor only models
+  // a single window per offer) and the set of days that share it.
+  const seedSchedules = (seed.schedules ?? []) as OfferSchedule[];
+  const scheduleDays = Array.from(new Set(seedSchedules.map((s) => s.dayOfWeek))).sort((a, b) => a - b);
+  const firstRow = seedSchedules[0];
+  const scheduleStart = firstRow ? minToTime(firstRow.startMin) : '';
+  const scheduleEnd = firstRow ? minToTime(firstRow.endMin) : '';
+
+  // BOGO: normalise both the new scope-based shape and the legacy single-item
+  // shape into the BogoConfig the backend expects.
+  const rewardConfig = type === 'BUY_X_GET_Y'
+    ? normalizeBogoConfig(seed.rewardConfig)
+    : (seed.rewardConfig ?? {});
+
   return {
     name: seed.name ?? '',
     description: seed.description ?? '',
@@ -87,7 +119,7 @@ function emptyDraft(seed: Partial<Offer> = {}): Draft {
     percentOff: Number(seed.percentOff ?? 0),
     flatOff: Number(seed.flatOff ?? 0),
     maxDiscount: Number(seed.maxDiscount ?? 0),
-    rewardConfig: seed.rewardConfig ?? {},
+    rewardConfig,
     branchId: seed.branchId ?? '',
     categoryIds: (seed.appliesToCategories ?? []).map((c) => c.categoryId),
     itemIds: (seed.appliesToItems ?? []).map((i) => i.menuItemId),
@@ -98,7 +130,47 @@ function emptyDraft(seed: Partial<Offer> = {}): Draft {
     perUserLimit: seed.perUserLimit ?? 1,
     minCustomerOrders: seed.minCustomerOrders ?? 0,
     validFrom: toLocalDateTime(seed.validFrom),
-    validTo: toLocalDateTime(seed.validTo)
+    validTo: toLocalDateTime(seed.validTo),
+    imageUrl: seed.imageUrl ?? null,
+    fulfillmentScope: Array.isArray(seed.fulfillmentScope) ? seed.fulfillmentScope : [],
+    scheduleDays,
+    scheduleStart,
+    scheduleEnd
+  };
+}
+
+/** Coerce any stored rewardConfig (new scope-based OR legacy single-item) into
+ *  the BogoConfig the BOGO form + backend expect. */
+function normalizeBogoConfig(raw: any): any {
+  const cfg = raw ?? {};
+  const legacy = cfg.buyScope == null && (cfg.buyItemId != null || cfg.getItemId != null || cfg.getDiscountPct != null);
+  if (legacy) {
+    return {
+      buyQty: Number(cfg.buyQty ?? 1),
+      getQty: Number(cfg.getQty ?? 1),
+      buyScope: cfg.buyItemId ? 'ITEMS' : 'ALL',
+      buyItemIds: cfg.buyItemId ? [cfg.buyItemId] : [],
+      buyCategoryIds: [],
+      getScope: cfg.getItemId ? 'ITEMS' : 'ALL',
+      getItemIds: cfg.getItemId ? [cfg.getItemId] : [],
+      getCategoryIds: [],
+      getDiscountType: 'PERCENT',
+      getDiscountValue: Number(cfg.getDiscountPct ?? 100),
+      getItemSelect: 'LOWER'
+    };
+  }
+  return {
+    buyQty: Number(cfg.buyQty ?? 1),
+    getQty: Number(cfg.getQty ?? 1),
+    buyScope: cfg.buyScope ?? 'ALL',
+    buyItemIds: Array.isArray(cfg.buyItemIds) ? cfg.buyItemIds : [],
+    buyCategoryIds: Array.isArray(cfg.buyCategoryIds) ? cfg.buyCategoryIds : [],
+    getScope: cfg.getScope ?? 'ALL',
+    getItemIds: Array.isArray(cfg.getItemIds) ? cfg.getItemIds : [],
+    getCategoryIds: Array.isArray(cfg.getCategoryIds) ? cfg.getCategoryIds : [],
+    getDiscountType: cfg.getDiscountType ?? 'PERCENT',
+    getDiscountValue: Number(cfg.getDiscountValue ?? 100),
+    getItemSelect: cfg.getItemSelect ?? 'LOWER'
   };
 }
 
@@ -245,7 +317,7 @@ export function OfferEditor({
               </div>
             </div>
 
-            <RewardFields draft={draft} patch={patch} scopedItems={scopedItems} />
+            <RewardFields draft={draft} patch={patch} scopedItems={scopedItems} scopedCategories={scopedCategories} />
 
             {channelLocked && (
               <div className="rounded-md border border-dashed bg-muted/30 p-3 text-xs space-y-1">
@@ -345,6 +417,74 @@ export function OfferEditor({
             </div>
           </Section>
 
+          {/* ── 5. Presentation & targeting ─────────────────────────── */}
+          <Section title="Presentation & targeting">
+            <ImageUploader
+              value={draft.imageUrl}
+              onChange={(url) => patch('imageUrl', url)}
+              folder="offers"
+              aspect="wide"
+              label="Offer image"
+              hint="Shown on the storefront offers carousel"
+            />
+
+            <div>
+              <Label>Fulfillment types</Label>
+              <div className="text-[11px] text-muted-foreground mb-1.5">Leave all unchecked to apply to every fulfillment type.</div>
+              <div className="flex flex-wrap gap-2">
+                {FULFILLMENT_OPTIONS.map((opt) => {
+                  const on = draft.fulfillmentScope.includes(opt.value);
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        const next = on
+                          ? draft.fulfillmentScope.filter((x) => x !== opt.value)
+                          : [...draft.fulfillmentScope, opt.value];
+                        patch('fulfillmentScope', next);
+                      }}
+                      className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${on ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-accent text-muted-foreground'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <Label>Active days &amp; time window</Label>
+              <div className="text-[11px] text-muted-foreground mb-1.5">
+                No days selected or no times set = always active within validity.
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {DAY_NAMES.map((d, i) => {
+                  const on = draft.scheduleDays.includes(i);
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        const next = on
+                          ? draft.scheduleDays.filter((x) => x !== i)
+                          : [...draft.scheduleDays, i].sort((a, b) => a - b);
+                        patch('scheduleDays', next);
+                      }}
+                      className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${on ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-accent text-muted-foreground'}`}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-3 max-w-sm">
+                <Field label="From" type="time" value={draft.scheduleStart} onChange={(v) => patch('scheduleStart', v)} />
+                <Field label="To" type="time" value={draft.scheduleEnd} onChange={(v) => patch('scheduleEnd', v)} />
+              </div>
+            </div>
+          </Section>
+
           {/* ── Preview ─────────────────────────────────────────────── */}
           <PreviewPanel draft={draft} restaurantId={restaurantId} branches={branches} />
         </div>
@@ -375,11 +515,12 @@ export function OfferEditor({
 // ─── Reward fields (per-type) ────────────────────────────────────────────────
 
 function RewardFields({
-  draft, patch, scopedItems
+  draft, patch, scopedItems, scopedCategories
 }: {
   draft: Draft;
   patch: <K extends keyof Draft>(key: K, value: Draft[K]) => void;
   scopedItems: MenuItem[];
+  scopedCategories: Category[];
 }) {
   const setCfg = (key: string, value: any) => patch('rewardConfig', { ...(draft.rewardConfig ?? {}), [key]: value });
 
@@ -409,32 +550,15 @@ function RewardFields({
           </div>
         </>
       );
-    case 'BUY_X_GET_Y': {
-      const cfg = draft.rewardConfig ?? {};
+    case 'BUY_X_GET_Y':
       return (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <ItemPicker
-              label="Buy item"
-              items={scopedItems}
-              value={cfg.buyItemId ?? ''}
-              onChange={(id) => setCfg('buyItemId', id)}
-            />
-            <Field label="Buy quantity" type="number" value={String(cfg.buyQty ?? 1)} onChange={(v) => setCfg('buyQty', Math.max(1, Number(v) || 1))} />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <ItemPicker
-              label="Get item"
-              items={scopedItems}
-              value={cfg.getItemId ?? ''}
-              onChange={(id) => setCfg('getItemId', id)}
-            />
-            <Field label="Get quantity" type="number" value={String(cfg.getQty ?? 1)} onChange={(v) => setCfg('getQty', Math.max(1, Number(v) || 1))} />
-            <Field label="Discount on get (%)" type="number" value={String(cfg.getDiscountPct ?? 100)} onChange={(v) => setCfg('getDiscountPct', Math.min(100, Math.max(0, Number(v) || 0)))} help="100 = free" />
-          </div>
-        </div>
+        <BogoFields
+          cfg={draft.rewardConfig ?? {}}
+          setCfg={setCfg}
+          scopedItems={scopedItems}
+          scopedCategories={scopedCategories}
+        />
       );
-    }
     case 'COMBO_DISCOUNT': {
       const items: { id: string; qty: number }[] = Array.isArray(draft.rewardConfig?.items) ? draft.rewardConfig.items : [];
       return (
@@ -517,6 +641,215 @@ function RewardFields({
     default:
       return null;
   }
+}
+
+// ─── BOGO (Buy-X-Get-Y) form ─────────────────────────────────────────────────
+
+type BogoScope = 'ALL' | 'CATEGORY' | 'ITEMS';
+type BogoDiscType = 'PERCENT' | 'FIXED' | 'FIXED_PRICE';
+type BogoSelect = 'LOWER' | 'HIGHER' | 'SAME';
+
+function BogoFields({
+  cfg, setCfg, scopedItems, scopedCategories
+}: {
+  cfg: any;
+  setCfg: (key: string, value: any) => void;
+  scopedItems: MenuItem[];
+  scopedCategories: Category[];
+}) {
+  const buyQty = Number(cfg.buyQty ?? 1);
+  const getQty = Number(cfg.getQty ?? 1);
+  const buyScope: BogoScope = cfg.buyScope ?? 'ALL';
+  const getScope: BogoScope = cfg.getScope ?? 'ALL';
+  const discType: BogoDiscType = cfg.getDiscountType ?? 'PERCENT';
+  const discValue = Number(cfg.getDiscountValue ?? (discType === 'PERCENT' ? 100 : 0));
+  const select: BogoSelect = cfg.getItemSelect ?? 'LOWER';
+
+  const catOpts = scopedCategories.map((c) => ({ id: c.id, label: c.name }));
+  const itemOpts = scopedItems.map((i) => ({ id: i.id, label: i.name, sub: money(Number(i.price)) }));
+
+  const discValueLabel =
+    discType === 'PERCENT' ? 'Percent off each get-unit (%)'
+    : discType === 'FIXED' ? '₹ off each get-unit'
+    : '₹ the get-unit now costs';
+  const discValueHint =
+    discType === 'PERCENT' ? '1–100. 100 = free.'
+    : discType === 'FIXED' ? 'Flat rupees subtracted from each qualifying get-unit.'
+    : 'Each qualifying get-unit is repriced to this amount.';
+
+  return (
+    <div className="space-y-4">
+      {/* Buy + Get quantities */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Field label="Buy quantity" type="number" value={String(buyQty)} onChange={(v) => setCfg('buyQty', Math.max(1, Number(v) || 1))} help="How many qualifying items must be bought" />
+        <Field label="Get quantity" type="number" value={String(getQty)} onChange={(v) => setCfg('getQty', Math.max(1, Number(v) || 1))} help="How many get free / discounted" />
+      </div>
+
+      {/* Buy targeting */}
+      <div className="rounded-md border p-3 space-y-3">
+        <div className="text-xs font-medium text-foreground">Buy targeting — which items count toward the buy quantity</div>
+        <SegmentedScope value={buyScope} onChange={(s) => setCfg('buyScope', s)} />
+        {buyScope === 'CATEGORY' && (
+          <ChipPicker
+            label="Buy categories"
+            hint="Pick the categories that qualify"
+            options={catOpts}
+            selected={Array.isArray(cfg.buyCategoryIds) ? cfg.buyCategoryIds : []}
+            onChange={(v) => setCfg('buyCategoryIds', v)}
+            placeholder="Search categories…"
+          />
+        )}
+        {buyScope === 'ITEMS' && (
+          <ChipPicker
+            label="Buy items"
+            hint="Pick the items that qualify"
+            options={itemOpts}
+            selected={Array.isArray(cfg.buyItemIds) ? cfg.buyItemIds : []}
+            onChange={(v) => setCfg('buyItemIds', v)}
+            placeholder="Search items…"
+          />
+        )}
+      </div>
+
+      {/* Get targeting */}
+      <div className="rounded-md border p-3 space-y-3">
+        <div className="text-xs font-medium text-foreground">Get targeting — which items receive the discount</div>
+        <SegmentedScope value={getScope} onChange={(s) => setCfg('getScope', s)} />
+        {getScope === 'CATEGORY' && (
+          <ChipPicker
+            label="Get categories"
+            hint="Pick the categories eligible for the reward"
+            options={catOpts}
+            selected={Array.isArray(cfg.getCategoryIds) ? cfg.getCategoryIds : []}
+            onChange={(v) => setCfg('getCategoryIds', v)}
+            placeholder="Search categories…"
+          />
+        )}
+        {getScope === 'ITEMS' && (
+          <ChipPicker
+            label="Get items"
+            hint="Pick the items eligible for the reward"
+            options={itemOpts}
+            selected={Array.isArray(cfg.getItemIds) ? cfg.getItemIds : []}
+            onChange={(v) => setCfg('getItemIds', v)}
+            placeholder="Search items…"
+          />
+        )}
+      </div>
+
+      {/* Discount on get */}
+      <div className="space-y-3">
+        <div>
+          <Label>Discount on get items</Label>
+          <div className="mt-1 grid grid-cols-3 gap-2">
+            <ScopeButton label="Percentage" hint="% off" active={discType === 'PERCENT'} onClick={() => setCfg('getDiscountType', 'PERCENT')} />
+            <ScopeButton label="Fixed ₹ off" hint="₹ off each" active={discType === 'FIXED'} onClick={() => setCfg('getDiscountType', 'FIXED')} />
+            <ScopeButton label="Fixed price" hint='"now ₹X"' active={discType === 'FIXED_PRICE'} onClick={() => setCfg('getDiscountType', 'FIXED_PRICE')} />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field
+            label={discValueLabel}
+            type="number"
+            value={String(discValue)}
+            onChange={(v) => {
+              let n = Number(v) || 0;
+              if (discType === 'PERCENT') n = Math.min(100, Math.max(0, n));
+              else n = Math.max(0, n);
+              setCfg('getDiscountValue', n);
+            }}
+            help={discValueHint}
+            required
+          />
+          <div>
+            <Label>Which get items</Label>
+            <Select value={select} onValueChange={(v: any) => setCfg('getItemSelect', v)}>
+              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="LOWER">Lower price (cheapest)</SelectItem>
+                <SelectItem value="HIGHER">Higher price (priciest)</SelectItem>
+                <SelectItem value="SAME">Same item only</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="text-[11px] text-muted-foreground mt-1">When more units qualify than the deal grants, pick which get discounted.</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Live plain-English preview */}
+      <div className="rounded-md border border-dashed bg-muted/30 p-3 text-xs flex items-start gap-2">
+        <Info className="size-3.5 mt-0.5 shrink-0 text-muted-foreground" />
+        <span className="text-foreground">
+          {bogoPreviewLine({ buyQty, getQty, buyScope, getScope, discType, discValue, select, cfg, scopedItems, scopedCategories })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SegmentedScope({ value, onChange }: { value: BogoScope; onChange: (s: BogoScope) => void }) {
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      <ScopeButton label="All items" hint="Whole scope" active={value === 'ALL'} onClick={() => onChange('ALL')} />
+      <ScopeButton label="Category" hint="By category" active={value === 'CATEGORY'} onClick={() => onChange('CATEGORY')} />
+      <ScopeButton label="Items" hint="Specific items" active={value === 'ITEMS'} onClick={() => onChange('ITEMS')} />
+    </div>
+  );
+}
+
+function ScopeButton({ label, hint, active, onClick }: { label: string; hint: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md border p-2 text-left transition-colors ${active ? 'border-primary bg-primary/10' : 'hover:bg-accent'}`}
+    >
+      <div className="text-xs font-medium">{label}</div>
+      <div className="text-[10px] text-muted-foreground mt-0.5">{hint}</div>
+    </button>
+  );
+}
+
+/** Build a human-readable summary like "Buy 2 from Starters, get 2 cheapest free". */
+function bogoPreviewLine({
+  buyQty, getQty, buyScope, getScope, discType, discValue, select, cfg, scopedItems, scopedCategories
+}: {
+  buyQty: number; getQty: number; buyScope: BogoScope; getScope: BogoScope;
+  discType: BogoDiscType; discValue: number; select: BogoSelect; cfg: any;
+  scopedItems: MenuItem[]; scopedCategories: Category[];
+}): string {
+  const catNames = (ids: any) => (Array.isArray(ids) ? ids : [])
+    .map((id: string) => scopedCategories.find((c) => c.id === id)?.name)
+    .filter(Boolean) as string[];
+  const itemNames = (ids: any) => (Array.isArray(ids) ? ids : [])
+    .map((id: string) => scopedItems.find((i) => i.id === id)?.name)
+    .filter(Boolean) as string[];
+
+  const scopePhrase = (scope: BogoScope, catIds: any, itemIds: any): string => {
+    if (scope === 'CATEGORY') {
+      const names = catNames(catIds);
+      return names.length ? `from ${names.join(' / ')}` : 'from a category';
+    }
+    if (scope === 'ITEMS') {
+      const names = itemNames(itemIds);
+      return names.length ? names.join(' / ') : 'specific item(s)';
+    }
+    return 'any item';
+  };
+
+  const buyPhrase = scopePhrase(buyScope, cfg.buyCategoryIds, cfg.buyItemIds);
+  const getPhrase = scopePhrase(getScope, cfg.getCategoryIds, cfg.getItemIds);
+
+  const selectWord = select === 'LOWER' ? 'cheapest' : select === 'HIGHER' ? 'priciest' : 'same';
+  const rewardWord =
+    discType === 'PERCENT'
+      ? (discValue >= 100 ? 'free' : `${discValue}% off`)
+      : discType === 'FIXED'
+        ? `₹${discValue} off`
+        : `for ₹${discValue}`;
+
+  const selectLabel = select === 'SAME' ? '' : `${selectWord} `;
+  return `Buy ${buyQty} ${buyPhrase}, get ${getQty} ${selectLabel}${getPhrase} ${rewardWord}`.replace(/\s+/g, ' ').trim();
 }
 
 // ─── Preview panel ───────────────────────────────────────────────────────────
@@ -775,12 +1108,21 @@ function buildBody(draft: Draft, restaurantId: string) {
   // Strip empty combo rows so the resolver doesn't trip over `{ id: '', qty: 1 }`.
   let rewardConfig: any = null;
   if (draft.type === 'BUY_X_GET_Y') {
+    const c = draft.rewardConfig ?? {};
+    const buyScope = (c.buyScope ?? 'ALL') as 'ALL' | 'CATEGORY' | 'ITEMS';
+    const getScope = (c.getScope ?? 'ALL') as 'ALL' | 'CATEGORY' | 'ITEMS';
     rewardConfig = {
-      buyItemId: draft.rewardConfig?.buyItemId ?? '',
-      buyQty: Number(draft.rewardConfig?.buyQty ?? 1),
-      getItemId: draft.rewardConfig?.getItemId ?? '',
-      getQty: Number(draft.rewardConfig?.getQty ?? 1),
-      getDiscountPct: Number(draft.rewardConfig?.getDiscountPct ?? 100)
+      buyQty: Math.max(1, Number(c.buyQty ?? 1)),
+      getQty: Math.max(1, Number(c.getQty ?? 1)),
+      buyScope,
+      buyCategoryIds: buyScope === 'CATEGORY' ? (Array.isArray(c.buyCategoryIds) ? c.buyCategoryIds : []) : [],
+      buyItemIds: buyScope === 'ITEMS' ? (Array.isArray(c.buyItemIds) ? c.buyItemIds : []) : [],
+      getScope,
+      getCategoryIds: getScope === 'CATEGORY' ? (Array.isArray(c.getCategoryIds) ? c.getCategoryIds : []) : [],
+      getItemIds: getScope === 'ITEMS' ? (Array.isArray(c.getItemIds) ? c.getItemIds : []) : [],
+      getDiscountType: (c.getDiscountType ?? 'PERCENT') as 'PERCENT' | 'FIXED' | 'FIXED_PRICE',
+      getDiscountValue: Number(c.getDiscountValue ?? 100),
+      getItemSelect: (c.getItemSelect ?? 'LOWER') as 'LOWER' | 'HIGHER' | 'SAME'
     };
   } else if (draft.type === 'COMBO_DISCOUNT') {
     const items = (Array.isArray(draft.rewardConfig?.items) ? draft.rewardConfig.items : [])
@@ -793,11 +1135,24 @@ function buildBody(draft: Draft, restaurantId: string) {
     };
   }
 
+  // Build schedule rows: one row per selected day sharing the same window.
+  // No days OR no usable time window => empty (always active).
+  const startMin = timeToMin(draft.scheduleStart);
+  const endMin = timeToMin(draft.scheduleEnd);
+  const hasWindow = startMin != null && endMin != null && endMin > startMin;
+  const schedules: { dayOfWeek: number; startMin: number; endMin: number }[] =
+    draft.scheduleDays.length > 0 && hasWindow
+      ? draft.scheduleDays.map((d) => ({ dayOfWeek: d, startMin: startMin!, endMin: endMin! }))
+      : [];
+
   return {
     name: draft.name.trim(),
     description: draft.description.trim() || null,
     type: draft.type,
     code: draft.code.trim() || null,
+    imageUrl: draft.imageUrl ?? null,
+    fulfillmentScope: draft.fulfillmentScope,
+    schedules,
     percentOff: draft.percentOff > 0 ? draft.percentOff : null,
     flatOff: draft.flatOff > 0 ? draft.flatOff : null,
     maxDiscount: draft.maxDiscount > 0 ? draft.maxDiscount : null,
@@ -819,6 +1174,21 @@ function buildBody(draft: Draft, restaurantId: string) {
     autoApply: draft.autoApply,
     stackable: draft.stackable
   };
+}
+
+/** 'HH:mm' → minutes from midnight, or null if blank/invalid. */
+function timeToMin(s: string): number | null {
+  if (!s) return null;
+  const [h, m] = s.split(':').map((v) => Number(v));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+/** minutes from midnight → 'HH:mm'. */
+function minToTime(m: number): string {
+  const h = Math.floor(m / 60);
+  const min = m % 60;
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 }
 
 function toLocalDateTime(d: string | Date | null | undefined): string {

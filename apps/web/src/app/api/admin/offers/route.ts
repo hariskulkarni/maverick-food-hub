@@ -30,6 +30,12 @@ const OfferType = z.enum([
 ]);
 
 const ChannelScope = z.enum(['ANY', 'ONLINE', 'DINE_IN']);
+const FulfillmentType = z.enum(['DELIVERY', 'PICKUP', 'DINE_IN']);
+const ScheduleRow = z.object({
+  dayOfWeek: z.number().int().min(0).max(6),
+  startMin: z.number().int().min(0).max(1440),
+  endMin: z.number().int().min(0).max(1440)
+});
 
 const Body = z.object({
   name: z.string().min(1).max(200),
@@ -41,10 +47,17 @@ const Body = z.object({
   maxDiscount: z.number().nullable().optional(),
   minOrderAmount: z.number().nullable().optional(),
   rewardConfig: z.any().nullable().optional(),
+  // Presentation + targeting (BOGO + promo banners)
+  imageUrl: z.union([z.string().max(2048), z.literal(''), z.null()]).optional(),
+  fulfillmentScope: z.array(FulfillmentType).optional(),
+  schedules: z.array(ScheduleRow).optional(),
   restaurantId: z.string().optional(),
   branchId: z.string().nullable().optional(),
   categoryIds: z.array(z.string()).optional(),
+  // The editor historically sent `itemIds`; accept both (alias) so per-item
+  // scopes are no longer silently dropped.
   menuItemIds: z.array(z.string()).optional(),
+  itemIds: z.array(z.string()).optional(),
   issuedChannel: ChannelScope.optional(),
   redeemChannel: ChannelScope.optional(),
   minCustomerOrders: z.number().int().min(0).optional(),
@@ -68,6 +81,7 @@ export async function GET(_req: NextRequest) {
     include: {
       appliesToCategories: true,
       appliesToItems: true,
+      schedules: true,
       _count: { select: { redemptions: true } }
     },
     orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }]
@@ -82,6 +96,8 @@ export async function POST(req: NextRequest) {
   const r = await requireRestaurant();
 
   const data = Body.parse(await req.json());
+  // Editor sends `itemIds`; older callers `menuItemIds`. Accept either.
+  const menuItemIds = data.menuItemIds ?? data.itemIds ?? [];
 
   const restaurantId = data.restaurantId ?? r.id;
   if (restaurantId !== r.id) {
@@ -107,12 +123,12 @@ export async function POST(req: NextRequest) {
       return new Response('One or more categories do not belong to this restaurant', { status: 400 });
     }
   }
-  if (data.menuItemIds && data.menuItemIds.length > 0) {
+  if (menuItemIds.length > 0) {
     const items = await prisma.menuItem.findMany({
-      where: { id: { in: data.menuItemIds }, branch: { restaurantId: r.id } },
+      where: { id: { in: menuItemIds }, branch: { restaurantId: r.id } },
       select: { id: true }
     });
-    if (items.length !== data.menuItemIds.length) {
+    if (items.length !== menuItemIds.length) {
       return new Response('One or more menu items do not belong to this restaurant', { status: 400 });
     }
   }
@@ -132,6 +148,8 @@ export async function POST(req: NextRequest) {
           maxDiscount: data.maxDiscount != null ? (data.maxDiscount as any) : null,
           minOrderAmount: data.minOrderAmount != null ? (data.minOrderAmount as any) : null,
           rewardConfig: data.rewardConfig ?? undefined,
+          imageUrl: data.imageUrl ? data.imageUrl : null,
+          fulfillmentScope: (data.fulfillmentScope ?? []) as any,
           restaurantId,
           branchId: data.branchId ?? null,
           issuedChannel: data.issuedChannel ?? 'ANY',
@@ -154,15 +172,20 @@ export async function POST(req: NextRequest) {
           data: data.categoryIds.map((categoryId) => ({ offerId: offer.id, categoryId }))
         });
       }
-      if (data.menuItemIds && data.menuItemIds.length > 0) {
+      if (menuItemIds.length > 0) {
         await tx.offerItemScope.createMany({
-          data: data.menuItemIds.map((menuItemId) => ({ offerId: offer.id, menuItemId }))
+          data: menuItemIds.map((menuItemId) => ({ offerId: offer.id, menuItemId }))
+        });
+      }
+      if (data.schedules && data.schedules.length > 0) {
+        await tx.offerSchedule.createMany({
+          data: data.schedules.map((s) => ({ offerId: offer.id, dayOfWeek: s.dayOfWeek, startMin: s.startMin, endMin: s.endMin }))
         });
       }
 
       return tx.offer.findUnique({
         where: { id: offer.id },
-        include: { appliesToCategories: true, appliesToItems: true }
+        include: { appliesToCategories: true, appliesToItems: true, schedules: true }
       });
     });
 

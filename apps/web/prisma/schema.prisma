@@ -1278,6 +1278,22 @@ model Offer {
   // FREE_ITEM_ABOVE: { itemId, threshold }
   rewardConfig   Json?
 
+  // ── Presentation (esp. BOGO / promo banners) ─────────────────────────
+  // Optional banner/photo shown on the storefront offer carousel + BOGO card.
+  imageUrl String?
+
+  // ── Fulfillment targeting ─────────────────────────────────────────────
+  // Empty array ⇒ applies to every fulfillment type. Otherwise the offer only
+  // fires for orders whose fulfillment is in this set (DELIVERY/PICKUP/DINE_IN).
+  // This is distinct from ChannelScope (ONLINE vs DINE_IN cross-pollination).
+  fulfillmentScope FulfillmentType[]
+
+  // ── Recurring day/time windows ────────────────────────────────────────
+  // No schedule rows ⇒ active any time within validFrom/validTo. Otherwise the
+  // offer only fires when "now" falls inside one of the windows (e.g. weekday
+  // 5–8pm BOGO). Mirrors HappyHourSchedule.
+  schedules OfferSchedule[]
+
   // ── Scope ─────────────────────────────────────────────────────────────
   // restaurantId NULL ⇒ platform-wide offer (e.g. ONLINE_TO_DINE_IN incentives
   // from corporate). branchId NULL ⇒ all branches of the restaurant.
@@ -1366,6 +1382,22 @@ model OfferItemScope {
 
   @@unique([offerId, menuItemId])
   @@index([menuItemId])
+}
+
+// One row per (day, window) for an offer's recurring active schedule. Same
+// shape as HappyHourSchedule so the time-of-day helper can be shared. An offer
+// with zero schedule rows is "always in window" (within validFrom/validTo).
+model OfferSchedule {
+  id        String @id @default(cuid())
+  offerId   String
+  dayOfWeek Int // 0..6 (Sun..Sat, matches Date.getDay)
+  startMin  Int // 0..1440 inclusive
+  endMin    Int // 0..1440 exclusive
+
+  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@index([offerId])
+  @@index([offerId, dayOfWeek])
 }
 
 // Append-only redemption log. One row per (offer, order). The per-user cap is

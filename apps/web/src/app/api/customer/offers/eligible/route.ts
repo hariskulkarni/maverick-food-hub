@@ -16,6 +16,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
+import { prisma } from '@/server/db';
 import { loadAndApplyOffers, resolveCartBranch } from '@/server/offers';
 
 export const dynamic = 'force-dynamic';
@@ -30,7 +31,8 @@ const CartLine = z.object({
 const Body = z.object({
   branchId: z.string(),
   cart: z.array(CartLine),
-  channel: z.enum(['ONLINE', 'DINE_IN']).optional()
+  channel: z.enum(['ONLINE', 'DINE_IN']).optional(),
+  fulfillmentType: z.enum(['DELIVERY', 'PICKUP', 'DINE_IN']).optional()
 });
 
 export async function POST(req: NextRequest) {
@@ -52,11 +54,25 @@ export async function POST(req: NextRequest) {
 
   const subtotal = data.cart.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
 
+  // Backfill each line's categoryId from the DB when the client didn't send it,
+  // so CATEGORY-scoped offers (incl. category-based BOGO) evaluate correctly.
+  // The cart UI historically omitted categoryId — this makes it authoritative.
+  const needCat = data.cart.filter((l) => !l.categoryId).map((l) => l.menuItemId);
+  let catByItem = new Map<string, string | null>();
+  if (needCat.length > 0) {
+    const rows = await prisma.menuItem.findMany({
+      where: { id: { in: needCat } },
+      select: { id: true, categoryId: true }
+    });
+    catByItem = new Map(rows.map((r) => [r.id, r.categoryId ?? null]));
+  }
+
   const result = await loadAndApplyOffers(
     {
-      cart: data.cart.map((l) => ({ ...l, categoryId: l.categoryId ?? null })),
+      cart: data.cart.map((l) => ({ ...l, categoryId: l.categoryId ?? catByItem.get(l.menuItemId) ?? null })),
       subtotal,
       channel: data.channel ?? 'ONLINE',
+      fulfillmentType: data.fulfillmentType ?? null,
       branchId: branch.id,
       restaurantId: branch.restaurantId,
       customerId: session.user.id

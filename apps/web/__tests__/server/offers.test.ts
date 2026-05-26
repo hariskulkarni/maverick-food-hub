@@ -314,3 +314,105 @@ describe('pickBestOffers', () => {
     expect(r.evaluations.find((e) => e.offer.id === 'expired')?.result.eligible).toBe(false);
   });
 });
+
+// ── BOGO (rich BUY_X_GET_Y) ─────────────────────────────────────────────────
+
+describe('BOGO / BUY_X_GET_Y', () => {
+  const bogo = (cfg: any, partial: Partial<OfferRow> = {}) =>
+    offer({ type: 'BUY_X_GET_Y', rewardConfig: cfg, ...partial });
+
+  it('category overlap: BUY 1 GET 1 free discounts the cheapest unit', () => {
+    const cart = [{ menuItemId: 'a', categoryId: 'mains', unitPrice: 200, quantity: 1 },
+                  { menuItemId: 'b', categoryId: 'mains', unitPrice: 100, quantity: 1 }];
+    const r = evaluateOffer(
+      bogo({ buyQty: 1, getQty: 1, buyScope: 'CATEGORY', buyCategoryIds: ['mains'], getScope: 'CATEGORY', getCategoryIds: ['mains'], getDiscountType: 'PERCENT', getDiscountValue: 100, getItemSelect: 'LOWER' }),
+      ctx({ cart })
+    );
+    expect(r.eligible).toBe(true);
+    if (r.eligible) expect(r.amountOff).toBe(100); // cheapest of the pair is free
+  });
+
+  it('item→item disjoint: buy 2 of A, get 1 of B at 50% off', () => {
+    const cart = [{ menuItemId: 'a', categoryId: 'mains', unitPrice: 200, quantity: 2 },
+                  { menuItemId: 'b', categoryId: 'desserts', unitPrice: 100, quantity: 1 }];
+    const r = evaluateOffer(
+      bogo({ buyQty: 2, getQty: 1, buyScope: 'ITEMS', buyItemIds: ['a'], getScope: 'ITEMS', getItemIds: ['b'], getDiscountType: 'PERCENT', getDiscountValue: 50 }),
+      ctx({ cart })
+    );
+    expect(r.eligible).toBe(true);
+    if (r.eligible) expect(r.amountOff).toBe(50);
+  });
+
+  it('rejects when not enough buy units', () => {
+    const cart = [{ menuItemId: 'a', categoryId: 'mains', unitPrice: 200, quantity: 2 },
+                  { menuItemId: 'b', categoryId: 'desserts', unitPrice: 100, quantity: 1 }];
+    const r = evaluateOffer(
+      bogo({ buyQty: 3, getQty: 1, buyScope: 'ITEMS', buyItemIds: ['a'], getScope: 'ITEMS', getItemIds: ['b'] }),
+      ctx({ cart })
+    );
+    expect(r.eligible).toBe(false);
+  });
+
+  it('FIXED ₹-off per get unit is capped at the unit price', () => {
+    const cart = [{ menuItemId: 'a', categoryId: 'mains', unitPrice: 200, quantity: 2 }];
+    const r = evaluateOffer(
+      bogo({ buyQty: 1, getQty: 1, buyScope: 'CATEGORY', buyCategoryIds: ['mains'], getScope: 'CATEGORY', getCategoryIds: ['mains'], getDiscountType: 'FIXED', getDiscountValue: 50, getItemSelect: 'LOWER' }),
+      ctx({ cart })
+    );
+    expect(r.eligible).toBe(true);
+    if (r.eligible) expect(r.amountOff).toBe(50);
+  });
+
+  it('FIXED_PRICE makes the get unit cost the configured price', () => {
+    const cart = [{ menuItemId: 'a', categoryId: 'mains', unitPrice: 200, quantity: 2 }];
+    const r = evaluateOffer(
+      bogo({ buyQty: 1, getQty: 1, buyScope: 'CATEGORY', buyCategoryIds: ['mains'], getScope: 'CATEGORY', getCategoryIds: ['mains'], getDiscountType: 'FIXED_PRICE', getDiscountValue: 150, getItemSelect: 'LOWER' }),
+      ctx({ cart })
+    );
+    expect(r.eligible).toBe(true);
+    if (r.eligible) expect(r.amountOff).toBe(50); // 200 → 150
+  });
+
+  it('honours maxDiscount cap', () => {
+    const cart = [{ menuItemId: 'a', categoryId: 'mains', unitPrice: 200, quantity: 2 }];
+    const r = evaluateOffer(
+      bogo({ buyQty: 1, getQty: 1, buyScope: 'CATEGORY', buyCategoryIds: ['mains'], getScope: 'CATEGORY', getCategoryIds: ['mains'], getDiscountType: 'PERCENT', getDiscountValue: 100 }, { maxDiscount: 75 }),
+      ctx({ cart })
+    );
+    expect(r.eligible).toBe(true);
+    if (r.eligible) expect(r.amountOff).toBe(75);
+  });
+
+  it('supports legacy single-item config { buyItemId, getItemId, getDiscountPct }', () => {
+    const cart = [{ menuItemId: 'a', categoryId: 'mains', unitPrice: 200, quantity: 2 },
+                  { menuItemId: 'b', categoryId: 'desserts', unitPrice: 100, quantity: 1 }];
+    const r = evaluateOffer(
+      bogo({ buyItemId: 'a', buyQty: 2, getItemId: 'b', getQty: 1, getDiscountPct: 100 }),
+      ctx({ cart })
+    );
+    expect(r.eligible).toBe(true);
+    if (r.eligible) expect(r.amountOff).toBe(100);
+  });
+
+  it('fulfillment scope blocks a non-matching fulfillment type', () => {
+    const cart = [{ menuItemId: 'a', categoryId: 'mains', unitPrice: 200, quantity: 2 }];
+    const off = bogo(
+      { buyQty: 1, getQty: 1, buyScope: 'CATEGORY', buyCategoryIds: ['mains'], getScope: 'CATEGORY', getCategoryIds: ['mains'], getDiscountType: 'PERCENT', getDiscountValue: 100 },
+      { fulfillmentScope: ['PICKUP'] }
+    );
+    expect(evaluateOffer(off, ctx({ cart, fulfillmentType: 'DELIVERY' })).eligible).toBe(false);
+    // null fulfillment (storefront preview) does not block.
+    expect(evaluateOffer(off, ctx({ cart, fulfillmentType: null })).eligible).toBe(true);
+  });
+
+  it('schedule windows gate by day + time', () => {
+    const cart = [{ menuItemId: 'a', categoryId: 'mains', unitPrice: 200, quantity: 2 }];
+    const cfg = { buyQty: 1, getQty: 1, buyScope: 'CATEGORY', buyCategoryIds: ['mains'], getScope: 'CATEGORY', getCategoryIds: ['mains'], getDiscountType: 'PERCENT', getDiscountValue: 100 };
+    const dow = NOW.getDay();
+    // NOW is 13:00 = 780 minutes.
+    const inside = bogo(cfg, { schedules: [{ dayOfWeek: dow, startMin: 600, endMin: 1200 }] });
+    const outside = bogo(cfg, { schedules: [{ dayOfWeek: dow, startMin: 0, endMin: 600 }] });
+    expect(evaluateOffer(inside, ctx({ cart })).eligible).toBe(true);
+    expect(evaluateOffer(outside, ctx({ cart })).eligible).toBe(false);
+  });
+});
