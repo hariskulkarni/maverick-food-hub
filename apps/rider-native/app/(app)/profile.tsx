@@ -481,7 +481,7 @@ export default function ProfileScreen() {
           <Text style={styles.signOutText}>Sign out</Text>
         </Pressable>
 
-        <Text style={styles.version}>Oak &amp; Sizzler Rider</Text>
+        <Text style={styles.version}>Flavrly Rider</Text>
       </ScrollView>
 
       <DocumentViewer doc={viewerDoc} onClose={() => setViewerDoc(null)} />

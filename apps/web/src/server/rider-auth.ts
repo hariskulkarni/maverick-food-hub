@@ -95,9 +95,13 @@ export async function auth(): Promise<Session | null> {
     if (userId) {
       const u = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, role: true, name: true, email: true, phone: true }
+        select: { id: true, role: true, name: true, email: true, phone: true, suspendedAt: true }
       });
-      if (u && u.role === Role.RIDER) {
+      // Suspended riders are locked out immediately: a super-admin suspension
+      // (User.suspendedAt) invalidates every existing token on the next request,
+      // not just future logins. role/suspension are re-checked here on EVERY
+      // request, so a token can't outlive a rider being deactivated or blocked.
+      if (u && u.role === Role.RIDER && !u.suspendedAt) {
         return {
           user: {
             id: u.id,

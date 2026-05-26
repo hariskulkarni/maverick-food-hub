@@ -63,9 +63,9 @@ export default function LoginScreen() {
           {/* Brand */}
           <View style={styles.brand}>
             <View style={styles.logoMark}>
-              <Text style={styles.logoGlyph}>O&S</Text>
+              <Text style={styles.logoGlyph}>F</Text>
             </View>
-            <Text style={styles.wordmark}>Oak &amp; Sizzler</Text>
+            <Text style={styles.wordmark}>Flavrly</Text>
             <View style={styles.riderPill}>
               <Text style={styles.riderPillText}>RIDER</Text>
             </View>

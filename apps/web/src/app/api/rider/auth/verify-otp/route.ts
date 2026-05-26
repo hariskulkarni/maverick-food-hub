@@ -8,7 +8,7 @@
  * Body: { phone: string, code: string }
  * 200:  { token: string, rider: { id, name, phone } }
  * 401:  { error: 'invalid_code' }
- * 403:  { error: 'not_a_rider' }
+ * 403:  { error: 'not_a_rider' | 'suspended' }
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
@@ -16,6 +16,7 @@ import { prisma } from '@/server/db';
 import { verifyOtp } from '@/server/otp';
 import { signRiderToken } from '@/server/rider-auth';
 import { rateLimit } from '@/server/http/rate-limit';
+import { audit } from '@/server/audit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,10 +37,21 @@ export async function POST(req: NextRequest) {
     // consumes an OTP token.
     const user = await prisma.user.findUnique({
       where: { phone },
-      select: { id: true, name: true, phone: true, role: true }
+      select: { id: true, name: true, phone: true, role: true, suspendedAt: true }
     });
     if (!user || user.role !== 'RIDER') {
       return Response.json({ error: 'not_a_rider' }, { status: 403 });
+    }
+    // Suspended accounts cannot log in (a super-admin has blocked them). Mirror
+    // the web NextAuth flow so suspension reaches the native rider app too.
+    if (user.suspendedAt) {
+      await audit('auth.login.failed', {
+        actorId: user.id,
+        entityType: 'User',
+        entityId: user.id,
+        after: { reason: 'suspended', provider: 'rider-otp' }
+      }).catch(() => {});
+      return Response.json({ error: 'suspended' }, { status: 403 });
     }
 
     const ok = await verifyOtp({ phone, code, purpose: 'login' });

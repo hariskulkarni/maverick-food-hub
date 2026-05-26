@@ -253,7 +253,7 @@ export default function PayoutsScreen() {
                 </>
               ) : (
                 <Text style={styles.bankNote}>
-                  Money will be sent to the bank account on file with Oak &amp; Sizzler.
+                  Money will be sent to the bank account on file with Flavrly.
                 </Text>
               )}
 

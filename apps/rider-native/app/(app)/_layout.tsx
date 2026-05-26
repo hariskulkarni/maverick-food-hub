@@ -23,13 +23,13 @@ import { usePoolWatcher } from '../../lib/use-pool-watcher';
 import { useBatchInvitations } from '../../lib/use-batch-invitations';
 import { IncomingOrderPopup } from '../../components/incoming-order-popup';
 import { BatchInvitationModal } from '../../components/batch-invitation-modal';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { colors } from '../../lib/theme';
 
 const ONLINE_POLL_MS = 15_000;
 
 export default function AppLayout() {
-  const { token, loading } = useAuth();
+  const { token, loading, signOut } = useAuth();
   const router = useRouter();
 
   // Register for push notifications once authenticated. Called unconditionally
@@ -51,7 +51,18 @@ export default function AppLayout() {
         .then((me) => {
           if (!cancelled) setOnline(me.online);
         })
-        .catch(() => {
+        .catch((e) => {
+          // /api/rider/me only 403s (or 401s) when the token is invalid,
+          // expired, or the account is no longer a rider — it has no legitimate
+          // business-logic rejection. So an auth failure here means the saved
+          // session is dead: sign out so the gate bounces to a clean re-login
+          // instead of stranding the rider on a dashboard where every action
+          // returns "Forbidden". Any other error (network blip, 5xx) is
+          // transient — keep the last-known state.
+          if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+            signOut().catch(() => {});
+            return;
+          }
           /* swallow — keep last-known state */
         });
     };

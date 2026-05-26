@@ -141,7 +141,7 @@ export function OnboardingTour({ visible, onClose }: OnboardingTourProps) {
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
           <View style={styles.topRow}>
-            <Text style={styles.brand}>Oak &amp; Sizzler</Text>
+            <Text style={styles.brand}>Flavrly</Text>
             {!isLast ? (
               <Pressable onPress={onClose} hitSlop={10}>
                 <Text style={styles.skip}>Skip</Text>

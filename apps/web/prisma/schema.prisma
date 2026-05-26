@@ -131,6 +131,16 @@ enum IntegrationProvider {
   // NOTE: foreign-key check on Restaurant means rows for this provider live in a separate code path
   // that bypasses Prisma's restaurant relation; see `src/server/2fa.ts`.
   PLATFORM_2FA
+  // India-focused SMS gateways + extra SMTP relays. The notification layer
+  // (src/server/notifications.ts) probes these per-restaurant via safeGetConfig;
+  // they must exist in the enum so the DB lookup doesn't error. SMS priority:
+  // TWOFACTOR → MSG91 → FAST2SMS → TEXTLOCAL → TWILIO_SMS.
+  TWOFACTOR
+  MSG91
+  FAST2SMS
+  TEXTLOCAL
+  ZOHO_SMTP
+  BREVO_SMTP
 }
 
 enum IntegrationStatus {

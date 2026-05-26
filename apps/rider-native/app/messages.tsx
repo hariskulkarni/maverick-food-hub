@@ -224,7 +224,7 @@ export default function MessagesScreen() {
           {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
 
           <Text style={styles.intro}>
-            Chat directly with Oak &amp; Sizzler staff — your restaurant&apos;s team
+            Chat directly with Flavrly staff — your restaurant&apos;s team
             and the platform support desk.
           </Text>
 

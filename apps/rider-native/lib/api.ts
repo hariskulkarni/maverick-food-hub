@@ -6,11 +6,14 @@
  * attached automatically to every request — so screens never deal with auth
  * headers directly.
  *
- * NOTE: API_BASE is the raw VPS IP for now. Once flavrly.in has DNS +
- * SSL, change this one line to https://flavrly.in and rebuild.
+ * API_BASE points at the same hosted Next.js backend that serves flavrly.in
+ * (the `/api/rider/*` routes live in that one web app on the VPS — there is no
+ * separate rider server). We use the HTTPS domain rather than the raw VPS IP so
+ * requests survive the http→https redirect nginx applies once SSL is on, and so
+ * the cert (issued for flavrly.in) actually validates.
  */
 
-export const API_BASE = 'http://148.230.66.124';
+export const API_BASE = 'https://flavrly.in';
 
 let authToken: string | null = null;
 
