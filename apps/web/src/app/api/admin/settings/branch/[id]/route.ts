@@ -61,7 +61,11 @@ const Body = z.object({
   fssaiIssuedOn:        NullableDate,
   fssaiRenewedOn:       NullableDate,
   fssaiExpiresOn:       NullableDate,
-  fssaiLicenseImageUrl: z.union([z.string().url(), z.literal(''), z.null()]).optional().transform((v) => (v === undefined ? undefined : v === null || v === '' ? null : v)),
+  // Accept either an absolute URL (S3/CDN) or a relative path like
+  // "/uploads/food-licenses/x.jpg" (local-storage driver). z.string().url()
+  // rejects relative paths, which 500'd the save whenever a licence photo was
+  // uploaded in local-storage mode — so validate as a bounded string instead.
+  fssaiLicenseImageUrl: z.union([z.string().max(2048), z.null()]).optional().transform((v) => (v === undefined ? undefined : v === null || v.trim() === '' ? null : v.trim())),
   fssaiLicenseNotes:    NullableText(500)
 });
 

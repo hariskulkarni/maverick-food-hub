@@ -751,7 +751,7 @@ async function main() {
     'spaghetti-carbonara': 'https://images.unsplash.com/photo-1612874742237-6526221588e3?w=800&auto=format&fit=crop&q=80',
     'penne-arrabbiata': 'https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=800&auto=format&fit=crop&q=80',
     'fettuccine-alfredo': 'https://images.unsplash.com/photo-1645112411341-6c4fd023714a?w=800&auto=format&fit=crop&q=80',
-    'lasagna-bolognese': 'https://images.unsplash.com/photo-1619895092538-128f4d40b9f9?w=800&auto=format&fit=crop&q=80',
+    'lasagna-bolognese': 'https://images.unsplash.com/photo-1734770931927-6410f9a64832?w=800&auto=format&fit=crop&q=80',
     'caprese-salad': 'https://images.unsplash.com/photo-1592417817098-8fd3d9eb14a5?w=800&auto=format&fit=crop&q=80',
     'caesar-salad': 'https://images.unsplash.com/photo-1551248429-40975aa4de74?w=800&auto=format&fit=crop&q=80',
     'tiramisu': 'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=800&auto=format&fit=crop&q=80',
