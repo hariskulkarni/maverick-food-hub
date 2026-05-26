@@ -84,12 +84,15 @@ export function FeatureCarousel() {
                 aria-label={`${i + 1} of ${count}`}
                 aria-hidden={i !== index}
               >
-                {/* 2:1 brand banners. object-cover keeps the focal art centred
-                    across breakpoints; the aspect ratio reserves space so there
-                    is no layout shift while the image loads. */}
-                <div className="relative aspect-[2/1] md:aspect-[64/25] w-full overflow-hidden bg-muted">
+                {/* Banners are 2:1. We lock the container to that exact ratio on
+                    EVERY breakpoint and use object-contain so the whole banner —
+                    headline, photo and logo — is always visible, never cropped,
+                    and scales fluidly with the viewport. The slide's brand
+                    gradient sits behind the image so any pillar/letter-boxing
+                    (e.g. a banner that isn't perfectly 2:1) blends in on-brand. */}
+                <div className={`relative aspect-[2/1] w-full overflow-hidden bg-gradient-to-br ${s.fallback}`}>
                   {failed[i] ? (
-                    <div className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${s.fallback} p-6 text-center`}>
+                    <div className="flex h-full w-full items-center justify-center p-6 text-center">
                       <span className="display text-lg md:text-3xl font-extrabold text-white drop-shadow">
                         {s.alt}
                       </span>
@@ -100,7 +103,7 @@ export function FeatureCarousel() {
                       src={s.src}
                       alt={s.alt}
                       loading={i === 0 ? 'eager' : 'lazy'}
-                      className="absolute inset-0 h-full w-full object-cover"
+                      className="absolute inset-0 h-full w-full object-contain"
                       onError={() => setFailed((f) => ({ ...f, [i]: true }))}
                     />
                   )}
