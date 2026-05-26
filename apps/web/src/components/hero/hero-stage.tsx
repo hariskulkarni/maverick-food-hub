@@ -19,9 +19,6 @@ import { HeroVideo } from '@/components/hero/hero-video';
  * globals.css). No layout shift: the stage reserves a fixed aspect ratio.
  */
 
-const CHIP_IMG =
-  'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=200&auto=format&fit=crop&q=80';
-
 export function HeroStage() {
   return (
     <div className="hero-stage relative mx-auto w-full max-w-md select-none lg:max-w-lg">
@@ -78,54 +75,7 @@ export function HeroStage() {
           </div>
         </div>
       </div>
-
-      {/* Drifting food chips around the frame */}
-      <FloatingChip className="-left-5 top-8" delay="0s" emoji="🍛" label="Biryani" />
-      <FloatingChip className="-right-6 top-1/3" delay="1.1s" emoji="🍕" label="Pizza" />
-      <FloatingChip className="-left-3 bottom-16" delay="2.2s" emoji="🥡" label="Rolls" />
-      <FloatingChip className="-right-4 bottom-6" delay="0.7s" emoji="⭐" label="4.8 rating" />
-
-      {/* A real photo chip for richness (degrades to gradient if URL dies) */}
-      <div
-        className="hero-photo-chip float-soft absolute -right-7 top-2 size-16 overflow-hidden rounded-2xl border-2 border-white shadow-xl"
-        style={{ animationDelay: '1.6s' }}
-        aria-hidden
-      >
-        <ImageWithFallback
-          src={CHIP_IMG}
-          alt=""
-          fill
-          sizes="64px"
-          className="object-cover"
-        />
-      </div>
     </div>
-  );
-}
-
-function FloatingChip({
-  className,
-  delay,
-  emoji,
-  label
-}: {
-  className: string;
-  delay: string;
-  emoji: string;
-  label: string;
-}) {
-  return (
-    <span
-      className={
-        'float-soft absolute inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-white/90 px-3 py-1.5 text-xs font-semibold text-foreground shadow-lg backdrop-blur ' +
-        className
-      }
-      style={{ animationDelay: delay }}
-      aria-hidden
-    >
-      <span className="text-sm leading-none">{emoji}</span>
-      {label}
-    </span>
   );
 }
 
