@@ -9,8 +9,8 @@ import * as SecureStore from 'expo-secure-store';
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { setAuthToken, type Rider } from './api';
 
-const TOKEN_KEY = 'oas_rider_token';
-const RIDER_KEY = 'oas_rider_profile';
+const TOKEN_KEY = 'flavrly_rider_token';
+const RIDER_KEY = 'flavrly_rider_profile';
 
 interface AuthState {
   token: string | null;

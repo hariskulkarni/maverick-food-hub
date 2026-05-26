@@ -5,15 +5,15 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "oakandsizzlerrider",
+    "scheme": "flavrlyrider",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.oakandsizzler.rider"
+      "bundleIdentifier": "com.flavrly.rider"
     },
     "android": {
-      "package": "com.oakandsizzler.rider",
+      "package": "com.flavrly.rider",
       "adaptiveIcon": {
         "backgroundColor": "#f23e5c",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
