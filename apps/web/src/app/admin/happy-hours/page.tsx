@@ -61,6 +61,22 @@ export default async function HappyHoursPage() {
     expired: bucketed.filter((r) => r.lifecycle === 'expired').length
   };
 
+  // Real "Savings this week": placeOrder audits a `happyhour.applied` row per
+  // discounted line with `after.totalSaved`. Sum those since the start of the
+  // current week (Mon 00:00). Indexed by [restaurantId, createdAt], so cheap.
+  const weekStart = new Date(now);
+  const mondayOffset = (weekStart.getDay() + 6) % 7; // 0 = Monday
+  weekStart.setDate(weekStart.getDate() - mondayOffset);
+  weekStart.setHours(0, 0, 0, 0);
+  const hhLogs = await prisma.auditLog.findMany({
+    where: { action: 'happyhour.applied', restaurantId: restaurant.id, createdAt: { gte: weekStart } },
+    select: { after: true }
+  });
+  const savingsThisWeek = hhLogs.reduce(
+    (sum, l) => sum + (Number((l.after as any)?.totalSaved) || 0),
+    0
+  );
+
   return (
     <div className="p-6 space-y-6 max-w-7xl">
       <header>
@@ -77,6 +93,7 @@ export default async function HappyHoursPage() {
         menuItems={JSON.parse(JSON.stringify(menuItems))}
         combos={JSON.parse(JSON.stringify(combos))}
         counts={counts}
+        savingsThisWeek={savingsThisWeek}
       />
     </div>
   );

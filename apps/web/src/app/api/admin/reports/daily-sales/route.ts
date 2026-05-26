@@ -1,15 +1,15 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireAdminBranch } from '@/server/reports/admin-branch';
+import { requireAdminReportScope } from '@/server/reports/admin-branch';
 import { parseRange, deliverReport } from '@/server/reports/range';
 
 export async function GET(req: NextRequest) {
-  const { branch } = await requireAdminBranch();
+  const { branchIds } = await requireAdminReportScope();
   const { from, to, format } = parseRange(new URL(req.url));
 
   const orders = await prisma.order.findMany({
     where: {
-      branchId: branch.id,
+      branchId: { in: branchIds },
       placedAt: { gte: from, lte: to },
       status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] }
     },

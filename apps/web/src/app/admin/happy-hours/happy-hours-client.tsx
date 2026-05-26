@@ -3,8 +3,8 @@
  * Restaurant-admin Happy Hours dashboard — client surface.
  *
  *   <HappyHoursClient />
- *     – KPI strip: Active / Upcoming / Expired counts + this-week savings
- *       (skipped server-side; rendered as "—" until we wire it up)
+ *     – KPI strip: Active / Upcoming / Expired counts + real this-week savings
+ *       (summed server-side from `happyhour.applied` audit rows since Monday)
  *     – Tabs: Active / Upcoming / Expired / All
  *     – Scope filter + search-by-name
  *     – Card list per rule with scope/discount/schedule/validity summary
@@ -63,13 +63,14 @@ const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 type TabKey = 'active' | 'upcoming' | 'expired' | 'all';
 
 export function HappyHoursClient({
-  rules, categories, menuItems, combos, counts
+  rules, categories, menuItems, combos, counts, savingsThisWeek = 0
 }: {
   rules: Rule[];
   categories: Category[];
   menuItems: MenuItem[];
   combos: Combo[];
   counts: { active: number; upcoming: number; expired: number };
+  savingsThisWeek?: number;
 }) {
   const [editing, setEditing] = useState<Partial<Rule> | null>(null);
   const [tab, setTab] = useState<TabKey>('active');
@@ -112,7 +113,7 @@ export function HappyHoursClient({
         <Kpi icon={Sparkles} label="Active" value={String(counts.active)} hint="Currently running" tone="success" />
         <Kpi icon={Clock} label="Upcoming" value={String(counts.upcoming)} hint="Starts in the future" />
         <Kpi icon={AlertCircle} label="Expired" value={String(counts.expired)} hint="Ended or turned off" tone="muted" />
-        <Kpi icon={TrendingUp} label="Savings this week" value="—" hint="Coming soon" />
+        <Kpi icon={TrendingUp} label="Savings this week" value={money(savingsThisWeek)} hint="Passed to customers since Monday" tone="success" />
       </div>
 
       {/* Empty hero */}

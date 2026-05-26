@@ -3,9 +3,10 @@ import PDFDocument from 'pdfkit';
 import { prisma } from './db';
 import { money } from '@/lib/utils';
 
-export async function ordersToCsv(branchId: string, opts: { from?: Date; to?: Date } = {}): Promise<string> {
+export async function ordersToCsv(branchId: string | string[], opts: { from?: Date; to?: Date } = {}): Promise<string> {
+  const branchWhere = Array.isArray(branchId) ? { in: branchId } : branchId;
   const orders = await prisma.order.findMany({
-    where: { branchId, placedAt: { gte: opts.from, lte: opts.to } },
+    where: { branchId: branchWhere, placedAt: { gte: opts.from, lte: opts.to } },
     include: { customer: true },
     orderBy: { placedAt: 'desc' }
   });
@@ -16,9 +17,10 @@ export async function ordersToCsv(branchId: string, opts: { from?: Date; to?: Da
   return lines.join('\n');
 }
 
-export async function ordersToXlsx(branchId: string, opts: { from?: Date; to?: Date } = {}): Promise<Buffer> {
+export async function ordersToXlsx(branchId: string | string[], opts: { from?: Date; to?: Date } = {}): Promise<Buffer> {
+  const branchWhere = Array.isArray(branchId) ? { in: branchId } : branchId;
   const orders = await prisma.order.findMany({
-    where: { branchId, placedAt: { gte: opts.from, lte: opts.to } },
+    where: { branchId: branchWhere, placedAt: { gte: opts.from, lte: opts.to } },
     include: { customer: true, items: true },
     orderBy: { placedAt: 'desc' }
   });

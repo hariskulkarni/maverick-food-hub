@@ -418,16 +418,13 @@ function CrossSellRow({ row, suggested }: { row: CrossSell; suggested: MenuItem 
 
   async function persistOrder(next: number) {
     setSortOrder(next);
-    const r = await fetch('/api/admin/cross-sell', {
-      method: 'POST',
+    // PATCH the existing row — re-POSTing would hit the unique
+    // [parentItemId, suggestedItemId, kind] constraint (P2002 → 409) and never
+    // update the order. The [id] PATCH route handles sortOrder directly.
+    const r = await fetch(`/api/admin/cross-sell/${row.id}`, {
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: row.id,
-        parentItemId: row.parentItemId,
-        suggestedItemId: row.suggestedItemId,
-        surface: row.surface,
-        sortOrder: next
-      })
+      body: JSON.stringify({ sortOrder: next })
     });
     if (!r.ok) {
       toast.error('Failed to save order');
