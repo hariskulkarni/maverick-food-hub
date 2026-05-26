@@ -70,13 +70,33 @@ const CartLine = z.object({
   quantity: z.number().int().min(1)
 });
 
-const Body = z.object({
+const Shape = z.object({
   draft: Draft,
   cart: z.array(CartLine),
   customerOrderCount: z.number().int().min(0).optional(),
   channel: z.enum(['ONLINE', 'DINE_IN']).optional(),
   branchId: z.string().nullable().optional()
 });
+
+// Version-tolerant preprocessor. An older client build nested the cart array +
+// sibling fields under `cart` as an object (e.g. { draft, cart: { cart: [...],
+// channel, branchId } }). During any deploy window a stale tab can still POST
+// that shape; rather than 500 with a ZodError stack, we normalise it to the
+// flat shape so the preview keeps working for old and new clients alike.
+const Body = z.preprocess((val: any) => {
+  if (val && typeof val === 'object' && val.cart && !Array.isArray(val.cart) && typeof val.cart === 'object') {
+    const nested = val.cart;
+    const lines = nested.cart ?? nested.items ?? nested.lines;
+    return {
+      ...val,
+      cart: Array.isArray(lines) ? lines : [],
+      channel: val.channel ?? nested.channel,
+      branchId: val.branchId ?? nested.branchId,
+      customerOrderCount: val.customerOrderCount ?? nested.customerOrderCount
+    };
+  }
+  return val;
+}, Shape);
 
 export async function POST(req: NextRequest) {
   const session = await auth();
