@@ -398,6 +398,16 @@ model Restaurant {
   approvedAt           DateTime?
   rejectedReason       String?
   commissionPct        Float             @default(15.0) // platform's cut
+  // ── Settlement / payout configuration (drives the partner Settlement Report) ──
+  // Online payment-gateway fee charged on the order value (e.g. Razorpay ~2%).
+  paymentFeePct        Float             @default(2.0)
+  // Legal/tax identity shown on the settlement report (nullable until onboarded).
+  legalName            String?
+  gstin                String?
+  pan                  String?
+  bankAccountLast4     String? // masked bank account for payout display
+  // Settlement cadence: WEEKLY (default, Zomato-style) | DAILY | T_PLUS_1.
+  settlementCycle      String            @default("WEEKLY")
   // Rider sourcing policy for this restaurant's orders.
   riderDispatchMode    RiderDispatchMode @default(FLEET_ONLY)
   fleetFallbackMinutes Int               @default(5) // DEDICATED_FIRST: wait before opening to fleet

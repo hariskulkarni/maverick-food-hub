@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
-import { Building2, ListOrdered, Users, Bike, BarChart3, Radio, Coins, AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet, History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones, GraduationCap, MessagesSquare } from 'lucide-react';
+import { Building2, ListOrdered, Users, Bike, BarChart3, Radio, Coins, AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet, History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones, GraduationCap, MessagesSquare, Banknote } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
@@ -31,6 +31,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           <NavLink href="/platform/users" icon={Users}>All users</NavLink>
           <NavLink href="/platform/support" icon={LifeBuoy}>Support</NavLink>
           <NavLink href="/platform/qr" icon={QrCode}>QR codes</NavLink>
+          <NavLink href="/platform/settlements" icon={Banknote}>Settlements</NavLink>
           <NavLink href="/platform/reports" icon={FileSpreadsheet}>Reports</NavLink>
           <NavLink href="/platform/security" icon={Shield}>Security</NavLink>
           <NavLink href="/platform/audit-log" icon={History}>Audit log</NavLink>
