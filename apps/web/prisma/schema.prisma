@@ -398,6 +398,13 @@ model Restaurant {
   approvedAt           DateTime?
   rejectedReason       String?
   commissionPct        Float             @default(15.0) // platform's cut
+  // ── Storefront CMS ────────────────────────────────────────────────────────
+  // Flexible JSON the restaurant admin edits at /admin/storefront: hero type +
+  // carousel slides + transition + autoplay, branding (tagline/accent), and
+  // layout toggles (search/filters/offers/top-sellers, grid vs list). NULL ⇒
+  // sensible defaults (see server/storefront-cms.ts) so every new restaurant
+  // ships with a fully-working, customisable storefront out of the box.
+  storefrontConfig     Json?
   // ── Settlement / payout configuration (drives the partner Settlement Report) ──
   // Online payment-gateway fee charged on the order value (e.g. Razorpay ~2%).
   paymentFeePct        Float             @default(2.0)

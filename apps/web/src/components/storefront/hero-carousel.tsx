@@ -5,43 +5,59 @@ import { ImageWithFallback } from '@/components/image-with-fallback';
 import { HeartButton } from '@/components/heart-button';
 
 /**
- * StorefrontHeroCarousel — a full-bleed, mobile-first image carousel that
- * replaces the single cover-image hero on a restaurant storefront.
+ * StorefrontHeroCarousel — a full-bleed, mobile-first hero carousel for a
+ * restaurant storefront, driven by the Storefront CMS.
  *
- * The banner artwork is self-branded (2:1), so the carousel keeps a 2:1 aspect
- * box (no crop) on mobile and caps its height on large screens. Auto-advances,
- * pauses on hover/touch, supports swipe + keyboard dots, and degrades to a
- * gradient placeholder per slide if an image file is missing. The favourite
- * toggle is retained, floating top-right.
+ * Each slide can carry an optional headline / subtext / CTA which are overlaid
+ * (bottom-left) with a legibility gradient; the CTA uses the restaurant's
+ * accent colour. Transition (slide / fade / zoom) and autoplay are
+ * CMS-configurable. Slides are absolutely stacked so any transition applies
+ * uniformly. The favourite toggle floats top-right; missing images degrade to a
+ * branded gradient via <ImageWithFallback>.
  */
 
-const AUTOPLAY_MS = 5000;
+const DEFAULT_AUTOPLAY_MS = 5000;
+type Transition = 'slide' | 'fade' | 'zoom';
+
+export interface HeroCarouselSlide {
+  src: string;
+  headline?: string;
+  subtext?: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+}
 
 export function StorefrontHeroCarousel({
-  images,
+  slides,
   alt,
   restaurantId,
   isAuthed,
-  favInitial
+  favInitial,
+  transition = 'slide',
+  autoplayMs = DEFAULT_AUTOPLAY_MS,
+  accentColor = '#f23e5c',
 }: {
-  images: string[];
+  slides: HeroCarouselSlide[];
   alt: string;
   restaurantId: string;
   isAuthed: boolean;
   favInitial: boolean;
+  transition?: Transition;
+  autoplayMs?: number;
+  accentColor?: string;
 }) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
-  const count = images.length;
+  const count = slides.length;
   const touchStartX = useRef<number | null>(null);
 
   const go = useCallback((next: number) => setIndex(((next % count) + count) % count), [count]);
 
   useEffect(() => {
-    if (paused || count <= 1) return;
-    const id = window.setInterval(() => setIndex((i) => (i + 1) % count), AUTOPLAY_MS);
+    if (paused || count <= 1 || autoplayMs <= 0) return;
+    const id = window.setInterval(() => setIndex((i) => (i + 1) % count), autoplayMs);
     return () => window.clearInterval(id);
-  }, [paused, count]);
+  }, [paused, count, autoplayMs]);
 
   const onTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
@@ -65,36 +81,46 @@ export function StorefrontHeroCarousel({
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >
-        {/* 2:1 box matches the banner artwork (no crop) on mobile; capped on
-            large screens so it never dominates the viewport. */}
         <div className="relative aspect-[2/1] max-h-[64vh] w-full">
-          <div
-            className="flex h-full transition-transform duration-700 ease-[cubic-bezier(0.2,0.7,0.3,1)]"
-            style={{ transform: `translateX(-${index * 100}%)` }}
-          >
-            {images.map((src, i) => (
+          {slides.map((s, i) => {
+            const active = i === index;
+            const style: React.CSSProperties =
+              transition === 'slide'
+                ? { transform: `translateX(${(i - index) * 100}%)`, opacity: 1 }
+                : transition === 'zoom'
+                ? { opacity: active ? 1 : 0, transform: active ? 'scale(1)' : 'scale(1.06)' }
+                : { opacity: active ? 1 : 0 }; // fade
+            const hasCaption = !!(s.headline || s.subtext || (s.ctaLabel && s.ctaHref));
+            return (
               <div
-                key={src}
-                className="relative h-full w-full shrink-0"
+                key={i}
+                className="absolute inset-0 h-full w-full transition-all duration-700 ease-[cubic-bezier(0.2,0.7,0.3,1)]"
+                style={style}
                 role="group"
                 aria-roledescription="slide"
                 aria-label={`${i + 1} of ${count}`}
-                aria-hidden={i !== index}
+                aria-hidden={!active}
               >
-                <ImageWithFallback
-                  src={src}
-                  alt={`${alt} — promotion ${i + 1}`}
-                  fill
-                  priority={i === 0}
-                  sizes="100vw"
-                  className="object-cover"
-                />
+                <ImageWithFallback src={s.src} alt={`${alt} — ${s.headline ?? `promotion ${i + 1}`}`} fill priority={i === 0} sizes="100vw" className="object-cover" />
+                {hasCaption && (
+                  <>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />
+                    <div className="absolute inset-x-0 bottom-0 p-5 md:p-8 max-w-2xl">
+                      {s.headline && <h2 className="display text-xl md:text-3xl font-bold text-white drop-shadow">{s.headline}</h2>}
+                      {s.subtext && <p className="mt-1 text-sm md:text-base text-white/90 drop-shadow line-clamp-2">{s.subtext}</p>}
+                      {s.ctaLabel && s.ctaHref && (
+                        <a href={s.ctaHref} className="mt-3 inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold text-white shadow-lg transition-transform hover:scale-[1.03]" style={{ backgroundColor: accentColor }}>
+                          {s.ctaLabel}
+                        </a>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
 
-        {/* Favourite toggle — top-right, glass backdrop (kept from the hero). */}
         <div className="absolute right-4 top-4 z-10">
           <HeartButton
             restaurantId={restaurantId}
@@ -105,19 +131,16 @@ export function StorefrontHeroCarousel({
           />
         </div>
 
-        {/* Pagination dots */}
         {count > 1 && (
           <div className="absolute inset-x-0 bottom-3 z-10 flex items-center justify-center gap-1.5">
-            {images.map((src, i) => (
+            {slides.map((_, i) => (
               <button
-                key={src}
+                key={i}
                 type="button"
                 onClick={() => go(i)}
                 aria-label={`Go to slide ${i + 1}`}
                 aria-current={i === index}
-                className={`h-1.5 rounded-full shadow ring-1 ring-black/10 transition-all duration-300 ${
-                  i === index ? 'w-6 bg-white' : 'w-1.5 bg-white/60 hover:bg-white/90'
-                }`}
+                className={`h-1.5 rounded-full shadow ring-1 ring-black/10 transition-all duration-300 ${i === index ? 'w-6 bg-white' : 'w-1.5 bg-white/60 hover:bg-white/90'}`}
               />
             ))}
           </div>

@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ComboAddButton } from '../../combos/combo-add-button';
 import { bannersForSlug } from '@/lib/storefront-banners';
 import { StorefrontHeroCarousel } from '@/components/storefront/hero-carousel';
+import { parseStorefrontConfig } from '@/server/storefront-cms';
 import { HeartButton } from '@/components/heart-button';
 import { money } from '@/lib/utils';
 import { COMBO_IMAGES, FOOD_FALLBACK } from '@/lib/food-images';
@@ -154,8 +155,15 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
   const favItemSet = new Set(favItemRows.map((r) => r.menuItemId));
 
   const heroImage = restaurant.coverImageUrl || restaurant.logoUrl || FOOD_FALLBACK;
-  // Per-restaurant full-bleed banner carousel (overrides the cover-image hero).
-  const banners = bannersForSlug(slug);
+  // Storefront CMS — the admin-configured hero (carousel slides + transition +
+  // autoplay). Falls back to the legacy static banners, then to the cover image.
+  const cms = parseStorefrontConfig((restaurant as { storefrontConfig?: unknown }).storefrontConfig);
+  // Hero slides: admin-configured carousel slides (with captions/CTA) when set,
+  // else the legacy static banners (mapped to plain slides), else cover image.
+  const heroSlides =
+    cms.hero.type === 'carousel' && cms.hero.slides.length > 0
+      ? cms.hero.slides
+      : (bannersForSlug(slug) ?? []).map((src) => ({ src }));
   const dishCount = categories.reduce((s, c) => s + c.menuItems.length, 0);
 
   // Floating categories FAB entries — projected from the same `categories`
@@ -228,17 +236,19 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
         ]}
       />
       {/* ───────────────────────── Restaurant Hero ───────────────────────── */}
-      {banners ? (
+      {heroSlides.length > 0 ? (
         <>
-          {/* Full-bleed promo carousel replaces the cover image for this
-              restaurant. The banners are self-branded, so the name + tagline
-              are shown in a clean strip below instead of overlaid. */}
+          {/* Admin-configured hero carousel (CMS): slides, captions/CTA,
+              transition + autoplay. Falls back to legacy banners. */}
           <StorefrontHeroCarousel
-            images={banners}
+            slides={heroSlides}
             alt={restaurant.name}
             restaurantId={restaurant.id}
             isAuthed={isAuthed}
             favInitial={Boolean(favRestaurant)}
+            transition={cms.hero.transition}
+            autoplayMs={cms.hero.autoplayMs}
+            accentColor={cms.branding.accentColor}
           />
           <div className="container py-4 reveal">
             <div className="flex flex-wrap items-center gap-2">
@@ -360,12 +370,12 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
           />
         </div>
 
-        {/* Offers carousel */}
-        <OfferCards offers={JSON.parse(JSON.stringify(activeOffers))} />
+        {/* Offers carousel — toggleable via Storefront CMS */}
+        {cms.layout.showOffersStrip && <OfferCards offers={JSON.parse(JSON.stringify(activeOffers))} />}
       </div>
 
       {/* ───────────────────────── Top Sellers ───────────────────────── */}
-      {topSellers.length > 0 && (
+      {cms.layout.showTopSellers && topSellers.length > 0 && (
         <section className="container py-10 border-b">
           <div className="mb-6 reveal">
             <div className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
@@ -460,6 +470,8 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
         </div>
         <MenuClient
           branchId={branch.id}
+          showSearch={cms.layout.showSearch}
+          showFilters={cms.layout.showFilters}
           data={JSON.parse(
             JSON.stringify(
               categories.map((c) => {

@@ -17,7 +17,7 @@ interface CategoryGroup {
 
 type Diet = 'all' | 'veg' | 'nonveg';
 
-export function MenuClient({ data, branchId }: { data: CategoryGroup[]; branchId: string }) {
+export function MenuClient({ data, branchId, showSearch = true, showFilters = true }: { data: CategoryGroup[]; branchId: string; showSearch?: boolean; showFilters?: boolean }) {
   const [q, setQ] = useState('');
   const [diet, setDiet] = useState<Diet>('all');
   const [activeCat, setActiveCat] = useState<string | null>(null);
@@ -74,11 +74,13 @@ export function MenuClient({ data, branchId }: { data: CategoryGroup[]; branchId
     <div className="grid gap-6 md:grid-cols-[240px_1fr]">
       {/* ───────── Desktop sidebar ───────── */}
       <aside className="hidden md:block md:sticky md:top-[6.5rem] self-start space-y-4 max-h-[calc(100vh-8rem)] overflow-auto scrollbar-thin pr-1">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search menu" className="pl-9" />
-        </div>
-        <DietPicker diet={diet} setDiet={setDiet} />
+        {showSearch && (
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search menu" className="pl-9" />
+          </div>
+        )}
+        {showFilters && <DietPicker diet={diet} setDiet={setDiet} />}
         <nav className="text-sm space-y-0.5 pt-2">
           {filtered.map((c) => (
             <a

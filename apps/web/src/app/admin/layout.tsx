@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { currentRestaurant, accessibleRestaurants } from '@/server/tenancy';
-import { LayoutDashboard, ScrollText, Utensils, BarChart3, Tag, Settings, Building2, Radio, Sparkles, Layers, Clock, Trophy, Package, Mail, History, MessageSquare, Bike, ShieldAlert, MessagesSquare, CalendarClock, Armchair, Gift } from 'lucide-react';
+import { LayoutDashboard, ScrollText, Utensils, BarChart3, Tag, Settings, Building2, Radio, Sparkles, Layers, Clock, Trophy, Package, Mail, History, MessageSquare, Bike, ShieldAlert, MessagesSquare, CalendarClock, Armchair, Gift, Paintbrush } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { RestaurantSwitcher } from './restaurant-switcher';
 
@@ -65,6 +65,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <NavLink href="/admin/reports" icon={BarChart3}>Reports</NavLink>
           <NavLink href="/admin/activity" icon={History}>Activity</NavLink>
           <NavLink href="/admin/feedback" icon={MessageSquare}>Feedback</NavLink>
+          <NavLink href="/admin/storefront" icon={Paintbrush}>Storefront CMS</NavLink>
           <NavLink href="/admin/settings" icon={Settings}>Settings</NavLink>
         </nav>
         <div className="p-3 border-t">
