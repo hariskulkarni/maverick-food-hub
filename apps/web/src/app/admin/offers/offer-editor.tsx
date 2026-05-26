@@ -291,7 +291,7 @@ export function OfferEditor({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Priority (higher wins)" type="number" value={String(draft.priority)} onChange={(v) => patch('priority', Number(v) || 0)} />
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 <ToggleCard label="Active" hint="Eligible to apply" checked={draft.isActive} onChange={(v) => patch('isActive', v)} />
                 <ToggleCard label="Auto-apply" hint="No code needed" checked={draft.autoApply} onChange={(v) => patch('autoApply', v)} />
                 <ToggleCard label="Stackable" hint="Combines with others" checked={draft.stackable} onChange={(v) => patch('stackable', v)} />
@@ -981,18 +981,22 @@ function Field({
 function ToggleCard({
   label, hint, checked, onChange
 }: { label: string; hint: string; checked: boolean; onChange: (v: boolean) => void }) {
+  // NOTE: this must NOT be a <button> — it contains a Radix <Switch> which is
+  // itself a <button>, and nesting buttons is invalid HTML (the inner switch
+  // escapes the layout, which is what caused the overflowing toggles). We use a
+  // plain row; the Switch is the single interactive control.
   return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className={`rounded-md border p-2 text-left text-xs transition-colors ${checked ? 'border-primary bg-primary/10' : 'hover:bg-accent'}`}
+    <div
+      className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs transition-colors ${
+        checked ? 'border-primary bg-primary/10' : 'border-input'
+      }`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium">{label}</span>
-        <Switch checked={checked} onCheckedChange={onChange} />
+      <div className="min-w-0">
+        <div className="font-medium truncate">{label}</div>
+        <div className="text-[10px] text-muted-foreground leading-tight truncate">{hint}</div>
       </div>
-      <div className="text-[10px] text-muted-foreground mt-0.5">{hint}</div>
-    </button>
+      <Switch checked={checked} onCheckedChange={onChange} className="shrink-0" />
+    </div>
   );
 }
 
