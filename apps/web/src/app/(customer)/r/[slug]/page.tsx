@@ -8,7 +8,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ComboAddButton } from '../../combos/combo-add-button';
 import { bannersForSlug } from '@/lib/storefront-banners';
 import { StorefrontHeroCarousel } from '@/components/storefront/hero-carousel';
-import { parseStorefrontConfig } from '@/server/storefront-cms';
+import { StorefrontAnnouncementBar } from '@/components/storefront/announcement-bar';
+import { AboutSection, ContentBlocks, StorefrontFooter } from '@/components/storefront/storefront-sections';
+import { parseStorefrontConfig, themeStyleVars } from '@/server/storefront-cms';
 import { HeartButton } from '@/components/heart-button';
 import { money } from '@/lib/utils';
 import { COMBO_IMAGES, FOOD_FALLBACK } from '@/lib/food-images';
@@ -31,7 +33,31 @@ const SITE = 'https://flavrly.in';
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const r = await prisma.restaurant.findUnique({ where: { slug } });
-  return { title: r?.name ?? 'Restaurant' };
+  if (!r) return { title: 'Restaurant' };
+  // Storefront CMS SEO overrides — admin-set meta title/description/OG image
+  // take precedence; otherwise fall back to the restaurant's own fields.
+  const cms = parseStorefrontConfig((r as { storefrontConfig?: unknown }).storefrontConfig);
+  const title = cms.seo.metaTitle || r.name;
+  const description = cms.seo.metaDescription || r.tagline || `Order from ${r.name} on ${brand.name}.`;
+  const ogImage = cms.seo.ogImage || r.coverImageUrl || r.logoUrl || undefined;
+  return {
+    title,
+    description,
+    alternates: { canonical: `${SITE}/r/${slug}` },
+    openGraph: {
+      title,
+      description,
+      url: `${SITE}/r/${slug}`,
+      type: 'website',
+      ...(ogImage ? { images: [{ url: ogImage }] } : {}),
+    },
+    twitter: {
+      card: ogImage ? 'summary_large_image' : 'summary',
+      title,
+      description,
+      ...(ogImage ? { images: [ogImage] } : {}),
+    },
+  };
 }
 
 export default async function RestaurantPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -191,8 +217,22 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
   // Deterministic-looking rating from restaurant id, so it stays stable per page
   const rating = (4 + ((restaurant.id.charCodeAt(0) % 9) / 10)).toFixed(1);
 
+  // Theme CSS variables (accent/secondary/radius/font) applied on the wrapper so
+  // the CMS-driven sections (announcement, about, blocks, CTAs, social) pick up
+  // the restaurant's chosen palette without overriding the global design tokens.
+  const themeVars = themeStyleVars(cms) as React.CSSProperties;
+
   return (
-    <div>
+    <div style={themeVars}>
+      {cms.announcement.enabled && cms.announcement.text && (
+        <StorefrontAnnouncementBar
+          text={cms.announcement.text}
+          linkLabel={cms.announcement.linkLabel || undefined}
+          linkHref={cms.announcement.linkHref || undefined}
+          bgColor={cms.announcement.bgColor}
+          textColor={cms.announcement.textColor}
+        />
+      )}
       <JsonLd
         data={[
           {
@@ -374,6 +414,10 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
         {cms.layout.showOffersStrip && <OfferCards offers={JSON.parse(JSON.stringify(activeOffers))} />}
       </div>
 
+      {/* ───────── CMS: About + top content blocks (above the menu) ───────── */}
+      <AboutSection about={cms.about} />
+      <ContentBlocks blocks={cms.blocks} position="top" />
+
       {/* ───────────────────────── Top Sellers ───────────────────────── */}
       {cms.layout.showTopSellers && topSellers.length > 0 && (
         <section className="container py-10 border-b">
@@ -547,6 +591,12 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
           )}
         />
       </section>
+
+      {/* ───────── CMS: bottom content blocks (below the menu) ───────── */}
+      <ContentBlocks blocks={cms.blocks} position="bottom" />
+
+      {/* ───────── CMS: custom footer + social links ───────── */}
+      <StorefrontFooter footerText={cms.footer.text} social={cms.social} />
 
       {/* ───────────────────────── FSSAI licence footer ───────────────────────── */}
       <FoodLicenseFooter

@@ -27,7 +27,15 @@ export async function PATCH(req: NextRequest) {
     restaurantId: restaurant.id,
     entityType: 'Restaurant',
     entityId: restaurant.id,
-    after: { storefront: 'updated', heroType: config.hero.type, slides: config.hero.slides.length },
+    after: {
+      storefront: 'updated',
+      heroType: config.hero.type,
+      slides: config.hero.slides.length,
+      blocks: config.blocks.length,
+      announcement: config.announcement.enabled,
+      about: config.about.enabled,
+      fontPair: config.theme.fontPair,
+    },
   }).catch(() => {});
   return Response.json({ ok: true, config });
 }
