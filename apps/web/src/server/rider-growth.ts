@@ -23,6 +23,13 @@ export interface TierDef {
   minRating: number;
   /** Short human-readable requirement summary. */
   requirement: string;
+  /**
+   * Extra share of the surge uplift this tier earns, as a fraction (0.05 = +5%).
+   * This is the machine-readable counterpart to the "N% higher surge share"
+   * perk string — the pay engine multiplies a delivery's surge bonus by
+   * (1 + surgeShareBonus) so higher tiers genuinely take home more surge.
+   */
+  surgeShareBonus: number;
   /** Motivating perks unlocked at this tier. */
   perks: string[];
 }
@@ -34,6 +41,7 @@ export const TIERS: TierDef[] = [
     minDeliveries: 0,
     minRating: 0,
     requirement: 'New riders — start here',
+    surgeShareBonus: 0,
     perks: [
       'Access to the shared order pool',
       'Weekly earnings summary',
@@ -45,6 +53,7 @@ export const TIERS: TierDef[] = [
     minDeliveries: 50,
     minRating: 4.0,
     requirement: '50+ deliveries · 4.0+ rating',
+    surgeShareBonus: 0.05,
     perks: [
       'Priority pool access during rush hours',
       '5% higher surge share',
@@ -57,6 +66,7 @@ export const TIERS: TierDef[] = [
     minDeliveries: 200,
     minRating: 4.3,
     requirement: '200+ deliveries · 4.3+ rating',
+    surgeShareBonus: 0.12,
     perks: [
       'First pick on high-value orders',
       '12% higher surge share',
@@ -70,6 +80,7 @@ export const TIERS: TierDef[] = [
     minDeliveries: 500,
     minRating: 4.6,
     requirement: '500+ deliveries · 4.6+ rating',
+    surgeShareBonus: 0.20,
     perks: [
       'Guaranteed minimum daily earnings',
       '20% higher surge share',
@@ -80,6 +91,15 @@ export const TIERS: TierDef[] = [
     ],
   },
 ];
+
+/**
+ * The surge-share bonus fraction for a rider's current tier, derived from the
+ * same lifetime stats `computeTier` uses. BRONZE → 0; PLATINUM → 0.20. Pure so
+ * the pay engine and tests can call it without DB access.
+ */
+export function tierSurgeShareBonus(profile: ProfileStats): number {
+  return computeTier(profile).current.surgeShareBonus;
+}
 
 interface ProfileStats {
   totalDeliveries: number;

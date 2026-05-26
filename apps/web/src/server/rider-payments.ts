@@ -6,6 +6,7 @@
  * always normalised to plain `number`s before they leave this module.
  */
 import { prisma } from './db';
+import { audit } from './audit';
 
 /**
  * A rider's withdrawable balance: lifetime earnings minus everything that has
@@ -78,4 +79,116 @@ export async function countDeliveriesSince(riderProfileId: string, since: Date):
       deliveredAt: { gte: since },
     },
   });
+}
+
+export interface IncentiveOutcome {
+  incentiveId: string;
+  title: string;
+  periodKey: string;
+  deliveriesDone: number;
+  targetDeliveries: number;
+  achieved: boolean;
+  /** Bonus credited to the rider on THIS call (0 if already paid or not yet achieved). */
+  bonusCredited: number;
+}
+
+/**
+ * Advance a rider's incentive progress after a delivery and pay out any newly
+ * achieved slabs.
+ *
+ * For every currently-active RiderIncentive, we recompute the rider's delivery
+ * count for the relevant period (DAILY → today, WEEKLY → this ISO week) from the
+ * source of truth (DELIVERED assignments) rather than blindly incrementing, so
+ * the progress is self-correcting and safe to call more than once. When the
+ * count reaches the target and the slab hasn't been paid yet, we mark it
+ * achieved and credit the flat bonus to the rider's lifetime earnings — guarded
+ * by `bonusPaid` inside a transaction so a bonus can never be paid twice even
+ * under concurrent deliveries.
+ *
+ * Best-effort: never throws into the delivery path. Returns what happened for
+ * logging / UI.
+ */
+export async function applyIncentivesForDelivery(riderProfileId: string, now = new Date()): Promise<IncentiveOutcome[]> {
+  try {
+    const active = await prisma.riderIncentive.findMany({
+      where: {
+        isActive: true,
+        startsAt: { lte: now },
+        OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      },
+    });
+    if (active.length === 0) return [];
+
+    const outcomes: IncentiveOutcome[] = [];
+
+    for (const inc of active) {
+      const periodStart = inc.period === 'WEEKLY' ? startOfWeek(now) : startOfDay(now);
+      const periodKey = inc.period === 'WEEKLY' ? weekKey(now) : dayKey(now);
+      const deliveriesDone = await countDeliveriesSince(riderProfileId, periodStart);
+      const target = inc.targetDeliveries;
+      const nowAchieved = deliveriesDone >= target;
+      const bonus = Number(inc.bonusAmount);
+
+      // Upsert progress with the recomputed count. Mark achieved if the bar is
+      // cleared (achievedAt only stamped on the first transition).
+      const progress = await prisma.riderIncentiveProgress.upsert({
+        where: { incentiveId_riderId_periodKey: { incentiveId: inc.id, riderId: riderProfileId, periodKey } },
+        create: {
+          incentiveId: inc.id,
+          riderId: riderProfileId,
+          periodKey,
+          deliveriesDone,
+          achieved: nowAchieved,
+          achievedAt: nowAchieved ? now : null,
+        },
+        update: {
+          deliveriesDone,
+          achieved: nowAchieved ? true : undefined,
+          achievedAt: nowAchieved ? now : undefined,
+        },
+      });
+
+      let bonusCredited = 0;
+      if (nowAchieved && !progress.bonusPaid && bonus > 0) {
+        // Atomically claim the payout: only the writer that flips bonusPaid
+        // false→true (count === 1) credits the rider. Concurrent calls see 0.
+        const claimed = await prisma.$transaction(async (tx) => {
+          const res = await tx.riderIncentiveProgress.updateMany({
+            where: { id: progress.id, bonusPaid: false },
+            data: { bonusPaid: true },
+          });
+          if (res.count !== 1) return false;
+          await tx.riderProfile.update({
+            where: { id: riderProfileId },
+            data: { totalEarnings: { increment: bonus as any } },
+          });
+          return true;
+        });
+        if (claimed) {
+          bonusCredited = bonus;
+          await audit('rider.incentive.bonus', {
+            actorRole: 'SYSTEM',
+            entityType: 'RiderIncentiveProgress',
+            entityId: progress.id,
+            after: { riderId: riderProfileId, incentiveId: inc.id, periodKey, bonus, deliveriesDone, target },
+          });
+        }
+      }
+
+      outcomes.push({
+        incentiveId: inc.id,
+        title: inc.title,
+        periodKey,
+        deliveriesDone,
+        targetDeliveries: target,
+        achieved: nowAchieved,
+        bonusCredited,
+      });
+    }
+
+    return outcomes;
+  } catch {
+    // Incentives must never break delivery confirmation.
+    return [];
+  }
 }

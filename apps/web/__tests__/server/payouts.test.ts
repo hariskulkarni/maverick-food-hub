@@ -214,6 +214,42 @@ describe('payouts.computeFromRule — cancellation', () => {
   });
 });
 
+describe('payouts.computeFromRule — surge + tier share', () => {
+  // A clean rule: only base + per-km so the surge core is easy to reason about.
+  const surgeRule = { ...defaultRule, baseAmount: 30, perKmAmount: 5, firstKmIncluded: 1, longDistanceBonusPerKm: 0, codHandlingFee: 0 };
+
+  it('no surge (multiplier ≤ 1) → no surge bonus', () => {
+    const r = computeFromRule(surgeRule, baseCtx({ distanceKm: 3, surgeMultiplier: 1 }));
+    expect(r.surgeBonus).toBe(0);
+    expect(r.surgeMultiplier).toBe(1);
+  });
+
+  it('clamps a misconfigured <1 multiplier to 1 (never docks pay)', () => {
+    const r = computeFromRule(surgeRule, baseCtx({ distanceKm: 3, surgeMultiplier: 0.5 }));
+    expect(r.surgeBonus).toBe(0);
+    expect(r.surgeMultiplier).toBe(1);
+  });
+
+  it('applies surge uplift to the core (base + distance) with no tier bonus', () => {
+    // base 30 + perKm (3-1)*5=10 → core 40; 1.5x → uplift 40*0.5 = 20
+    const r = computeFromRule(surgeRule, baseCtx({ distanceKm: 3, surgeMultiplier: 1.5 }));
+    expect(r.surgeBonus).toBe(20);
+    expect(r.payout).toBe(60); // 40 core + 20 surge
+  });
+
+  it('scales the surge uplift by the tier surge-share bonus', () => {
+    // core 40, 1.5x uplift 20, PLATINUM +20% → 20 * 1.2 = 24
+    const r = computeFromRule(surgeRule, baseCtx({ distanceKm: 3, surgeMultiplier: 1.5, tierSurgeShareBonus: 0.2 }));
+    expect(r.surgeBonus).toBe(24);
+    expect(r.tierSurgeShareBonus).toBe(0.2);
+  });
+
+  it('tier share is irrelevant when there is no surge', () => {
+    const r = computeFromRule(surgeRule, baseCtx({ distanceKm: 3, surgeMultiplier: 1, tierSurgeShareBonus: 0.2 }));
+    expect(r.surgeBonus).toBe(0);
+  });
+});
+
 describe('payouts.computeFromRule — floor and ceiling', () => {
   it('lifts payout to the floor when subtotal is below the minimum', () => {
     const rule = { ...defaultRule, baseAmount: 5, perKmAmount: 0, minimumPerDelivery: 50, maxPerDelivery: 0 };

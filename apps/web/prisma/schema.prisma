@@ -225,6 +225,10 @@ model User {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   deletedAt        DateTime?
+  // Account suspension by a super-admin. When set, the user cannot log in and
+  // their active session is invalidated. Distinct from soft-delete (deletedAt).
+  suspendedAt      DateTime?
+  suspendedReason  String?
   // Single-active-session pointer. The JWT carries a session id (sid); a request
   // is only honoured while its sid matches this. A new login rotates it, which
   // invalidates every other device's token on its next request (forced logout).
@@ -1813,18 +1817,41 @@ model Payment {
   @@index([providerRef])
 }
 
+/// Where a refund's money goes. Platform policy: default to the customer's
+/// WALLET (keeps funds on-platform, instant, no gateway fee); an admin may opt
+/// to send it back to the ORIGINAL_PAYMENT method (gateway refund path).
+enum RefundDestination {
+  WALLET
+  ORIGINAL_PAYMENT
+}
+
+/// Lifecycle of a refund. Wallet refunds complete instantly; original-method
+/// (gateway) refunds may sit PENDING until the provider confirms.
+enum RefundStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
 model Refund {
-  id           String   @id @default(cuid())
-  paymentId    String
+  id           String            @id @default(cuid())
+  // Optional: wallet refunds (esp. for COD orders) have no captured Payment to
+  // reverse. Original-payment refunds always carry the source paymentId.
+  paymentId    String?
   orderId      String
-  amount       Decimal  @db.Decimal(10, 2)
+  amount       Decimal           @db.Decimal(10, 2)
   reason       String?
+  destination  RefundDestination @default(WALLET)
+  status       RefundStatus      @default(COMPLETED)
+  createdById  String? // super-admin who issued it
   providerRef  String?
   providerData Json?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime          @default(now())
 
-  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

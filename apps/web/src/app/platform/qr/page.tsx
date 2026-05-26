@@ -7,7 +7,9 @@ import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { QrCode, Activity, MousePointerClick, TrendingUp } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { QrCode, Activity, MousePointerClick, TrendingUp, Download } from 'lucide-react';
+import { qrPngDataUrl, qrScanUrl } from '@/server/qr-image';
 
 export const metadata = { title: 'Platform · QR codes' };
 export const dynamic = 'force-dynamic';
@@ -15,11 +17,19 @@ export const dynamic = 'force-dynamic';
 export default async function PlatformQrPage() {
   await requireSuperAdmin();
 
-  const qrs = await prisma.qrCode.findMany({
+  const rows = await prisma.qrCode.findMany({
     orderBy: { createdAt: 'desc' },
     include: { restaurant: { select: { name: true, slug: true } } },
     take: 500
   });
+
+  // Render a real scannable PNG (data URL) for each QR row, server-side.
+  const qrs = await Promise.all(
+    rows.map(async (q) => {
+      const url = qrScanUrl(q.code);
+      return { ...q, url, qrPng: await qrPngDataUrl(url, 160) };
+    })
+  );
 
   const totals = qrs.reduce<{ scans: number; orders: number; active: number }>(
     (acc, q: any) => ({ scans: acc.scans + q.scanCount, orders: acc.orders + q.orderCount, active: acc.active + (q.isActive ? 1 : 0) }),
@@ -47,6 +57,7 @@ export default async function PlatformQrPage() {
         <table className="w-full text-sm">
           <thead className="bg-muted/40 border-b">
             <tr>
+              <th className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wider text-muted-foreground">QR</th>
               <th className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wider text-muted-foreground">Code</th>
               <th className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wider text-muted-foreground">Restaurant</th>
               <th className="text-left px-4 py-2 font-medium text-xs uppercase tracking-wider text-muted-foreground">Type</th>
@@ -58,12 +69,29 @@ export default async function PlatformQrPage() {
           </thead>
           <tbody className="divide-y">
             {qrs.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">No QR codes yet.</td></tr>
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">No QR codes yet.</td></tr>
             )}
             {qrs.map((q: any) => {
               const conv = q.scanCount > 0 ? (q.orderCount / q.scanCount) * 100 : 0;
               return (
                 <tr key={q.id}>
+                  <td className="px-4 py-3 align-top">
+                    <div className="space-y-1">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={q.qrPng}
+                        alt={`QR code for ${q.url}`}
+                        width={72}
+                        height={72}
+                        className="rounded border bg-white p-1"
+                      />
+                      <Button asChild size="sm" variant="outline" className="h-6 px-2 text-[10px]">
+                        <a href={q.qrPng} download={`qr-${q.code}.png`}>
+                          <Download className="size-3" /> PNG
+                        </a>
+                      </Button>
+                    </div>
+                  </td>
                   <td className="px-4 py-3 font-mono text-xs">{q.code}{q.campaignName && <div className="text-[11px] text-muted-foreground">{q.campaignName}</div>}</td>
                   <td className="px-4 py-3">
                     <div className="font-medium">{q.restaurant.name}</div>

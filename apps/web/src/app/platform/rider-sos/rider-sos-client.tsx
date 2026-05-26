@@ -5,7 +5,7 @@
  * super-admin can resolve (or cancel) an active alert with a note. Resolving
  * is irreversible, so the action is behind an inline confirm.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,18 @@ export function RiderSosClient({ initial }: { initial: SosRow[] }) {
   const [rows, setRows] = useState<SosRow[]>(initial);
   const [filter, setFilter] = useState<Filter>('ALL');
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // SOS is an emergency surface — it must surface new ACTIVE alerts without a
+  // manual reload. We auto-refresh the server data every 12s, and re-seed local
+  // rows whenever fresh server data arrives (router.refresh re-renders this
+  // client with a new `initial`). The drawer is left open across refreshes.
+  useEffect(() => {
+    const id = window.setInterval(() => router.refresh(), 12_000);
+    return () => window.clearInterval(id);
+  }, [router]);
+  useEffect(() => {
+    setRows(initial);
+  }, [initial]);
 
   const active = rows.filter((r) => r.status === 'ACTIVE');
   const history = useMemo(() => {

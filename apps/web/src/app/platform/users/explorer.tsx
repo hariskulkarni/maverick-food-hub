@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DetailDrawer, DrawerSection } from '@/components/admin/detail-drawer';
-import { Search, Download, RefreshCw, Phone, Mail, MapPin, Wallet, Sparkles, Bell, ShoppingBag, ArrowUpRight, Plus, Minus, X, Loader2 } from 'lucide-react';
+import { Search, Download, RefreshCw, Phone, Mail, MapPin, Wallet, Sparkles, Bell, ShoppingBag, ArrowUpRight, Plus, Minus, X, Loader2, ShieldOff, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 type Role = 'CUSTOMER' | 'ADMIN' | 'KITCHEN' | 'RIDER' | 'SUPER_ADMIN';
@@ -197,6 +197,16 @@ function UserDrawer({ id, onClose }: { id: string; onClose: () => void }) {
         </div>
       </DrawerSection>
 
+      {/* Account status — suspend / reinstate */}
+      <DrawerSection title="Account status">
+        <SuspensionControl
+          userId={u.id}
+          suspendedAt={u.suspendedAt ?? null}
+          suspendedReason={u.suspendedReason ?? null}
+          onChange={load}
+        />
+      </DrawerSection>
+
       {/* Customer metrics — only meaningful for customers */}
       {u.role === 'CUSTOMER' && (
         <>
@@ -291,6 +301,86 @@ function UserDrawer({ id, onClose }: { id: string; onClose: () => void }) {
         </DrawerSection>
       )}
     </DetailDrawer>
+  );
+}
+
+function SuspensionControl({
+  userId,
+  suspendedAt,
+  suspendedReason,
+  onChange
+}: {
+  userId: string;
+  suspendedAt: string | null;
+  suspendedReason: string | null;
+  onChange: () => void;
+}) {
+  const isSuspended = Boolean(suspendedAt);
+  const [reason, setReason] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function setSuspended(next: boolean) {
+    setBusy(true);
+    const r = await fetch(`/api/platform/users/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ suspended: next, ...(next ? { suspendReason: reason || undefined } : {}) })
+    });
+    setBusy(false);
+    if (!r.ok) return toast.error(`Failed: ${await r.text()}`);
+    toast.success(next ? 'Account suspended — user is logged out everywhere' : 'Account reinstated');
+    setReason('');
+    setConfirming(false);
+    onChange();
+  }
+
+  if (isSuspended) {
+    return (
+      <div className="p-4 space-y-3">
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+          <ShieldOff className="size-4 text-destructive mt-0.5 shrink-0" />
+          <div>
+            <div className="font-medium text-destructive">Suspended</div>
+            <div className="text-xs text-muted-foreground">
+              Since {new Date(suspendedAt!).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+              {suspendedReason ? ` · ${suspendedReason}` : ''}
+            </div>
+            <div className="text-[11px] text-muted-foreground mt-1">Login is blocked and active sessions were terminated.</div>
+          </div>
+        </div>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => setSuspended(false)} className="text-success border-success/40 hover:bg-success/10">
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5" />} Reinstate account
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-3">
+      <div className="flex items-center gap-2 text-sm text-success">
+        <ShieldCheck className="size-4" /> <span className="font-medium">Active</span>
+      </div>
+      {!confirming ? (
+        <Button size="sm" variant="outline" onClick={() => setConfirming(true)} className="text-destructive border-destructive/40 hover:bg-destructive/10">
+          <ShieldOff className="size-3.5" /> Suspend account
+        </Button>
+      ) : (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+          <div className="flex items-start gap-2 text-xs text-muted-foreground">
+            <AlertTriangle className="size-4 text-destructive mt-0.5 shrink-0" />
+            <span>Suspending blocks all logins and force-logs the user out of every device immediately. This is reversible.</span>
+          </div>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (logged in audit trail)" className="h-9" />
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => setSuspended(true)} className="text-destructive border-destructive/40 hover:bg-destructive/10">
+              {busy ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldOff className="size-3.5" />} Confirm suspend
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setConfirming(false); setReason(''); }}>Cancel</Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

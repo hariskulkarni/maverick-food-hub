@@ -11,6 +11,7 @@ import { customAlphabet } from 'nanoid';
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { QrType } from '@prisma/client';
+import { qrPngDataUrl, qrScanUrl } from '@/server/qr-image';
 
 const nano = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 8);
 
@@ -19,10 +20,16 @@ export const dynamic = 'force-dynamic';
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireSuperAdmin();
   const { id } = await params;
-  const qrs = await prisma.qrCode.findMany({
+  const rows = await prisma.qrCode.findMany({
     where: { restaurantId: id },
     orderBy: { createdAt: 'desc' }
   });
+  const qrs = await Promise.all(
+    rows.map(async (q) => {
+      const url = qrScanUrl(q.code);
+      return { ...q, url, qrPng: await qrPngDataUrl(url) };
+    })
+  );
   return Response.json({ qrs });
 }
 
@@ -62,5 +69,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
   if (!qr) return new Response('Failed to generate code', { status: 500 });
-  return Response.json({ qr });
+  const url = qrScanUrl(qr.code);
+  return Response.json({ qr: { ...qr, url, qrPng: await qrPngDataUrl(url) } });
 }

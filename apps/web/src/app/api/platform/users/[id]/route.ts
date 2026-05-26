@@ -2,10 +2,12 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
+import { audit } from '@/server/audit';
+import { auth } from '@/server/auth';
 
 /**
  * GET    — return a full user profile (orders, wallet, loyalty, addresses, recent notifications)
- * PATCH  — limited admin patches: name, suspend, adjust wallet, role change (with safeguards)
+ * PATCH  — limited admin patches: name, suspend/reinstate, adjust wallet. All audited.
  */
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -51,13 +53,19 @@ const PatchBody = z.object({
   name: z.string().min(1).max(80).optional(),
   walletDelta: z.number().optional(),
   walletNote: z.string().optional(),
-  suspended: z.boolean().optional()
+  suspended: z.boolean().optional(),
+  suspendReason: z.string().max(300).optional()
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireSuperAdmin();
+  const session = await auth();
   const { id } = await params;
   const data = PatchBody.parse(await req.json());
+
+  const before = await prisma.user.findUnique({ where: { id }, select: { id: true, suspendedAt: true } });
+  if (!before) return new Response('Not found', { status: 404 });
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
 
   await prisma.$transaction(async (tx) => {
     if (data.name) {
@@ -80,22 +88,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
     }
     if (data.suspended !== undefined) {
-      // We don't have a suspended column; use email-rewrite as a soft-suspend OR
-      // skip if not modeled. For now we'll just note in NotificationLog.
-      await tx.notificationLog.create({
+      // Real suspension: set/clear suspendedAt. On suspend, also null the
+      // active-session pointer so the user is force-logged-out everywhere
+      // immediately (their JWT's sid no longer matches). Login is blocked in
+      // src/server/auth.ts while suspendedAt is set.
+      await tx.user.update({
+        where: { id },
         data: {
-          userId: id,
-          channel: 'PUSH',
-          to: 'admin-audit',
-          subject: `Admin ${data.suspended ? 'suspended' : 'reinstated'} user`,
-          body: `Action by platform admin at ${new Date().toISOString()}`,
-          template: 'admin.suspend',
-          status: 'SENT',
-          sentAt: new Date()
+          suspendedAt: data.suspended ? new Date() : null,
+          suspendedReason: data.suspended ? (data.suspendReason ?? 'Suspended by platform admin') : null,
+          ...(data.suspended ? { currentSessionId: null } : {})
         }
       });
     }
   });
+
+  // Audit (each writes its own row; outside the txn so a logging hiccup can't
+  // roll back the action).
+  if (data.walletDelta !== undefined && data.walletDelta !== 0) {
+    await audit(data.walletDelta >= 0 ? 'wallet.credit' : 'wallet.debit', {
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+      entityType: 'User',
+      entityId: id,
+      after: { amount: data.walletDelta, note: data.walletNote ?? null },
+      ipAddress: ip
+    }).catch(() => {});
+  }
+  if (data.suspended !== undefined) {
+    await audit('user.suspend', {
+      actorId: session?.user?.id,
+      actorRole: session?.user?.role,
+      entityType: 'User',
+      entityId: id,
+      before: { suspended: Boolean(before.suspendedAt) },
+      after: { suspended: data.suspended, reason: data.suspended ? (data.suspendReason ?? null) : null },
+      ipAddress: ip
+    }).catch(() => {});
+  }
 
   return Response.json({ ok: true });
 }

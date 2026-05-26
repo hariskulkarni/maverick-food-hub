@@ -3,15 +3,15 @@
  * QR section — embeddable in the restaurant detail drawer.
  * Lists this restaurant's QR codes and lets the operator mint a new one.
  *
- * If the optional `qrcode` package were installed we'd render an inline
- * <svg> poster; for now we just show the URL text the operator can
- * paste into any QR generator.
+ * QR images are real, scannable PNGs rendered server-side (the API returns a
+ * `qrPng` data URL alongside each row); we display them inline and reuse the
+ * data URL as the href of a "Download PNG" link.
  */
 import * as React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, MousePointerClick, TrendingUp } from 'lucide-react';
+import { Plus, MousePointerClick, TrendingUp, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { QrType } from '@prisma/client';
 
@@ -23,13 +23,11 @@ type Qr = {
   scanCount: number;
   orderCount: number;
   isActive: boolean;
+  /** Customer-facing scan URL the QR encodes (resolved by /qr/[code]). */
+  url?: string;
+  /** Server-rendered PNG data URL of the scannable QR. */
+  qrPng?: string;
 };
-
-/** Tiny inline poster — just the URL since no QR lib is available. */
-export function qrSvg(text: string): string {
-  const safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320"><rect width="320" height="320" fill="#fff"/><text x="160" y="160" font-family="monospace" font-size="14" text-anchor="middle" fill="#000">${safe}</text></svg>`;
-}
 
 export function QrSection({ restaurantId, initial }: { restaurantId: string; initial: Qr[] }) {
   const [qrs, setQrs] = React.useState<Qr[]>(initial);
@@ -70,6 +68,7 @@ export function QrSection({ restaurantId, initial }: { restaurantId: string; ini
         <table className="w-full text-sm">
           <thead className="bg-muted/40 border-b">
             <tr>
+              <th className="text-left px-3 py-2 font-medium text-[11px] uppercase tracking-wider text-muted-foreground">QR</th>
               <th className="text-left px-3 py-2 font-medium text-[11px] uppercase tracking-wider text-muted-foreground">Code</th>
               <th className="text-left px-3 py-2 font-medium text-[11px] uppercase tracking-wider text-muted-foreground">Type</th>
               <th className="text-right px-3 py-2 font-medium text-[11px] uppercase tracking-wider text-muted-foreground"><MousePointerClick className="inline size-3" /> Scans</th>
@@ -78,12 +77,33 @@ export function QrSection({ restaurantId, initial }: { restaurantId: string; ini
           </thead>
           <tbody className="divide-y">
             {qrs.length === 0 && (
-              <tr><td colSpan={4} className="px-3 py-6 text-center text-muted-foreground text-xs">No QR codes yet.</td></tr>
+              <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground text-xs">No QR codes yet.</td></tr>
             )}
             {qrs.map((q) => {
               const cvr = q.scanCount > 0 ? (q.orderCount / q.scanCount) * 100 : 0;
               return (
                 <tr key={q.id}>
+                  <td className="px-3 py-2 align-top">
+                    {q.qrPng ? (
+                      <div className="space-y-1">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={q.qrPng}
+                          alt={`QR code for ${q.url ?? q.code}`}
+                          width={84}
+                          height={84}
+                          className="rounded border bg-white p-1"
+                        />
+                        <Button asChild size="sm" variant="outline" className="h-6 px-2 text-[10px]">
+                          <a href={q.qrPng} download={`qr-${q.code}.png`}>
+                            <Download className="size-3" /> PNG
+                          </a>
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground">—</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 font-mono text-xs">
                     {q.code}
                     {q.campaignName && <div className="text-[10px] text-muted-foreground">{q.campaignName}</div>}

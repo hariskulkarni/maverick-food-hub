@@ -26,6 +26,46 @@
  */
 import { prisma } from './db';
 import { haversineKm } from '@/lib/utils';
+import { tierSurgeShareBonus } from './rider-growth';
+
+/**
+ * Highest active surge multiplier whose circle covers `point` right now. A zone
+ * is live when isActive and (if windowed) now falls inside [activeFrom, activeTo].
+ * Returns 1 when no live zone covers the point (no surge). Picks the hottest
+ * zone if several overlap.
+ */
+export async function resolveSurgeMultiplier(point: { lat: number | null; lng: number | null } | null): Promise<number> {
+  if (!point || point.lat == null || point.lng == null) return 1;
+  const now = new Date();
+  const zones = await prisma.surgeZone.findMany({
+    where: {
+      isActive: true,
+      OR: [{ activeFrom: null }, { activeFrom: { lte: now } }],
+      AND: [{ OR: [{ activeTo: null }, { activeTo: { gte: now } }] }]
+    },
+    select: { centerLat: true, centerLng: true, radiusKm: true, multiplier: true }
+  });
+  let best = 1;
+  for (const z of zones) {
+    const d = haversineKm({ lat: point.lat, lng: point.lng }, { lat: z.centerLat, lng: z.centerLng });
+    if (d <= z.radiusKm && z.multiplier > best) best = z.multiplier;
+  }
+  return best;
+}
+
+/**
+ * The rider's tier surge-share bonus fraction from their lifetime stats. Returns
+ * 0 (BRONZE / unknown rider) when no profile is found.
+ */
+export async function resolveTierSurgeShareBonus(riderId?: string | null): Promise<number> {
+  if (!riderId) return 0;
+  const p = await prisma.riderProfile.findUnique({
+    where: { id: riderId },
+    select: { totalDeliveries: true, rating: true }
+  });
+  if (!p) return 0;
+  return tierSurgeShareBonus({ totalDeliveries: p.totalDeliveries ?? 0, rating: Number(p.rating ?? 0) });
+}
 
 interface ComputeOpts {
   /** Force the rain bonus on. Optional toggle in the dispatcher. */
@@ -102,6 +142,15 @@ export async function computeBasePayout(orderId: string, opts: ComputeOpts = {})
   });
   const { rule } = await getEffectivePayoutRule(opts.riderId);
 
+  // Surge is keyed on the delivery destination (where demand concentrates); the
+  // tier share comes from the claiming rider. Both fall back to neutral (1 / 0)
+  // when unavailable, so legacy callers without a riderId behave exactly as
+  // before.
+  const [surgeMultiplier, riderTierShare] = await Promise.all([
+    resolveSurgeMultiplier(order.address ? { lat: order.address.latitude, lng: order.address.longitude } : null),
+    resolveTierSurgeShareBonus(opts.riderId)
+  ]);
+
   return computeFromRule(rule, {
     distanceKm: distanceFor(order),
     placedAt: new Date(),
@@ -109,7 +158,9 @@ export async function computeBasePayout(orderId: string, opts: ComputeOpts = {})
     paymentMethod: order.paymentMethod,
     rainActive: opts.rainActive ?? false,
     activeMinutes: opts.activeMinutes ?? 0,
-    waitMinutes: opts.waitMinutes ?? 0
+    waitMinutes: opts.waitMinutes ?? 0,
+    surgeMultiplier,
+    tierSurgeShareBonus: riderTierShare
   });
 }
 
@@ -130,6 +181,18 @@ export interface CalcContext {
   rainActive?: boolean;
   activeMinutes?: number;
   waitMinutes?: number;
+  /**
+   * Active surge multiplier covering the delivery (e.g. 1.5 = +50%). 1 or less
+   * means no surge. Applied to the core delivery components (base + distance +
+   * per-minute) as a surge bonus line.
+   */
+  surgeMultiplier?: number;
+  /**
+   * The rider's tier surge-share bonus fraction (e.g. 0.20 = +20%). Scales the
+   * surge bonus only — higher tiers keep more of the surge uplift. Has no
+   * effect when there's no surge.
+   */
+  tierSurgeShareBonus?: number;
   /** Pass these in if you're computing payouts at end-of-day with a rider's stats. */
   riderTripsTodayBeforeThis?: number;
   riderTripsThisWeekBeforeThis?: number;
@@ -155,6 +218,9 @@ export interface CalcBreakdown {
   weeklyMilestoneBonus: number;
   waitTimeAmount: number;
   cancellationAdj: number;
+  surgeMultiplier: number;   // 1 when no surge
+  surgeBonus: number;        // extra ₹ from surge (incl. tier share), 0 when none
+  tierSurgeShareBonus: number; // fraction applied to surge uplift (0 = BRONZE)
   subtotal: number;          // sum before cap
   applied: { floor: number; ceiling: number };
   payout: number;            // final, after floor/ceiling
@@ -224,10 +290,22 @@ export function computeFromRule(rule: any, ctx: CalcContext): CalcBreakdown {
     cancellationAdj = -((100 - pct) / 100) * base;
   }
 
+  // Surge: a multiplier (>1) on the *core delivery effort* (base + distance +
+  // per-minute) gives a surge uplift. The rider's tier surge-share bonus then
+  // scales that uplift so higher tiers keep more of it. No surge → no bonus,
+  // and the tier share is irrelevant. We clamp the multiplier at 1 so a
+  // misconfigured <1 zone can never dock pay.
+  const surgeMultiplier = Math.max(1, ctx.surgeMultiplier ?? 1);
+  const tierShare = Math.max(0, ctx.tierSurgeShareBonus ?? 0);
+  const surgeCore = base + perKmAmount + longDistanceAmount + perMinuteAmount;
+  const surgeUplift = surgeCore * (surgeMultiplier - 1);
+  const surgeBonus = +(surgeUplift * (1 + tierShare)).toFixed(2);
+
   const subtotal =
     base + perKmAmount + longDistanceAmount + perMinuteAmount +
     peakBonus + lateNightBonus + weekendBonus + rainBonus + codFee + orderShare +
-    ratingBonus + dailyMilestoneBonus + weeklyMilestoneBonus + waitTimeAmount + cancellationAdj;
+    ratingBonus + dailyMilestoneBonus + weeklyMilestoneBonus + waitTimeAmount + cancellationAdj +
+    surgeBonus;
 
   const minP = num(r.minimumPerDelivery, 0);
   const maxP = num(r.maxPerDelivery, 0);
@@ -251,6 +329,9 @@ export function computeFromRule(rule: any, ctx: CalcContext): CalcBreakdown {
     weeklyMilestoneBonus,
     waitTimeAmount,
     cancellationAdj: +cancellationAdj.toFixed(2),
+    surgeMultiplier: +surgeMultiplier.toFixed(2),
+    surgeBonus,
+    tierSurgeShareBonus: tierShare,
     subtotal: +subtotal.toFixed(2),
     applied: { floor: minP, ceiling: maxP },
     payout: +payout.toFixed(2)

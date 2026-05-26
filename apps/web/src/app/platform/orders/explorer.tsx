@@ -1,12 +1,13 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DetailDrawer, DrawerSection } from '@/components/admin/detail-drawer';
-import { Search, Download, RefreshCw, ArrowUpRight, X, Loader2, Phone, MapPin, Bike, Clock, CheckCircle2, AlertTriangle, Star, MessageSquare } from 'lucide-react';
+import { Search, Download, RefreshCw, ArrowUpRight, X, Loader2, Phone, MapPin, Bike, Clock, CheckCircle2, AlertTriangle, Star, MessageSquare, Wallet, CreditCard, Undo2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const STATUS = ['ALL', 'RECEIVED', 'ACCEPTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'REFUNDED'] as const;
 const PAYMENTS = ['ALL', 'RAZORPAY', 'COD', 'WALLET', 'UPI'] as const;
@@ -161,10 +162,13 @@ export function OrdersExplorer({ initial, restaurants, filters }: { initial: Ord
 function OrderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true);
-    fetch(`/api/platform/orders/${id}`, { cache: 'no-store' }).then((r) => r.ok ? r.json() : null).then((d) => { setData(d); setLoading(false); });
+    return fetch(`/api/platform/orders/${id}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { setData(d); setLoading(false); });
   }, [id]);
+  useEffect(() => { load(); }, [load]);
 
   if (loading || !data) {
     return (
@@ -270,10 +274,12 @@ function OrderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           <ul className="divide-y text-sm">
             {o.refunds.map((r: any) => (
               <li key={r.id} className="p-3 flex items-center gap-3">
-                <div className="grid size-8 place-items-center rounded-lg bg-destructive/10 text-destructive shrink-0"><AlertTriangle className="size-4" /></div>
+                <div className="grid size-8 place-items-center rounded-lg bg-destructive/10 text-destructive shrink-0">
+                  {r.destination === 'WALLET' ? <Wallet className="size-4" /> : <CreditCard className="size-4" />}
+                </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-xs">{r.status}</div>
-                  <div className="text-[10px] text-muted-foreground">{r.reason ?? '—'}</div>
+                  <div className="font-medium text-xs">{r.destination === 'WALLET' ? 'To wallet' : 'To original payment'} · {r.status}</div>
+                  <div className="text-[10px] text-muted-foreground">{r.reason ?? '—'} · {new Date(r.createdAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</div>
                 </div>
                 <div className="font-semibold tabular-nums text-destructive">−₹{Number(r.amount).toLocaleString('en-IN')}</div>
               </li>
@@ -281,7 +287,119 @@ function OrderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           </ul>
         </DrawerSection>
       )}
+
+      <DrawerSection title="Issue a refund">
+        <RefundPanel order={o} onDone={load} />
+      </DrawerSection>
     </DetailDrawer>
+  );
+}
+
+function RefundPanel({ order, onDone }: { order: any; onDone: () => void }) {
+  const REFUNDABLE = ['DELIVERED', 'DELIVERY_FAILED', 'CANCELLED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN', 'REFUND_PENDING', 'REFUND_INITIATED'];
+  const alreadyRefunded = (order.refunds ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
+  const remaining = Math.max(0, Math.round((Number(order.total) - alreadyRefunded) * 100) / 100);
+  const hasCaptured = (order.payments ?? []).some((p: any) => p.status === 'CAPTURED');
+
+  const [amount, setAmount] = useState<number>(remaining);
+  const [destination, setDestination] = useState<'WALLET' | 'ORIGINAL_PAYMENT'>('WALLET');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  if (!REFUNDABLE.includes(order.status)) {
+    return <div className="p-4 text-xs text-muted-foreground">This order is not in a refundable state.</div>;
+  }
+  if (remaining <= 0) {
+    return <div className="p-4 text-xs text-muted-foreground">Fully refunded — nothing left to refund.</div>;
+  }
+
+  async function submit() {
+    if (!(amount > 0) || amount > remaining) {
+      toast.error(`Enter an amount between ₹1 and ₹${remaining.toLocaleString('en-IN')}.`);
+      return;
+    }
+    if (destination === 'ORIGINAL_PAYMENT' && !hasCaptured) {
+      toast.error('No captured online payment to refund — use wallet.');
+      return;
+    }
+    const ok = window.confirm(
+      `Refund ₹${amount.toLocaleString('en-IN')} to ${destination === 'WALLET' ? "the customer's wallet" : 'the original payment method'}? This cannot be undone.`
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/platform/orders/${order.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount, destination, reason: reason || undefined })
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok) {
+        toast.error(j.message || 'Refund failed.');
+        return;
+      }
+      toast.success(destination === 'WALLET' ? `₹${amount.toLocaleString('en-IN')} credited to wallet` : `₹${amount.toLocaleString('en-IN')} refunded to original payment`);
+      setReason('');
+      onDone();
+    } catch {
+      toast.error('Refund failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="p-4 space-y-3">
+      <div className="text-[11px] text-muted-foreground">
+        Refundable balance: <strong className="text-foreground">₹{remaining.toLocaleString('en-IN')}</strong>
+        {alreadyRefunded > 0 && <> · already refunded ₹{alreadyRefunded.toLocaleString('en-IN')}</>}
+      </div>
+
+      {/* Destination — wallet is the default per platform policy. */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => setDestination('WALLET')}
+          className={`flex items-center gap-2 rounded-lg border p-2.5 text-left text-xs transition-colors ${destination === 'WALLET' ? 'border-primary bg-primary/5' : 'hover:bg-accent'}`}
+        >
+          <Wallet className="size-4 text-primary shrink-0" />
+          <div>
+            <div className="font-medium">Customer wallet</div>
+            <div className="text-[10px] text-muted-foreground">Instant · default</div>
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setDestination('ORIGINAL_PAYMENT')}
+          disabled={!hasCaptured}
+          className={`flex items-center gap-2 rounded-lg border p-2.5 text-left text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${destination === 'ORIGINAL_PAYMENT' ? 'border-primary bg-primary/5' : 'hover:bg-accent'}`}
+        >
+          <CreditCard className="size-4 text-primary shrink-0" />
+          <div>
+            <div className="font-medium">Original payment</div>
+            <div className="text-[10px] text-muted-foreground">{hasCaptured ? 'Via gateway' : 'No online payment'}</div>
+          </div>
+        </button>
+      </div>
+
+      <div className="flex gap-2">
+        <Input
+          type="number"
+          min={1}
+          max={remaining}
+          step={1}
+          value={amount || ''}
+          onChange={(e) => setAmount(Number(e.target.value) || 0)}
+          placeholder="Amount"
+          className="w-32 h-9"
+        />
+        <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (logged)" className="h-9 flex-1" />
+      </div>
+      <Button size="sm" disabled={busy} onClick={submit} className="w-full">
+        {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Undo2 className="size-3.5" />}
+        Refund ₹{(amount || 0).toLocaleString('en-IN')} {destination === 'WALLET' ? 'to wallet' : 'to original payment'}
+      </Button>
+    </div>
   );
 }
 

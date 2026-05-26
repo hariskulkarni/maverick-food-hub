@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { transitionOrder } from '@/server/orders';
+import { applyIncentivesForDelivery } from '@/server/rider-payments';
 import { normalizeOtp } from '@/lib/utils';
 
 /**
@@ -100,5 +101,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     })
   ]);
   await transitionOrder(a.order.id, 'DELIVERED' as any, { actorId: session.user.id });
-  return Response.json({ ok: true });
+
+  // Advance incentive progress and pay out any newly-achieved slabs. Best-effort
+  // — this never blocks or fails the delivery confirmation.
+  const incentives = await applyIncentivesForDelivery(a.riderId);
+  const achieved = incentives.filter((i) => i.bonusCredited > 0);
+
+  return Response.json({ ok: true, incentives, achievedBonuses: achieved });
 }

@@ -46,7 +46,20 @@ function useSignupBonusPreview(cartSubtotal: number) {
 export function CartClient({ branchId }: { branchId: string | null }) {
   const { lines, setQty, remove, subtotal } = useCart();
   const [notes, setNotes] = useState('');
-  const [offerSavings, setOfferSavings] = useState(0);
+  // The cart mounts TWO <OffersSection> instances — one in the mobile summary
+  // accordion (md:hidden) and one in the desktop sidebar (hidden md:block).
+  // Both stay mounted at every viewport (CSS display:none doesn't unmount a
+  // React subtree), and each owns its own coupon state. If they both wrote to a
+  // single `offerSavings`, the still-mounted, non-interacted instance would
+  // clobber the interacted one's value on re-render — which made the savings
+  // celebration fire only on whichever instance happened to "win" the race
+  // (mobile, in practice). We keep a separate value per instance and use the
+  // MAX: the auto-applied portion is identical across both, and only the
+  // instance the user actually interacted with carries the applied coupon, so
+  // the max is always the correct savings to display + celebrate.
+  const [offerSavingsMobile, setOfferSavingsMobile] = useState(0);
+  const [offerSavingsDesktop, setOfferSavingsDesktop] = useState(0);
+  const offerSavings = Math.max(offerSavingsMobile, offerSavingsDesktop);
   const bonus = useSignupBonusPreview(subtotal);
 
   // The branch the cart's items actually belong to. Lines carry their branchId
@@ -184,7 +197,7 @@ export function CartClient({ branchId }: { branchId: string | null }) {
             <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
           </summary>
           <div className="px-4 pb-4 space-y-4">
-            <OffersSection branchId={effectiveBranchId} onSavings={setOfferSavings} />
+            <OffersSection branchId={effectiveBranchId} onSavings={setOfferSavingsMobile} />
             <dl className="space-y-2 text-sm">
               <Row label="Subtotal" value={money(subtotal)} />
               {bonus && bonus.appliedAmount > 0 && (
@@ -224,7 +237,7 @@ export function CartClient({ branchId }: { branchId: string | null }) {
 
       {/* Desktop sticky sidebar (md+) */}
       <aside className="hidden md:block md:sticky md:top-20 self-start space-y-4">
-        <OffersSection branchId={effectiveBranchId} onSavings={setOfferSavings} />
+        <OffersSection branchId={effectiveBranchId} onSavings={setOfferSavingsDesktop} />
 
         <Card>
           <CardContent className="p-5">

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { PartyPopper, Sparkles, X } from 'lucide-react';
 import { money } from '@/lib/utils';
 
@@ -49,8 +50,13 @@ function makePieces(seed: number): Piece[] {
 export function CartSavingsCelebration({ savings }: { savings: number }) {
   const [open, setOpen] = useState(false);
   const [burst, setBurst] = useState(0);
+  const [mounted, setMounted] = useState(false);
   const shownMax = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Portal target only exists on the client. Gate on mount so SSR renders
+  // nothing and we never call createPortal with an undefined document.
+  useEffect(() => setMounted(true), []);
 
   const trigger = useCallback(() => {
     setBurst((b) => b + 1);
@@ -98,9 +104,9 @@ export function CartSavingsCelebration({ savings }: { savings: number }) {
         <Sparkles className="size-4 shrink-0 text-pop transition-transform group-hover:scale-110" />
       </button>
 
-      {open && (
+      {open && mounted && createPortal(
         <div
-          className="savings-overlay fixed inset-0 z-[60] flex items-center justify-center bg-foreground/30 p-4 backdrop-blur-sm"
+          className="savings-overlay fixed inset-0 z-[100] flex items-center justify-center bg-foreground/30 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-label="Savings celebration"
@@ -165,7 +171,8 @@ export function CartSavingsCelebration({ savings }: { savings: number }) {
               Sweet, let&apos;s go!
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

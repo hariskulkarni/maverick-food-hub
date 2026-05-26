@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
+import { audit } from '@/server/audit';
+import { auth } from '@/server/auth';
 
 const Body = z.object({
   name: z.string().min(2),
@@ -55,7 +57,11 @@ const Body = z.object({
 
 export async function POST(req: NextRequest) {
   await requireSuperAdmin();
+  const session = await auth();
   const data = Body.parse(await req.json());
+
+  // Snapshot the rule being superseded (for the audit trail).
+  const prevActive = await prisma.deliveryPayoutRule.findFirst({ where: { isActive: true }, select: { id: true, name: true } });
 
   // De-activate current rule(s)
   await prisma.deliveryPayoutRule.updateMany({ where: { isActive: true }, data: { isActive: false, effectiveTo: new Date() } });
@@ -87,5 +93,16 @@ export async function POST(req: NextRequest) {
       effectiveTo: data.effectiveTo ? new Date(data.effectiveTo) : null
     }
   });
+
+  await audit('payout.rule.publish', {
+    actorId: session?.user?.id,
+    actorRole: session?.user?.role,
+    entityType: 'DeliveryPayoutRule',
+    entityId: rule.id,
+    before: prevActive ? { id: prevActive.id, name: prevActive.name } : null,
+    after: { id: rule.id, name: rule.name, baseAmount: data.baseAmount, perKmAmount: data.perKmAmount },
+    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+  });
+
   return Response.json(rule);
 }

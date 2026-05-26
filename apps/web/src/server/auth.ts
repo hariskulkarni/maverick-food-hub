@@ -71,6 +71,11 @@ export const authConfig: NextAuthConfig = {
         // We need to know whether this is a *new* customer to decide whether
         // to issue a signup bonus, so check before upserting.
         const existing = await prisma.user.findUnique({ where: { phone } });
+        // Suspended accounts cannot log in (a super-admin has blocked them).
+        if (existing?.suspendedAt) {
+          await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: 'suspended', provider: 'phone-otp' } }).catch(() => {});
+          return null;
+        }
         if (!existing && !allowCustomerSelfSignup()) {
           // Locked-down mode: an unregistered phone cannot create an account by
           // logging in. (Even though the OTP was valid.) They must be onboarded
@@ -121,6 +126,12 @@ export const authConfig: NextAuthConfig = {
           return null;
         }
         if (user.role !== Role.ADMIN && user.role !== Role.KITCHEN && user.role !== Role.SUPER_ADMIN) return null;
+        // Suspended accounts cannot log in (a super-admin has blocked them).
+        if (user.suspendedAt) {
+          recordLoginFailure(email, lockoutMinutes);
+          await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'suspended' } }).catch(() => {});
+          return null;
+        }
 
         const ok = await argon2.verify(user.passwordHash, password);
         if (!ok) {

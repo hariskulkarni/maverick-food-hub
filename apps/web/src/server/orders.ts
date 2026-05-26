@@ -702,6 +702,12 @@ export async function transitionOrder(orderId: string, next: OrderStatus, opts: 
       stamp.cancelledAt = new Date(); break;
   }
 
+  // If THIS transition is what flips a rider's assignment to DELIVERED (e.g. an
+  // admin force-deliver, not the rider's own deliver route which already
+  // flipped it), capture the riderId so we can advance incentive progress after
+  // the txn commits. Left null in the common rider-app path.
+  let forceDeliveredRiderId: string | null = null;
+
   const updated = await prisma.$transaction(async (tx) => {
     const u = await tx.order.update({
       where: { id: orderId },
@@ -721,10 +727,23 @@ export async function transitionOrder(orderId: string, next: OrderStatus, opts: 
       if (a && a.status !== AssignmentStatus.DELIVERED) {
         await tx.riderAssignment.update({ where: { id: a.id }, data: { status: 'DELIVERED', deliveredAt: new Date() } });
         await tx.riderProfile.update({ where: { id: a.riderId }, data: { currentLoad: { decrement: 1 }, totalDeliveries: { increment: 1 } } });
+        forceDeliveredRiderId = a.riderId;
       }
     }
     return u;
   });
+
+  // Advance incentive progress for force-delivered orders. The rider's own
+  // deliver route handles this for the normal path; here we cover admin/system
+  // deliveries. Best-effort — import lazily to avoid a module cycle.
+  if (forceDeliveredRiderId) {
+    try {
+      const { applyIncentivesForDelivery } = await import('./rider-payments');
+      await applyIncentivesForDelivery(forceDeliveredRiderId);
+    } catch {
+      /* incentives must never break a transition */
+    }
+  }
 
   publish(`order:${orderId}`, { kind: 'status', orderId, status: next, at: new Date().toISOString() });
   publish(`branch:${order.branchId}:orders`, { kind: 'status', orderId, status: next, at: new Date().toISOString() });

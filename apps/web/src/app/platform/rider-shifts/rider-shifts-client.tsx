@@ -5,13 +5,16 @@
  * operational visibility view.
  */
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { fmtDate } from '@/lib/utils';
-import { CalendarClock, MapPin } from 'lucide-react';
+import { CalendarClock, MapPin, AlarmClockOff, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 type ShiftStatus = 'BOOKED' | 'STARTED' | 'COMPLETED' | 'MISSED' | 'CANCELLED';
 
@@ -36,9 +39,29 @@ function todayStr() {
 }
 
 export function RiderShiftsClient({ initial }: { initial: ShiftRow[] }) {
+  const router = useRouter();
   const [status, setStatus] = useState<ShiftStatus | 'ALL'>('ALL');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [sweeping, setSweeping] = useState(false);
+
+  async function runSweep() {
+    setSweeping(true);
+    try {
+      const r = await fetch('/api/platform/jobs/rider-shift-missed/run', { method: 'POST' });
+      if (!r.ok) {
+        toast.error(`Sweep failed: ${await r.text()}`);
+        return;
+      }
+      const j = await r.json();
+      toast.success(j.flipped > 0 ? `${j.flipped} no-show shift${j.flipped === 1 ? '' : 's'} marked MISSED` : 'No overdue shifts found');
+      router.refresh();
+    } catch {
+      toast.error('Sweep failed');
+    } finally {
+      setSweeping(false);
+    }
+  }
 
   const filtered = useMemo(() => {
     let r = initial.slice();
@@ -69,9 +92,14 @@ export function RiderShiftsClient({ initial }: { initial: ShiftRow[] }) {
               <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">To date</Label>
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 mt-1 w-[160px]" />
             </div>
-            <span className="text-xs text-muted-foreground ml-auto">
-              {filtered.length} shift{filtered.length === 1 ? '' : 's'}
-            </span>
+            <div className="ml-auto flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">
+                {filtered.length} shift{filtered.length === 1 ? '' : 's'}
+              </span>
+              <Button size="sm" variant="outline" disabled={sweeping} onClick={runSweep}>
+                {sweeping ? <Loader2 className="size-3.5 animate-spin" /> : <AlarmClockOff className="size-3.5" />} Run no-show sweep
+              </Button>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground mr-1">Status:</span>
