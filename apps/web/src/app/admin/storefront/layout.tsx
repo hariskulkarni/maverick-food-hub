@@ -5,32 +5,38 @@ import { CmsTabs } from './cms-tabs';
 export const dynamic = 'force-dynamic';
 
 /**
- * Storefront CMS hub shell. Renders the shared header, the umbrella restaurant
- * picker (so a group admin can choose which outlet they're managing), and the
- * tab bar (Design · Menu · Integrations · Reports). Each tab is a nested route
- * rendered as {children}.
+ * Storefront CMS hub shell — the restaurant's full control center. Renders the
+ * shared header, the umbrella restaurant picker (so a group admin can choose
+ * which outlet they're managing), and the top-level tab bar. Each tab is a
+ * nested route (some are groups with their own sub-tab bar) rendered as
+ * {children}. Full-width so wide operational views (orders, live tracking,
+ * dashboard) get room; narrow forms self-constrain their own width.
  */
 export default async function StorefrontCmsLayout({ children }: { children: React.ReactNode }) {
   const restaurant = await requireRestaurant();
   const access = await accessibleRestaurants();
 
   return (
-    <div className="p-6 space-y-5 max-w-5xl">
-      <header>
-        <h1 className="display text-3xl font-semibold">Storefront CMS</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Your restaurant control center — design your page, manage the menu, connect integrations, and pull reports.
-          Public page: <span className="font-mono">/r/{restaurant.slug}</span>.
-        </p>
-      </header>
+    <div>
+      <div className="px-6 pt-6 space-y-4">
+        <header>
+          <h1 className="display text-3xl font-semibold">Storefront CMS</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Your restaurant control center — page design, menu, promotions, operations, team, insights and integrations.
+            Public page: <span className="font-mono">/r/{restaurant.slug}</span>.
+          </p>
+        </header>
 
-      {access.flat.length > 1 && (
-        <CmsRestaurantPicker groups={access.groups} activeId={access.activeId} />
-      )}
+        {access.flat.length > 1 && (
+          <div className="max-w-md">
+            <CmsRestaurantPicker groups={access.groups} activeId={access.activeId} />
+          </div>
+        )}
 
-      <CmsTabs />
+        <CmsTabs />
+      </div>
 
-      <div>{children}</div>
+      {children}
     </div>
   );
 }

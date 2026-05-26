@@ -2,25 +2,30 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Paintbrush, UtensilsCrossed, Plug, BarChart3 } from 'lucide-react';
+import { Paintbrush, UtensilsCrossed, BadgePercent, ClipboardList, Users, BarChart3, Plug } from 'lucide-react';
 
 /**
- * Tab bar for the Storefront CMS hub. Each tab is its own nested route under
- * /admin/storefront, so each loads only its own data (lazy by route). The
- * active tab is resolved from the current pathname.
+ * Top-level tab bar for the Storefront CMS hub. Each tab is its own nested
+ * route under /admin/storefront (some are groups with a second-level sub-tab
+ * bar), so each loads only its own data. The active tab is resolved from the
+ * current pathname.
  */
 const TABS = [
   { href: '/admin/storefront', label: 'Design', icon: Paintbrush, exact: true },
-  { href: '/admin/storefront/menu', label: 'Menu', icon: UtensilsCrossed, exact: false },
-  { href: '/admin/storefront/integrations', label: 'Integrations', icon: Plug, exact: false },
-  { href: '/admin/storefront/reports', label: 'Reports', icon: BarChart3, exact: false },
-];
+  { href: '/admin/storefront/menu', label: 'Menu', icon: UtensilsCrossed },
+  { href: '/admin/storefront/promotions', label: 'Promotions', icon: BadgePercent },
+  { href: '/admin/storefront/operations', label: 'Operations', icon: ClipboardList },
+  { href: '/admin/storefront/team', label: 'Team', icon: Users },
+  { href: '/admin/storefront/insights', label: 'Insights', icon: BarChart3 },
+  { href: '/admin/storefront/integrations', label: 'Integrations', icon: Plug },
+] as const;
 
 export function CmsTabs() {
   const pathname = usePathname();
   return (
     <nav className="flex gap-1 overflow-x-auto border-b -mx-1 px-1 no-scrollbar">
-      {TABS.map(({ href, label, icon: Icon, exact }) => {
+      {TABS.map(({ href, label, icon: Icon, ...rest }) => {
+        const exact = 'exact' in rest && rest.exact;
         const active = exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link

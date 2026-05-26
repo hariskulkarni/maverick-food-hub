@@ -20,11 +20,13 @@ export default async function StorefrontCmsPage() {
   const categories = cats.map((c) => ({ id: c.id, name: c.name, sortOrder: c.sortOrder, isActive: c.isActive, itemCount: c._count.menuItems }));
 
   return (
-    <StorefrontEditor
-      initialConfig={config}
-      categories={categories}
-      slug={restaurant.slug}
-      coverImageUrl={restaurant.coverImageUrl ?? null}
-    />
+    <div className="p-6 max-w-5xl">
+      <StorefrontEditor
+        initialConfig={config}
+        categories={categories}
+        slug={restaurant.slug}
+        coverImageUrl={restaurant.coverImageUrl ?? null}
+      />
+    </div>
   );
 }

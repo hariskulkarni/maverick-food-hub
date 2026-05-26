@@ -4,5 +4,9 @@ export const metadata = { title: 'Admin · Storefront CMS · Menu' };
 export const dynamic = 'force-dynamic';
 
 export default async function CmsMenuTab() {
-  return <MenuWorkspace />;
+  return (
+    <div className="p-6">
+      <MenuWorkspace />
+    </div>
+  );
 }
