@@ -46,8 +46,10 @@
 
     --radius: 1rem;
 
-    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-    --font-display: 'Bricolage Grotesque', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+    /* One family everywhere (Swiggy-style): headings reuse the body font at
+       heavier weights. `--font-sans` is overridden on <html> by next/font. */
+    --font-display: var(--font-sans);
   }
 
   .dark {
