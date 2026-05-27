@@ -137,9 +137,17 @@ function OfferCard({ offer }: { offer: OfferCardData }) {
 
       {/* Optional banner image (BOGO / promo). Sits above the content. */}
       {offer.imageUrl && (
-        <div className="relative h-28 w-full overflow-hidden">
+        <div className="relative h-28 w-full overflow-hidden" style={{ height: '7rem' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={offer.imageUrl} alt={offer.name} className="absolute inset-0 h-full w-full object-cover" />
+          {/* Inline styles mirror the classes so the banner is pinned + cover-fit
+              even during a FOUC / soft-nav window where Tailwind hasn't applied,
+              instead of painting at full intrinsic size. */}
+          <img
+            src={offer.imageUrl}
+            alt={offer.name}
+            className="absolute inset-0 h-full w-full object-cover"
+            style={{ position: 'absolute', inset: 0, height: '100%', width: '100%', objectFit: 'cover' }}
+          />
           <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
         </div>
       )}

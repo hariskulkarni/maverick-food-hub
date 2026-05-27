@@ -250,10 +250,10 @@ function StepIdentity({ data, update }: { data: FormData; update: <K extends key
     <div className="space-y-5 reveal-stagger">
       {/* Live preview */}
       <div className="relative overflow-hidden rounded-xl border bg-muted">
-        <div className="relative h-32 bg-muted">
+        <div className="relative h-32 bg-muted" style={{ height: '8rem' }}>
           {data.coverImageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={data.coverImageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            <img src={data.coverImageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ position: 'absolute', inset: 0, height: '100%', width: '100%', objectFit: 'cover' }} />
           ) : (
             <div className="absolute inset-0 grid place-items-center text-muted-foreground/40 text-xs">Cover image preview</div>
           )}

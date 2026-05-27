@@ -705,7 +705,7 @@ function TipCard({ order }: { order: any }) {
 
         {order.assignment?.deliveryPhotoUrl && (
           <div className="mt-3 overflow-hidden rounded-xl border">
-            <img src={order.assignment.deliveryPhotoUrl} alt="Delivery proof" className="w-full h-40 object-cover" />
+            <img src={order.assignment.deliveryPhotoUrl} alt="Delivery proof" className="w-full h-40 object-cover" style={{ width: '100%', height: '10rem', objectFit: 'cover' }} />
             <p className="text-xs text-muted-foreground p-2 bg-card">📸 Photo taken by {order.assignment.rider?.user?.name ?? 'rider'} at handoff</p>
           </div>
         )}

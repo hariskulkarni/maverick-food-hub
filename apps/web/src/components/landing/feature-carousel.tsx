@@ -90,7 +90,15 @@ export function FeatureCarousel() {
                     and scales fluidly with the viewport. The slide's brand
                     gradient sits behind the image so any pillar/letter-boxing
                     (e.g. a banner that isn't perfectly 2:1) blends in on-brand. */}
-                <div className={`relative aspect-[2/1] w-full overflow-hidden bg-gradient-to-br ${s.fallback}`}>
+                {/* Inline aspectRatio (not just the Tailwind class) so the box
+                    is locked to 2:1 even during a brief FOUC / soft-nav window
+                    where the stylesheet hasn't applied yet. Without this the
+                    raw <img> below would paint at its full intrinsic size
+                    (~2600px) and fill the whole viewport until a hard refresh. */}
+                <div
+                  className={`relative aspect-[2/1] w-full overflow-hidden bg-gradient-to-br ${s.fallback}`}
+                  style={{ aspectRatio: '2 / 1' }}
+                >
                   {failed[i] ? (
                     <div className="flex h-full w-full items-center justify-center p-6 text-center">
                       <span className="display text-lg md:text-3xl font-extrabold text-white drop-shadow">
@@ -104,6 +112,10 @@ export function FeatureCarousel() {
                       alt={s.alt}
                       loading={i === 0 ? 'eager' : 'lazy'}
                       className="absolute inset-0 h-full w-full object-contain"
+                      // Inline styles mirror the classes so the image stays
+                      // pinned to (and contained within) the 2:1 box even before
+                      // Tailwind applies — kills the "giant image until refresh".
+                      style={{ position: 'absolute', inset: 0, height: '100%', width: '100%', objectFit: 'contain' }}
                       onError={() => setFailed((f) => ({ ...f, [i]: true }))}
                     />
                   )}
