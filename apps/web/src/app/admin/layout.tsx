@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { currentRestaurant, accessibleRestaurants } from '@/server/tenancy';
-import { LayoutDashboard, ScrollText, Utensils, BarChart3, Tag, Settings, Building2, Radio, Sparkles, Layers, Clock, Trophy, Package, Mail, History, MessageSquare, Bike, ShieldAlert, MessagesSquare, CalendarClock, Armchair, Gift, Paintbrush } from 'lucide-react';
+import { Settings, Paintbrush } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { RestaurantSwitcher } from './restaurant-switcher';
 
@@ -43,28 +43,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           )}
           <div className="text-xs text-muted-foreground mt-0.5">Restaurant admin</div>
         </div>
+        {/* The Storefront CMS hub now hosts every working surface — page design,
+            menu, promotions, operations (dashboard/orders/live/reservations/
+            tables/branches), team, insights and integrations — as grouped tabs.
+            The sidebar is intentionally minimal so nothing is duplicated. */}
         <nav className="flex-1 p-3 space-y-1 text-sm">
-          <NavLink href="/admin" icon={LayoutDashboard}>Dashboard</NavLink>
-          <NavLink href="/admin/orders" icon={ScrollText}>Orders</NavLink>
-          <NavLink href="/admin/reservations" icon={CalendarClock}>Reservations</NavLink>
-          <NavLink href="/admin/tables" icon={Armchair}>Tables</NavLink>
-          <NavLink href="/admin/live" icon={Radio}>Live tracking</NavLink>
-          <NavLink href="/admin/menu" icon={Utensils}>Menu</NavLink>
-          <NavLink href="/admin/combos" icon={Package}>Combos</NavLink>
-          <NavLink href="/admin/coupons" icon={Tag}>Coupons</NavLink>
-          {restaurant.allowFreebies && <NavLink href="/admin/freebies" icon={Gift}>Freebies</NavLink>}
-          <NavLink href="/admin/offers" icon={Sparkles}>Offers</NavLink>
-          <NavLink href="/admin/coupon-campaigns" icon={Mail}>Coupon Campaigns</NavLink>
-          <NavLink href="/admin/happy-hours" icon={Clock}>Happy Hours</NavLink>
-          <NavLink href="/admin/challenges" icon={Trophy}>Challenges</NavLink>
-          <NavLink href="/admin/cross-sell" icon={Layers}>Cross-sell</NavLink>
-          <NavLink href="/admin/branches" icon={Building2}>Branches</NavLink>
-          <NavLink href="/admin/riders" icon={Bike}>Dedicated Riders</NavLink>
-          <NavLink href="/admin/safety" icon={ShieldAlert}>Rider Safety</NavLink>
-          <NavLink href="/admin/messages" icon={MessagesSquare}>Messages</NavLink>
-          <NavLink href="/admin/reports" icon={BarChart3}>Reports</NavLink>
-          <NavLink href="/admin/activity" icon={History}>Activity</NavLink>
-          <NavLink href="/admin/feedback" icon={MessageSquare}>Feedback</NavLink>
           <NavLink href="/admin/storefront" icon={Paintbrush}>Storefront CMS</NavLink>
           <NavLink href="/admin/settings" icon={Settings}>Settings</NavLink>
         </nav>
