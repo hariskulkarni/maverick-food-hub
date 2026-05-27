@@ -30,12 +30,12 @@ export const DISCOVERY_BANNERS: DiscoveryBanner[] = [
   },
   {
     src: '/banners/discovery-3.jpg',
-    alt: 'Straight off the grill — smoky barbeque, delivered hot',
-    fallback: 'from-[#b3340a] via-[#e0531f] to-[#1a1a1a]'
+    alt: 'Wok & Sizzler — wok-tossed happiness in every bite, now just a direct order away',
+    fallback: 'from-[#5a0f12] via-[#7a1d10] to-[#e0531f]'
   },
   {
     src: '/banners/discovery-4.jpg',
-    alt: 'Hearty bowls, big on flavour — your favourites, one tap away',
-    fallback: 'from-[#0f8a6a] via-[#1aa37a] to-[#ffb020]'
+    alt: 'Combo Nation — more taste, more value, one perfect combo',
+    fallback: 'from-[#e07a1f] via-[#c0392b] to-[#1f6f54]'
   }
 ];
