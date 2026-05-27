@@ -7,6 +7,7 @@ import { money } from '@/lib/utils';
 import { ChartsClient } from './charts-client';
 import { ArrowRight, ScrollText, Truck, Wallet, Users, History, Network, Info } from 'lucide-react';
 import { requireRestaurant } from '@/server/tenancy';
+import { NoBranchNotice } from './no-branch-notice';
 import {
   resolveGroupReport, groupKpis, groupSalesSeries, groupPaymentMixToday, childBreakdownToday,
   type ChildBreakdownRow,
@@ -17,7 +18,8 @@ export const metadata = { title: 'Admin · Dashboard' };
 export default async function AdminDashboardPage() {
   const session = await auth();
   const restaurant = await requireRestaurant();
-  const branch = await prisma.branch.findFirstOrThrow({ where: { restaurantId: restaurant.id, isActive: true }, orderBy: { createdAt: 'asc' } });
+  const branch = await prisma.branch.findFirst({ where: { restaurantId: restaurant.id, isActive: true }, orderBy: { createdAt: 'asc' } });
+  if (!branch) return <NoBranchNotice />;
 
   // Group scope: when this restaurant is a parent with rollup enabled, headline
   // metrics span every branch in the group; otherwise scope to the single branch.

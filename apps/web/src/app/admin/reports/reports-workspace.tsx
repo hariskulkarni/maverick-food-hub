@@ -7,6 +7,7 @@ import { money } from '@/lib/utils';
 import { ReportRangePicker } from '@/app/_components/report-range-picker';
 import { resolveGroupReport, groupSalesSeries, childBreakdownRange } from './_group-metrics';
 import { Network, Info } from 'lucide-react';
+import { NoBranchNotice } from '../no-branch-notice';
 
 /**
  * ReportsWorkspace — the full reporting surface: a custom date-range report
@@ -28,7 +29,8 @@ export const REPORTS = [
 
 export async function ReportsWorkspace({ showHeader = true }: { showHeader?: boolean }) {
   const restaurant = await requireRestaurant();
-  const branch = await prisma.branch.findFirstOrThrow({ where: { restaurantId: restaurant.id, isActive: true }, orderBy: { createdAt: 'asc' } });
+  const branch = await prisma.branch.findFirst({ where: { restaurantId: restaurant.id, isActive: true }, orderBy: { createdAt: 'asc' } });
+  if (!branch) return <NoBranchNotice />;
 
   // Group scope: roll the sales chart + per-restaurant breakdown up across the
   // group when this is a parent with rollup enabled; otherwise stay single-branch.

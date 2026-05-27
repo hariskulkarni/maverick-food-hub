@@ -3,6 +3,7 @@ import { requireRestaurant } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { redirect } from 'next/navigation';
 import { CombosManager } from './combos-manager';
+import { NoBranchNotice } from '../no-branch-notice';
 
 export const metadata = { title: 'Admin · Combos' };
 export const dynamic = 'force-dynamic';
@@ -15,10 +16,11 @@ export default async function AdminCombosPage() {
   const restaurant = await requireRestaurant();
   // Combos live under branches; for now we operate against the first active
   // branch — matching the rest of the admin surface (menu, kitchen, etc.).
-  const branch = await prisma.branch.findFirstOrThrow({
+  const branch = await prisma.branch.findFirst({
     where: { restaurantId: restaurant.id, isActive: true },
     orderBy: { createdAt: 'asc' }
   });
+  if (!branch) return <NoBranchNotice />;
 
   const combos = await prisma.combo.findMany({
     where: { branchId: branch.id },

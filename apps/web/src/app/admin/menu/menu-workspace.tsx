@@ -3,6 +3,7 @@ import { requireRestaurant } from '@/server/tenancy';
 import { MenuManager } from './menu-manager';
 import { ImportExportPanel } from './import-export-panel';
 import { isCategoryAvailableNow } from '@/server/category-availability';
+import { NoBranchNotice } from '../no-branch-notice';
 
 /**
  * MenuWorkspace — the full menu management surface (bulk import/export +
@@ -15,10 +16,11 @@ import { isCategoryAvailableNow } from '@/server/category-availability';
  */
 export async function MenuWorkspace() {
   const restaurant = await requireRestaurant();
-  const branch = await prisma.branch.findFirstOrThrow({
+  const branch = await prisma.branch.findFirst({
     where: { restaurantId: restaurant.id, isActive: true },
     orderBy: { createdAt: 'asc' },
   });
+  if (!branch) return <NoBranchNotice />;
   // Include availability rows so the schedule editor opens pre-populated
   // and the row badge can resolve current status without a follow-up fetch.
   const categories = await prisma.category.findMany({
