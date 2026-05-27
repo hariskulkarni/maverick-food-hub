@@ -39,14 +39,19 @@ interface Props {
 interface SearchHit { lat: number; lng: number; displayName: string }
 
 // Saffron 🏠 branch pin (matches the rider map's branch-pin treatment).
-const branchIcon = L.divIcon({
-  html: `
-    <div style="display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:#f97316;color:white;font-size:18px;box-shadow:0 6px 14px rgba(249,115,22,.45);border:2px solid white;cursor:grab">🏠</div>
-  `,
-  className: '',
-  iconSize: [38, 38],
-  iconAnchor: [19, 19]
-});
+// Built lazily inside the map-init effect — NOT at module scope — because
+// L.divIcon() touches `window`, which would crash server-side rendering when
+// this client component is evaluated on the server (e.g. the Settings page).
+function makeBranchIcon() {
+  return L.divIcon({
+    html: `
+      <div style="display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:#f97316;color:white;font-size:18px;box-shadow:0 6px 14px rgba(249,115,22,.45);border:2px solid white;cursor:grab">🏠</div>
+    `,
+    className: '',
+    iconSize: [38, 38],
+    iconAnchor: [19, 19]
+  });
+}
 
 const DEFAULT_CENTER = { lat: 16.3067, lng: 80.4365 }; // Guntur
 
@@ -83,7 +88,7 @@ export function BranchLocationPicker({ initial, onChange, height = '360px' }: Pr
       maxZoom: 19
     }).addTo(map);
 
-    const m = L.marker([start.lat, start.lng], { icon: branchIcon, draggable: true }).addTo(map);
+    const m = L.marker([start.lat, start.lng], { icon: makeBranchIcon(), draggable: true }).addTo(map);
     markerRef.current = m;
     if (!coords) m.setOpacity(0.6); // ghosted until the user actually picks a spot
 

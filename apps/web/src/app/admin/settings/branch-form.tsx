@@ -7,7 +7,14 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Save, MapPin, ExternalLink, ChevronDown, ShieldCheck, AlertTriangle, FileCheck2 } from 'lucide-react';
-import { BranchLocationPicker, type BranchLocationChange } from '@/components/branch-location-picker';
+import dynamic from 'next/dynamic';
+import type { BranchLocationChange } from '@/components/branch-location-picker';
+// Load the Leaflet map picker client-side only — Leaflet references `window`,
+// so server-rendering it crashes the Settings page ("window is not defined").
+const BranchLocationPicker = dynamic(
+  () => import('@/components/branch-location-picker').then((m) => m.BranchLocationPicker),
+  { ssr: false, loading: () => <div className="h-[360px] w-full animate-pulse rounded-xl border bg-muted" /> }
+);
 import { ImageUploader } from '@/components/image-uploader';
 import { licenseStatus, licenseStatusLabel } from '@/server/food-license';
 
