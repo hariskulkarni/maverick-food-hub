@@ -2,21 +2,20 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Paintbrush, UtensilsCrossed, BadgePercent, ClipboardList, Users, BarChart3, Plug } from 'lucide-react';
+import { Paintbrush, UtensilsCrossed, BadgePercent, Plug } from 'lucide-react';
 
 /**
- * Top-level tab bar for the Storefront CMS hub. Each tab is its own nested
- * route under /admin/storefront (some are groups with a second-level sub-tab
- * bar), so each loads only its own data. The active tab is resolved from the
- * current pathname.
+ * Top-level tab bar for the Storefront CMS hub. Scoped to the surfaces that
+ * shape the public storefront and its merchandising — Design, Menu, Promotions
+ * and Integrations. Day-to-day operations (orders, live tracking, reservations,
+ * tables, branches), team and insights live on the admin sidebar instead, so the
+ * two never duplicate each other. Each tab is its own nested route (Promotions
+ * is a group with a sub-tab bar). Active tab resolved from the pathname.
  */
 const TABS = [
   { href: '/admin/storefront', label: 'Design', icon: Paintbrush, exact: true },
   { href: '/admin/storefront/menu', label: 'Menu', icon: UtensilsCrossed },
   { href: '/admin/storefront/promotions', label: 'Promotions', icon: BadgePercent },
-  { href: '/admin/storefront/operations', label: 'Operations', icon: ClipboardList },
-  { href: '/admin/storefront/team', label: 'Team', icon: Users },
-  { href: '/admin/storefront/insights', label: 'Insights', icon: BarChart3 },
   { href: '/admin/storefront/integrations', label: 'Integrations', icon: Plug },
 ] as const;
 
