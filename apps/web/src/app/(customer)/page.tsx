@@ -30,6 +30,13 @@ import { JsonLd } from '@/components/seo/json-ld';
 
 const SITE = 'https://flavrly.in';
 
+// Render per-request. This page reads live counts from the DB, so it must NOT be
+// statically pre-rendered at build time — otherwise `next build` connects to the
+// database, and a momentary DB blip during a deploy fails the whole build (which
+// leaves a broken .next / missing required-server-files.json). Dynamic rendering
+// keeps the build DB-independent and the home counts always fresh.
+export const dynamic = 'force-dynamic';
+
 /**
  * Reshee Tech — platform home (marketing surface).
  *
