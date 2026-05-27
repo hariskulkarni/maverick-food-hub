@@ -84,20 +84,20 @@ export function FeatureCarousel() {
                 aria-label={`${i + 1} of ${count}`}
                 aria-hidden={i !== index}
               >
-                {/* Banners are 2:1. We lock the container to that exact ratio on
-                    EVERY breakpoint and use object-contain so the whole banner —
-                    headline, photo and logo — is always visible, never cropped,
-                    and scales fluidly with the viewport. The slide's brand
-                    gradient sits behind the image so any pillar/letter-boxing
-                    (e.g. a banner that isn't perfectly 2:1) blends in on-brand. */}
-                {/* Inline aspectRatio (not just the Tailwind class) so the box
-                    is locked to 2:1 even during a brief FOUC / soft-nav window
-                    where the stylesheet hasn't applied yet. Without this the
-                    raw <img> below would paint at its full intrinsic size
-                    (~2600px) and fill the whole viewport until a hard refresh. */}
+                {/* Banners are 2:1 and shown with object-contain so the whole
+                    banner — headline, photo and logo — is ALWAYS fully visible,
+                    never cropped. We keep the 2:1 ratio but cap the height with a
+                    responsive clamp so the banner reads as a normal hero strip
+                    instead of swallowing a full screen on wide displays. When the
+                    cap shortens the box below 2:1, object-contain letterboxes the
+                    image and the slide's brand gradient fills the margin on-brand.
+                    aspectRatio + maxHeight are ALSO set inline (not just via the
+                    Tailwind classes) so the box stays bounded even during a brief
+                    FOUC / soft-nav window before the stylesheet applies — without
+                    it the raw <img> would paint at its full intrinsic ~2600px. */}
                 <div
-                  className={`relative aspect-[2/1] w-full overflow-hidden bg-gradient-to-br ${s.fallback}`}
-                  style={{ aspectRatio: '2 / 1' }}
+                  className={`relative aspect-[2/1] max-h-[clamp(180px,42vh,360px)] w-full overflow-hidden bg-gradient-to-br ${s.fallback}`}
+                  style={{ aspectRatio: '2 / 1', maxHeight: 'clamp(180px, 42vh, 360px)' }}
                 >
                   {failed[i] ? (
                     <div className="flex h-full w-full items-center justify-center p-6 text-center">
