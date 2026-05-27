@@ -9,6 +9,7 @@
  */
 
 import { maskSecret } from '../crypto';
+import { brand } from '@/lib/brand';
 import { checkMsg91Balance, sendMsg91 } from '../notifications/msg91';
 import { checkFast2SmsBalance, sendFast2Sms } from '../notifications/fast2sms';
 import { checkTextlocalBalance, sendTextlocal } from '../notifications/textlocal';
@@ -50,8 +51,13 @@ export interface ProviderDef {
   test: (config: Record<string, string>) => Promise<{ ok: boolean; detail?: string; error?: string }>;
 }
 
-/** Public base URL for webhook endpoints shown to admins in setup hints. */
-const WEBHOOK_BASE = (process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://flavrly.in').replace(/\/$/, '');
+/**
+ * Public base URL for webhook endpoints shown to admins in setup hints. Uses the
+ * canonical brand site URL (https) — NOT NEXTAUTH_URL, which on some hosts is the
+ * bare server IP over http and would mislead admins (payment gateways reject
+ * non-HTTPS webhook URLs).
+ */
+const WEBHOOK_BASE = brand.url;
 
 // ─── Razorpay ───────────────────────────────────────────────────────────────
 const Razorpay: ProviderDef = {

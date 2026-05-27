@@ -30,6 +30,11 @@ import { brand } from '@/lib/brand';
 
 const SITE = 'https://flavrly.in';
 
+// Always render fresh so Storefront CMS changes (hero, theme, announcement,
+// menu order, layout toggles, etc.) appear the moment an admin hits Save —
+// without this the route is cached and edits don't show until the cache expires.
+export const dynamic = 'force-dynamic';
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const r = await prisma.restaurant.findUnique({ where: { slug } });
@@ -516,6 +521,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
           branchId={branch.id}
           showSearch={cms.layout.showSearch}
           showFilters={cms.layout.showFilters}
+          menuLayout={cms.layout.menuLayout}
           data={JSON.parse(
             JSON.stringify(
               categories.map((c) => {

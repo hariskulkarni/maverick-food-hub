@@ -4,6 +4,7 @@
  * persisting, so a malformed/oversized payload can never corrupt rendering.
  */
 import { NextRequest } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
@@ -21,6 +22,8 @@ export async function PATCH(req: NextRequest) {
     where: { id: restaurant.id },
     data: { storefrontConfig: config as object },
   });
+  // Bust the public storefront's cache so the change shows immediately.
+  try { revalidatePath(`/r/${restaurant.slug}`); } catch { /* best-effort */ }
   await audit('restaurant.settings.update', {
     actorId: session?.user?.id,
     actorRole: session?.user?.role,

@@ -185,25 +185,27 @@ export async function accessibleRestaurants(): Promise<{
   // under that parent; everything else lands in the null (ungrouped) bucket.
   const byId = new Map(flat.map((r) => [r.id, r]));
   const groupsMap = new Map<string | null, AccessibleGroup>();
-  const groupKeyFor = (r: AccessibleRestaurant): string | null =>
-    r.parentId && accessibleIds.has(r.parentId) ? r.parentId : null;
+  // Where does a restaurant belong?
+  //   • a child whose parent is also accessible → under that parent's group
+  //   • a group root (isParent) → heads its OWN group (never the ungrouped bucket)
+  //   • anything else (standalone) → the null (ungrouped) bucket
+  // Routing a group root to its own id (rather than null) is what prevents the
+  // parent from appearing twice — once as a standalone ungrouped entry and again
+  // as its group header.
+  const groupKeyFor = (r: AccessibleRestaurant): string | null => {
+    if (r.parentId && accessibleIds.has(r.parentId)) return r.parentId;
+    if (r.isParent) return r.id;
+    return null;
+  };
 
   for (const r of flat) {
     const key = groupKeyFor(r);
     if (!groupsMap.has(key)) {
       groupsMap.set(key, { parent: key ? byId.get(key) ?? null : null, members: [] });
     }
-    // The parent itself is the group header, not a member of its own children bucket.
+    // The parent itself is the group header, not a member of its own bucket.
     if (key !== null && r.id === key) continue;
     groupsMap.get(key)!.members.push(r);
-  }
-  // Ensure a parent that the caller accesses but that has no accessible children
-  // still appears (as its own group with itself as the sole member).
-  for (const r of flat) {
-    const key = groupKeyFor(r);
-    if (key === null && r.isParent && !groupsMap.has(r.id)) {
-      groupsMap.set(r.id, { parent: r, members: [] });
-    }
   }
 
   const cookieStore = await cookies();

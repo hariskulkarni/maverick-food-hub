@@ -17,7 +17,9 @@ interface CategoryGroup {
 
 type Diet = 'all' | 'veg' | 'nonveg';
 
-export function MenuClient({ data, branchId, showSearch = true, showFilters = true }: { data: CategoryGroup[]; branchId: string; showSearch?: boolean; showFilters?: boolean }) {
+export function MenuClient({ data, branchId, showSearch = true, showFilters = true, menuLayout = 'list' }: { data: CategoryGroup[]; branchId: string; showSearch?: boolean; showFilters?: boolean; menuLayout?: 'list' | 'grid' }) {
+  // 'list' keeps the established two-up layout; 'grid' is a denser card grid.
+  const itemGridClass = menuLayout === 'grid' ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3' : 'grid gap-3 lg:grid-cols-2';
   const [q, setQ] = useState('');
   const [diet, setDiet] = useState<Diet>('all');
   const [activeCat, setActiveCat] = useState<string | null>(null);
@@ -161,7 +163,7 @@ export function MenuClient({ data, branchId, showSearch = true, showFilters = tr
                 </div>
               )}
               {cat.items.length > 0 && (
-                <div className={`grid gap-3 lg:grid-cols-2 ${unavailable ? 'opacity-60 pointer-events-none select-none' : ''}`}>
+                <div className={`${itemGridClass} ${unavailable ? 'opacity-60 pointer-events-none select-none' : ''}`}>
                   {cat.items.map((item) => <MenuItemCard key={item.id} item={item} branchId={branchId} />)}
                 </div>
               )}
