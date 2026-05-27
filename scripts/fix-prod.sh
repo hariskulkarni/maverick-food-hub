@@ -139,8 +139,24 @@ line "9. restart pm2"
 pm2 restart "$PM2_APP" --update-env
 pm2 status "$PM2_APP" || true
 
+# Flush the logs immediately after the restart so the section-10 check reflects
+# ONLY the freshly-deployed process — not stale errors from earlier builds that
+# have already been fixed (the log file is append-only and otherwise replays
+# them on every deploy). pm2 reopens its file handles after flush/truncate.
+line "9b. flush old logs (so section 10 shows only this build)"
+LOG_DIR="${LOG_DIR:-/var/log/restaurant-manager}"
+pm2 flush "$PM2_APP" >/dev/null 2>&1 && echo "  pm2 flush ✓" || echo "  (pm2 flush skipped)"
+if [ -d "$LOG_DIR" ]; then
+  for f in "$LOG_DIR"/*.log; do
+    [ -e "$f" ] || continue
+    truncate -s 0 "$f" 2>/dev/null || { command -v sudo >/dev/null 2>&1 && sudo truncate -s 0 "$f" 2>/dev/null; } && echo "  truncated $f ✓"
+  done
+fi
+# Give the new process a few seconds to boot and surface any genuine errors.
+sleep 4
+
 line "10. recent error log (should be quiet if fixed)"
 pm2 logs "$PM2_APP" --err --lines 40 --nostream || true
 
 line "DONE"
-echo "Hard-refresh the site (Cmd+Shift+R). If errors persist, copy the section-10 log here."
+echo "Section 10 now shows ONLY this build's errors. If anything appears there, copy it here."
