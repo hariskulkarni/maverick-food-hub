@@ -63,12 +63,12 @@ export function FeatureCarousel() {
       tabIndex={0}
     >
       <div className="md:container">
-        {/* The banners are a true 2:1. We keep the slide box at 2:1 so the image
-            fills it edge-to-edge with no crop and no gradient margins, and cap
-            the WIDTH on larger screens (not the height) so a full-width 2:1 hero
-            doesn't grow to a full-screen height — width 760px → 380px tall. */}
+        {/* The carousel spans the full container width. Each slide is a full-width
+            "band": a blurred, enlarged copy of the banner fills the band edges so
+            wide screens read as an intentional hero, while the crisp, fully-visible
+            banner (a true 2:1, never cropped) sits centered on top. */}
         <div
-          className="relative mx-auto w-full max-w-[760px] overflow-hidden rounded-b-[1.75rem] md:rounded-3xl shadow-lg shadow-primary/10"
+          className="relative w-full overflow-hidden rounded-b-[1.75rem] md:rounded-3xl shadow-lg shadow-primary/10"
           onMouseEnter={() => setPaused(true)}
           onMouseLeave={() => setPaused(false)}
           onTouchStart={onTouchStart}
@@ -88,38 +88,50 @@ export function FeatureCarousel() {
                 aria-label={`${i + 1} of ${count}`}
                 aria-hidden={i !== index}
               >
-                {/* Banners are a true 2:1. The box is locked to 2:1 and the image
-                    uses object-contain, so the whole banner fills it edge-to-edge
-                    with no crop and no gradient margin (the width cap on the parent
-                    keeps the overall height sensible). aspectRatio is ALSO set
-                    inline (not just the Tailwind class) so the box stays bounded
-                    even during a brief FOUC / soft-nav window before the stylesheet
-                    applies — without it the raw <img> would paint at its full
-                    intrinsic ~3780px. */}
-                <div
-                  className={`relative aspect-[2/1] w-full overflow-hidden bg-gradient-to-br ${s.fallback}`}
-                  style={{ aspectRatio: '2 / 1' }}
-                >
-                  {failed[i] ? (
-                    <div className="flex h-full w-full items-center justify-center p-6 text-center">
-                      <span className="display text-lg md:text-3xl font-extrabold text-white drop-shadow">
-                        {s.alt}
-                      </span>
-                    </div>
-                  ) : (
+                {/* Full-width band. Base brand gradient + a blurred, cover-scaled
+                    copy of the banner fill the sides on wide screens so it reads as
+                    a designed hero rather than a small floating card. */}
+                <div className={`relative w-full overflow-hidden bg-gradient-to-br ${s.fallback}`}>
+                  {!failed[i] && (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img
                       src={s.src}
-                      alt={s.alt}
+                      alt=""
+                      aria-hidden="true"
                       loading={i === 0 ? 'eager' : 'lazy'}
-                      className="absolute inset-0 h-full w-full object-contain"
-                      // Inline styles mirror the classes so the image stays
-                      // pinned to (and contained within) the 2:1 box even before
-                      // Tailwind applies — kills the "giant image until refresh".
-                      style={{ position: 'absolute', inset: 0, height: '100%', width: '100%', objectFit: 'contain' }}
-                      onError={() => setFailed((f) => ({ ...f, [i]: true }))}
+                      className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-2xl"
+                      style={{ position: 'absolute', inset: 0, height: '100%', width: '100%', objectFit: 'cover' }}
                     />
                   )}
+                  {/* subtle wash so the blurred backdrop doesn't fight the banner */}
+                  <div className="pointer-events-none absolute inset-0 bg-black/10" />
+
+                  {/* Crisp, fully-visible banner — a true 2:1, centered and never
+                      cropped. max-width keeps the height sensible (760px → 380px);
+                      aspectRatio + maxWidth are ALSO inline so the box stays bounded
+                      during a brief FOUC / soft-nav window before the stylesheet
+                      applies, instead of the raw <img> painting at its ~3780px. */}
+                  <div className="relative mx-auto w-full max-w-[760px]" style={{ maxWidth: '760px', marginInline: 'auto' }}>
+                    <div className="relative aspect-[2/1] w-full" style={{ aspectRatio: '2 / 1' }}>
+                      {failed[i] ? (
+                        <div className="flex h-full w-full items-center justify-center p-6 text-center">
+                          <span className="display text-lg md:text-3xl font-extrabold text-white drop-shadow">
+                            {s.alt}
+                          </span>
+                        </div>
+                      ) : (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={s.src}
+                          alt={s.alt}
+                          loading={i === 0 ? 'eager' : 'lazy'}
+                          className="absolute inset-0 h-full w-full object-contain"
+                          style={{ position: 'absolute', inset: 0, height: '100%', width: '100%', objectFit: 'contain' }}
+                          onError={() => setFailed((f) => ({ ...f, [i]: true }))}
+                        />
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
