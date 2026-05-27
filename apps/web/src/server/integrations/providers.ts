@@ -12,11 +12,13 @@ import { maskSecret } from '../crypto';
 import { checkMsg91Balance, sendMsg91 } from '../notifications/msg91';
 import { checkFast2SmsBalance, sendFast2Sms } from '../notifications/fast2sms';
 import { checkTextlocalBalance, sendTextlocal } from '../notifications/textlocal';
+import { checkTwoFactorBalance } from '../notifications/twofactor';
 import { verifyZohoSmtp } from '../notifications/smtp-zoho';
 import { verifyBrevoSmtp } from '../notifications/smtp-brevo';
 
 export type ProviderKey =
   | 'RAZORPAY'
+  | 'TWOFACTOR'
   | 'TWILIO_SMS'
   | 'TWILIO_WHATSAPP'
   | 'SMTP'
@@ -48,6 +50,9 @@ export interface ProviderDef {
   test: (config: Record<string, string>) => Promise<{ ok: boolean; detail?: string; error?: string }>;
 }
 
+/** Public base URL for webhook endpoints shown to admins in setup hints. */
+const WEBHOOK_BASE = (process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://flavrly.in').replace(/\/$/, '');
+
 // ─── Razorpay ───────────────────────────────────────────────────────────────
 const Razorpay: ProviderDef = {
   key: 'RAZORPAY',
@@ -58,9 +63,19 @@ const Razorpay: ProviderDef = {
   fields: [
     { key: 'keyId',     label: 'Key ID',     type: 'text',     required: true, placeholder: 'rzp_live_xxxxxxxx', hint: 'From Settings → API Keys in your Razorpay dashboard.' },
     { key: 'keySecret', label: 'Key secret', type: 'password', required: true, secret: true },
-    { key: 'webhookSecret', label: 'Webhook secret', type: 'password', secret: true, hint: 'Optional. Required to verify payment webhooks.' }
+    {
+      key: 'webhookSecret',
+      label: 'Webhook signing secret',
+      type: 'password',
+      secret: true,
+      hint:
+        'In Razorpay Dashboard → Settings → Webhooks, add this URL: ' +
+        `${WEBHOOK_BASE}/api/payments/razorpay/webhook  —  subscribe to the events ` +
+        'payment.captured, payment.failed, refund.created, refund.processed, refund.failed, ' +
+        'then paste the signing secret here so refund & payment notifications are verified.'
+    }
   ],
-  buildSummary: (c) => ({ keyId: c.keyId, keySecret: maskSecret(c.keySecret) }),
+  buildSummary: (c) => ({ keyId: c.keyId, keySecret: maskSecret(c.keySecret), webhookSecret: c.webhookSecret ? maskSecret(c.webhookSecret) : '(not set)' }),
   async test(c) {
     try {
       const Razorpay = (await import('razorpay')).default as any;
@@ -72,6 +87,26 @@ const Razorpay: ProviderDef = {
       const msg = e?.error?.description || e?.message || String(e);
       return { ok: false, error: msg };
     }
+  }
+};
+
+// ─── 2Factor (India OTP gateway) ─────────────────────────────────────────────
+const TwoFactor: ProviderDef = {
+  key: 'TWOFACTOR',
+  title: 'OTP via 2Factor',
+  vendor: '2Factor.in',
+  description: 'India-first OTP gateway for login, phone verification, and order updates. DLT-template support, instant transactional SMS, per-OTP pricing. When connected, this restaurant’s customer SMS/OTP messages are sent through 2Factor.',
+  docsUrl: 'https://2factor.in/v3/dashboard',
+  fields: [
+    { key: 'apiKey',       label: 'API key',        type: 'password', required: true, secret: true, hint: 'From your 2Factor dashboard → API.' },
+    { key: 'senderId',     label: 'Sender ID',      type: 'text',     placeholder: 'FLAVRLY', hint: 'Optional. DLT-approved 6-char header for branded SMS.' },
+    { key: 'templateName', label: 'OTP template',   type: 'text',     placeholder: 'OTP1', hint: 'Optional. The 2Factor template name to use for OTP sends.' }
+  ],
+  buildSummary: (c) => ({ senderId: c.senderId || '(default)', templateName: c.templateName || '(default)', apiKey: maskSecret(c.apiKey) }),
+  async test(c) {
+    const res = await checkTwoFactorBalance({ apiKey: c.apiKey, senderId: c.senderId, templateName: c.templateName });
+    if (res.ok) return { ok: true, detail: `Authenticated. SMS balance: ${res.balance ?? 'unknown'}.` };
+    return { ok: false, error: res.error };
   }
 };
 
@@ -302,6 +337,7 @@ const BrevoSmtp: ProviderDef = {
 
 export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
   RAZORPAY: Razorpay,
+  TWOFACTOR: TwoFactor,
   TWILIO_SMS: TwilioSMS,
   TWILIO_WHATSAPP: TwilioWhatsApp,
   SMTP,
@@ -315,7 +351,7 @@ export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
 
 export const PROVIDER_LIST: ProviderDef[] = [
   Razorpay,
-  Msg91, Fast2Sms, TextLocal, TwilioSMS,
+  TwoFactor, Msg91, Fast2Sms, TextLocal, TwilioSMS,
   TwilioWhatsApp,
   ZohoSmtp, BrevoSmtp, SMTP,
   S3

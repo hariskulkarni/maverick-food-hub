@@ -18,6 +18,8 @@ import { prisma } from './db';
 import { audit } from './audit';
 import { transitionOrder } from './orders';
 import { log } from './log';
+import { getConfig } from './integrations';
+import { razorpayProvider } from './payments/razorpay';
 import { OrderStatus, RefundDestination } from '@prisma/client';
 
 export type RefundDest = 'WALLET' | 'ORIGINAL_PAYMENT';
@@ -45,6 +47,25 @@ export class RefundError extends Error {
   constructor(message: string, status = 400) {
     super(message);
     this.status = status;
+  }
+}
+
+/**
+ * The restaurant's Razorpay credentials for the branch this order belongs to, or
+ * null when none are configured (dev/mock). Failures are swallowed → mock path.
+ */
+async function resolveRazorpayCreds(branchId?: string | null) {
+  if (!branchId) return null;
+  try {
+    const branch = await prisma.branch.findUnique({ where: { id: branchId }, select: { restaurantId: true } });
+    if (!branch) return null;
+    const cfg = await getConfig(branch.restaurantId, 'RAZORPAY');
+    if (cfg?.keyId && cfg?.keySecret) {
+      return { keyId: cfg.keyId, keySecret: cfg.keySecret, webhookSecret: cfg.webhookSecret };
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -123,10 +144,33 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
     if (!capturedPayment) {
       throw new RefundError('No captured online payment to refund — use the wallet instead.');
     }
-    // Mock gateway refund. A real adapter would call the provider here and the
-    // status would stay PENDING until a webhook confirms; the mock settles
-    // immediately so the flow is end-to-end usable.
-    const providerRef = `rfnd_${Math.random().toString(36).slice(2, 12)}`;
+    // Real gateway refund when this is a Razorpay payment with a stored gateway
+    // payment id AND the restaurant has Razorpay credentials. The refund then
+    // stays PENDING until Razorpay confirms via the refund.processed webhook
+    // (which flips it to COMPLETED and marks the payment REFUNDED). When no
+    // credentials are configured (dev/mock), it settles immediately so the flow
+    // stays end-to-end usable.
+    let gatewayRefundId: string | null = null;
+    let settledNow = true;
+    if (capturedPayment.providerName === 'razorpay' && capturedPayment.providerRef) {
+      const creds = await resolveRazorpayCreds(order.branchId);
+      if (creds) {
+        try {
+          const provider = razorpayProvider(creds);
+          const gw = await provider.refund({
+            providerPaymentId: capturedPayment.providerRef,
+            amount,
+            reason: input.reason ?? undefined
+          });
+          gatewayRefundId = gw.providerRefundId ?? null;
+          settledNow = false; // confirmed asynchronously by the webhook
+        } catch (e) {
+          throw new RefundError(`Gateway refund failed: ${(e as Error).message}`, 502);
+        }
+      }
+    }
+
+    const providerRef = gatewayRefundId ?? `rfnd_${Math.random().toString(36).slice(2, 12)}`;
     const refund = await prisma.$transaction(async (tx) => {
       const r = await tx.refund.create({
         data: {
@@ -135,20 +179,28 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
           amount: amount as any,
           reason: input.reason ?? null,
           destination: RefundDestination.ORIGINAL_PAYMENT,
-          status: 'COMPLETED',
+          status: settledNow ? 'COMPLETED' : 'PENDING',
           providerRef,
-          providerData: { provider: capturedPayment.providerName ?? 'mock', mock: true },
+          providerData: gatewayRefundId
+            ? { provider: 'razorpay', gatewayRefundId, pending: true }
+            : { provider: capturedPayment.providerName ?? 'mock', mock: true },
           createdById: input.actorId ?? null
         }
       });
-      // If the full remaining balance was refunded to the source, mark the
-      // payment REFUNDED so reporting reflects it.
-      if (amount >= remaining) {
+      // Only mark the payment REFUNDED once actually settled (mock path). A real
+      // gateway refund waits for the webhook to confirm before flipping status.
+      if (settledNow && amount >= remaining) {
         await tx.payment.update({ where: { id: capturedPayment.id }, data: { status: 'REFUNDED' } });
       }
       return r;
     });
-    result = { refundId: refund.id, destination: 'ORIGINAL_PAYMENT', status: 'COMPLETED', amount, walletCredited: 0 };
+    result = {
+      refundId: refund.id,
+      destination: 'ORIGINAL_PAYMENT',
+      status: settledNow ? 'COMPLETED' : 'PENDING',
+      amount,
+      walletCredited: 0
+    };
   }
 
   // Advance the order through the refund funnel (best-effort). A full refund
@@ -156,12 +208,15 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
   // stays visibly "refund in progress". Failures here never undo the refund —
   // the Refund row + money movement above are the source of truth.
   const fullRefund = amount >= remaining;
+  // Settle to REFUNDED only when the refund is actually COMPLETED and full. A
+  // PENDING gateway refund parks at REFUND_INITIATED until the webhook confirms.
+  const settleToRefunded = fullRefund && result.status === 'COMPLETED';
   try {
     const alreadyInFunnel: OrderStatus[] = [OrderStatus.REFUND_PENDING, OrderStatus.REFUND_INITIATED];
     if (!alreadyInFunnel.includes(order.status)) {
       await transitionOrder(order.id, OrderStatus.REFUND_PENDING, { actorId: input.actorId ?? undefined, note: input.reason ?? undefined });
     }
-    await transitionOrder(order.id, fullRefund ? OrderStatus.REFUNDED : OrderStatus.REFUND_INITIATED, {
+    await transitionOrder(order.id, settleToRefunded ? OrderStatus.REFUNDED : OrderStatus.REFUND_INITIATED, {
       actorId: input.actorId ?? undefined,
       note: input.reason ?? undefined
     });
