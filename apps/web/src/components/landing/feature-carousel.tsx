@@ -63,8 +63,12 @@ export function FeatureCarousel() {
       tabIndex={0}
     >
       <div className="md:container">
+        {/* The banners are a true 2:1. We keep the slide box at 2:1 so the image
+            fills it edge-to-edge with no crop and no gradient margins, and cap
+            the WIDTH on larger screens (not the height) so a full-width 2:1 hero
+            doesn't grow to a full-screen height — width 760px → 380px tall. */}
         <div
-          className="relative overflow-hidden rounded-b-[1.75rem] md:rounded-3xl shadow-lg shadow-primary/10"
+          className="relative mx-auto w-full max-w-[760px] overflow-hidden rounded-b-[1.75rem] md:rounded-3xl shadow-lg shadow-primary/10"
           onMouseEnter={() => setPaused(true)}
           onMouseLeave={() => setPaused(false)}
           onTouchStart={onTouchStart}
@@ -84,20 +88,17 @@ export function FeatureCarousel() {
                 aria-label={`${i + 1} of ${count}`}
                 aria-hidden={i !== index}
               >
-                {/* Banners are 2:1 and shown with object-contain so the whole
-                    banner — headline, photo and logo — is ALWAYS fully visible,
-                    never cropped. We keep the 2:1 ratio but cap the height with a
-                    responsive clamp so the banner reads as a normal hero strip
-                    instead of swallowing a full screen on wide displays. When the
-                    cap shortens the box below 2:1, object-contain letterboxes the
-                    image and the slide's brand gradient fills the margin on-brand.
-                    aspectRatio + maxHeight are ALSO set inline (not just via the
-                    Tailwind classes) so the box stays bounded even during a brief
-                    FOUC / soft-nav window before the stylesheet applies — without
-                    it the raw <img> would paint at its full intrinsic ~2600px. */}
+                {/* Banners are a true 2:1. The box is locked to 2:1 and the image
+                    uses object-contain, so the whole banner fills it edge-to-edge
+                    with no crop and no gradient margin (the width cap on the parent
+                    keeps the overall height sensible). aspectRatio is ALSO set
+                    inline (not just the Tailwind class) so the box stays bounded
+                    even during a brief FOUC / soft-nav window before the stylesheet
+                    applies — without it the raw <img> would paint at its full
+                    intrinsic ~3780px. */}
                 <div
-                  className={`relative aspect-[2/1] max-h-[clamp(180px,42vh,360px)] w-full overflow-hidden bg-gradient-to-br ${s.fallback}`}
-                  style={{ aspectRatio: '2 / 1', maxHeight: 'clamp(180px, 42vh, 360px)' }}
+                  className={`relative aspect-[2/1] w-full overflow-hidden bg-gradient-to-br ${s.fallback}`}
+                  style={{ aspectRatio: '2 / 1' }}
                 >
                   {failed[i] ? (
                     <div className="flex h-full w-full items-center justify-center p-6 text-center">
