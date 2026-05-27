@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
-import { Building2, ListOrdered, Users, Bike, BarChart3, Radio, Coins, AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet, History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones, GraduationCap, MessagesSquare, Banknote } from 'lucide-react';
+import { Building2, ListOrdered, Users, Bike, BarChart3, Radio, Coins, AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet, History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones, GraduationCap, MessagesSquare, Banknote, LayoutTemplate } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
@@ -19,6 +19,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           <NavLink href="/platform/analytics" icon={BarChart3}>Deep analytics</NavLink>
           <NavLink href="/platform/restaurants" icon={Building2}>Restaurants</NavLink>
           <NavLink href="/platform/brands" icon={Layers}>Brands</NavLink>
+          <NavLink href="/platform/discovery-cms" icon={LayoutTemplate}>Discovery CMS</NavLink>
           <NavLink href="/platform/signup-bonus" icon={Gift}>Signup Bonus</NavLink>
           <NavLink href="/platform/orders" icon={ListOrdered}>All orders</NavLink>
           <NavLink href="/platform/live" icon={Radio}>Live tracking</NavLink>

@@ -3142,3 +3142,13 @@ model ObsProbeEvent {
   @@index([target, at])
   @@index([at])
 }
+
+/// Generic platform-level CMS / content store. A key/value JSON singleton table:
+/// each row is one editable surface (e.g. key="discovery" holds the entire
+/// `/restaurants` discovery-page config). Super-admin edited via /platform.
+model SiteContent {
+  key       String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}

@@ -18,11 +18,31 @@ import { DISCOVERY_BANNERS } from '@/lib/discovery-banners';
 
 const AUTOPLAY_MS = 5000;
 
-export function FeatureCarousel() {
+/** A renderable slide. `href` (optional) makes the whole slide a click-through. */
+export interface CarouselSlideData {
+  src: string;
+  alt: string;
+  fallback: string;
+  href?: string;
+}
+
+/**
+ * Slides + autoplay are CMS-configurable (super-admin → /platform/discovery-cms).
+ * When no `slides` prop is supplied we fall back to the hard-coded
+ * DISCOVERY_BANNERS so the carousel always renders.
+ */
+export function FeatureCarousel({
+  slides: slidesProp,
+  autoplayMs = AUTOPLAY_MS,
+}: {
+  slides?: CarouselSlideData[];
+  autoplayMs?: number;
+} = {}) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const [failed, setFailed] = useState<Record<number, boolean>>({});
-  const slides = DISCOVERY_BANNERS;
+  const slides: CarouselSlideData[] =
+    slidesProp && slidesProp.length > 0 ? slidesProp : DISCOVERY_BANNERS;
   const count = slides.length;
   const touchStartX = useRef<number | null>(null);
 
@@ -31,10 +51,10 @@ export function FeatureCarousel() {
   }, [count]);
 
   useEffect(() => {
-    if (paused || count <= 1) return;
-    const id = window.setInterval(() => setIndex((i) => (i + 1) % count), AUTOPLAY_MS);
+    if (paused || count <= 1 || autoplayMs <= 0) return;
+    const id = window.setInterval(() => setIndex((i) => (i + 1) % count), autoplayMs);
     return () => window.clearInterval(id);
-  }, [paused, count]);
+  }, [paused, count, autoplayMs]);
 
   const onTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
@@ -128,6 +148,16 @@ export function FeatureCarousel() {
                           className="absolute inset-0 h-full w-full object-contain"
                           style={{ position: 'absolute', inset: 0, height: '100%', width: '100%', objectFit: 'contain' }}
                           onError={() => setFailed((f) => ({ ...f, [i]: true }))}
+                        />
+                      )}
+                      {/* Optional click-through (CMS-configured). Covers the crisp
+                          banner only; swipe/keyboard nav still work around it. */}
+                      {s.href && (
+                        <a
+                          href={s.href}
+                          aria-label={s.alt || `Slide ${i + 1}`}
+                          tabIndex={i === index ? 0 : -1}
+                          className="absolute inset-0 z-10"
                         />
                       )}
                     </div>

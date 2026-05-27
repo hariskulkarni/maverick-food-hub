@@ -14,8 +14,25 @@ import { ChangeLocationButton } from './change-location-button';
 import type { SavedAddressOption } from './location-picker-dialog';
 import { FeatureCarousel } from '@/components/landing/feature-carousel';
 import { WhatsOnYourMind } from '@/components/discovery/whats-on-your-mind';
+import { getDiscoveryConfig } from '@/server/discovery-cms';
+import type { Metadata } from 'next';
 
-export const metadata = { title: 'All restaurants' };
+// SEO is super-admin editable (/platform/discovery-cms → SEO tab).
+export async function generateMetadata(): Promise<Metadata> {
+  const cfg = await getDiscoveryConfig();
+  const title = cfg.seo.metaTitle || 'All restaurants';
+  const description = cfg.seo.metaDescription || undefined;
+  return {
+    title,
+    description,
+    keywords: cfg.seo.keywords ? cfg.seo.keywords.split(',').map((k) => k.trim()).filter(Boolean) : undefined,
+    openGraph: {
+      title,
+      description,
+      images: cfg.seo.ogImage ? [cfg.seo.ogImage] : undefined,
+    },
+  };
+}
 
 // Discovery is per-customer (location cookie) — never cache the render.
 export const dynamic = 'force-dynamic';
@@ -98,14 +115,21 @@ export default async function RestaurantsListPage({
   // not every customer grants it, so we show ALL active restaurants and let them
   // set a location any time for delivery estimates + nearby filtering. (The old
   // hard gate trapped customers who couldn't share their location.)
+  // Super-admin CMS config for this page (carousel, sections, SEO, footer…).
+  const cms = await getDiscoveryConfig();
+
   const sp = (await searchParams) ?? {};
   const selectedCuisine = typeof sp.cuisine === 'string' && sp.cuisine.length > 0 ? sp.cuisine : null;
-  const sort: SortKey = sp.sort === 'name' ? 'name' : 'newest';
+  // Default sort comes from the CMS unless the customer explicitly chose one.
+  const sort: SortKey = sp.sort === 'name' ? 'name' : sp.sort === 'newest' ? 'newest' : cms.restaurantsNearby.defaultSort;
   const query = typeof sp.q === 'string' ? sp.q.trim() : '';
   const queryLower = query.toLowerCase();
 
   const now = new Date();
-  const [active, radiusKm, rawOffers] = await Promise.all([
+  const offerLimit = cms.topOffers.limit;
+  const pinnedOfferIds = cms.topOffers.pinnedOfferIds;
+  const offerWhere = { isActive: true, validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gt: now } }] };
+  const [active, radiusKm, rawOffers, rawPinned] = await Promise.all([
     prisma.restaurant.findMany({
       where: { status: 'ACTIVE' },
       include: {
@@ -117,20 +141,32 @@ export default async function RestaurantsListPage({
     // Active offers across the platform (platform-wide + per-restaurant), most
     // prominent first — powers the "Top offers today" strip.
     (prisma as any).offer.findMany({
-      where: { isActive: true, validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gt: now } }] },
+      where: offerWhere,
       orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
-      take: 10
-    }).catch(() => [])
+      take: offerLimit + pinnedOfferIds.length
+    }).catch(() => []),
+    // Explicitly fetch the admin-pinned offers (still active) so they appear even
+    // if their priority would push them out of the top set.
+    pinnedOfferIds.length
+      ? (prisma as any).offer.findMany({ where: { ...offerWhere, id: { in: pinnedOfferIds } } }).catch(() => [])
+      : Promise.resolve([])
   ]);
 
-  const topOffers: TopOffer[] = (rawOffers as any[]).map((o) => ({
+  const toTopOffer = (o: any): TopOffer => ({
     id: o.id,
     name: o.name,
     type: o.type,
     code: o.code ?? null,
     percentOff: o.percentOff ?? null,
     flatOff: o.flatOff != null ? Number(o.flatOff) : null
-  }));
+  });
+  // Merge fetched + pinned, dedupe, then order: pinned (in admin order) first.
+  const offerById = new Map<string, TopOffer>();
+  for (const o of [...(rawOffers as any[]), ...(rawPinned as any[])]) offerById.set(o.id, toTopOffer(o));
+  const pinnedFirst = pinnedOfferIds.map((id) => offerById.get(id)).filter((o): o is TopOffer => !!o);
+  const pinnedSet = new Set(pinnedOfferIds);
+  const restOffers = (rawOffers as any[]).map(toTopOffer).filter((o) => !pinnedSet.has(o.id));
+  const topOffers: TopOffer[] = [...pinnedFirst, ...restOffers].slice(0, offerLimit);
 
   const matches: { restaurant: (typeof active)[number]; distanceM: number | null }[] = loc
     ? filterNearbyRestaurants(loc, radiusKm, active).map((m) => ({ restaurant: m.restaurant, distanceM: m.distanceM }))
@@ -185,8 +221,22 @@ export default async function RestaurantsListPage({
       ? [...filteredMatches].sort((a, b) => a.restaurant.name.localeCompare(b.restaurant.name))
       : filteredMatches;
 
+  // Admin-pinned "featured" restaurants float to the top (in configured order),
+  // keeping the rest in their sorted order. Only pins that survive the current
+  // location/cuisine/search filters appear.
+  const featuredIds = cms.restaurantsNearby.featuredRestaurantIds;
+  const finalMatches = (() => {
+    if (!featuredIds.length) return sortedMatches;
+    const fset = new Set(featuredIds);
+    const feat = featuredIds
+      .map((id) => sortedMatches.find((m) => m.restaurant.id === id))
+      .filter((m): m is (typeof sortedMatches)[number] => !!m);
+    const others = sortedMatches.filter((m) => !fset.has(m.restaurant.id));
+    return [...feat, ...others];
+  })();
+
   // Serialize for the cards (Decimal-free: only the geo fields we used, dropped here).
-  const cards = sortedMatches.map((m) => {
+  const cards = finalMatches.map((m) => {
     const r = m.restaurant;
     return {
       id: r.id,
@@ -232,8 +282,16 @@ export default async function RestaurantsListPage({
   return (
     <>
       {/* ─── Full-bleed promo carousel — spans the viewport on mobile (native-app
-          feel), contained card on desktop. Lives OUTSIDE the container. ─── */}
-      <FeatureCarousel />
+          feel), contained card on desktop. Lives OUTSIDE the container. Slides,
+          autoplay + visibility are CMS-driven (/platform/discovery-cms). ─── */}
+      {cms.carousel.enabled && (
+        <FeatureCarousel
+          slides={cms.carousel.slides
+            .filter((s) => s.enabled)
+            .map((s) => ({ src: s.src, alt: s.alt, fallback: s.fallback, href: s.href || undefined }))}
+          autoplayMs={cms.carousel.autoplayMs}
+        />
+      )}
 
       <div className="container pt-4 md:pt-6 pb-6 md:pb-8">
       {/* Deliver-to header (location set) OR a non-blocking prompt to set one. */}
@@ -252,11 +310,14 @@ export default async function RestaurantsListPage({
       </div>
 
       {/* ───────────────────────── Top offers today ───────────────────────── */}
-      {topOffers.length > 0 && (
+      {cms.topOffers.enabled && topOffers.length > 0 && (
         <section className="mb-6 reveal">
           <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
-            <Sparkles className="size-3.5" /> Top offers today
+            <Sparkles className="size-3.5" /> {cms.topOffers.heading}
           </div>
+          {cms.topOffers.subheading && (
+            <p className="-mt-2 mb-3 text-sm text-muted-foreground">{cms.topOffers.subheading}</p>
+          )}
           <div className="-mx-4 md:mx-0 overflow-x-auto no-scrollbar">
             <div className="flex gap-3 px-4 md:px-0">
               {topOffers.map((o) => {
@@ -286,11 +347,22 @@ export default async function RestaurantsListPage({
       )}
 
       {/* ─────── What's on your mind? — cross-restaurant food categories ─────── */}
-      <WhatsOnYourMind />
+      {cms.whatsOnYourMind.enabled && (
+        <WhatsOnYourMind
+          heading={cms.whatsOnYourMind.heading}
+          tiles={cms.whatsOnYourMind.tiles
+            .filter((t) => t.enabled)
+            .map((t) => ({ slug: t.slug, label: t.label, image: t.image, alt: t.alt }))}
+        />
+      )}
 
+      {cms.restaurantsNearby.enabled && (
       <header className="mb-4 md:mb-6 reveal">
-        <div className="text-xs font-semibold uppercase tracking-wider text-primary">Restaurants near you</div>
-        <h1 className="display text-xl md:text-2xl lg:text-3xl font-semibold">Pick what you&apos;re hungry for</h1>
+        <div className="text-xs font-semibold uppercase tracking-wider text-primary">{cms.restaurantsNearby.eyebrow}</div>
+        <h1 className="display text-xl md:text-2xl lg:text-3xl font-semibold">{cms.restaurantsNearby.heading}</h1>
+        {cms.restaurantsNearby.subheading ? (
+          <p className="mt-2 text-sm text-muted-foreground">{cms.restaurantsNearby.subheading}</p>
+        ) : (
         <p className="mt-2 text-sm text-muted-foreground">
           {query ? (
             <>
@@ -314,7 +386,9 @@ export default async function RestaurantsListPage({
             </>
           )}
         </p>
+        )}
       </header>
+      )}
 
       {/* ─── Sticky toolbar: search (mobile) + cuisine chips as ONE unit ───
           Both move together and stick directly beneath the global header
