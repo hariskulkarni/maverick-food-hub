@@ -21,6 +21,7 @@
     "db:set-packaging-fee": "tsx prisma/set-packaging-fee.ts",
     "db:group-restaurants": "tsx prisma/group-restaurants.ts",
     "db:reparent": "tsx prisma/reparent-group.ts",
+    "db:upgrade-training": "tsx prisma/upgrade-training-modules.ts",
     "db:studio": "prisma studio",
     "test": "vitest run",
     "pretest": "prisma generate",

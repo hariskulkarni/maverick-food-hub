@@ -51,6 +51,8 @@ const CreateBody = z.object({
   summary: z.string().max(500).nullable().optional(),
   category: z.enum(CATEGORIES),
   contentBody: z.string().min(1),
+  contentBlocks: z.array(z.any()).optional(),
+  heroImageUrl: z.string().max(2048).nullable().optional(),
   quizQuestions: z.any().optional(),
   durationMin: z.number().int().min(1).max(600),
   order: z.number().int().min(0).max(9999).optional(),
@@ -63,12 +65,19 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   const data = CreateBody.parse(await req.json());
 
+  // Validate / sanitise block-based content before storing.
+  const { parseContentBlocks } = await import('@/server/training-cms');
+  const cleanBlocks = parseContentBlocks(data.contentBlocks);
+
   const created = await prisma.trainingModule.create({
     data: {
       title: data.title,
       summary: data.summary ?? null,
       category: data.category,
       contentBody: data.contentBody,
+      contentBlocks: cleanBlocks.length > 0 ? (cleanBlocks as any) : undefined,
+      contentVersion: 2,
+      heroImageUrl: data.heroImageUrl ?? null,
       quizQuestions: data.quizQuestions ?? undefined,
       durationMin: data.durationMin,
       order: data.order ?? 0,

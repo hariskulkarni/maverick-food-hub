@@ -138,12 +138,28 @@ export interface QuizQuestion {
   answer?: number;
 }
 
+/** A block in the new block-based lesson format. The native renderer
+ *  dispatches on `type` and is forwards-compatible: unknown types are skipped. */
+export type ContentBlock =
+  | { id: string; type: 'heading'; text: string }
+  | { id: string; type: 'paragraph'; text: string }
+  | { id: string; type: 'image'; src: string; alt?: string; caption?: string }
+  | { id: string; type: 'callout'; tone: 'tip' | 'warning' | 'success' | 'danger' | 'info'; title?: string; body: string }
+  | { id: string; type: 'checklist'; title?: string; items: string[] }
+  | { id: string; type: 'keyPoints'; title?: string; points: string[] }
+  | { id: string; type: 'divider' }
+  | { id: string; type: 'quiz'; question: string; options: string[]; correct: number; explanation?: string };
+
 export interface TrainingModuleDetail {
   id: string;
   title: string;
   summary: string | null;
   category: TrainingCategory;
   contentBody: string;
+  /** Block-based lesson content. Falls back to contentBody for older modules. */
+  contentBlocks?: ContentBlock[];
+  contentVersion?: number;
+  heroImageUrl?: string | null;
   quizQuestions: QuizQuestion[] | null;
   durationMin: number;
   isRequired: boolean;

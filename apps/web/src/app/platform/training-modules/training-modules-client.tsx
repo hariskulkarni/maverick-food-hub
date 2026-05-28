@@ -17,7 +17,11 @@ import { Switch } from '@/components/ui/switch';
 import { DetailDrawer, DrawerSection } from '@/components/admin/detail-drawer';
 import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
-import { GraduationCap, Plus, Loader2, Save, Trash2, CheckCircle2, Clock } from 'lucide-react';
+import { GraduationCap, Plus, Loader2, Save, Trash2, CheckCircle2, Clock, Eye } from 'lucide-react';
+import Link from 'next/link';
+import { ImageUploader } from '@/components/image-uploader';
+import { TrainingBlockEditor } from './training-block-editor';
+import type { ContentBlock } from '@/server/training-cms';
 
 type Category = 'ONBOARDING' | 'SAFETY' | 'CUSTOMER_SERVICE' | 'EARNINGS' | 'APP_GUIDE';
 
@@ -27,6 +31,9 @@ interface ModuleRow {
   summary: string | null;
   category: Category;
   contentBody: string;
+  contentBlocks: ContentBlock[];
+  contentVersion: number;
+  heroImageUrl: string | null;
   quizQuestions: any | null;
   durationMin: number;
   order: number;
@@ -45,6 +52,8 @@ type Draft = {
   summary: string;
   category: Category;
   contentBody: string;
+  contentBlocks: ContentBlock[];
+  heroImageUrl: string;
   durationMin: string;
   order: string;
   isRequired: boolean;
@@ -57,6 +66,8 @@ function emptyDraft(): Draft {
     summary: '',
     category: 'ONBOARDING',
     contentBody: '',
+    contentBlocks: [],
+    heroImageUrl: '',
     durationMin: '10',
     order: '0',
     isRequired: false,
@@ -70,6 +81,8 @@ function draftFrom(m: ModuleRow): Draft {
     summary: m.summary ?? '',
     category: m.category,
     contentBody: m.contentBody,
+    contentBlocks: m.contentBlocks ?? [],
+    heroImageUrl: m.heroImageUrl ?? '',
     durationMin: String(m.durationMin),
     order: String(m.order),
     isRequired: m.isRequired,
@@ -289,6 +302,8 @@ function ModuleDrawer({
       summary: draft.summary.trim() || null,
       category: draft.category,
       contentBody: draft.contentBody,
+      contentBlocks: draft.contentBlocks,
+      heroImageUrl: draft.heroImageUrl.trim() || null,
       durationMin: Number(draft.durationMin),
       order: Number(draft.order),
       isRequired: draft.isRequired,
@@ -444,15 +459,49 @@ function ModuleDrawer({
         </div>
       </DrawerSection>
 
-      <DrawerSection title="Content">
+      <DrawerSection title="Hero image">
         <div className="p-4">
-          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Content body</Label>
+          <ImageUploader
+            value={draft.heroImageUrl || null}
+            onChange={(url) => set('heroImageUrl', url ?? '')}
+            folder="training/hero"
+            aspect="video"
+            recommended="1920×1080 px (16:9) · landscape photo or illustration"
+          />
+        </div>
+      </DrawerSection>
+
+      <DrawerSection title={`Content blocks · ${draft.contentBlocks.length} block${draft.contentBlocks.length === 1 ? '' : 's'}`}>
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Block-based lesson content (rendered by the rider in the lesson player). Add headings, paragraphs,
+            images, callouts, checklists, key-point grids, dividers and quiz questions.
+          </p>
+          {mode === 'edit' && mod && (
+            <Link
+              href={`/platform/training-modules/${mod.id}/preview`}
+              target="_blank"
+              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold hover:bg-accent"
+            >
+              <Eye className="size-3.5" /> Open lesson preview
+            </Link>
+          )}
+          <TrainingBlockEditor blocks={draft.contentBlocks} onChange={(next) => set('contentBlocks', next)} />
+        </div>
+      </DrawerSection>
+
+      <DrawerSection title="Legacy text fallback">
+        <div className="p-4">
+          <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Content body (plain text)</Label>
           <Textarea
             value={draft.contentBody}
             onChange={(e) => set('contentBody', e.target.value)}
-            placeholder="The module content riders will read."
-            className="mt-1 min-h-[160px]"
+            placeholder="Short plain-text summary for older rider-native clients that haven't been updated to render content blocks yet."
+            className="mt-1 min-h-[100px]"
           />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Shown by rider-app builds that don&apos;t yet support content blocks. A short summary is enough.
+          </p>
         </div>
       </DrawerSection>
 

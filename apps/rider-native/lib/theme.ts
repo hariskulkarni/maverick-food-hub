@@ -19,6 +19,7 @@ export const colors = {
   danger: '#dc2640',         // errors, failed states
   dangerSoft: '#fdeaec',
   warning: '#e0892a',
+  warningSoft: '#fff4e5',
 
   white: '#ffffff',
   black: '#000000',

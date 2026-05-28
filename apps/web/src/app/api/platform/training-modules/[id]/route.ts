@@ -21,6 +21,8 @@ const PatchBody = z.object({
   summary: z.string().max(500).nullable().optional(),
   category: z.enum(CATEGORIES).optional(),
   contentBody: z.string().min(1).optional(),
+  contentBlocks: z.array(z.any()).optional(),
+  heroImageUrl: z.string().max(2048).nullable().optional(),
   quizQuestions: z.any().optional(),
   durationMin: z.number().int().min(1).max(600).optional(),
   order: z.number().int().min(0).max(9999).optional(),
@@ -42,6 +44,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (data.summary !== undefined) patch.summary = data.summary;
   if (data.category !== undefined) patch.category = data.category;
   if (data.contentBody !== undefined) patch.contentBody = data.contentBody;
+  if (data.contentBlocks !== undefined) {
+    const { parseContentBlocks } = await import('@/server/training-cms');
+    patch.contentBlocks = parseContentBlocks(data.contentBlocks);
+    patch.contentVersion = 2;
+  }
+  if (data.heroImageUrl !== undefined) patch.heroImageUrl = data.heroImageUrl ?? null;
   if (data.quizQuestions !== undefined) patch.quizQuestions = data.quizQuestions ?? undefined;
   if (data.durationMin !== undefined) patch.durationMin = data.durationMin;
   if (data.order !== undefined) patch.order = data.order;

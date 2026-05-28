@@ -2953,13 +2953,25 @@ model TrainingModule {
   title         String
   summary       String?
   category      TrainingCategory @default(ONBOARDING)
+  // Legacy plain-text body. Kept for backward compat (rider native clients on
+  // an older build still read it). Modern lessons use `contentBlocks`.
   contentBody   String
+  /// Block-based lesson content: an array of typed blocks (heading, paragraph,
+  /// image, callout, checklist, key-points, divider, quiz). See
+  /// `src/server/training-cms.ts` for the schema + parser.
+  contentBlocks Json?
+  /// Optional hero/cover image for the lesson card + reader.
+  heroImageUrl  String?
+  /// Schema version of contentBlocks. Bump when we change the block format so
+  /// older clients can pick a fallback path.
+  contentVersion Int             @default(2)
   quizQuestions Json?
   durationMin   Int              @default(5)
   order         Int              @default(0)
   isRequired    Boolean          @default(false)
   isActive      Boolean          @default(true)
   createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   progress RiderTrainingProgress[]
 

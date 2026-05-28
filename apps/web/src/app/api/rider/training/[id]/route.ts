@@ -35,6 +35,9 @@ export async function GET(
       summary: true,
       category: true,
       contentBody: true,
+      contentBlocks: true,
+      contentVersion: true,
+      heroImageUrl: true,
       quizQuestions: true,
       durationMin: true,
       isRequired: true,
@@ -47,6 +50,7 @@ export async function GET(
   });
   if (!mod || !mod.isActive) return new Response('Not found', { status: 404 });
 
+  const { parseContentBlocks } = await import('@/server/training-cms');
   const p = mod.progress[0] ?? null;
   return Response.json({
     id: mod.id,
@@ -54,6 +58,9 @@ export async function GET(
     summary: mod.summary,
     category: mod.category,
     contentBody: mod.contentBody,
+    contentBlocks: parseContentBlocks(mod.contentBlocks),
+    contentVersion: mod.contentVersion ?? 1,
+    heroImageUrl: mod.heroImageUrl,
     quizQuestions: mod.quizQuestions ?? null,
     durationMin: mod.durationMin,
     isRequired: mod.isRequired,
