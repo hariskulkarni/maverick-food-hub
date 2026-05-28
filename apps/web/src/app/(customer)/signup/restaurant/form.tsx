@@ -303,7 +303,7 @@ function StepIdentity({ data, update }: { data: FormData; update: <K extends key
           folder="signup/logos"
           aspect="square"
           label="Logo"
-          hint="Square. ≥ 400px."
+          recommended="512×512 px (square) · transparent PNG preferred"
         />
         <ImageUploader
           value={data.coverImageUrl}
@@ -311,7 +311,7 @@ function StepIdentity({ data, update }: { data: FormData; update: <K extends key
           folder="signup/covers"
           aspect="wide"
           label="Cover image"
-          hint="Wide hero shot of your food, restaurant, or team."
+          recommended="1920×1080 px (16:9, landscape) · wide hero shot of your food, restaurant or team"
         />
       </div>
     </div>
@@ -409,6 +409,7 @@ function StepMenu({ data, update }: { data: FormData; update: <K extends keyof F
                 folder="signup/menu-items"
                 aspect="square"
                 label={`Photo ${i + 1}`}
+                recommended="800×800 px (square) · bright, top-down shot"
               />
               <div className="space-y-2.5">
                 <div className="flex items-start gap-2">

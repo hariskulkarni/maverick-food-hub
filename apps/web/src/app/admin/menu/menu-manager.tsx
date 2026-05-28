@@ -250,7 +250,7 @@ function ItemDialog({ item, categories, onClose }: { item: any; categories: any[
               folder="menu-items"
               aspect="square"
               label="Photo"
-              hint="A bright, top-down shot looks best."
+              recommended="800×800 px (square) · bright, top-down shot looks best"
             />
             <div className="space-y-3">
               <Field label="Name" value={data.name} onChange={(v) => setData({ ...data, name: v })} required />

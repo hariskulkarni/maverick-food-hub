@@ -245,7 +245,7 @@ export function ComboEditor({
               onChange={(url) => setField('imageUrl', url)}
               folder="combos"
               aspect="video"
-              hint="Square or 16:9 works best — shown on the customer menu card."
+              recommended="1200×675 px (16:9) or 800×800 (square) · shown on the customer menu card"
             />
           </div>
 

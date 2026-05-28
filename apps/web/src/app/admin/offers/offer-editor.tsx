@@ -425,7 +425,7 @@ export function OfferEditor({
               folder="offers"
               aspect="wide"
               label="Offer image"
-              hint="Shown on the storefront offers carousel"
+              recommended="1200×675 px (16:9, landscape) · shown on the storefront offers carousel"
             />
 
             <div>

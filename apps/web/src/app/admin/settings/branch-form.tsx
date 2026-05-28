@@ -400,7 +400,7 @@ function FoodLicenseSection({
           onChange={(url) => set('fssaiLicenseImageUrl', url)}
           folder="food-licenses"
           aspect="wide"
-          hint="A clear, readable photo or scan of the full certificate."
+          recommended="≥ 1600 px wide · clear, readable scan of the full certificate"
         />
       </div>
     </div>

@@ -208,7 +208,7 @@ function CarouselTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: Patc
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-[200px_1fr]">
-              <ImageUploader value={s.src} onChange={(url) => update(i, { src: url || '' })} folder="banners" aspect="wide" label="Banner image (2:1)" />
+              <ImageUploader value={s.src} onChange={(url) => update(i, { src: url || '' })} folder="banners" aspect="wide" label="Banner image (2:1)" recommended="2600×1300 px (2:1, landscape) · JPG/PNG/WebP" />
               <div className="space-y-3">
                 <Field label="Alt text" hint="Describes the image for accessibility + SEO."><Text value={s.alt} onChange={(v) => update(i, { alt: v })} max={240} placeholder="Wok & Sizzler — wok-tossed happiness…" /></Field>
                 <Field label="Link (optional)" hint="Where the slide goes when tapped, e.g. /r/wok-sizzler"><Text value={s.href} onChange={(v) => update(i, { href: v })} placeholder="/r/some-restaurant" /></Field>
@@ -305,7 +305,7 @@ function WoymTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: PatchFn;
               </div>
             </div>
             <div className="grid gap-3 grid-cols-[96px_1fr]">
-              <ImageUploader value={t.image} onChange={(url) => update(i, { image: url || '' })} folder="discovery" aspect="square" />
+              <ImageUploader value={t.image} onChange={(url) => update(i, { image: url || '' })} folder="discovery" aspect="square" recommended="600×600 px (square) · JPG/PNG/WebP" />
               <div className="space-y-2">
                 <Field label="Label"><Text value={t.label} onChange={(v) => update(i, { label: v })} max={60} /></Field>
                 <Field label="Category slug" hint="Links to /category/<slug>"><Text value={t.slug} onChange={(v) => update(i, { slug: v })} max={64} placeholder="biryani" /></Field>
@@ -451,7 +451,7 @@ function SeoTab({ cfg, patch }: { cfg: DiscoveryConfig; patch: PatchFn }) {
       <Field label="Meta description" hint="Up to ~320 chars. Summarises the page for search engines."><Area value={cfg.seo.metaDescription} onChange={(v) => patch('seo', { metaDescription: v })} max={320} rows={3} /></Field>
       <Field label="Keywords" hint="Comma-separated."><Text value={cfg.seo.keywords} onChange={(v) => patch('seo', { keywords: v })} max={320} placeholder="food delivery, restaurants near me, biryani…" /></Field>
       <Field label="Social share image (OG image)" hint="Shown when the page is shared on WhatsApp / social.">
-        <ImageUploader value={cfg.seo.ogImage} onChange={(url) => patch('seo', { ogImage: url || '' })} folder="seo" aspect="wide" />
+        <ImageUploader value={cfg.seo.ogImage} onChange={(url) => patch('seo', { ogImage: url || '' })} folder="seo" aspect="wide" recommended="1200×630 px (1.91:1) · Open Graph standard" />
       </Field>
     </div>
   );

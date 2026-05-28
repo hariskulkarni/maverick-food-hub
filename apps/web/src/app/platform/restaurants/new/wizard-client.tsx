@@ -611,11 +611,11 @@ function IdentityStep({ state, dispatch, issues }: { state: IdentityState; dispa
 
       <div>
         <Label>Logo</Label>
-        <ImageUploader value={state.logoUrl ?? null} onChange={(url) => dispatch({ type: 'identity', patch: { logoUrl: url } })} folder="restaurants" aspect="square" />
+        <ImageUploader value={state.logoUrl ?? null} onChange={(url) => dispatch({ type: 'identity', patch: { logoUrl: url } })} folder="restaurants" aspect="square" recommended="512×512 px (square) · transparent PNG preferred" />
       </div>
       <div>
         <Label>Cover image</Label>
-        <ImageUploader value={state.coverImageUrl ?? null} onChange={(url) => dispatch({ type: 'identity', patch: { coverImageUrl: url } })} folder="restaurants" aspect="wide" />
+        <ImageUploader value={state.coverImageUrl ?? null} onChange={(url) => dispatch({ type: 'identity', patch: { coverImageUrl: url } })} folder="restaurants" aspect="wide" recommended="1920×1080 px (16:9, landscape)" />
       </div>
 
       <div>

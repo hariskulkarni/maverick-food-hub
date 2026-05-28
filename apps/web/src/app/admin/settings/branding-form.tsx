@@ -112,7 +112,7 @@ export function BrandingForm({ restaurant }: { restaurant: Restaurant }) {
             folder={`restaurants/${restaurant.slug}/logo`}
             aspect="square"
             label="Logo"
-            hint="Square image, ≥ 400×400."
+            recommended="512×512 px (square) · transparent PNG preferred"
           />
           <ImageUploader
             value={f.coverImageUrl}
@@ -120,7 +120,7 @@ export function BrandingForm({ restaurant }: { restaurant: Restaurant }) {
             folder={`restaurants/${restaurant.slug}/cover`}
             aspect="wide"
             label="Cover image"
-            hint="Wide hero shot, ≥ 1200×400. Shown at the top of your restaurant page."
+            recommended="1920×1080 px (16:9, landscape) · shown at the top of your restaurant page"
           />
         </div>
       </div>

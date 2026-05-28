@@ -21,6 +21,10 @@ interface Props {
   aspect?: 'square' | 'video' | 'wide';
   label?: string;
   hint?: string;
+  /** Recommended image dimensions, e.g. "2600×1300 (2:1)". Surfaced prominently
+   *  inside the empty drop zone AND under the box once uploaded, so editors
+   *  always see the target size before they pick a file. */
+  recommended?: string;
   className?: string;
 }
 
@@ -38,6 +42,7 @@ export function ImageUploader({
   aspect = 'video',
   label,
   hint,
+  recommended,
   className = ''
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -144,6 +149,11 @@ export function ImageUploader({
               </div>
               <div className="text-sm font-medium">Drop an image or click to upload</div>
               <div className="text-[11px] text-muted-foreground mt-0.5">JPG, PNG, WebP, GIF, AVIF · max 8 MB</div>
+              {recommended && (
+                <div className="mt-1.5 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                  Recommended: {recommended}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -165,6 +175,13 @@ export function ImageUploader({
         <div className="flex items-center gap-1.5 text-xs text-destructive">
           <AlertCircle className="size-3.5" /> {error}
         </div>
+      )}
+      {/* Recommended size stays visible even after upload, so editors can
+          double-check at a glance whether the image they picked fits the slot. */}
+      {!error && recommended && (
+        <p className="text-[11px] text-muted-foreground">
+          <span className="font-medium text-foreground">Recommended:</span> {recommended}
+        </p>
       )}
       {!error && hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
 
