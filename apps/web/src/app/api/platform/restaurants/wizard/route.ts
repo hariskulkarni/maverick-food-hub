@@ -473,5 +473,15 @@ export async function POST(req: NextRequest) {
     userAgent: req.headers.get('user-agent')
   }).catch((err) => log.error({ err }, 'audit log restaurant.wizard.create failed'));
 
+  // Auto-mint a default RESTAURANT-scope QR so the new tenant immediately shows
+  // up on /platform/qr without a manual step. Failure is non-fatal — the page
+  // will surface it as "missing" and a single "Generate" click fixes it.
+  try {
+    const { ensureRestaurantQr } = await import('@/server/qr');
+    await ensureRestaurantQr(result.restaurantId);
+  } catch (err) {
+    log.error({ err, restaurantId: result.restaurantId }, 'auto-mint restaurant QR failed');
+  }
+
   return Response.json(result, { status: 201 });
 }
