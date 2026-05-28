@@ -2971,7 +2971,9 @@ model TrainingModule {
   isRequired    Boolean          @default(false)
   isActive      Boolean          @default(true)
   createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  // Default = now() so existing rows get a value when this column is added on
+  // a live database; @updatedAt then keeps it fresh on every subsequent write.
+  updatedAt     DateTime         @default(now()) @updatedAt
 
   progress RiderTrainingProgress[]
 
