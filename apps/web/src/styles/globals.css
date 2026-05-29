@@ -115,6 +115,47 @@
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-6px); }
   }
+  .float-soft-slow { animation: float-soft 7s ease-in-out infinite; }
+
+  /* Phone tilt — used on the hero phone mockup */
+  .phone-tilt { animation: phone-tilt 6s ease-in-out infinite; transform-origin: center bottom; }
+  @keyframes phone-tilt {
+    0%, 100% { transform: rotate(-2deg) translateY(0); }
+    50%      { transform: rotate( 2deg) translateY(-4px); }
+  }
+
+  /* Stepwise checkmark scale-in — used on each install/usage step */
+  .pop-in { animation: pop-in 0.5s cubic-bezier(0.2,0.7,0.3,1.4) both; }
+  @keyframes pop-in {
+    0%   { opacity: 0; transform: scale(0.4); }
+    60%  { opacity: 1; transform: scale(1.12); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+
+  /* Continuous shimmer for the download progress bar */
+  .shimmer {
+    background: linear-gradient(90deg, hsl(var(--primary)/0.6) 0%, hsl(var(--primary)) 50%, hsl(var(--primary)/0.6) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Gentle slide-in from the right (used on phone screen swap-in) */
+  .slide-in-r { animation: slide-in-r 0.5s cubic-bezier(0.2,0.7,0.3,1) both; }
+  @keyframes slide-in-r {
+    0%   { opacity: 0; transform: translateX(24px); }
+    100% { opacity: 1; transform: translateX(0); }
+  }
+
+  /* Number-roll animation — used by the animated stats counter */
+  .roll-up { animation: roll-up 0.45s ease-out both; }
+  @keyframes roll-up {
+    0%   { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
 
   /* Slow pulse — used on live status indicators */
   .pulse-soft { animation: pulse-soft 2.4s ease-in-out infinite; }
