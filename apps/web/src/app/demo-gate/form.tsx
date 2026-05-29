@@ -6,7 +6,7 @@ import { Loader2, LogIn, AlertCircle } from 'lucide-react';
 /**
  * Password form for the demo gate.
  *
- * POSTs `{ password }` to `/api/_demo-gate`. On success the API sets the
+ * POSTs `{ password }` to `/api/demo-gate`. On success the API sets the
  * signed cookie and returns { ok, redirect } — we then full-reload to the
  * redirect target so middleware sees the new cookie.
  */
@@ -20,7 +20,7 @@ export function DemoGateForm({ initialError }: { initialError?: string }) {
     if (!password) return;
     setBusy(true); setError(null);
     try {
-      const r = await fetch('/api/_demo-gate', {
+      const r = await fetch('/api/demo-gate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),

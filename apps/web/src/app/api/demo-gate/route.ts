@@ -1,5 +1,5 @@
 /**
- * POST /api/_demo-gate
+ * POST /api/demo-gate
  *   body: { password: string }
  *   → checks the password against DEMO_GATE_PASSWORD (env). On success signs a
  *     24h token, sets it as the demo-gate cookie, and returns { ok, redirect }.

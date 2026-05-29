@@ -44,21 +44,26 @@ export async function middleware(req: NextRequest) {
   const url = req.nextUrl;
   const path = url.pathname;
 
-  // ─── Demo magic-link gate ──────────────────────────────────────────────
+  // ─── Demo gate ─────────────────────────────────────────────────────────
   // When DEMO_MODE=true on this runtime, every page request needs a valid
-  // signed gate cookie. Email-themed paths and the rider-app + downloads
-  // are exempt so the gate page itself loads + visitors can grab the APK.
+  // signed gate cookie. The gate page itself + the gate API + Next assets +
+  // /downloads (rider APK install link) are exempt so the gate page loads
+  // and visitors can grab the APK.
+  //
+  // IMPORTANT: the gate route is `/demo-gate`, NOT `/_demo-gate`. App Router
+  // treats folders prefixed with `_` as private (not registered as routes),
+  // so the underscore form 404s.
   if (process.env.DEMO_MODE === 'true') {
     const isGatePath =
-      path.startsWith('/_demo-gate') ||
-      path.startsWith('/api/_demo-gate') ||
+      path.startsWith('/demo-gate') ||
+      path.startsWith('/api/demo-gate') ||
       path.startsWith('/_next') ||
       path.startsWith('/downloads/');
     if (!isGatePath) {
       const cookie = req.cookies.get(DEMO_COOKIE)?.value;
       const ok = await verifyDemoCookie(cookie);
       if (!ok) {
-        return NextResponse.redirect(new URL('/_demo-gate', url));
+        return NextResponse.redirect(new URL('/demo-gate', url));
       }
     }
   }
