@@ -90,7 +90,30 @@ export function ImageUploader({
       onChange(url);
       toast.success('Image uploaded');
     } catch (e) {
-      const msg = (e as Error).message;
+      const err = e as UploadError;
+      // Auth-expired flow: the cookie went stale while the editor was open.
+      // Surface a clear message AND prompt re-login so the user doesn't sit
+      // there clicking Upload and getting silent failures.
+      if (err.code === 'auth/unauthenticated') {
+        setError('Your session has expired. Please sign in again to continue.');
+        toast.error('Session expired', {
+          description: 'Sign in again to keep editing.',
+          action: {
+            label: 'Sign in',
+            onClick: () => {
+              const next = typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/';
+              window.location.href = `/login?next=${encodeURIComponent(next)}&mode=admin`;
+            },
+          },
+        });
+        return;
+      }
+      if (err.code === 'auth/forbidden') {
+        setError(err.message || "You don't have permission to upload here.");
+        toast.error('Permission denied', { description: err.message });
+        return;
+      }
+      const msg = err.message || 'Upload failed.';
       setError(msg);
       toast.error(`Upload failed: ${msg}`);
     } finally {
@@ -246,6 +269,35 @@ export function ImageUploader({
   );
 }
 
+/**
+ * Server returns `{ error, code }` JSON for every non-2xx so the client can
+ * react to specific failure modes (re-login on auth/unauthenticated, surface
+ * the right inline message on auth/forbidden, etc.). When the body isn't
+ * parseable JSON (truly catastrophic 500 or proxy intercept), we fall back to
+ * the raw text + a generic code.
+ */
+type UploadErrorCode =
+  | 'auth/unauthenticated'
+  | 'auth/forbidden'
+  | 'upload/bad_body'
+  | 'upload/missing_file'
+  | 'upload/empty_file'
+  | 'upload/too_large'
+  | 'upload/bad_type'
+  | 'upload/storage_error'
+  | 'upload/network'
+  | 'upload/unknown';
+
+class UploadError extends Error {
+  code: UploadErrorCode;
+  status: number;
+  constructor(message: string, code: UploadErrorCode, status: number) {
+    super(message);
+    this.code = code;
+    this.status = status;
+  }
+}
+
 /** XHR upload so we can wire `progress` events — fetch() doesn't expose them. */
 function uploadWithProgress(url: string, file: File, folder: string, onProgress: (pct: number) => void): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -254,6 +306,10 @@ function uploadWithProgress(url: string, file: File, folder: string, onProgress:
     fd.append('folder', folder);
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url);
+    // Same-origin XHR sends cookies by default, but being explicit makes the
+    // intent obvious AND handles the edge case where a future deployment puts
+    // the upload endpoint on a sibling subdomain.
+    xhr.withCredentials = true;
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
     };
@@ -262,15 +318,21 @@ function uploadWithProgress(url: string, file: File, folder: string, onProgress:
         try {
           const data = JSON.parse(xhr.responseText);
           if (data?.url) return resolve(data.url);
-          reject(new Error('No url in response'));
+          reject(new UploadError('Server did not return an image URL.', 'upload/unknown', xhr.status));
         } catch {
-          reject(new Error('Bad response'));
+          reject(new UploadError('The server response was not valid JSON.', 'upload/unknown', xhr.status));
         }
-      } else {
-        reject(new Error(xhr.responseText || `HTTP ${xhr.status}`));
+        return;
       }
+      // Try to parse the structured `{ error, code }` body the API now sends.
+      let parsed: { error?: string; code?: string } = {};
+      try { parsed = JSON.parse(xhr.responseText) ?? {}; } catch { /* fall through */ }
+      const message = parsed.error || xhr.responseText || `HTTP ${xhr.status}`;
+      const code = (parsed.code as UploadErrorCode) || 'upload/unknown';
+      reject(new UploadError(message, code, xhr.status));
     };
-    xhr.onerror = () => reject(new Error('Network error'));
+    xhr.onerror = () => reject(new UploadError('Network error — please check your connection.', 'upload/network', 0));
+    xhr.ontimeout = () => reject(new UploadError('Upload timed out. Try again.', 'upload/network', 0));
     xhr.send(fd);
   });
 }

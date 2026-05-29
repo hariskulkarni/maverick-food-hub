@@ -10,7 +10,7 @@
 
 import { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { getDiscoveryConfig, saveDiscoveryConfig } from '@/server/discovery-cms';
 
@@ -20,24 +20,16 @@ export const dynamic = 'force-dynamic';
 const NO_STORE = { 'Cache-Control': 'no-store' } as const;
 
 export async function GET() {
-  try {
-    await requireSuperAdmin();
-  } catch (e) {
-    if (e instanceof Response) return e;
-    throw e;
-  }
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const config = await getDiscoveryConfig();
   return Response.json({ config }, { headers: NO_STORE });
 }
 
 export async function PATCH(req: NextRequest) {
-  let session;
-  try {
-    session = await requireSuperAdmin();
-  } catch (e) {
-    if (e instanceof Response) return e;
-    throw e;
-  }
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
 
   let body: any;
   try {

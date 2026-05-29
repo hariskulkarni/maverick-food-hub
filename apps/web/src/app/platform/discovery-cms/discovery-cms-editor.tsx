@@ -59,7 +59,27 @@ export function DiscoveryCmsEditor({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config: cfg }),
       });
-      if (!r.ok) throw new Error(await r.text());
+      if (!r.ok) {
+        // The API returns `{ error, code }` for every non-2xx. The code lets
+        // us surface a targeted message: re-login on auth/unauthenticated,
+        // permission hint on auth/forbidden, generic message otherwise.
+        let body: { error?: string; code?: string } = {};
+        try { body = (await r.json()) ?? {}; } catch { /* fall through */ }
+        if (body.code === 'auth/unauthenticated') {
+          const next = typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/';
+          toast.error('Your session has expired.', {
+            description: 'Sign in again to keep editing.',
+            action: { label: 'Sign in', onClick: () => { window.location.href = `/login?next=${encodeURIComponent(next)}&mode=admin`; } },
+          });
+          return;
+        }
+        if (body.code === 'auth/forbidden') {
+          toast.error('Permission denied', { description: body.error || 'This action requires platform super-admin access.' });
+          return;
+        }
+        toast.error('Save failed', { description: (body.error || `HTTP ${r.status}`).slice(0, 240) });
+        return;
+      }
       const data = await r.json();
       if (data.config) setCfg(data.config);
       toast.success('Discovery page updated — live now.');
