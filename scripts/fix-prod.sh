@@ -136,6 +136,13 @@ if [ "$BUILD_RC" != "0" ]; then
 fi
 
 line "9. restart pm2"
+# IMPORTANT: keep this as `restart`, NOT `reload`. `pm2 reload` does a
+# zero-downtime swap and keeps the old Node process warm briefly. Any SSR
+# during that window can capture references to OLD .next/static/css/<hash>.css
+# bundle names that the new build just rewrote — and the page renders with no
+# styles (404 on the stylesheet). `restart` terminates + respawns, so every
+# SSR after this line reads the fresh build manifest. Same rationale as
+# fix-demo.sh.
 pm2 restart "$PM2_APP" --update-env
 pm2 status "$PM2_APP" || true
 

@@ -101,10 +101,19 @@ npx --no-install prisma db push --schema=prisma/schema.prisma 2>&1 || {
   exit 1
 }
 
-line "4. reload pm2 demo process"
-# The build artefacts are already in .next (fix-prod.sh did the build). All we
-# need is to reload the demo process so it picks up new env / restart cleanly.
-pm2 reload "$PM2_APP" --update-env || pm2 start /opt/restaurant-manager/ecosystem.config.js --only "$PM2_APP"
+line "4. restart pm2 demo process"
+# The build artefacts are already in .next (fix-prod.sh did the build). We use
+# `restart` (NOT `reload`) here for a hard reason:
+#
+# `pm2 reload` does a zero-downtime swap and keeps the old Node process warm
+# briefly while the new one boots. Any SSR happening during that window can
+# end up capturing references to OLD .next/static/css/<hash>.css bundle names
+# from the still-warm process — but next build has already rewritten those
+# bundles to NEW hashes on disk. The result is HTML that points at CSS files
+# that no longer exist (404), and the page renders with no styling at all.
+# `pm2 restart` terminates + respawns, guaranteeing every SSR after this line
+# reads the fresh build manifest.
+pm2 restart "$PM2_APP" --update-env || pm2 start /opt/restaurant-manager/ecosystem.config.js --only "$PM2_APP"
 pm2 status "$PM2_APP" || true
 
 line "5. flush old demo logs"
