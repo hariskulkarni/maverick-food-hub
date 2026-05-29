@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { ImageUploader } from '@/components/image-uploader';
 import type {
-  DiscoveryConfig, CarouselSlide, CategoryTile, FooterColumn, NearbySort,
+  DiscoveryConfig, CarouselSlide, CategoryTile, FooterColumn, NearbySort, SlideCtaStyle,
 } from '@/server/discovery-cms';
 
 type OfferLifecycle = 'active' | 'scheduled' | 'paused' | 'expired';
@@ -223,9 +223,72 @@ function CarouselTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: Patc
               <ImageUploader value={s.src} onChange={(url) => update(i, { src: url || '' })} folder="banners" aspect="wide" label="Banner image (2:1)" recommended="2600×1300 px (2:1, landscape) · JPG/PNG/WebP" />
               <div className="space-y-3">
                 <Field label="Alt text" hint="Describes the image for accessibility + SEO."><Text value={s.alt} onChange={(v) => update(i, { alt: v })} max={240} placeholder="Wok & Sizzler — wok-tossed happiness…" /></Field>
-                <Field label="Link (optional)" hint="Where the slide goes when tapped, e.g. /r/wok-sizzler"><Text value={s.href} onChange={(v) => update(i, { href: v })} placeholder="/r/some-restaurant" /></Field>
+                <Field label="Image click link (optional)" hint="Where the WHOLE banner goes when tapped, e.g. /r/wok-sizzler"><Text value={s.href} onChange={(v) => update(i, { href: v })} placeholder="/r/some-restaurant" /></Field>
                 <Field label="Fallback gradient" hint="Tailwind from/via/to classes shown while the image loads or if it's missing."><Text value={s.fallback} onChange={(v) => update(i, { fallback: v })} placeholder="from-[#ff5a2c] via-[#ff3b30] to-[#e0286f]" /></Field>
               </div>
+            </div>
+
+            {/* ── Overlay headline + CTA button ─────────────────────────────
+                 Every field is optional. If none are set, the slide renders as
+                 an image-only banner like before. */}
+            <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                <Sparkles className="size-3.5" /> Overlay text + CTA button (optional)
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <Field label="Eyebrow" hint="Small uppercase chip (e.g. NEW THIS WEEK).">
+                  <Text value={s.eyebrow} onChange={(v) => update(i, { eyebrow: v })} max={60} placeholder="New this week" />
+                </Field>
+                <Field label="Headline" hint="Big bold line over the banner.">
+                  <Text value={s.headline} onChange={(v) => update(i, { headline: v })} max={120} placeholder="Wok-tossed happiness" />
+                </Field>
+                <Field label="Subtext" hint="Soft supporting line.">
+                  <Text value={s.subtext} onChange={(v) => update(i, { subtext: v })} max={240} placeholder="Andhra street favourites, fresh & fast." />
+                </Field>
+              </div>
+              <div className="grid gap-3 md:grid-cols-[1fr_1.4fr_140px]">
+                <Field label="CTA button label" hint="Blank ⇒ no button shown.">
+                  <Text value={s.ctaLabel} onChange={(v) => update(i, { ctaLabel: v })} max={40} placeholder="Order now" />
+                </Field>
+                <Field label="CTA button link" hint="Blank ⇒ falls back to the image-click link above.">
+                  <Text value={s.ctaHref} onChange={(v) => update(i, { ctaHref: v })} placeholder="/r/some-restaurant" />
+                </Field>
+                <Field label="Style">
+                  <select
+                    value={s.ctaStyle}
+                    onChange={(e) => update(i, { ctaStyle: e.target.value as SlideCtaStyle })}
+                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    <option value="primary">Primary (filled)</option>
+                    <option value="secondary">Secondary (white)</option>
+                    <option value="outline">Outline (glassy)</option>
+                  </select>
+                </Field>
+              </div>
+              {/* Tiny live-preview row — gives editors immediate confidence in
+                  what the CTA will look like without waiting for save + reload. */}
+              {(s.eyebrow || s.headline || s.subtext || s.ctaLabel) && (
+                <div className="rounded-md bg-foreground p-3 text-white">
+                  {s.eyebrow && (
+                    <span className="inline-flex rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
+                      {s.eyebrow}
+                    </span>
+                  )}
+                  {s.headline && <div className="mt-1 text-base font-bold">{s.headline}</div>}
+                  {s.subtext && <div className="mt-0.5 text-xs text-white/80">{s.subtext}</div>}
+                  {s.ctaLabel && (
+                    <div className="mt-2">
+                      <span className={
+                        s.ctaStyle === 'outline' ? 'inline-flex items-center gap-1 rounded-full border border-white/80 px-3 py-1 text-xs font-semibold'
+                        : s.ctaStyle === 'secondary' ? 'inline-flex items-center gap-1 rounded-full bg-white text-foreground px-3 py-1 text-xs font-semibold'
+                        : 'inline-flex items-center gap-1 rounded-full bg-primary text-primary-foreground px-3 py-1 text-xs font-semibold'
+                      }>
+                        {s.ctaLabel} →
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -233,7 +296,10 @@ function CarouselTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: Patc
 
       <button
         type="button"
-        onClick={() => setCfg((c) => ({ ...c, carousel: { ...c.carousel, slides: [...c.carousel.slides, { src: '', alt: '', href: '', fallback: 'from-[#ff5a2c] via-[#ff3b30] to-[#e0286f]', enabled: true }] } }))}
+        onClick={() => setCfg((c) => ({ ...c, carousel: { ...c.carousel, slides: [...c.carousel.slides, {
+          src: '', alt: '', href: '', fallback: 'from-[#ff5a2c] via-[#ff3b30] to-[#e0286f]', enabled: true,
+          eyebrow: '', headline: '', subtext: '', ctaLabel: '', ctaHref: '', ctaStyle: 'primary' as SlideCtaStyle,
+        }] } }))}
         className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-3 py-2 text-sm hover:border-primary"
       >
         <Plus className="size-4" /> Add slide

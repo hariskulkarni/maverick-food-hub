@@ -29,17 +29,39 @@ export const DISCOVERY_CONTENT_KEY = 'discovery';
 
 export type NearbySort = 'newest' | 'name';
 
+/** Visual style for the CTA button on a carousel slide. */
+export type SlideCtaStyle = 'primary' | 'secondary' | 'outline';
+export const SLIDE_CTA_STYLES = ['primary', 'secondary', 'outline'] as const;
+
 export interface CarouselSlide {
   /** Image URL (under /public or absolute). */
   src: string;
   /** Accessible alt text / placeholder caption. */
   alt: string;
-  /** Optional click-through link. '' ⇒ not a link. */
+  /** Optional whole-slide click-through link. '' ⇒ tapping the image does nothing. */
   href: string;
   /** Tailwind gradient classes for the loading/fallback background. */
   fallback: string;
   /** Hidden slides are kept but not rendered. */
   enabled: boolean;
+
+  // ── Overlay text + CTA (all optional; render only when set) ────────────────
+  /** Small uppercase eyebrow label above the headline (e.g. "New this week"). */
+  eyebrow: string;
+  /** Big headline overlaid on the slide. Blank ⇒ no headline rendered. */
+  headline: string;
+  /** Supporting line under the headline. Blank ⇒ hidden. */
+  subtext: string;
+  /** Button label. Blank ⇒ no CTA button rendered. */
+  ctaLabel: string;
+  /**
+   * Button click-through. Falls back to `href` when blank, so editors who want
+   * the button to go to the same place as the image-click don't have to set it
+   * twice. Independent value when both are set.
+   */
+  ctaHref: string;
+  /** Visual style of the CTA button. Defaults to 'primary'. */
+  ctaStyle: SlideCtaStyle;
 }
 
 export interface CategoryTile {
@@ -147,6 +169,12 @@ export function defaultDiscoveryConfig(): DiscoveryConfig {
         href: '',
         fallback: b.fallback,
         enabled: true,
+        eyebrow: '',
+        headline: '',
+        subtext: '',
+        ctaLabel: '',
+        ctaHref: '',
+        ctaStyle: 'primary' as SlideCtaStyle,
       })),
     },
     topOffers: {
@@ -236,6 +264,12 @@ function parseSlide(s: unknown): CarouselSlide | null {
     href: url(o.href),
     fallback: str(o.fallback, 200) || 'from-[#ff5a2c] via-[#ff3b30] to-[#e0286f]',
     enabled: bool(o.enabled, true),
+    eyebrow: str(o.eyebrow, 60),
+    headline: str(o.headline, 120),
+    subtext: str(o.subtext, 240),
+    ctaLabel: str(o.ctaLabel, 40),
+    ctaHref: url(o.ctaHref),
+    ctaStyle: oneOf<SlideCtaStyle>(o.ctaStyle, SLIDE_CTA_STYLES, 'primary'),
   };
 }
 

@@ -288,7 +288,18 @@ export default async function RestaurantsListPage({
         <FeatureCarousel
           slides={cms.carousel.slides
             .filter((s) => s.enabled)
-            .map((s) => ({ src: s.src, alt: s.alt, fallback: s.fallback, href: s.href || undefined }))}
+            .map((s) => ({
+              src: s.src,
+              alt: s.alt,
+              fallback: s.fallback,
+              href: s.href || undefined,
+              eyebrow: s.eyebrow || undefined,
+              headline: s.headline || undefined,
+              subtext: s.subtext || undefined,
+              ctaLabel: s.ctaLabel || undefined,
+              ctaHref: s.ctaHref || undefined,
+              ctaStyle: s.ctaStyle,
+            }))}
           autoplayMs={cms.carousel.autoplayMs}
         />
       )}
