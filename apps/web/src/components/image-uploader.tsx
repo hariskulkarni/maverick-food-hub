@@ -10,7 +10,7 @@
  * Accepts an existing URL via `value`, so it works as a controlled input.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Upload, X, Image as ImageIcon, Loader2, AlertCircle } from 'lucide-react';
+import { Upload, X, Image as ImageIcon, Loader2, AlertCircle, ExternalLink, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -243,6 +243,31 @@ export function ImageUploader({
       {error && (
         <div className="flex items-center gap-1.5 text-xs text-destructive">
           <AlertCircle className="size-3.5" /> {error}
+        </div>
+      )}
+      {/* Saved-URL chip — appears as soon as the parent's `value` prop has a
+          URL (so it survives soft-reloads of the editor too, not just the
+          moment-of-upload). The "Open" link lets the editor verify the URL
+          is actually reachable WITHOUT waiting for save+storefront refresh.
+          A green check signals "this is what your save will persist".
+          Without this chip, the only signal that the upload worked was the
+          image showing inside the dropzone — and that came from the local
+          blob preview, NOT the server URL, so a broken final URL was
+          invisible until the storefront 404'd. */}
+      {!error && value && !imgLoadFailed && (
+        <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-1.5 text-[11px]">
+          <Check className="size-3.5 shrink-0 text-success" />
+          <span className="text-muted-foreground shrink-0">Saved URL:</span>
+          <code className="flex-1 font-mono text-foreground truncate" title={value}>{value}</code>
+          <a
+            href={value}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-0.5 shrink-0 text-primary hover:underline font-medium"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Open <ExternalLink className="size-3" />
+          </a>
         </div>
       )}
       {/* Recommended size stays visible even after upload, so editors can
