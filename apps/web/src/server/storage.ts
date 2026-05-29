@@ -1,5 +1,15 @@
 /**
  * Pluggable file storage. Dev: writes to /public/uploads. Prod: S3.
+ *
+ * URL layout: every uploaded file is keyed `uploads/<folder>/<file>` so the
+ * resulting URL is ALWAYS `/uploads/<folder>/<file>`. This:
+ *   • lands files inside the already-gitignored `public/uploads/` directory
+ *     (so deploys never clean them out and they never get accidentally
+ *     committed by a `git add .`),
+ *   • can never collide with any current or future App Router route, since no
+ *     `/uploads/*` route exists,
+ *   • is a single, predictable static-asset namespace the middleware can
+ *     exempt from the demo gate.
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -9,11 +19,19 @@ export interface StorageDriver {
   put(file: { name: string; type: string; data: Buffer }, opts?: { folder?: string }): Promise<{ url: string; key: string }>;
 }
 
+/** Build the storage key. ALWAYS prefixed with `uploads/` to land under the
+ *  gitignored public/uploads/ tree (matches the .gitignore rule and keeps the
+ *  static-asset URL namespace single-rooted). Trims any duplicate `uploads/`
+ *  prefix a caller may have already added. */
+function buildKey(name: string, folder: string | undefined): string {
+  const ext = path.extname(name) || '.bin';
+  const sub = (folder ?? 'misc').replace(/^uploads\/?/, '').replace(/^\/+|\/+$/g, '') || 'misc';
+  return `uploads/${sub}/${Date.now()}-${nanoid(8)}${ext}`;
+}
+
 class LocalStorage implements StorageDriver {
   async put(file: { name: string; type: string; data: Buffer }, opts: { folder?: string } = {}) {
-    const folder = opts.folder ?? 'uploads';
-    const ext = path.extname(file.name) || '.bin';
-    const key = `${folder}/${Date.now()}-${nanoid(8)}${ext}`;
+    const key = buildKey(file.name, opts.folder);
     const root = path.join(process.cwd(), 'public');
     const full = path.join(root, key);
     await fs.mkdir(path.dirname(full), { recursive: true });
@@ -34,8 +52,7 @@ class S3Storage implements StorageDriver {
       region: process.env.S3_REGION!,
       credentials: { accessKeyId: process.env.S3_ACCESS_KEY!, secretAccessKey: process.env.S3_SECRET_KEY! }
     });
-    const ext = path.extname(file.name) || '.bin';
-    const key = `${opts.folder ?? 'uploads'}/${Date.now()}-${nanoid(8)}${ext}`;
+    const key = buildKey(file.name, opts.folder);
     await client.send(new PutObjectCommand({
       Bucket: process.env.S3_BUCKET!,
       Key: key,

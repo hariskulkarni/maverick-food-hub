@@ -51,12 +51,23 @@ export function ImageUploader({
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
+  // Tracks whether the <img> tag failed to load its src. We surface a clear
+  // "image failed to load" message instead of letting the browser show its
+  // default broken-image glyph with no explanation.
+  const [imgLoadFailed, setImgLoadFailed] = useState(false);
 
   useEffect(() => {
     return () => {
       if (localPreview) URL.revokeObjectURL(localPreview);
     };
   }, [localPreview]);
+
+  // Reset the "image failed" indicator whenever the URL we'd render changes
+  // (new value from parent, new local blob, or cleared) — otherwise a stale
+  // failure flag from a previous URL bleeds into the next attempt.
+  useEffect(() => {
+    setImgLoadFailed(false);
+  }, [value, localPreview]);
 
   async function upload(file: File) {
     setError(null);
@@ -119,28 +130,63 @@ export function ImageUploader({
         }`}
       >
         {displayUrl ? (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={displayUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-            <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
-                className="rounded-full bg-card/95 px-2.5 py-1 text-xs font-medium shadow hover:bg-card"
-              >
-                Replace
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); clear(); }}
-                className="rounded-full bg-card/95 p-1.5 shadow hover:bg-destructive/10 hover:text-destructive"
-                aria-label="Remove image"
-              >
-                <X className="size-3.5" />
-              </button>
+          imgLoadFailed ? (
+            // The <img> tried to load and failed (file moved, server 404, the
+            // demo-gate middleware redirected an asset request, etc.). Show a
+            // clear message instead of the silent broken-icon glyph so the
+            // editor knows what to do (re-upload).
+            <div className="absolute inset-0 grid place-items-center bg-destructive/5 p-3 text-destructive">
+              <div className="text-center">
+                <AlertCircle className="size-5 mx-auto" />
+                <div className="mt-1 text-[11px] font-medium">Image failed to load</div>
+                <div className="mt-0.5 text-[10px] text-destructive/80 break-all line-clamp-2">{value || displayUrl}</div>
+                <div className="mt-1.5 inline-flex gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
+                    className="rounded-full bg-card/95 px-2 py-0.5 text-[10px] font-medium text-foreground shadow"
+                  >
+                    Re-upload
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); clear(); }}
+                    className="rounded-full bg-card/95 px-2 py-0.5 text-[10px] font-medium text-foreground shadow"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
             </div>
-          </>
+          ) : (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={displayUrl}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+                onError={() => setImgLoadFailed(true)}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}
+                  className="rounded-full bg-card/95 px-2.5 py-1 text-xs font-medium shadow hover:bg-card"
+                >
+                  Replace
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); clear(); }}
+                  className="rounded-full bg-card/95 p-1.5 shadow hover:bg-destructive/10 hover:text-destructive"
+                  aria-label="Remove image"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            </>
+          )
         ) : (
           <div className="absolute inset-0 grid place-items-center text-muted-foreground p-4">
             <div className="text-center">

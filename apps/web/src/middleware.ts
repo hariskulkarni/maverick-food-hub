@@ -46,19 +46,36 @@ export async function middleware(req: NextRequest) {
 
   // ─── Demo gate ─────────────────────────────────────────────────────────
   // When DEMO_MODE=true on this runtime, every page request needs a valid
-  // signed gate cookie. The gate page itself + the gate API + Next assets +
-  // /downloads (rider APK install link) are exempt so the gate page loads
-  // and visitors can grab the APK.
+  // signed gate cookie. The gate is intentionally a WEB-UI-only guard — it
+  // exists so anonymous browser visitors land on a password form, not a
+  // populated demo. API calls (rider native app, server-to-server webhooks)
+  // and static assets (uploaded images, /public files, the rider APK) must
+  // NOT be redirected — that breaks <img> rendering and rider login.
   //
   // IMPORTANT: the gate route is `/demo-gate`, NOT `/_demo-gate`. App Router
   // treats folders prefixed with `_` as private (not registered as routes),
   // so the underscore form 404s.
   if (process.env.DEMO_MODE === 'true') {
     const isGatePath =
+      // The gate page + its API endpoint
       path.startsWith('/demo-gate') ||
       path.startsWith('/api/demo-gate') ||
+      // Next.js asset pipeline + uploaded media
       path.startsWith('/_next') ||
-      path.startsWith('/downloads/');
+      path.startsWith('/uploads/') ||
+      path.startsWith('/downloads/') ||
+      // Common static files served straight from /public
+      path === '/favicon.ico' ||
+      path === '/robots.txt' ||
+      path === '/sitemap.xml' ||
+      path === '/manifest.webmanifest' ||
+      path === '/sw.js' ||
+      path === '/llms.txt' ||
+      /\.(?:png|jpg|jpeg|webp|gif|svg|ico|avif|mp4|webm|woff2?|ttf|otf|css|js|map|json|txt|xml|wasm)$/i.test(path) ||
+      // API surface: the gate is a WEB-UI gate. Mobile clients (rider APK),
+      // payment webhooks, and any cookie-less caller authenticate via Bearer
+      // tokens / their own auth and must not be funnelled to a password form.
+      path.startsWith('/api/');
     if (!isGatePath) {
       const cookie = req.cookies.get(DEMO_COOKIE)?.value;
       const ok = await verifyDemoCookie(cookie);

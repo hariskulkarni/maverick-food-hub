@@ -34,6 +34,17 @@ apps/android-rider/android/local.properties
 apps/android-rider/android/captures/
 apps/android-rider/android/.idea/
 
+# ── Build artefacts (mobile) — large binary outputs, never commit ─────────
+*.apk
+*.aab
+*.ipa
+apps/rider-native/build-*.apk
+apps/rider-native/build-*.aab
+
+# Stray app.json sometimes left at repo root by eas-cli when run from the
+# wrong directory. The legitimate app.json lives at apps/rider-native/.
+/app.json
+
 # ── SECRETS — never commit ────────────────────────────────────────────────
 .env
 .env.*
