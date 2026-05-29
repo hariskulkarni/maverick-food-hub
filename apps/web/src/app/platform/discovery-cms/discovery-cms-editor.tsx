@@ -9,6 +9,7 @@ import {
 import { ImageUploader } from '@/components/image-uploader';
 import type {
   DiscoveryConfig, CarouselSlide, CategoryTile, FooterColumn, NearbySort, SlideCtaStyle,
+  SlideObjectFit, SlideOverlayPosition, CarouselTransition, CarouselAspectRatio,
 } from '@/server/discovery-cms';
 
 type OfferLifecycle = 'active' | 'scheduled' | 'paused' | 'expired';
@@ -229,6 +230,47 @@ function CarouselTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: Patc
         </Field>
       </div>
 
+      {/* ── Carousel-level presentation: transition + duration + aspect ratio ──
+           Three RevSlider-inspired controls that affect every slide. Editors
+           can pick the animation between slides ('slide' is the classic
+           horizontal swipe; 'fade' / 'zoom' / 'kenBurns' stack slides and
+           swap opacity), how long the animation takes, and the overall
+           banner shape. Defaults preserve the old look exactly. */}
+      <div className="rounded-lg border bg-card p-3 grid gap-3 md:grid-cols-3">
+        <Field label="Transition" hint="How slides animate between each other.">
+          <select
+            value={cfg.carousel.transition}
+            onChange={(e) => patch('carousel', { transition: e.target.value as CarouselTransition })}
+            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+          >
+            <option value="slide">Slide (classic swipe)</option>
+            <option value="fade">Fade</option>
+            <option value="zoom">Zoom</option>
+            <option value="kenBurns">Ken Burns (slow pan + zoom)</option>
+          </select>
+        </Field>
+        <Field label="Transition duration (ms)" hint="200 fast · 2000 slow.">
+          <input
+            type="number" min={200} max={2000} step={50}
+            value={cfg.carousel.transitionMs}
+            onChange={(e) => patch('carousel', { transitionMs: Number(e.target.value) || 700 })}
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+          />
+        </Field>
+        <Field label="Banner shape" hint="2:1 is the historical default. 21:9 = ultrawide cinematic.">
+          <select
+            value={cfg.carousel.aspectRatio}
+            onChange={(e) => patch('carousel', { aspectRatio: e.target.value as CarouselAspectRatio })}
+            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+          >
+            <option value="2:1">2:1 (landscape, classic)</option>
+            <option value="21:9">21:9 (ultrawide)</option>
+            <option value="16:9">16:9 (widescreen)</option>
+            <option value="1:1">1:1 (square)</option>
+          </select>
+        </Field>
+      </div>
+
       <div className="space-y-3">
         {slides.map((s, i) => (
           <div key={i} className="rounded-lg border p-4">
@@ -246,6 +288,55 @@ function CarouselTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: Patc
                 <Field label="Image click link (optional)" hint="Where the WHOLE banner goes when tapped, e.g. /r/wok-sizzler"><Text value={s.href} onChange={(v) => update(i, { href: v })} placeholder="/r/some-restaurant" /></Field>
                 <Field label="Fallback gradient" hint="Tailwind from/via/to classes shown while the image loads or if it's missing."><Text value={s.fallback} onChange={(v) => update(i, { fallback: v })} placeholder="from-[#ff5a2c] via-[#ff3b30] to-[#e0286f]" /></Field>
               </div>
+            </div>
+
+            {/* ── Image presentation (RevSlider-style) ──────────────────────
+                 Per-slide fit, focal point, overlay placement, and scrim
+                 darkness. Defaults preserve current rendering. */}
+            <div className="mt-4 rounded-lg border bg-muted/30 p-3 grid gap-3 md:grid-cols-4">
+              <Field label="Image fit" hint="How the image fills the banner box.">
+                <select
+                  value={s.objectFit}
+                  onChange={(e) => update(i, { objectFit: e.target.value as SlideObjectFit })}
+                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option value="contain">Contain (whole image, may letterbox)</option>
+                  <option value="cover">Cover (fill, may crop)</option>
+                  <option value="fill">Fill (stretch to exact size)</option>
+                  <option value="none">None (original size)</option>
+                </select>
+              </Field>
+              <Field label="Focal point" hint="Where to anchor when cropping. e.g. 'center', 'top', '20% 80%'.">
+                <input
+                  type="text" value={s.focalPoint} maxLength={40}
+                  onChange={(e) => update(i, { focalPoint: e.target.value })}
+                  placeholder="center"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                />
+              </Field>
+              <Field label="Overlay placement" hint="Where the headline + CTA sit on the slide.">
+                <select
+                  value={s.overlayPosition}
+                  onChange={(e) => update(i, { overlayPosition: e.target.value as SlideOverlayPosition })}
+                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option value="bottom-left">Bottom-left</option>
+                  <option value="bottom-center">Bottom-center</option>
+                  <option value="bottom-right">Bottom-right</option>
+                  <option value="center">Center</option>
+                  <option value="top-left">Top-left</option>
+                  <option value="top-center">Top-center</option>
+                  <option value="top-right">Top-right</option>
+                </select>
+              </Field>
+              <Field label={`Scrim darkness (${s.overlayDarkness})`} hint="0 = no scrim, 100 = solid.">
+                <input
+                  type="range" min={0} max={100} step={5}
+                  value={s.overlayDarkness}
+                  onChange={(e) => update(i, { overlayDarkness: Number(e.target.value) || 0 })}
+                  className="w-full accent-[hsl(var(--primary))]"
+                />
+              </Field>
             </div>
 
             {/* ── Overlay headline + CTA button ─────────────────────────────
@@ -319,6 +410,8 @@ function CarouselTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: Patc
         onClick={() => setCfg((c) => ({ ...c, carousel: { ...c.carousel, slides: [...c.carousel.slides, {
           src: '', alt: '', href: '', fallback: 'from-[#ff5a2c] via-[#ff3b30] to-[#e0286f]', enabled: true,
           eyebrow: '', headline: '', subtext: '', ctaLabel: '', ctaHref: '', ctaStyle: 'primary' as SlideCtaStyle,
+          objectFit: 'contain' as SlideObjectFit, focalPoint: 'center',
+          overlayPosition: 'bottom-left' as SlideOverlayPosition, overlayDarkness: 60,
         }] } }))}
         className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-3 py-2 text-sm hover:border-primary"
       >

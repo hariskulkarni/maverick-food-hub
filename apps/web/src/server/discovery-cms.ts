@@ -33,6 +33,29 @@ export type NearbySort = 'newest' | 'name';
 export type SlideCtaStyle = 'primary' | 'secondary' | 'outline';
 export const SLIDE_CTA_STYLES = ['primary', 'secondary', 'outline'] as const;
 
+/** How the banner image fills its 2:1 box. Mirrors CSS object-fit. */
+export type SlideObjectFit = 'contain' | 'cover' | 'fill' | 'none';
+export const SLIDE_OBJECT_FITS = ['contain', 'cover', 'fill', 'none'] as const;
+
+/** Where the overlay (eyebrow / headline / subtext / CTA) sits over the banner. */
+export type SlideOverlayPosition =
+  | 'bottom-left' | 'bottom-center' | 'bottom-right'
+  | 'center'
+  | 'top-left' | 'top-center' | 'top-right';
+export const SLIDE_OVERLAY_POSITIONS = [
+  'bottom-left', 'bottom-center', 'bottom-right',
+  'center',
+  'top-left', 'top-center', 'top-right',
+] as const;
+
+/** Transition animation between slides. */
+export type CarouselTransition = 'slide' | 'fade' | 'zoom' | 'kenBurns';
+export const CAROUSEL_TRANSITIONS = ['slide', 'fade', 'zoom', 'kenBurns'] as const;
+
+/** Banner shape. The numbers map to CSS aspect-ratio. */
+export type CarouselAspectRatio = '2:1' | '21:9' | '16:9' | '1:1';
+export const CAROUSEL_ASPECT_RATIOS = ['2:1', '21:9', '16:9', '1:1'] as const;
+
 export interface CarouselSlide {
   /** Image URL (under /public or absolute). */
   src: string;
@@ -62,6 +85,32 @@ export interface CarouselSlide {
   ctaHref: string;
   /** Visual style of the CTA button. Defaults to 'primary'. */
   ctaStyle: SlideCtaStyle;
+
+  // ── RevSlider-style image presentation (all optional, sensible defaults) ──
+  /**
+   * How the image fills its banner box.
+   *   • contain — entire image visible, may letterbox (default — was the old
+   *               behaviour)
+   *   • cover   — fills the box, may crop. Use with focalPoint to control the
+   *               crop anchor.
+   *   • fill    — stretches to fill exactly (distorts aspect ratio)
+   *   • none    — original size, may overflow
+   */
+  objectFit: SlideObjectFit;
+  /**
+   * CSS object-position. When objectFit is 'cover' (or 'none'), this picks the
+   * anchor for the visible region. Accepts any CSS value: '50% 50%', 'top',
+   * 'center', '20% 80%', etc. Defaults to 'center'.
+   */
+  focalPoint: string;
+  /** Where the overlay (eyebrow/headline/subtext/CTA) sits over the banner. */
+  overlayPosition: SlideOverlayPosition;
+  /**
+   * Scrim opacity behind the overlay, 0-100. The scrim is a soft gradient that
+   * keeps overlay text legible over busy banners. 0 = transparent; 100 = solid
+   * black. Default 60.
+   */
+  overlayDarkness: number;
 }
 
 export interface CategoryTile {
@@ -104,6 +153,12 @@ export interface DiscoveryConfig {
   carousel: {
     enabled: boolean;
     autoplayMs: number;      // 0 = no autoplay
+    /** Animation between slides. */
+    transition: CarouselTransition;
+    /** Transition duration in ms (200-2000). */
+    transitionMs: number;
+    /** Banner shape. */
+    aspectRatio: CarouselAspectRatio;
     slides: CarouselSlide[];
   };
   topOffers: {
@@ -163,6 +218,9 @@ export function defaultDiscoveryConfig(): DiscoveryConfig {
     carousel: {
       enabled: true,
       autoplayMs: 5000,
+      transition: 'slide' as CarouselTransition,
+      transitionMs: 700,
+      aspectRatio: '2:1' as CarouselAspectRatio,
       slides: DISCOVERY_BANNERS.map((b) => ({
         src: b.src,
         alt: b.alt,
@@ -175,6 +233,10 @@ export function defaultDiscoveryConfig(): DiscoveryConfig {
         ctaLabel: '',
         ctaHref: '',
         ctaStyle: 'primary' as SlideCtaStyle,
+        objectFit: 'contain' as SlideObjectFit,
+        focalPoint: 'center',
+        overlayPosition: 'bottom-left' as SlideOverlayPosition,
+        overlayDarkness: 60,
       })),
     },
     topOffers: {
@@ -270,6 +332,10 @@ function parseSlide(s: unknown): CarouselSlide | null {
     ctaLabel: str(o.ctaLabel, 40),
     ctaHref: url(o.ctaHref),
     ctaStyle: oneOf<SlideCtaStyle>(o.ctaStyle, SLIDE_CTA_STYLES, 'primary'),
+    objectFit: oneOf<SlideObjectFit>(o.objectFit, SLIDE_OBJECT_FITS, 'contain'),
+    focalPoint: str(o.focalPoint, 40) || 'center',
+    overlayPosition: oneOf<SlideOverlayPosition>(o.overlayPosition, SLIDE_OVERLAY_POSITIONS, 'bottom-left'),
+    overlayDarkness: clampInt(o.overlayDarkness, 0, 100, 60),
   };
 }
 
@@ -340,6 +406,9 @@ export function parseDiscoveryConfig(raw: unknown): DiscoveryConfig {
     carousel: {
       enabled: bool(carousel.enabled, d.carousel.enabled),
       autoplayMs: clampInt(carousel.autoplayMs, 0, 30000, d.carousel.autoplayMs),
+      transition: oneOf<CarouselTransition>(carousel.transition, CAROUSEL_TRANSITIONS, d.carousel.transition),
+      transitionMs: clampInt(carousel.transitionMs, 200, 2000, d.carousel.transitionMs),
+      aspectRatio: oneOf<CarouselAspectRatio>(carousel.aspectRatio, CAROUSEL_ASPECT_RATIOS, d.carousel.aspectRatio),
       slides,
     },
     topOffers: {

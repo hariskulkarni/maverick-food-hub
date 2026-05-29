@@ -299,8 +299,15 @@ export default async function RestaurantsListPage({
               ctaLabel: s.ctaLabel || undefined,
               ctaHref: s.ctaHref || undefined,
               ctaStyle: s.ctaStyle,
+              objectFit: s.objectFit,
+              focalPoint: s.focalPoint,
+              overlayPosition: s.overlayPosition,
+              overlayDarkness: s.overlayDarkness,
             }))}
           autoplayMs={cms.carousel.autoplayMs}
+          transition={cms.carousel.transition}
+          transitionMs={cms.carousel.transitionMs}
+          aspectRatio={cms.carousel.aspectRatio}
         />
       )}
 
