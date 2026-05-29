@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
+import { log } from '@/server/log';
 import { getDiscoveryConfig } from '@/server/discovery-cms';
 import { DiscoveryCmsEditor } from './discovery-cms-editor';
 
@@ -21,30 +22,67 @@ export default async function DiscoveryCmsPage() {
 
   const config = await getDiscoveryConfig();
 
-  // Pickers: active offers (to pin) + active restaurants (to feature).
-  const now = new Date();
-  const [rawOffers, restaurants] = await Promise.all([
-    (prisma as any).offer
-      .findMany({
-        where: { isActive: true, validFrom: { lte: now }, OR: [{ validTo: null }, { validTo: { gt: now } }] },
-        orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
-        take: 100,
-        select: { id: true, name: true, code: true, type: true },
-      })
-      .catch(() => []),
-    prisma.restaurant.findMany({
-      where: { status: 'ACTIVE' },
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true, cuisine: true },
-      take: 300,
-    }),
-  ]);
+  // Pickers — populate the dropdowns the super-admin uses to pin offers and
+  // feature restaurants.
+  //
+  // The offers picker INTENTIONALLY does not filter by validity/active state.
+  // The previous narrow query (`isActive AND validFrom <= now AND validTo > now`)
+  // hid every paused or scheduled offer, which made it impossible to pin a
+  // promotion that's set to launch tomorrow or one that's temporarily paused.
+  // We now return every offer + a derived lifecycle label so the editor can
+  // group them (Active / Scheduled / Paused / Expired) and show the restaurant
+  // scope alongside each. The storefront still independently filters by date
+  // and active flag at render time — pinning a paused offer just keeps the
+  // pin "warm" until someone reactivates it.
+  let rawOffers: any[] = [];
+  try {
+    rawOffers = await (prisma as any).offer.findMany({
+      orderBy: [{ isActive: 'desc' }, { priority: 'desc' }, { createdAt: 'desc' }],
+      take: 500,
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        type: true,
+        isActive: true,
+        validFrom: true,
+        validTo: true,
+        restaurantId: true,
+        restaurant: { select: { name: true } },
+      },
+    });
+  } catch (e) {
+    // Don't silently swallow — the empty picker would otherwise be
+    // indistinguishable from "no offers in the DB", which is exactly the
+    // confusion the user reported.
+    log.error({ err: e }, 'discovery-cms: failed to list offers for picker');
+  }
 
-  const offers = (rawOffers as any[]).map((o) => ({
+  const restaurants = await prisma.restaurant.findMany({
+    where: { status: 'ACTIVE' },
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true, cuisine: true },
+    take: 500,
+  });
+
+  const now = new Date();
+  type Lifecycle = 'active' | 'scheduled' | 'paused' | 'expired';
+  const lifecycleOf = (o: any): Lifecycle => {
+    if (!o.isActive) return 'paused';
+    if (o.validFrom && new Date(o.validFrom) > now) return 'scheduled';
+    if (o.validTo && new Date(o.validTo) <= now) return 'expired';
+    return 'active';
+  };
+
+  const offers = rawOffers.map((o: any) => ({
     id: o.id,
     name: o.name as string,
     code: (o.code ?? null) as string | null,
     type: o.type as string,
+    lifecycle: lifecycleOf(o),
+    scope: (o.restaurantId
+      ? (o.restaurant?.name ?? 'Restaurant-scoped')
+      : 'Platform-wide') as string,
   }));
 
   return (

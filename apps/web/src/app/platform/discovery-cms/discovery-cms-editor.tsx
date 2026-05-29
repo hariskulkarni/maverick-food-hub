@@ -11,7 +11,19 @@ import type {
   DiscoveryConfig, CarouselSlide, CategoryTile, FooterColumn, NearbySort,
 } from '@/server/discovery-cms';
 
-type OfferOpt = { id: string; name: string; code: string | null; type: string };
+type OfferLifecycle = 'active' | 'scheduled' | 'paused' | 'expired';
+type OfferOpt = {
+  id: string;
+  name: string;
+  code: string | null;
+  type: string;
+  /** Computed at fetch time so the picker can group offers + show why a given
+   *  offer isn't currently rendering on the storefront strip. */
+  lifecycle?: OfferLifecycle;
+  /** Human label: 'Platform-wide' or the restaurant name. Helps super-admin
+   *  tell apart same-named promos belonging to different outlets. */
+  scope?: string;
+};
 type RestaurantOpt = { id: string; name: string; cuisine: string | null };
 
 type TabKey = 'carousel' | 'topOffers' | 'whatsOnYourMind' | 'restaurantsNearby' | 'footer' | 'seo';
@@ -237,9 +249,38 @@ function TopOffersTab({ cfg, patch, offers }: { cfg: DiscoveryConfig; patch: Pat
   const byId = new Map(offers.map((o) => [o.id, o]));
   const unpinned = offers.filter((o) => !pinned.includes(o.id));
 
+  // Group unpinned offers by lifecycle so the dropdown is scannable. Active
+  // first (the only ones that actually surface on the storefront today),
+  // then scheduled, paused, expired.
+  const LIFECYCLE_LABEL: Record<NonNullable<OfferOpt['lifecycle']>, string> = {
+    active: 'Active',
+    scheduled: 'Scheduled',
+    paused: 'Paused',
+    expired: 'Expired',
+  };
+  const grouped: Record<NonNullable<OfferOpt['lifecycle']>, OfferOpt[]> = {
+    active: [], scheduled: [], paused: [], expired: [],
+  };
+  for (const o of unpinned) grouped[o.lifecycle ?? 'active'].push(o);
+
+  const labelFor = (o: OfferOpt) =>
+    `${o.name}${o.code ? ` (${o.code})` : ''}${o.scope ? ` — ${o.scope}` : ''}`;
+
   return (
     <div className="space-y-4">
-      <Toggle checked={cfg.topOffers.enabled} onChange={(v) => patch('topOffers', { enabled: v })} label="Top offers section" />
+      <div className="flex flex-wrap items-center gap-3">
+        <Toggle checked={cfg.topOffers.enabled} onChange={(v) => patch('topOffers', { enabled: v })} label="Top offers section" />
+        {!cfg.topOffers.enabled && (
+          // The user reported "section is not working" — the most common cause
+          // is the toggle being off. Make that highly visible inline so they
+          // don't need to read the badge label.
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-warning/10 border border-warning/30 px-2.5 py-1 text-[11px] text-warning-foreground">
+            <Sparkles className="size-3 text-warning" />
+            Strip is hidden on /restaurants until you turn this on.
+          </span>
+        )}
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Heading"><Text value={cfg.topOffers.heading} onChange={(v) => patch('topOffers', { heading: v })} max={80} /></Field>
         <Field label="Max tiles shown">
@@ -250,35 +291,85 @@ function TopOffersTab({ cfg, patch, offers }: { cfg: DiscoveryConfig; patch: Pat
 
       <div>
         <p className="text-sm font-medium mb-1">Pinned offers</p>
-        <p className="text-xs text-muted-foreground mb-2">Pinned offers always appear first (in this order); the rest auto-fill by priority. Only active offers are listed.</p>
+        <p className="text-xs text-muted-foreground mb-2">
+          Pinned offers always appear first (in this order); the rest auto-fill by priority.
+          Paused / scheduled / expired offers are listed here so you can pin them in advance —
+          they only render on the storefront once they're <strong>active</strong> and inside
+          their date window.
+        </p>
+
         {pinned.length === 0 && <p className="text-sm text-muted-foreground">No offers pinned — the strip is fully automatic.</p>}
+
         <div className="space-y-2">
           {pinned.map((id, i) => {
             const o = byId.get(id);
             return (
               <div key={id} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
                 <Pin className="size-3.5 text-primary" />
-                <span className="flex-1 truncate">{o ? o.name : <span className="text-muted-foreground">Offer {id} (inactive / removed)</span>}{o?.code ? <span className="ml-2 font-mono text-xs text-muted-foreground">{o.code}</span> : null}</span>
+                <span className="flex-1 truncate">
+                  {o
+                    ? <>
+                        {o.name}
+                        {o.code && <span className="ml-2 font-mono text-xs text-muted-foreground">{o.code}</span>}
+                        {o.scope && <span className="ml-2 text-[11px] text-muted-foreground">· {o.scope}</span>}
+                      </>
+                    : <span className="text-muted-foreground">Offer {id} (removed)</span>}
+                </span>
+                {o?.lifecycle && o.lifecycle !== 'active' && <LifecyclePill state={o.lifecycle} />}
                 <MoveControls i={i} len={pinned.length} onMove={(f, t) => setPinned(arrayMove(pinned, f, t))} onRemove={() => setPinned(pinned.filter((x) => x !== id))} />
               </div>
             );
           })}
         </div>
-        {unpinned.length > 0 && (
-          <div className="mt-3 flex items-center gap-2">
+
+        {offers.length === 0 ? (
+          // True zero-state — the offer table itself is empty. Point the
+          // super-admin at the place where offers are created.
+          <div className="mt-3 rounded-lg border border-dashed bg-muted/30 p-4 text-center">
+            <p className="text-sm text-muted-foreground">
+              No offers have been created yet. Restaurant admins can add them at{' '}
+              <code className="rounded bg-card px-1.5 py-0.5">/admin/offers</code>, and the new offer
+              will show up here for you to pin.
+            </p>
+          </div>
+        ) : unpinned.length > 0 && (
+          <div className="mt-3">
             <select
               defaultValue=""
               onChange={(e) => { if (e.target.value) { setPinned([...pinned, e.target.value]); e.target.value = ''; } }}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="">+ Pin an offer…</option>
-              {unpinned.map((o) => <option key={o.id} value={o.id}>{o.name}{o.code ? ` (${o.code})` : ''}</option>)}
+              {(['active', 'scheduled', 'paused', 'expired'] as const).map((state) =>
+                grouped[state].length > 0 ? (
+                  <optgroup key={state} label={LIFECYCLE_LABEL[state]}>
+                    {grouped[state].map((o) => (
+                      <option key={o.id} value={o.id}>{labelFor(o)}</option>
+                    ))}
+                  </optgroup>
+                ) : null,
+              )}
             </select>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Showing {offers.length} offer{offers.length === 1 ? '' : 's'} across the platform —
+              grouped by status. Active offers are eligible to render right now.
+            </p>
           </div>
         )}
       </div>
     </div>
   );
+}
+
+function LifecyclePill({ state }: { state: NonNullable<OfferOpt['lifecycle']> }) {
+  const map: Record<NonNullable<OfferOpt['lifecycle']>, string> = {
+    active: 'bg-success/15 text-success border-success/30',
+    scheduled: 'bg-warning/15 text-warning border-warning/30',
+    paused: 'bg-muted text-muted-foreground border-border',
+    expired: 'bg-destructive/15 text-destructive border-destructive/30',
+  };
+  const label = state[0].toUpperCase() + state.slice(1);
+  return <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${map[state]}`}>{label}</span>;
 }
 
 // ────────────────────────── What's on your mind tab ──────────────────────────
