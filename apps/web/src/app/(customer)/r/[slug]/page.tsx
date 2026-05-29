@@ -3,15 +3,24 @@ import Link from 'next/link';
 import { prisma } from '@/server/db';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { MenuClient } from '../../menu/menu-client';
+import { ComboAddButton } from '../../combos/combo-add-button';
 import { StorefrontHeroCarousel } from '@/components/storefront/hero-carousel';
 import { StorefrontAnnouncementBar } from '@/components/storefront/announcement-bar';
 import { AboutSection, ContentBlocks, StorefrontFooter } from '@/components/storefront/storefront-sections';
 import { parseStorefrontConfig } from '@/server/storefront-cms';
 import { HeartButton } from '@/components/heart-button';
-import { FOOD_FALLBACK, COMBO_IMAGES } from '@/lib/food-images';
-import { Clock, MapPin, ShieldCheck, Star, Flame, ArrowRight } from 'lucide-react';
+import { money } from '@/lib/utils';
+import { COMBO_IMAGES, FOOD_FALLBACK } from '@/lib/food-images';
+import { Clock, MapPin, ShieldCheck, Star, Flame } from 'lucide-react';
+import { isCategoryAvailableNow, formatNextOpenLabel } from '@/server/category-availability';
+import { OfferCards } from './offer-cards';
+import { priceForItem, priceForCombo } from '@/server/happy-hours';
+import { HappyHourBanner } from './happy-hour-banner';
 import { DeliveryEtaCard } from './delivery-eta-card';
 import { BrandRibbon } from './brand-ribbon';
+import { CategoryFab } from './category-fab';
 import { FoodLicenseFooter } from './food-license-footer';
 import { JsonLd } from '@/components/seo/json-ld';
 import { brand } from '@/lib/brand';
@@ -19,17 +28,35 @@ import { loadRestaurantPageData } from './page-data';
 
 const SITE = 'https://flavrly.in';
 
-// Always render fresh so Storefront CMS changes appear the moment an admin
-// hits Save — without this the route is cached and edits don't show until
-// the cache expires.
+/**
+ * Single-page restaurant ordering view.
+ *
+ * This route is the entire customer experience — no separate "marketing
+ * homepage" and "menu page". The QR / URL drops the customer straight into
+ * the orderable surface:
+ *   • hero carousel + restaurant identity
+ *   • sticky info bar (open · ETA · rating · city · verified)
+ *   • brand ribbon (if part of an umbrella)
+ *   • delivery ETA card
+ *   • CMS About + top content blocks
+ *   • happy-hour banner + offers strip
+ *   • bestsellers grid (CMS-configurable)
+ *   • combos grid (CMS-configurable)
+ *   • MenuClient (the full menu)
+ *   • bottom content blocks + FSSAI footer
+ *   • floating category FAB
+ *
+ * The mobile bottom nav independently swaps to the 4-tab restaurant
+ * variant (Dine-In / Orders / Cart / Profile) — see `bottom-nav.tsx`.
+ *
+ * Dynamic rendering is on so CMS edits go live on the next request.
+ */
 export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const r = await prisma.restaurant.findUnique({ where: { slug } });
   if (!r) return { title: 'Restaurant' };
-  // Admin-set CMS meta title/description/OG image take precedence over the
-  // restaurant's own fields.
   const cms = parseStorefrontConfig((r as { storefrontConfig?: unknown }).storefrontConfig);
   const title = cms.seo.metaTitle || r.name;
   const description = cms.seo.metaDescription || r.tagline || `Order from ${r.name} on ${brand.name}.`;
@@ -43,14 +70,14 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       description,
       url: `${SITE}/r/${slug}`,
       type: 'website',
-      ...(ogImage ? { images: [{ url: ogImage }] } : {})
+      ...(ogImage ? { images: [{ url: ogImage }] } : {}),
     },
     twitter: {
       card: ogImage ? 'summary_large_image' : 'summary',
       title,
       description,
-      ...(ogImage ? { images: [ogImage] } : {})
-    }
+      ...(ogImage ? { images: [ogImage] } : {}),
+    },
   };
 }
 
@@ -64,21 +91,20 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
     heroSlides,
     heroImage,
     siblingCuisineCount,
+    happyHourRules,
+    happyHourEnds,
+    activeOffers,
+    categories,
     combos,
     topSellers,
+    fabCategories,
     favRestaurant,
+    favItemSet,
     isAuthed,
-    rating
+    rating,
+    dishCount,
+    now,
   } = await loadRestaurantPageData(slug);
-
-  const menuHref = `/r/${slug}/menu`;
-  const reserveHref = `/r/${slug}/reserve`;
-
-  // Bestseller teaser copy — use the CMS overrides if the admin enabled the
-  // section; otherwise fall back to sensible defaults so the strip still
-  // tells the customer what they're looking at.
-  const teaserEyebrow = cms.topSellers.enabled ? cms.topSellers.eyebrow : 'Most ordered here';
-  const teaserHeading = cms.topSellers.enabled ? cms.topSellers.heading : 'What everyone keeps coming back for';
 
   return (
     <div style={themeVars}>
@@ -91,6 +117,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
           textColor={cms.announcement.textColor}
         />
       )}
+
       <JsonLd
         data={[
           {
@@ -106,14 +133,14 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
               '@type': 'PostalAddress',
               addressLocality: branch.city || 'Guntur',
               addressRegion: 'Andhra Pradesh',
-              addressCountry: 'IN'
+              addressCountry: 'IN',
             },
             areaServed: {
               '@type': 'City',
               name: 'Guntur',
-              containedInPlace: { '@type': 'AdministrativeArea', name: 'Andhra Pradesh' }
+              containedInPlace: { '@type': 'AdministrativeArea', name: 'Andhra Pradesh' },
             },
-            aggregateRating: { '@type': 'AggregateRating', ratingValue: rating, ratingCount: 200 }
+            aggregateRating: { '@type': 'AggregateRating', ratingValue: rating, ratingCount: 200 },
           },
           {
             '@context': 'https://schema.org',
@@ -121,13 +148,13 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
             itemListElement: [
               { '@type': 'ListItem', position: 1, name: brand.name, item: SITE },
               { '@type': 'ListItem', position: 2, name: 'Restaurants', item: `${SITE}/restaurants` },
-              { '@type': 'ListItem', position: 3, name: restaurant.name, item: `${SITE}/r/${slug}` }
-            ]
-          }
+              { '@type': 'ListItem', position: 3, name: restaurant.name, item: `${SITE}/r/${slug}` },
+            ],
+          },
         ]}
       />
 
-      {/* ───────────────────────── Hero ───────────────────────── */}
+      {/* ───────── Hero ───────── */}
       {heroSlides.length > 0 ? (
         <>
           <StorefrontHeroCarousel
@@ -180,6 +207,28 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
         </section>
       )}
 
+      {/* ───────── Sticky info bar ───────── */}
+      <div className="sticky top-0 z-30 glass border-b">
+        <div className="container py-3 flex items-center gap-4 md:gap-6 text-xs md:text-sm overflow-x-auto no-scrollbar">
+          <div className={`flex items-center gap-1.5 font-medium ${restaurant.logoUrl ? 'md:ml-32' : ''}`}>
+            <span className="relative inline-flex">
+              <span className="size-2 rounded-full bg-success" />
+              <span className="absolute inset-0 size-2 rounded-full bg-success pulse-soft" />
+            </span>
+            Open now
+          </div>
+          <div className="flex items-center gap-1.5 text-muted-foreground"><Clock className="size-4" /> ~35 min delivery</div>
+          <div className="flex items-center gap-1.5 text-muted-foreground"><Star className="size-4 fill-warning text-warning" /> {rating} <span className="hidden md:inline">· 200+ ratings</span></div>
+          <div className="flex items-center gap-1.5 text-muted-foreground"><MapPin className="size-4" /> {branch.city}</div>
+          <div className="flex items-center gap-1.5 text-muted-foreground"><ShieldCheck className="size-4 text-success" /> Verified</div>
+          {(restaurant as any).dineInEnabled && (
+            <Button asChild size="sm" variant="outline" className="shrink-0">
+              <Link href={`/r/${slug}/reserve`}>Reserve a table</Link>
+            </Button>
+          )}
+        </div>
+      </div>
+
       {/* ───────── Brand ribbon ───────── */}
       {restaurant.brand && (
         <BrandRibbon
@@ -189,183 +238,212 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
         />
       )}
 
-      {/* ───────── Hero info card: open/eta/rating + delivery ETA ───────── */}
+      {/* ───────── Above-the-fold info: ETA + happy hour + offers ───────── */}
       <div className="space-y-3 px-3 md:px-0 md:space-y-0 pt-3 md:pt-0">
+        {happyHourEnds && (
+          <HappyHourBanner
+            endsAt={happyHourEnds.endsAt}
+            endsInMin={happyHourEnds.endsInMin}
+            ruleCount={happyHourRules.length}
+          />
+        )}
         <div className="md:container md:pt-4">
-          <div className="glass border rounded-2xl p-3 md:p-4 flex items-center gap-4 md:gap-6 text-xs md:text-sm overflow-x-auto no-scrollbar">
-            <div className="flex items-center gap-1.5 font-medium">
-              <span className="relative inline-flex">
-                <span className="size-2 rounded-full bg-success" />
-                <span className="absolute inset-0 size-2 rounded-full bg-success pulse-soft" />
-              </span>
-              Open now
-            </div>
-            <div className="flex items-center gap-1.5 text-muted-foreground"><Clock className="size-4" /> ~35 min</div>
-            <div className="flex items-center gap-1.5 text-muted-foreground"><Star className="size-4 fill-warning text-warning" /> {rating}</div>
-            <div className="flex items-center gap-1.5 text-muted-foreground"><MapPin className="size-4" /> {branch.city}</div>
-            <div className="flex items-center gap-1.5 text-muted-foreground"><ShieldCheck className="size-4 text-success" /> Verified</div>
-          </div>
-        </div>
-        <div className="md:container md:pt-3">
           <DeliveryEtaCard
             branchId={branch.id}
             branchName={restaurant.name}
             branchCity={branch.city}
           />
         </div>
+        {cms.layout.showOffersStrip && (
+          <OfferCards offers={JSON.parse(JSON.stringify(activeOffers))} />
+        )}
       </div>
-
-      {/* ───────── PRIMARY ORDER NOW CTA ───────── */}
-      <section className="container pt-6 pb-2">
-        <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-5">
-          <Button asChild size="lg" className="w-full md:w-auto md:min-w-56 text-base font-semibold shadow-lg">
-            <Link href={menuHref}>
-              Order Now
-              <ArrowRight className="ml-2 size-4" />
-            </Link>
-          </Button>
-          {(restaurant as any).dineInEnabled && (
-            <Link
-              href={reserveHref}
-              className="text-sm text-muted-foreground hover:text-primary underline-offset-4 hover:underline text-center md:text-left"
-            >
-              Or reserve a table
-            </Link>
-          )}
-        </div>
-      </section>
 
       {/* ───────── CMS: About + top content blocks ───────── */}
       <AboutSection about={cms.about} />
       <ContentBlocks blocks={cms.blocks} position="top" />
 
-      {/* ───────── Bestseller TEASER strip (homepage version) ─────────
-          A 4-card preview that links to the menu page. The FULL grid (with
-          rank badges + sold-count footnotes) lives on /menu. */}
-      {topSellers.length > 0 && (
-        <section className="container py-8 border-t">
-          <div className="mb-5 reveal flex items-end justify-between gap-3">
-            <div>
-              {teaserEyebrow && (
-                <div className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
-                  <Flame className="size-3.5" /> {teaserEyebrow}
-                </div>
-              )}
-              {teaserHeading && (
-                <h2 className="display mt-1 text-xl md:text-2xl font-semibold">{teaserHeading}</h2>
-              )}
-            </div>
-            <Link href={menuHref} className="hidden md:inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
-              View full menu <ArrowRight className="size-3.5" />
-            </Link>
+      {/* ───────── Top Sellers ───────── */}
+      {cms.topSellers.enabled && topSellers.length > 0 && (
+        <section className="container py-10 border-b">
+          <div className="mb-6 reveal">
+            {cms.topSellers.eyebrow && (
+              <div className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                <Flame className="size-3.5" /> {cms.topSellers.eyebrow}
+              </div>
+            )}
+            {cms.topSellers.heading && (
+              <h2 className="display mt-1 text-2xl font-semibold">{cms.topSellers.heading}</h2>
+            )}
+            {cms.topSellers.subheading && (
+              <p className="mt-1.5 text-sm text-muted-foreground max-w-2xl">{cms.topSellers.subheading}</p>
+            )}
           </div>
-          {/* Horizontal-scroll on mobile, 4-col grid on md+. */}
-          <div className="flex md:grid md:grid-cols-4 gap-3 md:gap-4 overflow-x-auto no-scrollbar -mx-3 px-3 md:mx-0 md:px-0 reveal-stagger">
-            {topSellers.slice(0, 4).map((t: any) => (
-              <Link
-                key={t.id}
-                href={`${menuHref}#item-${t.id}`}
-                className="shrink-0 w-44 md:w-auto group overflow-hidden rounded-2xl border bg-card card-lift tap-press"
-              >
-                <div className="relative aspect-video overflow-hidden">
+          <div className="grid gap-4 md:grid-cols-4 reveal-stagger">
+            {topSellers.slice(0, cms.topSellers.limit).map((t: any, i: number) => (
+              <div key={t.id} className="relative group overflow-hidden rounded-2xl border bg-card card-lift tap-press">
+                <div className="relative h-36 overflow-hidden">
                   <Image
                     src={t.imageUrl || FOOD_FALLBACK}
                     alt={t.name}
                     fill
-                    sizes="(min-width: 768px) 25vw, 176px"
+                    sizes="(min-width: 768px) 25vw, 50vw"
                     className="object-cover transition-transform duration-700 group-hover:scale-110"
                   />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                  {cms.topSellers.showRankBadge && (
+                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-primary/95 text-primary-foreground text-[10px] font-bold tracking-wider shadow-lg">
+                      #{i + 1} BESTSELLER
+                    </div>
+                  )}
                 </div>
                 <div className="p-3">
                   <div className="font-semibold text-sm truncate">{t.name}</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground flex items-center gap-1">
-                    <Flame className="size-3 text-primary" />
-                    {t.soldCount} ordered in 30 days
-                  </div>
-                </div>
-              </Link>
-            ))}
-            {/* CTA tile at the end of the strip — works as both the mobile
-                fallback for the desktop "View full menu" link and a tappable
-                tile in its own right. */}
-            <Link
-              href={menuHref}
-              className="shrink-0 w-44 md:w-auto rounded-2xl border-2 border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold p-4 transition-colors"
-            >
-              View full menu <ArrowRight className="ml-1 size-4" />
-            </Link>
-          </div>
-        </section>
-      )}
-
-      {/* ───────── Combos TEASER (lean — up to 3, no add-to-cart) ───────── */}
-      {cms.combos.enabled && combos.length > 0 && (
-        <section className="container py-8 border-t">
-          <div className="mb-5 reveal">
-            {cms.combos.eyebrow && (
-              <div className="text-xs font-semibold uppercase tracking-wider text-primary">{cms.combos.eyebrow}</div>
-            )}
-            {cms.combos.heading && (
-              <h2 className="display mt-1 text-xl md:text-2xl font-semibold">{cms.combos.heading}</h2>
-            )}
-          </div>
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 reveal-stagger">
-            {combos.slice(0, 3).map((c: any) => (
-              <Link
-                key={c.id}
-                href={menuHref}
-                className="block overflow-hidden rounded-2xl border bg-card card-lift group"
-              >
-                <div className="relative h-40 bg-muted overflow-hidden">
-                  <Image
-                    src={c.imageUrl || COMBO_IMAGES[c.slug] || FOOD_FALLBACK}
-                    alt={c.name}
-                    fill
-                    sizes="(min-width: 1024px) 33vw, 100vw"
-                    className="object-cover transition-transform duration-700 group-hover:scale-105"
-                  />
-                  {cms.combos.showComboBadge && (
-                    <Badge className="absolute top-3 left-3 bg-warning/95 text-warning-foreground border-transparent">Combo</Badge>
+                  {cms.topSellers.showSoldCount && (
+                    <div className="mt-0.5 text-xs text-muted-foreground flex items-center gap-1">
+                      <Flame className="size-3 text-primary" />
+                      {t.soldCount} ordered in 30 days
+                    </div>
                   )}
                 </div>
-                <div className="p-4">
-                  <div className="display text-base font-semibold group-hover:text-primary transition-colors">{c.name}</div>
-                  {c.description && <div className="mt-1 text-sm text-muted-foreground line-clamp-2">{c.description}</div>}
-                </div>
-              </Link>
+              </div>
             ))}
           </div>
         </section>
       )}
 
-      {/* ───────── SECONDARY ORDER NOW band ───────── */}
+      {/* ───────── Combos + Menu ───────── */}
       <section className="container py-10">
-        <div className="rounded-2xl border bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6 md:p-8 text-center reveal">
-          <h3 className="display text-xl md:text-2xl font-semibold">Ready to order? Tap below.</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Browse the full menu, customize your dish, and check out in seconds.</p>
-          <div className="mt-5">
-            <Button asChild size="lg" className="text-base font-semibold shadow-lg">
-              <Link href={menuHref}>
-                Order Now
-                <ArrowRight className="ml-2 size-4" />
-              </Link>
-            </Button>
+        {cms.combos.enabled && combos.length > 0 && (
+          <div className="mb-12">
+            <div className="mb-5 reveal">
+              {cms.combos.eyebrow && (
+                <div className="text-xs font-semibold uppercase tracking-wider text-primary">{cms.combos.eyebrow}</div>
+              )}
+              {cms.combos.heading && (
+                <h2 className="display mt-1 text-2xl font-semibold">{cms.combos.heading}</h2>
+              )}
+              {cms.combos.subheading && (
+                <p className="mt-1.5 text-sm text-muted-foreground max-w-2xl">{cms.combos.subheading}</p>
+              )}
+            </div>
+            <div className="grid gap-4 md:gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 reveal-stagger">
+              {combos.slice(0, cms.combos.limit).map((c: any) => {
+                const hh = priceForCombo({ id: c.id, price: Number(c.price) }, happyHourRules, now);
+                return (
+                  <Card key={c.id} className="overflow-hidden group card-lift">
+                    <div className="relative h-44 bg-muted overflow-hidden">
+                      <Image
+                        src={c.imageUrl || COMBO_IMAGES[c.slug] || FOOD_FALLBACK}
+                        alt={c.name}
+                        fill
+                        sizes="(min-width: 1024px) 33vw, 100vw"
+                        className="object-cover transition-transform duration-700 group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+                      {cms.combos.showComboBadge && (
+                        <Badge className="absolute top-3 left-3 bg-warning/95 text-warning-foreground border-transparent">Combo</Badge>
+                      )}
+                    </div>
+                    <CardContent className="p-5">
+                      <div className="display text-lg font-semibold group-hover:text-primary transition-colors">{c.name}</div>
+                      {c.description && <div className="mt-1 text-sm text-muted-foreground line-clamp-2">{c.description}</div>}
+                      <ul className="mt-3 text-sm text-muted-foreground space-y-0.5">
+                        {c.items.map((i: any) => <li key={i.id}>• {i.quantity}× {i.menuItem.name}</li>)}
+                      </ul>
+                      <div className="mt-4 flex items-center justify-between border-t pt-4">
+                        <div className="flex items-baseline gap-2">
+                          <div className="font-semibold text-lg text-primary">{money(hh.effectivePrice as any)}</div>
+                          {hh.savings > 0 && (
+                            <>
+                              <span className="text-sm text-muted-foreground line-through">{money(hh.originalPrice as any)}</span>
+                              <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 text-warning border border-warning/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">Happy Hour</span>
+                            </>
+                          )}
+                        </div>
+                        <ComboAddButton id={c.id} name={c.name} price={hh.effectivePrice} imageUrl={c.imageUrl ?? COMBO_IMAGES[c.slug]} branchId={branch.id} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           </div>
+        )}
+
+        <div className="reveal">
+          <div className="text-xs font-semibold uppercase tracking-wider text-primary">Menu</div>
+          <h2 className="display mt-1 text-2xl font-semibold mb-6">{dishCount} dishes</h2>
         </div>
+        <MenuClient
+          branchId={branch.id}
+          showSearch={cms.layout.showSearch}
+          showFilters={cms.layout.showFilters}
+          menuLayout={cms.layout.menuLayout}
+          data={JSON.parse(
+            JSON.stringify(
+              categories.map((c) => {
+                const status = isCategoryAvailableNow({
+                  id: c.id,
+                  name: c.name,
+                  isActive: c.isActive,
+                  scheduleEnabled: c.scheduleEnabled,
+                  availabilities: c.availabilities,
+                });
+                return {
+                  id: c.id,
+                  name: c.name,
+                  slug: c.slug,
+                  available: status.available,
+                  unavailableReason: status.reason === 'available' ? null : status.reason,
+                  nextOpenLabel: status.available ? null : formatNextOpenLabel(status),
+                  items: c.menuItems.map((m: any) => {
+                    const hh = priceForItem(
+                      { id: m.id, categoryId: m.categoryId, price: Number(m.price) },
+                      happyHourRules,
+                      now,
+                    );
+                    const variants = (m.variants ?? []).map((v: any) => ({
+                      id: v.id, name: v.name, price: Number(v.price), isDefault: v.isDefault, isAvailable: v.isAvailable,
+                    }));
+                    const modifierGroups = (m.modifierGroups ?? []).map((g: any) => ({
+                      id: g.id, name: g.name, minSelect: g.minSelect, maxSelect: g.maxSelect, required: g.required,
+                      options: (g.options ?? []).map((o: any) => ({
+                        id: o.id, name: o.name, priceDelta: Number(o.priceDelta), isDefault: o.isDefault, isAvailable: o.isAvailable,
+                      })),
+                    }));
+                    return {
+                      ...m,
+                      price: hh.effectivePrice,
+                      originalPrice: hh.savings > 0 ? hh.originalPrice : null,
+                      happyHourLabel: hh.label,
+                      isAvailable: status.available && m.isAvailable,
+                      isAuthed,
+                      isFavorited: favItemSet.has(m.id),
+                      variants,
+                      modifierGroups,
+                    };
+                  }),
+                };
+              }),
+            ),
+          )}
+        />
       </section>
 
-      {/* ───────── CMS: bottom content blocks ───────── */}
+      {/* ───────── CMS: bottom content blocks + footer ───────── */}
       <ContentBlocks blocks={cms.blocks} position="bottom" />
 
-      {/* ───────── CMS: custom footer + social links ───────── */}
       <StorefrontFooter footerText={cms.footer.text} social={cms.social} />
 
-      {/* ───────── FSSAI licence footer ───────── */}
       <FoodLicenseFooter
         licenseNumber={(branch as any).fssaiLicenseNumber}
         licenseImageUrl={(branch as any).fssaiLicenseImageUrl}
         holder={(branch as any).fssaiLicenseHolder}
       />
+
+      {/* Floating Categories Menu (mobile-only). Sits above the bottom nav. */}
+      <CategoryFab categories={fabCategories} />
     </div>
   );
 }

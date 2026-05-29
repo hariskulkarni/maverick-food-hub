@@ -8,12 +8,14 @@
  *     Home / Explore / Cart / Orders / Profile  (5 tabs)
  *     The standard nav for the discovery surface + cart + orders + profile.
  *
- *  ◾ RESTAURANT ORDERING (when path matches /r/<slug>/menu*):
+ *  ◾ RESTAURANT ORDERING (when path is /r/<slug> or any /r/<slug>/...):
  *     Dine-In / Orders / Cart / Profile  (4 tabs)
  *     The Home + Explore tabs are replaced by a single Dine-In tab that opens
  *     a chooser sheet ("Reserve a table" / "Scan the table QR") instead of
  *     navigating. This matches the in-restaurant customer flow where the
- *     customer has already committed to one restaurant.
+ *     customer has already committed to one restaurant — the flavrly URL was
+ *     reached from the restaurant's own external homepage, so the customer is
+ *     already in "ordering mode" the moment the page loads.
  *
  * Design language:
  *   - Sticks to the bottom on screens < md (768px). Hidden on tablet/desktop.
@@ -69,9 +71,16 @@ function restaurantItems(slug: string): NavItem[] {
   ];
 }
 
-/** Match /r/<slug>/menu and any sub-path under it. Returns the slug if so. */
-function matchRestaurantMenu(path: string): string | null {
-  const m = path.match(/^\/r\/([^/]+)\/menu(?:$|\/)/);
+/**
+ * Match /r/<slug> and any sub-path under it (reserve, me, login, staff, …).
+ * Returns the slug, or null when the path is somewhere else entirely.
+ *
+ * NOTE: there is intentionally no separate "marketing homepage" route on the
+ * Flavrly side — the URL/QR drops the customer straight onto the ordering
+ * page, so we want the Dine-In nav active across the whole /r/<slug>/* tree.
+ */
+function matchRestaurantOrdering(path: string): string | null {
+  const m = path.match(/^\/r\/([^/]+)(?:$|\/)/);
   return m ? m[1] : null;
 }
 
@@ -97,7 +106,7 @@ export function MobileBottomNav() {
   const { count } = useCart();
   const [dineInOpen, setDineInOpen] = useState(false);
 
-  const menuSlug = matchRestaurantMenu(path);
+  const menuSlug = matchRestaurantOrdering(path);
   const items = menuSlug ? restaurantItems(menuSlug) : DEFAULT_ITEMS;
   const tabCount = items.length;
 
