@@ -75,7 +75,28 @@ fi
 
 line "3. sync demo DB schema"
 # Re-use the same prisma schema; just point at the demo DB via .env.demo.
-DOTENV_CONFIG_PATH="$WEB_DIR/$ENV_FILE" node -r dotenv/config node_modules/prisma/build/index.js db push --schema=prisma/schema.prisma 2>&1 || {
+#
+# Prisma reads connection info from `process.env`, and shell env vars take
+# precedence over any .env file it might auto-load. So load .env.demo into
+# the current shell first (set -a auto-exports every assignment), strip
+# comments + blanks, then invoke the local prisma CLI.
+load_dotenv() {
+  local f="$1"
+  # Filter out comment + blank lines so `.` (source) doesn't choke on them.
+  set -a
+  # shellcheck disable=SC1090
+  . <(grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' "$f")
+  set +a
+}
+load_dotenv "$WEB_DIR/$ENV_FILE"
+
+# Verify the var prisma actually needs is now in the env.
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "(!) DATABASE_URL didn't load from $ENV_FILE — check the file's syntax (KEY=value, no spaces around =)."
+  exit 1
+fi
+
+npx --no-install prisma db push --schema=prisma/schema.prisma 2>&1 || {
   echo "(!) prisma db push failed — check DATABASE_URL in $ENV_FILE."
   exit 1
 }
