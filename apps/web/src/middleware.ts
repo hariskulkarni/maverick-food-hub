@@ -4,6 +4,34 @@ import { authEdgeConfig } from '@/server/auth.config';
 
 const { auth } = NextAuth(authEdgeConfig);
 
+const DEMO_COOKIE = 'flavrly_demo_gate';
+
+// ─── Edge-safe HMAC-SHA256 verify for the demo magic-link cookie ───
+// We can't use node:crypto on the Edge runtime; Web Crypto works everywhere.
+async function verifyDemoCookie(token: string | undefined): Promise<boolean> {
+  if (!token) return false;
+  const dot = token.indexOf('.');
+  if (dot < 0) return false;
+  const head = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  try {
+    const secret = process.env.DEMO_GATE_SECRET || process.env.NEXTAUTH_SECRET || '';
+    if (!secret) return false;
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const macBuf = await crypto.subtle.sign('HMAC', key, enc.encode(head));
+    // Compare base64url
+    const macB64 = Buffer.from(new Uint8Array(macBuf)).toString('base64url');
+    if (macB64 !== sig) return false;
+    // Check expiry
+    const payload = JSON.parse(Buffer.from(head, 'base64url').toString('utf8'));
+    if (typeof payload?.exp !== 'number') return false;
+    return payload.exp >= Math.floor(Date.now() / 1000);
+  } catch {
+    return false;
+  }
+}
+
 const ROLE_GATES: { prefix: string; roles: string[] }[] = [
   { prefix: '/platform', roles: ['SUPER_ADMIN'] },
   { prefix: '/admin', roles: ['ADMIN'] },
@@ -15,6 +43,25 @@ const ROLE_GATES: { prefix: string; roles: string[] }[] = [
 export async function middleware(req: NextRequest) {
   const url = req.nextUrl;
   const path = url.pathname;
+
+  // ─── Demo magic-link gate ──────────────────────────────────────────────
+  // When DEMO_MODE=true on this runtime, every page request needs a valid
+  // signed gate cookie. Email-themed paths and the rider-app + downloads
+  // are exempt so the gate page itself loads + visitors can grab the APK.
+  if (process.env.DEMO_MODE === 'true') {
+    const isGatePath =
+      path.startsWith('/_demo-gate') ||
+      path.startsWith('/api/_demo-gate') ||
+      path.startsWith('/_next') ||
+      path.startsWith('/downloads/');
+    if (!isGatePath) {
+      const cookie = req.cookies.get(DEMO_COOKIE)?.value;
+      const ok = await verifyDemoCookie(cookie);
+      if (!ok) {
+        return NextResponse.redirect(new URL('/_demo-gate', url));
+      }
+    }
+  }
 
   // Allow auth callback / login early — nothing role-specific applies here.
   if (path.startsWith('/api/auth') || path === '/login' || path.startsWith('/login/')) {

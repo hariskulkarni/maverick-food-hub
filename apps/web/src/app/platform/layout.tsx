@@ -3,12 +3,17 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { Building2, ListOrdered, Users, Bike, BarChart3, Radio, Coins, AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet, History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones, GraduationCap, MessagesSquare, Banknote, LayoutTemplate } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
+import { DemoBanner } from '@/components/demo-banner';
+import { isDemoMode } from '@/lib/demo';
+import { DemoResetButton } from './demo-reset-button';
 
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   if (!session?.user || session.user.role !== 'SUPER_ADMIN') redirect('/login?next=/platform&mode=admin');
   return (
-    <div className="grid min-h-dvh grid-cols-[240px_1fr]">
+    <div className="flex min-h-dvh flex-col">
+      <DemoBanner />
+      <div className="grid flex-1 grid-cols-[240px_1fr]">
       <aside className="border-r bg-card flex flex-col">
         <div className="p-5 border-b">
           <Link href="/platform" className="display text-lg font-bold text-primary">Platform</Link>
@@ -57,7 +62,11 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           <LogoutButton />
         </div>
       </aside>
-      <main className="bg-background overflow-x-auto">{children}</main>
+      <main className="bg-background overflow-x-auto">
+        {isDemoMode() && <DemoResetButton />}
+        {children}
+      </main>
+      </div>
     </div>
   );
 }

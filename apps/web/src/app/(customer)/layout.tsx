@@ -7,6 +7,7 @@ import { SwRegister } from '@/components/pwa/sw-register';
 import { InstallPrompt } from '@/components/pwa/install-prompt';
 import { getDiscoveryConfig } from '@/server/discovery-cms';
 import { SiteFooter } from '@/components/site-footer';
+import { DemoBanner } from '@/components/demo-banner';
 
 /**
  * Shared layout for the (customer) route group.
@@ -32,6 +33,7 @@ export default async function CustomerLayout({ children }: { children: React.Rea
   return (
     <CartProvider>
       <div className="flex min-h-dvh flex-col">
+        <DemoBanner />
         {/* Context-aware top nav. Renders marketing chrome on `/` and tenant
             chrome on `/r/<slug>`. */}
         <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">

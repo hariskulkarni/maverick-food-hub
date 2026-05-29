@@ -5,6 +5,7 @@ import { currentRestaurant, accessibleRestaurants } from '@/server/tenancy';
 import { LayoutDashboard, ScrollText, CalendarClock, Armchair, Radio, Building2, Bike, ShieldAlert, MessagesSquare, BarChart3, History, MessageSquare, Settings, Paintbrush } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { RestaurantSwitcher } from './restaurant-switcher';
+import { DemoBanner } from '@/components/demo-banner';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -33,7 +34,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     );
   }
   return (
-    <div className="grid min-h-dvh grid-cols-[240px_1fr]">
+    <div className="flex min-h-dvh flex-col">
+      <DemoBanner />
+      <div className="grid flex-1 grid-cols-[240px_1fr]">
       <aside className="border-r bg-card flex flex-col">
         <div className="p-5 border-b">
           {flat.length > 1 ? (
@@ -69,6 +72,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
       </aside>
       <main className="bg-background overflow-x-auto">{children}</main>
+      </div>
     </div>
   );
 }

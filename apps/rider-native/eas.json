@@ -13,6 +13,13 @@
       "distribution": "internal",
       "android": { "buildType": "apk" }
     },
+    "demo-preview": {
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "env": {
+        "EXPO_PUBLIC_API_BASE": "https://demo.flavrly.in"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "android": { "buildType": "app-bundle" }
