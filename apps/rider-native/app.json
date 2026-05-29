@@ -26,9 +26,8 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.CAMERA",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "config": {
         "googleMaps": {
@@ -85,8 +84,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "5fb8fa63-2642-42be-9f9a-70ca79517bcc"
+        "projectId": "368d4289-e61b-4a59-8b02-8dc65783faad"
       }
-    }
+    },
+    "owner": "maverick_here"
   }
 }
