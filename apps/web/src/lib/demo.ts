@@ -4,7 +4,7 @@
  * The ONE source of truth: `process.env.DEMO_MODE === 'true'`. When that flag
  * is on, the runtime behaves as a sandbox:
  *   • A yellow "DEMO" banner appears on every page.
- *   • The magic-link email gate guards every URL.
+ *   • A shared-password gate (DEMO_GATE_PASSWORD) guards every URL.
  *   • OTPs always accept the demo code (OTP_DEMO_MODE=true should be set too).
  *   • SMS / WhatsApp / push are no-ops (NOTIFIER_SMS=mock recommended).
  *   • Razorpay is replaced by the mock provider (PAYMENT_PROVIDER=mock).
@@ -25,8 +25,8 @@ export function siteUrl(): string {
 
 /**
  * Pre-baked demo accounts seeded by `prisma/seed-demo.ts`. We surface them on
- * the magic-link gate page so the client can hand them out on a call without
- * looking them up.
+ * the gate page so the client can hand them out on a call without looking
+ * them up.
  */
 export const DEMO_LOGINS = {
   superAdmin: { email: 'superadmin@demo.flavrly.in', password: 'Demo123!' },

@@ -6,7 +6,7 @@ const { auth } = NextAuth(authEdgeConfig);
 
 const DEMO_COOKIE = 'flavrly_demo_gate';
 
-// ─── Edge-safe HMAC-SHA256 verify for the demo magic-link cookie ───
+// ─── Edge-safe HMAC-SHA256 verify for the demo gate cookie ─────────
 // We can't use node:crypto on the Edge runtime; Web Crypto works everywhere.
 async function verifyDemoCookie(token: string | undefined): Promise<boolean> {
   if (!token) return false;

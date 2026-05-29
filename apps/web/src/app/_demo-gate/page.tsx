@@ -1,29 +1,23 @@
 /**
- * Demo magic-link gate landing page.
+ * Demo password gate landing page.
  *
- * Visible only when DEMO_MODE=true (the middleware sends every unauthenticated
- * visitor here). The page asks for an email; on submit, an API endpoint signs
- * a JWT-like token, emails the visitor a `/_demo-gate/<token>` link, and the
- * visitor clicks it to receive their 24h access cookie.
+ * Visible only when DEMO_MODE=true (the middleware redirects every visitor
+ * here who doesn't yet hold the gate cookie). One shared password unlocks
+ * the demo for 24 hours.
  *
- * The pre-baked demo logins are also shown so the client can hand them out
- * without leaving the page.
+ * The pre-baked demo logins are listed below the form so the client can
+ * hand them out without leaving the page.
  */
-import { redirect, notFound } from 'next/navigation';
-import { Sparkles, Mail, ShieldCheck } from 'lucide-react';
+import { notFound } from 'next/navigation';
+import { Sparkles, ShieldCheck, Clock } from 'lucide-react';
 import { brand } from '@/lib/brand';
 import { isDemoMode, DEMO_LOGINS } from '@/lib/demo';
 import { DemoGateForm } from './form';
 
 export const dynamic = 'force-dynamic';
 
-export default function DemoGatePage({ searchParams }: { searchParams: Promise<{ status?: string; e?: string }> }) {
+export default function DemoGatePage() {
   if (!isDemoMode()) return notFound();
-  return <Inner searchParams={searchParams} />;
-}
-
-async function Inner({ searchParams }: { searchParams: Promise<{ status?: string; e?: string }> }) {
-  const sp = await searchParams;
   return (
     <main className="min-h-dvh grid place-items-center p-6 bg-gradient-to-br from-primary/5 via-background to-secondary/10">
       <div className="w-full max-w-md space-y-6">
@@ -33,11 +27,11 @@ async function Inner({ searchParams }: { searchParams: Promise<{ status?: string
           </div>
           <h1 className="display text-3xl font-bold">{brand.name} demo</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Enter your email — we&apos;ll send you a 24-hour access link.
+            Enter the demo password to take a look around.
           </p>
         </div>
 
-        <DemoGateForm initialStatus={sp.status} initialEmail={sp.e} />
+        <DemoGateForm />
 
         <div className="rounded-xl border bg-card p-5">
           <div className="text-xs font-semibold uppercase tracking-wider text-primary mb-3 flex items-center gap-1.5">
@@ -54,7 +48,7 @@ async function Inner({ searchParams }: { searchParams: Promise<{ status?: string
         </div>
 
         <div className="text-xs text-center text-muted-foreground inline-flex items-center gap-1.5 justify-center w-full">
-          <Mail className="size-3.5" /> Magic links last 24 hours — re-enter your email any time.
+          <Clock className="size-3.5" /> Access lasts 24 hours.
         </div>
       </div>
     </main>

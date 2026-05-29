@@ -39,6 +39,8 @@ apps/android-rider/android/.idea/
 .env.*
 !.env.example
 !**/.env.example
+!.env.demo.example
+!**/.env.demo.example
 !deploy/.env.production.example
 .env.tmp
 *.pem
