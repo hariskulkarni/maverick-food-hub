@@ -423,17 +423,27 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
       <AboutSection about={cms.about} />
       <ContentBlocks blocks={cms.blocks} position="top" />
 
-      {/* ───────────────────────── Top Sellers ───────────────────────── */}
-      {cms.layout.showTopSellers && topSellers.length > 0 && (
+      {/* ───────────────────────── Top Sellers ─────────────────────────
+           Eyebrow / heading / subheading / limit / badge + footnote toggles
+           are CMS-driven via cms.topSellers. We use the section ONLY when both
+           the toggle is on and we actually have items to show. */}
+      {cms.topSellers.enabled && topSellers.length > 0 && (
         <section className="container py-10 border-b">
           <div className="mb-6 reveal">
-            <div className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
-              <Flame className="size-3.5" /> Most ordered here
-            </div>
-            <h2 className="display mt-1 text-2xl font-semibold">What everyone keeps coming back for</h2>
+            {cms.topSellers.eyebrow && (
+              <div className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                <Flame className="size-3.5" /> {cms.topSellers.eyebrow}
+              </div>
+            )}
+            {cms.topSellers.heading && (
+              <h2 className="display mt-1 text-2xl font-semibold">{cms.topSellers.heading}</h2>
+            )}
+            {cms.topSellers.subheading && (
+              <p className="mt-1.5 text-sm text-muted-foreground max-w-2xl">{cms.topSellers.subheading}</p>
+            )}
           </div>
           <div className="grid gap-4 md:grid-cols-4 reveal-stagger">
-            {topSellers.map((t: any, i: number) => (
+            {topSellers.slice(0, cms.topSellers.limit).map((t: any, i: number) => (
               <div key={t.id} className="relative group overflow-hidden rounded-2xl border bg-card card-lift tap-press">
                 <div className="relative h-36 overflow-hidden">
                   <Image
@@ -444,16 +454,20 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
                     className="object-cover transition-transform duration-700 group-hover:scale-110"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-primary/95 text-primary-foreground text-[10px] font-bold tracking-wider shadow-lg">
-                    #{i + 1} BESTSELLER
-                  </div>
+                  {cms.topSellers.showRankBadge && (
+                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-primary/95 text-primary-foreground text-[10px] font-bold tracking-wider shadow-lg">
+                      #{i + 1} BESTSELLER
+                    </div>
+                  )}
                 </div>
                 <div className="p-3">
                   <div className="font-semibold text-sm truncate">{t.name}</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground flex items-center gap-1">
-                    <Flame className="size-3 text-primary" />
-                    {t.soldCount} ordered in 30 days
-                  </div>
+                  {cms.topSellers.showSoldCount && (
+                    <div className="mt-0.5 text-xs text-muted-foreground flex items-center gap-1">
+                      <Flame className="size-3 text-primary" />
+                      {t.soldCount} ordered in 30 days
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -461,18 +475,27 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
         </section>
       )}
 
-      {/* ───────────────────────── Combos ───────────────────────── */}
+      {/* ───────────────────────── Combos ─────────────────────────
+           Eyebrow / heading / subheading / limit / Combo pill toggle are
+           CMS-driven via cms.combos. */}
       <section className="container py-10">
-        {combos.length > 0 && (
+        {cms.combos.enabled && combos.length > 0 && (
           <div className="mb-12">
             <div className="mb-5 reveal">
-              <div className="text-xs font-semibold uppercase tracking-wider text-primary">Combos</div>
-              <h2 className="display mt-1 text-2xl font-semibold">Crowd-pleasers</h2>
+              {cms.combos.eyebrow && (
+                <div className="text-xs font-semibold uppercase tracking-wider text-primary">{cms.combos.eyebrow}</div>
+              )}
+              {cms.combos.heading && (
+                <h2 className="display mt-1 text-2xl font-semibold">{cms.combos.heading}</h2>
+              )}
+              {cms.combos.subheading && (
+                <p className="mt-1.5 text-sm text-muted-foreground max-w-2xl">{cms.combos.subheading}</p>
+              )}
             </div>
             {/* Combos: 1-col on mobile so each combo gets full visual weight,
                 then 2/3-up on tablet/desktop. */}
             <div className="grid gap-4 md:gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 reveal-stagger">
-              {combos.map((c) => {
+              {combos.slice(0, cms.combos.limit).map((c) => {
                 const hh = priceForCombo({ id: c.id, price: Number(c.price) }, happyHourRules, now);
                 return (
                 <Card key={c.id} className="overflow-hidden group card-lift">{/* happy-hour-aware */}
@@ -485,7 +508,9 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
                       className="object-cover transition-transform duration-700 group-hover:scale-105"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-                    <Badge className="absolute top-3 left-3 bg-warning/95 text-warning-foreground border-transparent">Combo</Badge>
+                    {cms.combos.showComboBadge && (
+                      <Badge className="absolute top-3 left-3 bg-warning/95 text-warning-foreground border-transparent">Combo</Badge>
+                    )}
                   </div>
                   <CardContent className="p-5">
                     <div className="display text-lg font-semibold group-hover:text-primary transition-colors">{c.name}</div>

@@ -103,6 +103,32 @@ export interface StorefrontConfig {
     body: string;
     imageSrc: string;       // '' ⇒ no image
   };
+  /**
+   * "Most ordered here" / "What everyone keeps coming back for" — the
+   * bestseller rail right above the menu. Every label is editable so a sushi
+   * place can say "Most-loved nigiri" while a bar can say "Crowd favourites".
+   */
+  topSellers: {
+    enabled: boolean;
+    eyebrow: string;        // ≤60 — the small uppercase chip; '' ⇒ no chip
+    heading: string;        // ≤120 — the big heading; '' ⇒ default
+    subheading: string;     // ≤240 — optional one-liner under the heading
+    limit: number;          // 1..12, how many bestsellers to show
+    showRankBadge: boolean; // the "#N BESTSELLER" pill
+    showSoldCount: boolean; // the "X ordered in 30 days" footnote
+  };
+  /**
+   * "Combos" / "Crowd-pleasers" — the curated bundle rail. Headers + visible
+   * limit + the orange "Combo" pill are all CMS-controlled.
+   */
+  combos: {
+    enabled: boolean;
+    eyebrow: string;        // ≤60 — small uppercase chip; '' ⇒ no chip
+    heading: string;        // ≤120 — big heading; '' ⇒ default
+    subheading: string;     // ≤240 — optional one-liner
+    limit: number;          // 1..12, 0 = unlimited (uses the count actually returned)
+    showComboBadge: boolean; // the orange "Combo" pill on each card
+  };
   social: SocialLinks;
   seo: {
     metaTitle: string;      // '' ⇒ fall back to restaurant name
@@ -117,6 +143,11 @@ export interface StorefrontConfig {
     showSearch: boolean;
     showFilters: boolean;
     showOffersStrip: boolean;
+    /**
+     * @deprecated Use `topSellers.enabled` instead — kept on the type for
+     * back-compat reads, but the editor now drives the value from the new
+     * topSellers section and the parser mirrors them onto each other.
+     */
     showTopSellers: boolean;
     menuLayout: MenuLayout;
   };
@@ -146,6 +177,23 @@ export function defaultStorefrontConfig(): StorefrontConfig {
     theme: { secondaryColor: '#7c3aed', fontPair: 'modern', buttonRadius: 'pill', cardStyle: 'shadow' },
     announcement: { enabled: false, text: '', linkLabel: '', linkHref: '', bgColor: '#111827', textColor: '#ffffff' },
     about: { enabled: false, title: 'Our story', body: '', imageSrc: '' },
+    topSellers: {
+      enabled: true,
+      eyebrow: 'Most ordered here',
+      heading: 'What everyone keeps coming back for',
+      subheading: '',
+      limit: 4,
+      showRankBadge: true,
+      showSoldCount: true,
+    },
+    combos: {
+      enabled: true,
+      eyebrow: 'Combos',
+      heading: 'Crowd-pleasers',
+      subheading: '',
+      limit: 6,
+      showComboBadge: true,
+    },
     social: {},
     seo: { metaTitle: '', metaDescription: '', ogImage: '' },
     footer: { text: '' },
@@ -256,6 +304,17 @@ export function parseStorefrontConfig(raw: unknown): StorefrontConfig {
   const seo = r.seo ?? {};
   const footer = r.footer ?? {};
   const layout = r.layout ?? {};
+  const topSellersRaw = r.topSellers ?? {};
+  const combosRaw = r.combos ?? {};
+
+  // Backward-compat: legacy configs only had `layout.showTopSellers` (a single
+  // toggle). If the new `topSellers.enabled` isn't explicitly set, mirror the
+  // legacy flag onto it. Then below we also mirror the resolved enabled back
+  // onto `layout.showTopSellers` so any other readers stay consistent.
+  const tsEnabledRaw =
+    typeof topSellersRaw.enabled === 'boolean' ? topSellersRaw.enabled
+    : typeof layout.showTopSellers === 'boolean' ? layout.showTopSellers
+    : d.topSellers.enabled;
 
   const slides = Array.isArray(hero.slides)
     ? hero.slides.map(parseSlide).filter((x: HeroSlide | null): x is HeroSlide => !!x).slice(0, 10)
@@ -295,6 +354,23 @@ export function parseStorefrontConfig(raw: unknown): StorefrontConfig {
       body: str(about.body, 4000),
       imageSrc: url(about.imageSrc),
     },
+    topSellers: {
+      enabled: tsEnabledRaw,
+      eyebrow: str(topSellersRaw.eyebrow, 60) || (topSellersRaw.eyebrow === '' ? '' : d.topSellers.eyebrow),
+      heading: str(topSellersRaw.heading, 120) || (topSellersRaw.heading === '' ? '' : d.topSellers.heading),
+      subheading: str(topSellersRaw.subheading, 240),
+      limit: clampInt(topSellersRaw.limit, 1, 12, d.topSellers.limit),
+      showRankBadge: bool(topSellersRaw.showRankBadge, d.topSellers.showRankBadge),
+      showSoldCount: bool(topSellersRaw.showSoldCount, d.topSellers.showSoldCount),
+    },
+    combos: {
+      enabled: bool(combosRaw.enabled, d.combos.enabled),
+      eyebrow: str(combosRaw.eyebrow, 60) || (combosRaw.eyebrow === '' ? '' : d.combos.eyebrow),
+      heading: str(combosRaw.heading, 120) || (combosRaw.heading === '' ? '' : d.combos.heading),
+      subheading: str(combosRaw.subheading, 240),
+      limit: clampInt(combosRaw.limit, 1, 12, d.combos.limit),
+      showComboBadge: bool(combosRaw.showComboBadge, d.combos.showComboBadge),
+    },
     social: parseSocial(r.social),
     seo: {
       metaTitle: str(seo.metaTitle, 120),
@@ -307,7 +383,9 @@ export function parseStorefrontConfig(raw: unknown): StorefrontConfig {
       showSearch: bool(layout.showSearch, d.layout.showSearch),
       showFilters: bool(layout.showFilters, d.layout.showFilters),
       showOffersStrip: bool(layout.showOffersStrip, d.layout.showOffersStrip),
-      showTopSellers: bool(layout.showTopSellers, d.layout.showTopSellers),
+      // Mirror the resolved topSellers.enabled so the legacy flag stays in
+      // sync with the new section (one source of truth, two surfaces).
+      showTopSellers: tsEnabledRaw,
       menuLayout: layout.menuLayout === 'grid' ? 'grid' : 'list',
     },
   };

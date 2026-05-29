@@ -65,6 +65,11 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
   const setTheme = (patch: Partial<StorefrontConfig['theme']>) => setCfg((c) => ({ ...c, theme: { ...c.theme, ...patch } }));
   const setAnn = (patch: Partial<StorefrontConfig['announcement']>) => setCfg((c) => ({ ...c, announcement: { ...c.announcement, ...patch } }));
   const setAbout = (patch: Partial<StorefrontConfig['about']>) => setCfg((c) => ({ ...c, about: { ...c.about, ...patch } }));
+  // ── Storefront sections customers actually see in the menu area ──
+  const setTopSellers = (patch: Partial<StorefrontConfig['topSellers']>) =>
+    setCfg((c) => ({ ...c, topSellers: { ...c.topSellers, ...patch } }));
+  const setCombos = (patch: Partial<StorefrontConfig['combos']>) =>
+    setCfg((c) => ({ ...c, combos: { ...c.combos, ...patch } }));
   const setSocial = (patch: Partial<StorefrontConfig['social']>) => setCfg((c) => ({ ...c, social: { ...c.social, ...patch } }));
   const setSeo = (patch: Partial<StorefrontConfig['seo']>) => setCfg((c) => ({ ...c, seo: { ...c.seo, ...patch } }));
   const setFooter = (patch: Partial<StorefrontConfig['footer']>) => setCfg((c) => ({ ...c, footer: { ...c.footer, ...patch } }));
@@ -413,7 +418,6 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
           <Toggle on={cfg.layout.showSearch} onClick={() => setLayout({ showSearch: !cfg.layout.showSearch })} label="Search bar" />
           <Toggle on={cfg.layout.showFilters} onClick={() => setLayout({ showFilters: !cfg.layout.showFilters })} label="Filter chips (veg, etc.)" />
           <Toggle on={cfg.layout.showOffersStrip} onClick={() => setLayout({ showOffersStrip: !cfg.layout.showOffersStrip })} label="Offers strip" />
-          <Toggle on={cfg.layout.showTopSellers} onClick={() => setLayout({ showTopSellers: !cfg.layout.showTopSellers })} label="Top sellers" />
         </div>
         <Field label="Menu layout">
           <div className="flex gap-2">
@@ -422,6 +426,141 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
             ))}
           </div>
         </Field>
+      </Section>
+
+      {/* TOP SELLERS */}
+      <Section
+        title="Top sellers section"
+        subtitle="The “Most ordered here” rail above the menu. Customise every label, how many tiles, and the bestseller badges."
+      >
+        <Toggle on={cfg.topSellers.enabled} onClick={() => setTopSellers({ enabled: !cfg.topSellers.enabled })} label="Show this section" />
+        <div className={`grid gap-3 sm:grid-cols-2 ${cfg.topSellers.enabled ? '' : 'opacity-60 pointer-events-none'}`}>
+          <Field label="Eyebrow (small chip)">
+            <input
+              type="text" value={cfg.topSellers.eyebrow} maxLength={60}
+              onChange={(e) => setTopSellers({ eyebrow: e.target.value })}
+              placeholder="Most ordered here"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </Field>
+          <Field label="Max tiles shown">
+            <input
+              type="number" min={1} max={12} value={cfg.topSellers.limit}
+              onChange={(e) => setTopSellers({ limit: Number(e.target.value) || 1 })}
+              className="h-9 w-28 rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </Field>
+        </div>
+        <div className={cfg.topSellers.enabled ? '' : 'opacity-60 pointer-events-none'}>
+          <Field label="Heading">
+            <input
+              type="text" value={cfg.topSellers.heading} maxLength={120}
+              onChange={(e) => setTopSellers({ heading: e.target.value })}
+              placeholder="What everyone keeps coming back for"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </Field>
+          <Field label="Subheading (optional)">
+            <input
+              type="text" value={cfg.topSellers.subheading} maxLength={240}
+              onChange={(e) => setTopSellers({ subheading: e.target.value })}
+              placeholder="A soft line under the heading. Leave blank to hide."
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </Field>
+          <div className="grid sm:grid-cols-2 gap-2 pt-2">
+            <Toggle on={cfg.topSellers.showRankBadge} onClick={() => setTopSellers({ showRankBadge: !cfg.topSellers.showRankBadge })} label='"#N BESTSELLER" badge' />
+            <Toggle on={cfg.topSellers.showSoldCount} onClick={() => setTopSellers({ showSoldCount: !cfg.topSellers.showSoldCount })} label='"X ordered in 30 days" footnote' />
+          </div>
+        </div>
+      </Section>
+
+      {/* COMBOS */}
+      <Section
+        title="Combos section"
+        subtitle="The “Crowd-pleasers” rail of curated bundles. Customise the eyebrow, headline, how many cards, and whether each card shows the orange Combo pill."
+      >
+        <Toggle on={cfg.combos.enabled} onClick={() => setCombos({ enabled: !cfg.combos.enabled })} label="Show this section" />
+        <div className={`grid gap-3 sm:grid-cols-2 ${cfg.combos.enabled ? '' : 'opacity-60 pointer-events-none'}`}>
+          <Field label="Eyebrow (small chip)">
+            <input
+              type="text" value={cfg.combos.eyebrow} maxLength={60}
+              onChange={(e) => setCombos({ eyebrow: e.target.value })}
+              placeholder="Combos"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </Field>
+          <Field label="Max combo cards">
+            <input
+              type="number" min={1} max={12} value={cfg.combos.limit}
+              onChange={(e) => setCombos({ limit: Number(e.target.value) || 1 })}
+              className="h-9 w-28 rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </Field>
+        </div>
+        <div className={cfg.combos.enabled ? '' : 'opacity-60 pointer-events-none'}>
+          <Field label="Heading">
+            <input
+              type="text" value={cfg.combos.heading} maxLength={120}
+              onChange={(e) => setCombos({ heading: e.target.value })}
+              placeholder="Crowd-pleasers"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </Field>
+          <Field label="Subheading (optional)">
+            <input
+              type="text" value={cfg.combos.subheading} maxLength={240}
+              onChange={(e) => setCombos({ subheading: e.target.value })}
+              placeholder="A soft line under the heading. Leave blank to hide."
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </Field>
+          <div className="pt-2">
+            <Toggle on={cfg.combos.showComboBadge} onClick={() => setCombos({ showComboBadge: !cfg.combos.showComboBadge })} label='Orange "Combo" pill on each card' />
+          </div>
+        </div>
+
+        {/* Live preview */}
+        {(cfg.topSellers.enabled || cfg.combos.enabled) && (
+          <div className="rounded-lg border bg-muted/30 p-4 mt-3 space-y-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Live preview</div>
+            {cfg.topSellers.enabled && (
+              <div>
+                {cfg.topSellers.eyebrow && (
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-primary">{cfg.topSellers.eyebrow}</div>
+                )}
+                {cfg.topSellers.heading && (
+                  <div className="display text-base font-semibold">{cfg.topSellers.heading}</div>
+                )}
+                {cfg.topSellers.subheading && (
+                  <div className="text-xs text-muted-foreground">{cfg.topSellers.subheading}</div>
+                )}
+                <div className="mt-1 text-[10px] text-muted-foreground">
+                  Up to {cfg.topSellers.limit} bestseller tile{cfg.topSellers.limit === 1 ? '' : 's'}
+                  {cfg.topSellers.showRankBadge ? ' · with rank badges' : ''}
+                  {cfg.topSellers.showSoldCount ? ' · with 30-day order count' : ''}
+                </div>
+              </div>
+            )}
+            {cfg.combos.enabled && (
+              <div className={cfg.topSellers.enabled ? 'pt-2 border-t' : ''}>
+                {cfg.combos.eyebrow && (
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-primary">{cfg.combos.eyebrow}</div>
+                )}
+                {cfg.combos.heading && (
+                  <div className="display text-base font-semibold">{cfg.combos.heading}</div>
+                )}
+                {cfg.combos.subheading && (
+                  <div className="text-xs text-muted-foreground">{cfg.combos.subheading}</div>
+                )}
+                <div className="mt-1 text-[10px] text-muted-foreground">
+                  Up to {cfg.combos.limit} combo card{cfg.combos.limit === 1 ? '' : 's'}
+                  {cfg.combos.showComboBadge ? ' · with Combo pill' : ''}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </Section>
 
       <div className="sticky bottom-4 z-10">
