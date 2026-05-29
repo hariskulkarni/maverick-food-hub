@@ -2,9 +2,21 @@
 /**
  * Mobile bottom navigation — fixed below-viewport tab bar on phones.
  *
+ * Two variants depending on route context:
+ *
+ *  ◾ DEFAULT (global, customer-facing):
+ *     Home / Explore / Cart / Orders / Profile  (5 tabs)
+ *     The standard nav for the discovery surface + cart + orders + profile.
+ *
+ *  ◾ RESTAURANT ORDERING (when path matches /r/<slug>/menu*):
+ *     Dine-In / Orders / Cart / Profile  (4 tabs)
+ *     The Home + Explore tabs are replaced by a single Dine-In tab that opens
+ *     a chooser sheet ("Reserve a table" / "Scan the table QR") instead of
+ *     navigating. This matches the in-restaurant customer flow where the
+ *     customer has already committed to one restaurant.
+ *
  * Design language:
  *   - Sticks to the bottom on screens < md (768px). Hidden on tablet/desktop.
- *   - 5 destinations: Home / Explore / Cart (badge) / Orders / Profile
  *   - Pill-shaped active indicator that morphs between tabs (smooth transform)
  *   - Cart tab grows visually when items are present + shows count chip
  *   - Saffron accent for active state on a glassy white background
@@ -19,28 +31,49 @@
  *   - Hidden when the user is in an active checkout (`/checkout/*`) so the
  *     payment flow stays focused.
  */
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, ShoppingBag, Receipt, UserRound } from 'lucide-react';
+import { Home, Search, ShoppingBag, Receipt, UserRound, UtensilsCrossed } from 'lucide-react';
 import { useCart } from '@/app/(customer)/cart-context';
+import { DineInChooser } from '@/components/storefront/dine-in-chooser';
+
+type NavAction = { kind: 'link'; href: string } | { kind: 'dine-in' };
 
 interface NavItem {
-  href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  /** Active when pathname starts with one of these prefixes. The first href is the canonical. */
+  /** Active when pathname starts with one of these prefixes. */
   activeOn: string[];
   /** Render in a "promoted" style when the cart has items. Used for the cart tab. */
   promotable?: boolean;
+  action: NavAction;
 }
 
-const ITEMS: NavItem[] = [
-  { href: '/',            label: 'Home',    icon: Home,         activeOn: ['/'] },
-  { href: '/restaurants', label: 'Explore', icon: Search,       activeOn: ['/restaurants', '/r/', '/brand/'] },
-  { href: '/cart',        label: 'Cart',    icon: ShoppingBag,  activeOn: ['/cart'], promotable: true },
-  { href: '/orders',      label: 'Orders',  icon: Receipt,      activeOn: ['/orders', '/track'] },
-  { href: '/profile',     label: 'Profile', icon: UserRound,    activeOn: ['/profile'] },
+const DEFAULT_ITEMS: NavItem[] = [
+  { label: 'Home',    icon: Home,        activeOn: ['/'],                                action: { kind: 'link', href: '/' } },
+  { label: 'Explore', icon: Search,      activeOn: ['/restaurants', '/r/', '/brand/'],  action: { kind: 'link', href: '/restaurants' } },
+  { label: 'Cart',    icon: ShoppingBag, activeOn: ['/cart'],                            action: { kind: 'link', href: '/cart' }, promotable: true },
+  { label: 'Orders',  icon: Receipt,     activeOn: ['/orders', '/track'],                action: { kind: 'link', href: '/orders' } },
+  { label: 'Profile', icon: UserRound,   activeOn: ['/profile'],                         action: { kind: 'link', href: '/profile' } },
 ];
+
+/** 4-tab variant for inside-restaurant ordering pages. Order matches the
+ *  customer ask: Dine-In / Orders / Cart / Profile. */
+function restaurantItems(slug: string): NavItem[] {
+  return [
+    { label: 'Dine-In', icon: UtensilsCrossed, activeOn: [`/r/${slug}/reserve`], action: { kind: 'dine-in' } },
+    { label: 'Orders',  icon: Receipt,         activeOn: ['/orders', '/track'],  action: { kind: 'link', href: '/orders' } },
+    { label: 'Cart',    icon: ShoppingBag,     activeOn: ['/cart'],              action: { kind: 'link', href: '/cart' }, promotable: true },
+    { label: 'Profile', icon: UserRound,       activeOn: ['/profile'],           action: { kind: 'link', href: '/profile' } },
+  ];
+}
+
+/** Match /r/<slug>/menu and any sub-path under it. Returns the slug if so. */
+function matchRestaurantMenu(path: string): string | null {
+  const m = path.match(/^\/r\/([^/]+)\/menu(?:$|\/)/);
+  return m ? m[1] : null;
+}
 
 /**
  * Returns true when the current pathname is a customer surface that should
@@ -62,59 +95,57 @@ export function MobileBottomNav() {
   const path = usePathname() ?? '/';
   const visible = useBottomNavVisible();
   const { count } = useCart();
+  const [dineInOpen, setDineInOpen] = useState(false);
+
+  const menuSlug = matchRestaurantMenu(path);
+  const items = menuSlug ? restaurantItems(menuSlug) : DEFAULT_ITEMS;
+  const tabCount = items.length;
+
   if (!visible) return null;
 
-  const activeIndex = ITEMS.findIndex((i) =>
+  const activeIndex = items.findIndex((i) =>
     i.activeOn.some((p) => (p === '/' ? path === '/' : path.startsWith(p)))
   );
-  // 5 tabs, equal width — translate the pill by activeIndex * 20% (each tab is 20% of the row).
+  // Tabs share the row equally, so the pill is 1/N wide and translates by
+  // index * 100% (of that 1/N slot).
   const pillStyle = activeIndex >= 0
     ? { transform: `translateX(${activeIndex * 100}%)`, opacity: 1 }
     : { opacity: 0 };
+  const tabWidthClass = tabCount === 4 ? 'w-1/4' : 'w-1/5';
+  const gridColsClass = tabCount === 4 ? 'grid-cols-4' : 'grid-cols-5';
 
   return (
-    <nav
-      role="navigation"
-      aria-label="Primary"
-      className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-    >
-      <div className="relative mx-auto max-w-md">
-        {/* Sliding pill highlight — purely decorative, sits behind the icons. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute left-0 top-1.5 h-[calc(100%-12px)] w-1/5 px-2 transition-transform duration-300 ease-out"
-          style={pillStyle}
-        >
-          <div className="h-full w-full rounded-2xl bg-primary/10 ring-1 ring-primary/20" />
-        </div>
+    <>
+      <nav
+        role="navigation"
+        aria-label="Primary"
+        className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="relative mx-auto max-w-md">
+          {/* Sliding pill highlight — purely decorative, sits behind the icons. */}
+          <div
+            aria-hidden
+            className={`pointer-events-none absolute left-0 top-1.5 h-[calc(100%-12px)] ${tabWidthClass} px-2 transition-transform duration-300 ease-out`}
+            style={pillStyle}
+          >
+            <div className="h-full w-full rounded-2xl bg-primary/10 ring-1 ring-primary/20" />
+          </div>
 
-        <ul className="relative grid grid-cols-5">
-          {ITEMS.map((item, idx) => {
-            const Icon = item.icon;
-            const isActive = activeIndex === idx;
-            const showBadge = item.promotable && count > 0;
-            return (
-              <li key={item.href} className="contents">
-                <Link
-                  href={item.href}
-                  prefetch={false}
-                  aria-current={isActive ? 'page' : undefined}
-                  aria-label={`${item.label}${showBadge ? `, ${count} item${count === 1 ? '' : 's'} in cart` : ''}`}
-                  className={
-                    'group relative flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 tap-press text-[11px] font-medium transition-colors ' +
-                    (isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground')
-                  }
-                >
+          <ul className={`relative grid ${gridColsClass}`}>
+            {items.map((item, idx) => {
+              const Icon = item.icon;
+              const isActive = activeIndex === idx;
+              const showBadge = item.promotable && count > 0;
+              const labelAria = `${item.label}${showBadge ? `, ${count} item${count === 1 ? '' : 's'} in cart` : ''}`;
+              const className =
+                'group relative flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 tap-press text-[11px] font-medium transition-colors ' +
+                (isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground');
+              const iconClass = 'transition-all ' + (isActive ? 'size-[22px] -translate-y-0.5' : 'size-5');
+              const content = (
+                <>
                   <span className="relative">
-                    <Icon
-                      className={
-                        'transition-all ' +
-                        (isActive
-                          ? 'size-[22px] -translate-y-0.5'
-                          : 'size-5')
-                      }
-                    />
+                    <Icon className={iconClass} />
                     {showBadge && (
                       <span
                         aria-hidden
@@ -125,12 +156,46 @@ export function MobileBottomNav() {
                     )}
                   </span>
                   <span className={isActive ? 'font-semibold tracking-tight' : 'tracking-tight'}>{item.label}</span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-    </nav>
+                </>
+              );
+              return (
+                <li key={item.label} className="contents">
+                  {item.action.kind === 'link' ? (
+                    <Link
+                      href={item.action.href}
+                      prefetch={false}
+                      aria-current={isActive ? 'page' : undefined}
+                      aria-label={labelAria}
+                      className={className}
+                    >
+                      {content}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setDineInOpen(true)}
+                      aria-haspopup="dialog"
+                      aria-expanded={dineInOpen}
+                      aria-label={labelAria}
+                      className={className}
+                    >
+                      {content}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </nav>
+
+      {/* The chooser is only ever instantiated when we're on a restaurant
+          ordering page (menuSlug truthy). We keep it mounted regardless of
+          dineInOpen so its open/close animation runs from the bottom-nav
+          button's transform origin. */}
+      {menuSlug && (
+        <DineInChooser open={dineInOpen} onOpenChange={setDineInOpen} slug={menuSlug} />
+      )}
+    </>
   );
 }
