@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
+import { audit } from '@/server/audit';
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireSuperAdmin();
@@ -53,15 +54,107 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   });
 }
 
+/**
+ * Super-admin-only identity edits.
+ *
+ * Allowed fields:
+ *   • name           — display name (required ≥ 1 char, max 120)
+ *   • tagline        — short hook under the name (max 240)
+ *   • cuisine        — one-line cuisine label (max 60)
+ *   • slug           — URL slug → /r/<slug>; lowercase a-z 0-9 and dashes only;
+ *                      must stay unique across restaurants. Changing it BREAKS
+ *                      any printed QR codes / saved links — the UI surfaces a
+ *                      confirm before sending.
+ *   • commissionPct  — platform's cut, 0-50
+ *   • rejectedReason — used by the reject lifecycle action
+ *
+ * Empty-string is treated as "clear this optional field" for tagline/cuisine.
+ */
+const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+
 const PatchBody = z.object({
-  commissionPct: z.number().min(0).max(50).optional(),
-  rejectedReason: z.string().nullable().optional()
+  name:           z.string().trim().min(1, 'Name required').max(120).optional(),
+  tagline:        z.string().trim().max(240).nullable().optional(),
+  cuisine:        z.string().trim().max(60).nullable().optional(),
+  slug:           z.string().trim().toLowerCase().regex(SLUG_RE, 'Slug must be lowercase letters, digits and dashes (2–64 chars, no leading/trailing dash)').optional(),
+  commissionPct:  z.number().min(0).max(50).optional(),
+  rejectedReason: z.string().nullable().optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const session = await requireSuperAdmin();
   const { id } = await params;
-  const data = PatchBody.parse(await req.json());
-  await prisma.restaurant.update({ where: { id }, data });
+
+  let body: any;
+  try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }); }
+
+  const parsed = PatchBody.safeParse(body);
+  if (!parsed.success) {
+    return Response.json({ error: parsed.error.issues[0]?.message || 'Invalid input' }, { status: 400 });
+  }
+  const data = parsed.data;
+
+  // Don't issue a no-op update — also lets us audit the diff cleanly.
+  const before = await prisma.restaurant.findUnique({
+    where: { id },
+    select: { id: true, name: true, tagline: true, cuisine: true, slug: true, commissionPct: true },
+  });
+  if (!before) return new Response('Not found', { status: 404 });
+
+  // Normalize empty strings on optional text fields to null (clears the column).
+  const next: Record<string, any> = {};
+  if (data.name !== undefined && data.name !== before.name) next.name = data.name;
+  if (data.tagline !== undefined) {
+    const v = data.tagline === '' ? null : data.tagline;
+    if (v !== before.tagline) next.tagline = v;
+  }
+  if (data.cuisine !== undefined) {
+    const v = data.cuisine === '' ? null : data.cuisine;
+    if (v !== before.cuisine) next.cuisine = v;
+  }
+  if (data.slug !== undefined && data.slug !== before.slug) next.slug = data.slug;
+  if (data.commissionPct !== undefined && data.commissionPct !== before.commissionPct) next.commissionPct = data.commissionPct;
+  if (data.rejectedReason !== undefined) next.rejectedReason = data.rejectedReason;
+
+  if (Object.keys(next).length === 0) {
+    return Response.json({ ok: true, unchanged: true });
+  }
+
+  // Pre-check slug uniqueness so we can return a clean error message instead
+  // of letting Prisma's P2002 bubble up as a 500.
+  if (typeof next.slug === 'string') {
+    const taken = await prisma.restaurant.findFirst({
+      where: { slug: next.slug, NOT: { id } },
+      select: { id: true },
+    });
+    if (taken) {
+      return Response.json({ error: `Slug "${next.slug}" is already in use by another restaurant.` }, { status: 409 });
+    }
+  }
+
+  try {
+    await prisma.restaurant.update({ where: { id }, data: next });
+  } catch (e: any) {
+    if (e?.code === 'P2002') {
+      return Response.json({ error: 'Slug is already in use.' }, { status: 409 });
+    }
+    throw e;
+  }
+
+  // Audit identity changes — these are sensitive (rebranding, URL change).
+  const identityFields = ['name', 'tagline', 'cuisine', 'slug'] as const;
+  const changedIdentity = identityFields.filter((k) => k in next);
+  if (changedIdentity.length > 0) {
+    await audit('restaurant.settings.update', {
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      restaurantId: id,
+      entityType: 'Restaurant',
+      entityId: id,
+      before: Object.fromEntries(changedIdentity.map((k) => [k, (before as any)[k]])),
+      after: Object.fromEntries(changedIdentity.map((k) => [k, next[k]])),
+    });
+  }
+
   return Response.json({ ok: true });
 }

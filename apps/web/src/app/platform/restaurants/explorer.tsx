@@ -10,7 +10,7 @@ import { DetailDrawer, DrawerSection } from '@/components/admin/detail-drawer';
 import { QrCard } from '@/components/qr-card';
 import { toast } from 'sonner';
 import {
-  Search, X, RefreshCw, Check, Pause, Play, ArrowUpRight, Building2, MapPin, Users, Utensils, Wallet, Plug, Save, Loader2, AlertTriangle, ExternalLink, Network, Link2Off
+  Search, X, RefreshCw, Check, Pause, Play, ArrowUpRight, Building2, MapPin, Users, Utensils, Wallet, Plug, Save, Loader2, AlertTriangle, ExternalLink, Network, Link2Off, Pencil
 } from 'lucide-react';
 
 const STATUSES = ['ALL', 'PENDING', 'ACTIVE', 'SUSPENDED', 'REJECTED'] as const;
@@ -117,6 +117,13 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
   const [eligibleParents, setEligibleParents] = useState<{ id: string; name: string }[]>([]);
   const [parentSel, setParentSel] = useState<string>('');
   const [savingParent, setSavingParent] = useState(false);
+  // ── Identity (name / tagline / cuisine / slug) — super-admin-only edits.
+  // The drawer mounts under /platform which already requires SUPER_ADMIN, so
+  // the section is unconditionally rendered here (no client-side role gate
+  // needed). The PATCH endpoint enforces SUPER_ADMIN server-side as well.
+  const [ident, setIdent] = useState({ name: '', tagline: '', cuisine: '', slug: '' });
+  const [identInit, setIdentInit] = useState({ name: '', tagline: '', cuisine: '', slug: '' });
+  const [savingIdent, setSavingIdent] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -126,6 +133,14 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
       setData(j);
       setCommission(Number(j.restaurant.commissionPct ?? 15));
       setParentSel(j.restaurant.parentId ?? '');
+      const seed = {
+        name: j.restaurant.name ?? '',
+        tagline: j.restaurant.tagline ?? '',
+        cuisine: j.restaurant.cuisine ?? '',
+        slug: j.restaurant.slug ?? '',
+      };
+      setIdent(seed);
+      setIdentInit(seed);
     }
     setLoading(false);
   }
@@ -163,6 +178,46 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
     onChanged();
   }
 
+  async function saveIdentity() {
+    const payload: Record<string, string> = {};
+    if (ident.name.trim() !== identInit.name) payload.name = ident.name.trim();
+    if (ident.tagline.trim() !== identInit.tagline) payload.tagline = ident.tagline.trim();
+    if (ident.cuisine.trim() !== identInit.cuisine) payload.cuisine = ident.cuisine.trim();
+    if (ident.slug.trim().toLowerCase() !== identInit.slug) payload.slug = ident.slug.trim().toLowerCase();
+
+    if (Object.keys(payload).length === 0) return;
+    if (!ident.name.trim()) { toast.error('Name cannot be empty'); return; }
+
+    // Slug changes break printed QR codes + any externally shared /r/<slug>
+    // link, so require an explicit confirm before sending.
+    if ('slug' in payload) {
+      const ok = window.confirm(
+        `Slug change will move the storefront from /r/${identInit.slug} to /r/${payload.slug}.\n\n` +
+        `• Any printed QR codes pointing at the old URL will stop working.\n` +
+        `• Any external links / bookmarks to the old URL will 404.\n\n` +
+        `Continue?`,
+      );
+      if (!ok) return;
+    }
+
+    setSavingIdent(true);
+    const r = await fetch(`/api/platform/restaurants/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    setSavingIdent(false);
+    if (!r.ok) {
+      const msg = await r.text();
+      let pretty = msg;
+      try { pretty = JSON.parse(msg).error ?? msg; } catch {}
+      return toast.error('Save failed', { description: pretty.slice(0, 200) });
+    }
+    toast.success('Restaurant details updated');
+    load();
+    onChanged();
+  }
+
   if (loading || !data) {
     return (
       <DetailDrawer open onOpenChange={(v) => !v && onClose()} title="Loading…">
@@ -186,6 +241,95 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
         </div>
       }
     >
+      {/* Identity — super-admin-only edits for name / tagline / cuisine / slug. */}
+      <DrawerSection title="Restaurant identity" action={<Pencil className="size-3.5 text-muted-foreground" />}>
+        <div className="p-4 space-y-3">
+          <label className="block text-xs font-medium">
+            <span className="text-muted-foreground">Outlet name</span>
+            <input
+              type="text"
+              value={ident.name}
+              onChange={(e) => setIdent((s) => ({ ...s, name: e.target.value }))}
+              maxLength={120}
+              className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:border-primary"
+              placeholder="Combo Nation"
+            />
+          </label>
+          <label className="block text-xs font-medium">
+            <span className="text-muted-foreground">Tagline</span>
+            <input
+              type="text"
+              value={ident.tagline}
+              onChange={(e) => setIdent((s) => ({ ...s, tagline: e.target.value }))}
+              maxLength={240}
+              className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:border-primary"
+              placeholder="Where every meal becomes a feast"
+            />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs font-medium">
+              <span className="text-muted-foreground">Cuisine</span>
+              <input
+                type="text"
+                value={ident.cuisine}
+                onChange={(e) => setIdent((s) => ({ ...s, cuisine: e.target.value }))}
+                maxLength={60}
+                className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm focus:outline-none focus:border-primary"
+                placeholder="Indian"
+              />
+            </label>
+            <label className="block text-xs font-medium">
+              <span className="text-muted-foreground">Slug</span>
+              <input
+                type="text"
+                value={ident.slug}
+                onChange={(e) => setIdent((s) => ({ ...s, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') }))}
+                maxLength={64}
+                className="mt-1 h-9 w-full rounded-md border border-input bg-card px-3 text-sm font-mono focus:outline-none focus:border-primary"
+                placeholder="combo-nation"
+              />
+              <span className="mt-1 block text-[10px] text-muted-foreground">
+                Public URL: <span className="font-mono">/r/{ident.slug || '…'}</span>
+              </span>
+            </label>
+          </div>
+
+          {ident.slug !== identInit.slug && (
+            <div className="rounded-md bg-warning/5 border border-warning/30 p-2 text-[11px] text-warning-foreground flex items-start gap-2">
+              <AlertTriangle className="size-3.5 shrink-0 mt-0.5 text-warning" />
+              <span>
+                Changing the slug breaks any printed QR codes + saved links pointing at
+                <code className="mx-1 rounded bg-card px-1 py-0.5 font-mono">/r/{identInit.slug}</code>.
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              size="sm"
+              disabled={savingIdent || (
+                ident.name.trim() === identInit.name &&
+                ident.tagline.trim() === identInit.tagline &&
+                ident.cuisine.trim() === identInit.cuisine &&
+                ident.slug.trim() === identInit.slug
+              ) || !ident.name.trim()}
+              onClick={saveIdentity}
+            >
+              {savingIdent ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+              {savingIdent ? 'Saving…' : 'Save changes'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={savingIdent}
+              onClick={() => setIdent(identInit)}
+            >
+              Reset
+            </Button>
+          </div>
+        </div>
+      </DrawerSection>
+
       {/* Lifecycle actions */}
       <DrawerSection title="Lifecycle">
         <div className="p-4 flex flex-wrap gap-2">
