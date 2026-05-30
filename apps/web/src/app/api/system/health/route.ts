@@ -8,6 +8,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
+import { checkCacheHealth } from '@/server/cache';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -66,9 +67,27 @@ export async function GET(req: NextRequest) {
     dbStatus = 'fail';
   }
 
+  // Cache health is part of "the app is healthy" but failure here is not
+  // fatal to the response — a degraded cache costs latency, not uptime. We
+  // surface its status alongside DB so monitors can alert on it separately.
+  const cache = await checkCacheHealth().catch(() => ({
+    backend: 'memory' as const,
+    status: 'DOWN' as const,
+    latencyMs: null,
+    prefix: 'flavrly:v1:',
+    detail: 'probe threw',
+  }));
+
   const body = {
     ok: dbStatus === 'ok',
     db: dbStatus,
+    cache: {
+      backend: cache.backend,
+      status: cache.status,
+      latencyMs: cache.latencyMs,
+      prefix: cache.prefix,
+      detail: cache.detail,
+    },
     uptime: Math.floor(process.uptime()),
     version: process.version
   };

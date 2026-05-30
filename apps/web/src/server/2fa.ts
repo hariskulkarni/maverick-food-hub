@@ -63,20 +63,30 @@ async function ensurePlatformRestaurant(): Promise<void> {
 }
 
 export async function getPlatformSecurity(): Promise<PlatformSecurity> {
-  const row = await prisma.integrationCredential.findUnique({
-    where: {
-      restaurantId_provider: {
-        restaurantId: PLATFORM_RESTAURANT_ID,
-        provider: PROVIDER_2FA
+  // Cached: hit on every authenticated request to check IP allowlist / TOTP.
+  // Invalidation happens in setPlatformSecurity (below) via the same tag.
+  const { wrap, keys } = await import('./cache');
+  const cached = await wrap<PlatformSecurity>(
+    [keys.platformSecurity()],
+    { ttlMs: 5 * 60_000, staleMs: 30_000, tags: ['platform:security'], label: 'platform.security' },
+    async () => {
+      const row = await prisma.integrationCredential.findUnique({
+        where: {
+          restaurantId_provider: {
+            restaurantId: PLATFORM_RESTAURANT_ID,
+            provider: PROVIDER_2FA
+          }
+        }
+      });
+      if (!row) return {} as PlatformSecurity;
+      try {
+        return decryptJSON<PlatformSecurity>(row.configEncrypted);
+      } catch {
+        return {} as PlatformSecurity;
       }
-    }
-  });
-  if (!row) return {};
-  try {
-    return decryptJSON<PlatformSecurity>(row.configEncrypted);
-  } catch {
-    return {};
-  }
+    },
+  );
+  return cached ?? {};
 }
 
 export async function setPlatformSecurity(input: PlatformSecurity): Promise<void> {
@@ -116,6 +126,10 @@ export async function setPlatformSecurity(input: PlatformSecurity): Promise<void
       }
     }
   });
+  // Invalidate the cached read so the very next auth check sees the new IP
+  // allowlist / TOTP secret / lockout window — security changes can't lag.
+  const { invalidateTag } = await import('./cache');
+  await invalidateTag('platform:security');
 }
 
 export function verifyTotp(secret: string, token: string): boolean {

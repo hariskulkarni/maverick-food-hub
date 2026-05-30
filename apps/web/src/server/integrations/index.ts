@@ -15,34 +15,40 @@
 import { prisma } from '../db';
 import { decryptJSON, encryptJSON } from '../crypto';
 import { PROVIDERS, PROVIDER_LIST, ProviderKey } from './providers';
+import { wrap, invalidateTag, keys as cacheKeys } from '../cache';
 
 export type IntegrationStatus = 'CONNECTED' | 'DISCONNECTED' | 'FAILED';
 
-// Tiny in-memory cache so order-time payments don't decrypt on every call.
-const cache = new Map<string, { config: Record<string, string>; at: number }>();
-const CACHE_TTL_MS = 60_000;
-
-function cacheKey(restaurantId: string, provider: ProviderKey) {
-  return `${restaurantId}:${provider}`;
-}
-
+/**
+ * Decrypted integration credentials, cached so order-time payments don't hit
+ * Postgres + argon decrypt on every call. Read through the shared cache so
+ * the in-process Map gives way to Redis automatically — meaning two pm2
+ * workers share the same hot creds and a key rotation in saveConfig is
+ * visible everywhere in one round-trip.
+ *
+ * Negative caching uses the same TTL (any change calls invalidateTag below).
+ */
 export async function getConfig(restaurantId: string, provider: ProviderKey): Promise<Record<string, string> | null> {
-  const key = cacheKey(restaurantId, provider);
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.config;
-
-  const row = await prisma.integrationCredential.findUnique({
-    where: { restaurantId_provider: { restaurantId, provider: provider as any } }
-  });
-  if (!row || row.status !== 'CONNECTED') return null;
-
-  try {
-    const config = decryptJSON<Record<string, string>>(row.configEncrypted);
-    cache.set(key, { config, at: Date.now() });
-    return config;
-  } catch {
-    return null;
-  }
+  return wrap<Record<string, string>>(
+    [cacheKeys.integrationConfig(restaurantId, provider)],
+    {
+      ttlMs: 5 * 60_000,
+      staleMs: 60_000,
+      tags: [`integration:${restaurantId}`, `integration:${restaurantId}:${provider}`],
+      label: 'integration.config',
+    },
+    async () => {
+      const row = await prisma.integrationCredential.findUnique({
+        where: { restaurantId_provider: { restaurantId, provider: provider as any } },
+      });
+      if (!row || row.status !== 'CONNECTED') return null;
+      try {
+        return decryptJSON<Record<string, string>>(row.configEncrypted);
+      } catch {
+        return null;
+      }
+    },
+  );
 }
 
 export async function listForRestaurant(restaurantId: string) {
@@ -94,7 +100,7 @@ export async function saveConfig(
       createdById: opts.userId ?? null
     }
   });
-  cache.delete(cacheKey(restaurantId, provider));
+  await invalidateTag(`integration:${restaurantId}:${provider}`);
   return row;
 }
 
@@ -115,5 +121,5 @@ export async function testAndSave(restaurantId: string, provider: ProviderKey, c
 
 export async function disconnect(restaurantId: string, provider: ProviderKey) {
   await prisma.integrationCredential.deleteMany({ where: { restaurantId, provider: provider as any } });
-  cache.delete(cacheKey(restaurantId, provider));
+  await invalidateTag(`integration:${restaurantId}:${provider}`);
 }

@@ -24,6 +24,7 @@
 import { prisma } from '@/server/db';
 import { DISCOVERY_BANNERS } from '@/lib/discovery-banners';
 import { DISCOVERY_CATEGORIES } from '@/lib/discovery-categories';
+import { wrap, invalidateTag, keys } from '@/server/cache';
 
 export const DISCOVERY_CONTENT_KEY = 'discovery';
 
@@ -449,14 +450,30 @@ export function parseDiscoveryConfig(raw: unknown): DiscoveryConfig {
   };
 }
 
-/** Read the live discovery config (defaults when no row / on any error). */
+/**
+ * Read the live discovery config (defaults when no row / on any error).
+ *
+ * Hot path: every customer page-load reads this. We cache it for 5 minutes
+ * with a 30s stale-while-revalidate window — admins edit it rarely, customers
+ * see it constantly. `saveDiscoveryConfig` invalidates the tag below, so an
+ * admin change shows up on the very next read.
+ */
 export async function getDiscoveryConfig(): Promise<DiscoveryConfig> {
-  try {
-    const row = await (prisma as any).siteContent.findUnique({ where: { key: DISCOVERY_CONTENT_KEY } });
-    return parseDiscoveryConfig(row?.data);
-  } catch {
-    return defaultDiscoveryConfig();
-  }
+  const cached = await wrap<DiscoveryConfig>(
+    [keys.discoveryConfig()],
+    { ttlMs: 5 * 60_000, staleMs: 30_000, tags: ['discovery:config'], label: 'discovery.config' },
+    async () => {
+      try {
+        const row = await (prisma as any).siteContent.findUnique({ where: { key: DISCOVERY_CONTENT_KEY } });
+        return parseDiscoveryConfig(row?.data);
+      } catch {
+        return defaultDiscoveryConfig();
+      }
+    },
+  );
+  // wrap returns the cached value or the result of compute. Both are guaranteed
+  // non-null here because parseDiscoveryConfig always returns a real object.
+  return cached ?? defaultDiscoveryConfig();
 }
 
 /** Validate + persist the discovery config. Returns the parsed (clean) config. */
@@ -467,5 +484,7 @@ export async function saveDiscoveryConfig(raw: unknown, updatedBy?: string): Pro
     create: { key: DISCOVERY_CONTENT_KEY, data: clean as any, updatedBy: updatedBy ?? null },
     update: { data: clean as any, updatedBy: updatedBy ?? null },
   });
+  // Stamp the cache so the next read picks up the change immediately.
+  await invalidateTag('discovery:config');
   return clean;
 }
