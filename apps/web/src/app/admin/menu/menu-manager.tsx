@@ -80,14 +80,46 @@ export function MenuManager({ branchId, categories, items }: { branchId: string;
             const cat = categories.find((c) => c.id === it.categoryId);
             const isSel = selected.has(it.id);
             return (
-              <Card key={it.id} className={`tap-press card-lift ${isSel ? 'ring-2 ring-primary/50' : ''}`}>
+              <Card
+                key={it.id}
+                className={`tap-press card-lift cursor-pointer select-none ${isSel ? 'ring-2 ring-primary/50' : ''}`}
+                role="checkbox"
+                aria-checked={isSel}
+                tabIndex={0}
+                /**
+                 * Whole-card click toggles selection. This is the fix for the
+                 * "tiny native checkbox refuses to register clicks" symptom:
+                 * the `card-lift` hover-transform briefly moves the card mid-
+                 * click, so a precise tap on the 16x16 input often misses.
+                 * Now you can click ANYWHERE on the row to select it, and the
+                 * native checkbox stays as a visible affordance + a keyboard
+                 * target. The action buttons (toggle/edit/trash) call
+                 * `stopPropagation` so they DON'T also toggle the row.
+                 */
+                onClick={(e) => {
+                  // Don't toggle if the click came from an interactive child.
+                  // We rely on the action buttons stopping propagation, but
+                  // also bail on direct hits to inputs/links so a future
+                  // child element doesn't silently regress this.
+                  const target = e.target as HTMLElement;
+                  if (target.closest('button, a, [role="switch"], input, [data-no-select]')) return;
+                  toggleOne(it.id, !isSel);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === ' ' || e.key === 'Enter') {
+                    e.preventDefault();
+                    toggleOne(it.id, !isSel);
+                  }
+                }}
+              >
                 <CardContent className="p-3 flex items-center gap-3">
                   <input
                     type="checkbox"
                     aria-label={`Select ${it.name}`}
-                    className="size-4 shrink-0 accent-primary"
+                    className="size-5 shrink-0 accent-primary cursor-pointer"
                     checked={isSel}
                     onChange={(e) => toggleOne(it.id, e.target.checked)}
+                    onClick={(e) => e.stopPropagation()}
                   />
                   <div className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-muted border">
                     {it.imageUrl ? (
@@ -104,9 +136,14 @@ export function MenuManager({ branchId, categories, items }: { branchId: string;
                     <div className="font-medium truncate">{it.name}</div>
                     <div className="text-xs text-muted-foreground">{cat?.name} · {it.prepTimeMin} min · {money(it.price)}</div>
                   </div>
-                  <ToggleAvailability id={it.id} initial={it.isAvailable} />
-                  <Button size="icon" variant="ghost" onClick={() => setEditing(it)}><Pencil className="size-4" /></Button>
-                  <DeleteItem id={it.id} />
+                  {/* Stop propagation on every interactive control so a click
+                      on the availability switch / edit pencil / delete trash
+                      doesn't ALSO toggle the row selection. */}
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <ToggleAvailability id={it.id} initial={it.isAvailable} />
+                  </div>
+                  <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(it); }} title="Edit"><Pencil className="size-4" /></Button>
+                  <DeleteItem id={it.id} name={it.name} />
                 </CardContent>
               </Card>
             );
@@ -287,19 +324,65 @@ function ToggleAvailability({ id, initial }: { id: string; initial: boolean }) {
   );
 }
 
-function DeleteItem({ id }: { id: string }) {
+function DeleteItem({ id, name }: { id: string; name?: string }) {
   const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  /**
+   * Click handler with the same FK-aware fallback the bulk-delete uses:
+   *   • 200 → toast + refresh
+   *   • 409 reason=fk_in_use → offer "Hide instead" via the bulk-toggle
+   *   • anything else → reportApiError shows the structured message
+   */
+  async function onDelete(e: React.MouseEvent) {
+    // The row-level "click to toggle selection" handler listens on the
+    // whole card. We MUST stop propagation so a trash click doesn't
+    // accidentally toggle the row's checkbox at the same time.
+    e.stopPropagation();
+    if (busy) return;
+    const label = name ? `"${name}"` : 'this item';
+    if (!confirm(`Delete ${label}? This can't be undone.`)) return;
+
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/admin/menu/items/${id}`, { method: 'DELETE' });
+      const body = await r.json().catch(() => ({} as any));
+      if (r.ok) {
+        toast.success(`Deleted ${body.name ?? label}`);
+        router.refresh();
+        return;
+      }
+      if (r.status === 409 && body.reason === 'fk_in_use') {
+        // Item has order history or freebie rules — offer the safe fallback.
+        const ok = confirm(
+          `${body.error}\n\nHide it from the storefront instead?`
+        );
+        if (!ok) return;
+        const hide = await fetch('/api/admin/menu/items/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: [id], patch: { isAvailable: false } }),
+        });
+        if (!hide.ok) { await reportApiError(hide, 'Could not hide item'); return; }
+        toast.success(`Hidden from storefront`);
+        router.refresh();
+        return;
+      }
+      await reportApiError(r, 'Delete failed');
+    } catch (err) {
+      toast.error('Delete failed', { description: 'Network problem — try again.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Button
       size="icon"
       variant="ghost"
-      onClick={async () => {
-        if (!confirm('Delete this item?')) return;
-        const r = await fetch(`/api/admin/menu/items/${id}`, { method: 'DELETE' });
-        if (!r.ok) { await reportApiError(r, 'Delete failed'); return; }
-        toast.success('Deleted');
-        router.refresh();
-      }}
+      disabled={busy}
+      onClick={onDelete}
+      title="Delete item"
     >
       <Trash2 className="size-4" />
     </Button>
