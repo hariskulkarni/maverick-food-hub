@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { prisma } from '@/server/db';
 import { ImageWithFallback } from '@/components/image-with-fallback';
+import { LOGO_FIT_CLASS, LOGO_SHAPE_RADIUS_CLASS } from '@/server/storefront-cms';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -194,11 +195,31 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
               label={favRestaurant ? 'Remove restaurant from favorites' : 'Add restaurant to favorites'}
             />
           </div>
-          {restaurant.logoUrl && (
-            <div className="absolute left-4 md:left-8 bottom-[-32px] md:bottom-[-40px] size-20 md:size-24 rounded-2xl overflow-hidden border-4 border-background shadow-xl bg-card">
-              <ImageWithFallback src={restaurant.logoUrl} alt={restaurant.name} fill sizes="96px" className="object-cover" />
-            </div>
-          )}
+          {restaurant.logoUrl && (() => {
+            // Storefront CMS: how the logo fills its badge. Defaults to
+            // `contain` so a transparent brand mark (the common case) isn't
+            // cropped — admins can switch to cover/stretch/native via the
+            // CMS Logo display panel.
+            const d = cms.branding.logoDisplay;
+            return (
+              <div
+                className={`absolute left-4 md:left-8 bottom-[-32px] md:bottom-[-40px] size-20 md:size-24 overflow-hidden border-4 border-background shadow-xl ${LOGO_SHAPE_RADIUS_CLASS[d.shape]}`}
+                // Inline style for two CMS-driven values that have too many
+                // discrete possibilities to enumerate as Tailwind utilities.
+                style={{ background: d.background || 'transparent', padding: `${d.padding}px` }}
+              >
+                <div className="relative h-full w-full">
+                  <ImageWithFallback
+                    src={restaurant.logoUrl}
+                    alt={restaurant.name}
+                    fill
+                    sizes="96px"
+                    className={LOGO_FIT_CLASS[d.fit]}
+                  />
+                </div>
+              </div>
+            );
+          })()}
           <div className="absolute inset-x-0 bottom-0 container py-6 text-white reveal">
             <div className={restaurant.logoUrl ? 'md:pl-32' : ''}>
               <div className="flex items-center gap-2 flex-wrap">

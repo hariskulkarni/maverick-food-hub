@@ -33,6 +33,18 @@ export type BlockType = 'richtext' | 'image' | 'cta' | 'gallery' | 'embed' | 'sp
 export type BlockPosition = 'top' | 'bottom';
 export type Align = 'left' | 'center' | 'right';
 
+/**
+ * How the storefront logo fills its container.
+ *   contain    — show the whole logo, leave bars where the aspect doesn't match (RECOMMENDED for brand marks).
+ *   cover      — fill the box and crop overflow (best for full-bleed photographic logos).
+ *   fill       — stretch to fill (distorts, almost never what you want — kept for completeness).
+ *   scale-down — like contain but never up-scales a small logo above its native size.
+ *   none       — render at the image's native size, top-left aligned.
+ */
+export type LogoFit = 'contain' | 'cover' | 'fill' | 'scale-down' | 'none';
+/** Container shape behind the logo. */
+export type LogoShape = 'rounded' | 'circle' | 'square';
+
 export interface HeroSlide {
   src: string;          // image URL (under /public or absolute)
   headline?: string;
@@ -82,6 +94,19 @@ export interface StorefrontConfig {
   branding: {
     tagline: string;        // '' ⇒ fall back to Restaurant.tagline
     accentColor: string;    // hex, drives storefront accent
+    /**
+     * How the logo renders in its 80–96 px badge on the storefront hero.
+     *   fit        — object-fit (contain by default so brand marks aren't cropped)
+     *   shape      — outer container shape
+     *   padding    — px of breathing room between the logo and its container edge
+     *   background — hex of the container fill (helps transparent PNG logos read on dark covers)
+     */
+    logoDisplay: {
+      fit: LogoFit;
+      shape: LogoShape;
+      padding: number;
+      background: string;   // hex; defaults to '#ffffff'
+    };
   };
   theme: {
     secondaryColor: string; // hex, secondary accent (gradients / highlights)
@@ -158,6 +183,38 @@ export const FONT_PAIRS: FontPair[] = ['modern', 'classic', 'playful', 'editoria
 export const BUTTON_RADII: ButtonRadius[] = ['sharp', 'rounded', 'pill'];
 export const CARD_STYLES: CardStyle[] = ['flat', 'shadow', 'border'];
 export const BLOCK_TYPES: BlockType[] = ['richtext', 'image', 'cta', 'gallery', 'embed', 'spacer'];
+export const LOGO_FITS: LogoFit[] = ['contain', 'cover', 'fill', 'scale-down', 'none'];
+export const LOGO_SHAPES: LogoShape[] = ['rounded', 'circle', 'square'];
+
+/** Human-readable labels for the CMS picker (single source of truth). */
+export const LOGO_FIT_LABELS: Record<LogoFit, string> = {
+  contain: 'Fit (show whole logo)',
+  cover: 'Fill (crop to fill)',
+  fill: 'Stretch (distort to fill)',
+  'scale-down': 'Fit, never upscale',
+  none: 'Native size',
+};
+export const LOGO_SHAPE_LABELS: Record<LogoShape, string> = {
+  rounded: 'Rounded square',
+  circle: 'Circle',
+  square: 'Sharp square',
+};
+
+/** CSS `border-radius` for each shape. */
+export const LOGO_SHAPE_RADIUS_CLASS: Record<LogoShape, string> = {
+  rounded: 'rounded-2xl',
+  circle: 'rounded-full',
+  square: 'rounded-none',
+};
+
+/** Tailwind `object-fit` class for each fit. */
+export const LOGO_FIT_CLASS: Record<LogoFit, string> = {
+  contain: 'object-contain',
+  cover: 'object-cover',
+  fill: 'object-fill',
+  'scale-down': 'object-scale-down',
+  none: 'object-none',
+};
 
 /** CSS font-family stacks for each font pairing (heading, body). */
 export const FONT_STACKS: Record<FontPair, { heading: string; body: string }> = {
@@ -173,7 +230,16 @@ export const RADIUS_PX: Record<ButtonRadius, number> = { sharp: 4, rounded: 12, 
 export function defaultStorefrontConfig(): StorefrontConfig {
   return {
     hero: { type: 'cover', transition: 'slide', autoplayMs: 5000, slides: [] },
-    branding: { tagline: '', accentColor: '#f23e5c' },
+    branding: {
+      tagline: '',
+      accentColor: '#f23e5c',
+      // Defaults chosen so the most common case — a transparent PNG brand
+      // mark on a busy hero — looks correct without any admin tweaking:
+      // "contain" prevents the crop the user saw on Bowl & Barbeque,
+      // "rounded" matches the storefront card language, "#ffffff" gives the
+      // logo a clean white field so it reads regardless of cover image.
+      logoDisplay: { fit: 'contain', shape: 'rounded', padding: 8, background: '#ffffff' },
+    },
     theme: { secondaryColor: '#7c3aed', fontPair: 'modern', buttonRadius: 'pill', cardStyle: 'shadow' },
     announcement: { enabled: false, text: '', linkLabel: '', linkHref: '', bgColor: '#111827', textColor: '#ffffff' },
     about: { enabled: false, title: 'Our story', body: '', imageSrc: '' },
@@ -221,6 +287,21 @@ const oneOf = <T extends string>(v: unknown, allowed: readonly T[], dflt: T): T 
   (typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T) : dflt);
 /** A URL/path field: trimmed, length-bounded, '' when absent. */
 const url = (v: unknown, max = 2048) => str(v, max).trim();
+
+/**
+ * Validate the logoDisplay subtree. Falls back to defaults on any missing or
+ * garbage field so a legacy config (no logoDisplay) and a malicious payload
+ * both produce a renderable result.
+ */
+function parseLogoDisplay(raw: unknown, d: StorefrontConfig['branding']['logoDisplay']): StorefrontConfig['branding']['logoDisplay'] {
+  const o = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {};
+  return {
+    fit: oneOf<LogoFit>(o.fit, LOGO_FITS, d.fit),
+    shape: oneOf<LogoShape>(o.shape, LOGO_SHAPES, d.shape),
+    padding: clampInt(o.padding, 0, 24, d.padding),
+    background: hex(o.background, d.background),
+  };
+}
 
 function parseSlide(s: unknown): HeroSlide | null {
   if (!s || typeof s !== 'object') return null;
@@ -333,6 +414,7 @@ export function parseStorefrontConfig(raw: unknown): StorefrontConfig {
     branding: {
       tagline: str(branding.tagline, 160),
       accentColor: hex(branding.accentColor, d.branding.accentColor),
+      logoDisplay: parseLogoDisplay(branding.logoDisplay, d.branding.logoDisplay),
     },
     theme: {
       secondaryColor: hex(theme.secondaryColor, d.theme.secondaryColor),

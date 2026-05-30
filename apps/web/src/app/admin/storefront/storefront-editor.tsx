@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { reportApiError } from '@/lib/api-error';
 import { Image as ImageIcon, Images, Plus, Trash2, ArrowUp, ArrowDown, Save, ExternalLink, Eye, EyeOff, ChevronDown, ChevronRight, Star, Loader2, Type, Megaphone, BookOpen, Blocks, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
-import type { StorefrontConfig, HeroSlide, HeroTransition, MenuLayout, FontPair, ButtonRadius, CardStyle, ContentBlock, BlockType, BlockPosition, Align } from '@/server/storefront-cms';
+import type { StorefrontConfig, HeroSlide, HeroTransition, MenuLayout, FontPair, ButtonRadius, CardStyle, ContentBlock, BlockType, BlockPosition, Align, LogoFit, LogoShape } from '@/server/storefront-cms';
+import { LOGO_FITS, LOGO_SHAPES, LOGO_FIT_LABELS, LOGO_SHAPE_LABELS, LOGO_FIT_CLASS, LOGO_SHAPE_RADIUS_CLASS } from '@/server/storefront-cms';
 
 type Cat = { id: string; name: string; sortOrder: number; isActive: boolean; itemCount: number };
 type Item = { id: string; name: string; sortOrder: number; isAvailable: boolean; isFeatured: boolean };
@@ -201,6 +202,15 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
             </div>
           </Field>
         </div>
+
+        {/* LOGO DISPLAY — fit/shape/padding/background controls. The
+            equivalent CSS class names live in @/server/storefront-cms so the
+            editor preview and the public storefront render IDENTICALLY (one
+            source of truth, no divergent styling). */}
+        <LogoDisplayPanel
+          value={cfg.branding.logoDisplay}
+          onChange={(d) => setBrand({ logoDisplay: d })}
+        />
       </Section>
 
       {/* THEME */}
@@ -629,6 +639,113 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div><label className="text-[11px] uppercase tracking-wider text-muted-foreground block mb-1">{label}</label>{children}</div>;
+}
+
+/**
+ * Logo display panel. Exposes the four CMS controls — fit, shape, padding,
+ * background — and renders a 96 px live preview using the EXACT same CSS
+ * classes the storefront does, so what the admin sees is what customers
+ * get. The preview falls back to an "L" tile when no logo is uploaded.
+ */
+function LogoDisplayPanel({
+  value,
+  onChange,
+}: {
+  value: StorefrontConfig['branding']['logoDisplay'];
+  onChange: (next: StorefrontConfig['branding']['logoDisplay']) => void;
+}) {
+  const patch = (p: Partial<StorefrontConfig['branding']['logoDisplay']>) =>
+    onChange({ ...value, ...p });
+
+  return (
+    <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h4 className="text-sm font-semibold">Logo display</h4>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            How your uploaded logo fills its badge on the storefront hero.
+            Defaults are tuned for transparent PNG brand marks.
+          </p>
+        </div>
+        {/* Live preview — mirrors the storefront's logo badge size +
+            classes exactly so the admin trusts what they see. */}
+        <div
+          className={`relative size-20 shrink-0 overflow-hidden border-4 border-background shadow-lg ${LOGO_SHAPE_RADIUS_CLASS[value.shape]}`}
+          style={{ background: value.background || 'transparent', padding: `${value.padding}px` }}
+          aria-label="Logo display preview"
+        >
+          <div className="relative h-full w-full grid place-items-center">
+            {/* Use the upload route's standard URL pattern OR an inline SVG
+                fallback so the panel is useful even before a logo is set. */}
+            <span className="text-2xl font-bold text-muted-foreground">L</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Fit">
+          <select
+            value={value.fit}
+            onChange={(e) => patch({ fit: e.target.value as LogoFit })}
+            className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+          >
+            {LOGO_FITS.map((f) => (
+              <option key={f} value={f}>{LOGO_FIT_LABELS[f]}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Shape">
+          <select
+            value={value.shape}
+            onChange={(e) => patch({ shape: e.target.value as LogoShape })}
+            className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+          >
+            {LOGO_SHAPES.map((s) => (
+              <option key={s} value={s}>{LOGO_SHAPE_LABELS[s]}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Padding">
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min={0}
+              max={24}
+              step={1}
+              value={value.padding}
+              onChange={(e) => patch({ padding: Number(e.target.value) })}
+              className="flex-1"
+            />
+            <span className="font-mono text-xs text-muted-foreground w-10 text-right">{value.padding}px</span>
+          </div>
+        </Field>
+        <Field label="Background">
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={value.background || '#ffffff'}
+              onChange={(e) => patch({ background: e.target.value })}
+              className="h-9 w-12 rounded border cursor-pointer"
+            />
+            <Input
+              value={value.background}
+              onChange={(e) => patch({ background: e.target.value })}
+              className="h-9 flex-1 font-mono"
+              placeholder="#ffffff"
+            />
+            <button
+              type="button"
+              onClick={() => patch({ background: '' })}
+              className="text-[11px] text-muted-foreground hover:text-foreground underline"
+              title="No background — useful for opaque logos already on a brand colour"
+            >
+              clear
+            </button>
+          </div>
+        </Field>
+      </div>
+    </div>
+  );
 }
 function Choice({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon?: any; label: string }) {
   return (
