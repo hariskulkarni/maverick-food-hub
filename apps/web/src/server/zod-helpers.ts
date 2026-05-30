@@ -126,10 +126,19 @@ export const optionalPhone = optionalString(40);
  * Only the FIRST issue is surfaced in `error` — a toast can't display ten
  * issues anyway. The full issue list is included as `issues` so the panel
  * can render a verbose breakdown if it ever wants to.
+ *
+ * Generic: we accept any zod schema via `T extends z.ZodTypeAny` and derive
+ * the return type with `z.infer<T>`. The naive `z.ZodType<T>` form breaks
+ * when the schema contains `.transform()` (e.g. a `string` → `Date` coerce)
+ * because the schema's `_input` and `_output` types diverge and TypeScript
+ * can no longer unify them through a single `T`.
  */
-export function parseOrJsonError<T>(schema: z.ZodType<T>, body: unknown): T | Response {
+export function parseOrJsonError<T extends z.ZodTypeAny>(
+  schema: T,
+  body: unknown,
+): z.infer<T> | Response {
   const result = schema.safeParse(body);
-  if (result.success) return result.data;
+  if (result.success) return result.data as z.infer<T>;
   const issue = result.error.issues[0];
   const message = issue
     ? `${issue.path.join('.') || 'field'}: ${issue.message}`
