@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { sendMenuToggleAlert } from '@/server/alerts';
 import { log } from '@/server/log';
 
@@ -24,8 +24,9 @@ const Patch = z.object({
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const parsed = Patch.parse(await req.json());
   const { reason, ...data } = parsed;
 
@@ -80,8 +81,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   await prisma.menuItem.delete({ where: { id } });
   return Response.json({ ok: true });
 }

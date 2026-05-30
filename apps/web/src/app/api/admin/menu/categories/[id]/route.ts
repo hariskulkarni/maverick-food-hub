@@ -1,15 +1,18 @@
 import { NextRequest } from 'next/server';
-import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   try {
     await prisma.category.delete({ where: { id } });
     return Response.json({ ok: true });
   } catch (e) {
-    return new Response('In use', { status: 409 });
+    return Response.json(
+      { error: 'Category still has items or is referenced elsewhere — remove its items first.', reason: 'in_use' },
+      { status: 409 }
+    );
   }
 }

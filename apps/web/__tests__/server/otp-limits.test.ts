@@ -76,18 +76,18 @@ describe('sendOtp — resend cooldown', () => {
 });
 
 describe('sendOtp — per-phone window limits', () => {
-  it('throws after 3 OTPs in the last hour', async () => {
+  it('throws after 10 OTPs in the last hour', async () => {
     // findFirst returns null so cooldown passes.
-    // First count() call = last hour; return 3.
-    prismaMock.otpToken.count.mockResolvedValueOnce(3); // hourly
+    // First count() call = last hour; return 10.
+    prismaMock.otpToken.count.mockResolvedValueOnce(10); // hourly
     await expect(sendOtp({ phone: PHONE })).rejects.toThrow(OtpRateLimitedError);
   });
 
-  it('throws after 8 OTPs in the last day', async () => {
-    // hourly returns 0, daily returns 8.
+  it('throws after 20 OTPs in the last day', async () => {
+    // hourly returns 0, daily returns 20.
     prismaMock.otpToken.count
-      .mockResolvedValueOnce(0)  // last hour
-      .mockResolvedValueOnce(8); // last day
+      .mockResolvedValueOnce(0)   // last hour
+      .mockResolvedValueOnce(20); // last day
     await expect(sendOtp({ phone: PHONE })).rejects.toThrow(OtpRateLimitedError);
   });
 });

@@ -398,6 +398,13 @@ model Restaurant {
   approvedAt           DateTime?
   rejectedReason       String?
   commissionPct        Float             @default(15.0) // platform's cut
+  // ── Display sequence (super-admin curated) ────────────────────────────────
+  // Drives the row order on the super-admin /platform/restaurants list AND the
+  // baseline order customers see on /restaurants. Lower numbers float to the
+  // top. Reorderable via drag-and-drop in the platform explorer
+  // (POST /api/platform/restaurants/reorder). Default 0 so existing tenants
+  // share a tie that falls back to createdAt desc until the admin curates.
+  sortOrder            Int               @default(0)
   // ── Storefront CMS ────────────────────────────────────────────────────────
   // Flexible JSON the restaurant admin edits at /admin/storefront: hero type +
   // carousel slides + transition + autoplay, branding (tagline/accent), and
@@ -488,6 +495,7 @@ model Restaurant {
   @@index([status])
   @@index([brandId])
   @@index([parentId])
+  @@index([sortOrder])
 }
 
 model RestaurantUser {

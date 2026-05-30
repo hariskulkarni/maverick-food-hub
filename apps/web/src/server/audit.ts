@@ -17,6 +17,7 @@ export type AuditAction =
   // Restaurants
   | 'restaurant.approve' | 'restaurant.reject' | 'restaurant.suspend' | 'restaurant.reactivate'
   | 'restaurant.commission.update' | 'restaurant.settings.update'
+  | 'restaurant.sort_order.update'
   | 'restaurant.wizard.create'
   // Riders
   | 'rider.approve' | 'rider.reject' | 'rider.suspend' | 'rider.reinstate'

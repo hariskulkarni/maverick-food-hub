@@ -8,18 +8,16 @@
  * Each guard returns either the resolved id(s) or `{ error: Response }` for
  * the caller to return directly.
  */
-import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 
 type Guard<T> = T | { error: Response };
 
 /** Resolve the caller's restaurant after an ADMIN-role check. */
 async function requireAdminRestaurant(): Promise<Guard<{ restaurantId: string }>> {
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') {
-    return { error: new Response('Forbidden', { status: 403 }) };
-  }
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return { error: gate };
   try {
     const restaurant = await requireRestaurant();
     return { restaurantId: restaurant.id };

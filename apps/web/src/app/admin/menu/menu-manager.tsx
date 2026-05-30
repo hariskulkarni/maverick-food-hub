@@ -16,6 +16,7 @@ import { ImageUploader } from '@/components/image-uploader';
 import { Badge } from '@/components/ui/badge';
 import { CategorySchedulePanel } from './category-schedule-panel';
 import { VariantModifierEditor } from './variant-modifier-editor';
+import { reportApiError } from '@/lib/api-error';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -139,7 +140,7 @@ function BulkActionBar({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: Array.from(selected), patch })
       });
-      if (!r.ok) return toast.error('Bulk update failed: ' + (await r.text()));
+      if (!r.ok) { await reportApiError(r, 'Bulk update failed'); return; }
       const { count: n } = await r.json();
       toast.success(`Updated ${n} item${n === 1 ? '' : 's'}`);
       onApplied();
@@ -178,8 +179,17 @@ function ToggleAvailability({ id, initial }: { id: string; initial: boolean }) {
       <Switch
         checked={v}
         onCheckedChange={async (next) => {
+          // Optimistic flip first, then revert on a server error so the user
+          // sees the actual state when something blocks the PATCH (expired
+          // session, role, etc.).
+          const previous = v;
           setV(!!next);
-          await fetch(`/api/admin/menu/items/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isAvailable: !!next }) });
+          const r = await fetch(`/api/admin/menu/items/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isAvailable: !!next }),
+          });
+          if (!r.ok) { setV(previous); await reportApiError(r, 'Could not change availability'); return; }
           router.refresh();
         }}
       />
@@ -196,7 +206,7 @@ function DeleteItem({ id }: { id: string }) {
       onClick={async () => {
         if (!confirm('Delete this item?')) return;
         const r = await fetch(`/api/admin/menu/items/${id}`, { method: 'DELETE' });
-        if (!r.ok) return toast.error('Failed');
+        if (!r.ok) { await reportApiError(r, 'Delete failed'); return; }
         toast.success('Deleted');
         router.refresh();
       }}
@@ -236,8 +246,14 @@ function ItemDialog({ item, categories, onClose }: { item: any; categories: any[
             try {
               if (!data.slug) data.slug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
               const url = isNew ? '/api/admin/menu/items' : `/api/admin/menu/items/${item.id}`;
-              const r = await fetch(url, { method: isNew ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data, branchId: item.branchId }) });
-              if (!r.ok) return toast.error('Failed: ' + (await r.text()));
+              let r: Response;
+              try {
+                r = await fetch(url, { method: isNew ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data, branchId: item.branchId }) });
+              } catch (err) {
+                toast.error('Save failed', { description: 'Network problem — check your connection and retry.' });
+                return;
+              }
+              if (!r.ok) { await reportApiError(r, isNew ? 'Could not create item' : 'Save failed'); return; }
               toast.success('Saved');
               onClose(); router.refresh();
             } finally { setBusy(false); }
@@ -341,7 +357,7 @@ function ScheduleSection({ itemId }: { itemId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ days })
       });
-      if (!r.ok) return toast.error('Schedule save failed: ' + (await r.text()));
+      if (!r.ok) { await reportApiError(r, 'Schedule save failed'); return; }
       toast.success('Schedule saved');
       setHasSchedule(true);
     } finally {
@@ -363,7 +379,7 @@ function ScheduleSection({ itemId }: { itemId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ days: allClosed })
       });
-      if (!r.ok) return toast.error('Failed: ' + (await r.text()));
+      if (!r.ok) { await reportApiError(r, 'Schedule reset failed'); return; }
       setDays(allClosed);
       setHasSchedule(true);
       toast.success('All days set to closed');

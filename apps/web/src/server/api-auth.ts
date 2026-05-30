@@ -40,7 +40,15 @@ export type ApiAuthError = 'auth/unauthenticated' | 'auth/forbidden';
 
 interface ApiAuthErrorBody {
   error: string;
+  /** New name (used by everything fresh-built). */
   code: ApiAuthError;
+  /**
+   * Legacy alias so the menu-import client (which switched on `reason` earlier)
+   * keeps working without a coordinated client/server change. Mapping:
+   *   auth/unauthenticated → session_expired
+   *   auth/forbidden       → role
+   */
+  reason: 'session_expired' | 'role';
 }
 
 function jsonError(status: number, body: ApiAuthErrorBody): Response {
@@ -55,12 +63,17 @@ export function unauthenticated(): Response {
   return jsonError(401, {
     error: 'You are signed out. Please sign in again to continue.',
     code: 'auth/unauthenticated',
+    reason: 'session_expired',
   });
 }
 
 /** 403 — caller is authenticated but their role is wrong for this endpoint. */
 export function forbidden(message = "You don't have permission to do that."): Response {
-  return jsonError(403, { error: message, code: 'auth/forbidden' });
+  return jsonError(403, {
+    error: message,
+    code: 'auth/forbidden',
+    reason: 'role',
+  });
 }
 
 /**
@@ -94,6 +107,27 @@ export async function requireAnyAdminApi() {
   const role = (session.user as { role?: string }).role;
   if (!role || !ANY_ADMIN_ROLES.includes(role)) {
     return forbidden('This action requires admin, kitchen, or super-admin access.');
+  }
+  return session;
+}
+
+/**
+ * Require a RESTAURANT-ADMIN session (Role.ADMIN only — not KITCHEN, not
+ * SUPER_ADMIN). Use for the destructive menu / settings / branch surfaces
+ * where a KITCHEN account should be read-only.
+ *
+ * Returns the session on success, or a 401/403 Response the route MUST
+ * return directly:
+ *
+ *   const gate = await requireRestaurantAdminApi();
+ *   if (gate instanceof Response) return gate;
+ *   const session = gate;
+ */
+export async function requireRestaurantAdminApi() {
+  const session = await auth();
+  if (!session?.user) return unauthenticated();
+  if (session.user.role !== Role.ADMIN) {
+    return forbidden('Only a restaurant admin can do that.');
   }
   return session;
 }

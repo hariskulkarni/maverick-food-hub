@@ -69,7 +69,20 @@ async function jsonFetch(url: string, init?: RequestInit) {
     ...init,
     headers: init?.body ? { 'Content-Type': 'application/json', ...(init?.headers ?? {}) } : init?.headers,
   });
-  if (!r.ok) throw new Error((await r.text()) || `${r.status}`);
+  if (!r.ok) {
+    // Surface the structured `{ error, code, reason }` body when the server
+    // sent one so callers can route the toast the same way menu-manager does.
+    try {
+      const body = await r.clone().json() as { error?: string; code?: string; reason?: string };
+      const err = new Error(body.error || `${r.status}`) as Error & { response?: Response; code?: string; reason?: string };
+      err.response = r;
+      err.code = body.code;
+      err.reason = body.reason;
+      throw err;
+    } catch {
+      throw new Error((await r.text()) || `${r.status}`);
+    }
+  }
   return r.json();
 }
 

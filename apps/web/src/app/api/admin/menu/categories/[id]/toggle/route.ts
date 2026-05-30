@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { sendMenuToggleAlert } from '@/server/alerts';
@@ -15,8 +15,9 @@ const Body = z.object({
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const restaurant = await requireRestaurant();
   const { isActive, cascadeItems, reason } = Body.parse(await req.json());
 

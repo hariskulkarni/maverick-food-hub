@@ -96,53 +96,128 @@ export function slugify(s: string): string {
 }
 
 /**
- * Parse a CSV or .xlsx buffer into raw MenuRows. The first non-empty row is
- * the header; subsequent rows map by the COLUMN_ALIASES table. Throws on a
- * file with no recognisable Category/Item columns.
+ * Extract the printable text of a cell, even when ExcelJS gives us back a
+ * formula, hyperlink, or rich-text object instead of a primitive. Without
+ * this, headers like a hyperlinked "Item Name" become an opaque object and
+ * fail the COLUMN_ALIASES lookup — the original 'Forbidden / cannot match
+ * Category & Item Name' class of bugs.
+ */
+function cellText(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+  const v = value as any;
+  if (typeof v.text === 'string') return v.text; // hyperlink: { text, hyperlink }
+  if (typeof v.result === 'string' || typeof v.result === 'number') return String(v.result); // formula
+  if (Array.isArray(v.richText)) return v.richText.map((p: any) => p?.text ?? '').join(''); // rich text
+  if (v instanceof Date) return v.toISOString();
+  try { return String(v); } catch { return ''; }
+}
+
+/**
+ * Find the worksheet to import from. We prefer the sheet literally named "Menu"
+ * (matches the template), then the first VISIBLE sheet with data, then anything
+ * non-empty. This is what saves users who downloaded the template, edited the
+ * "How to use" sheet by mistake, or rearranged tabs.
+ */
+function pickDataSheet(wb: ExcelJS.Workbook): ExcelJS.Worksheet | null {
+  if (wb.worksheets.length === 0) return null;
+  const byName = wb.getWorksheet('Menu');
+  if (byName && byName.rowCount > 0) return byName;
+  for (const ws of wb.worksheets) {
+    // ExcelJS uses `state: 'visible' | 'hidden' | 'veryHidden'`. Default is visible.
+    const visible = (ws as any).state == null || (ws as any).state === 'visible';
+    if (visible && ws.rowCount > 0) return ws;
+  }
+  return wb.worksheets[0] ?? null;
+}
+
+/**
+ * Locate the header row. Most users keep headers on row 1, but a surprising
+ * number paste a title/banner row above, or leave a blank row before headers.
+ * We scan the first 5 rows for the one that has BOTH a Category and an
+ * Item Name alias — that's the real header.
+ */
+function findHeaderRow(ws: ExcelJS.Worksheet): { rowNumber: number; colMap: Map<number, keyof MenuRow> } | null {
+  const scanLimit = Math.min(5, ws.rowCount);
+  for (let r = 1; r <= scanLimit; r++) {
+    const row = ws.getRow(r);
+    const colMap = new Map<number, keyof MenuRow>();
+    row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+      const field = COLUMN_ALIASES[normalizeHeader(cellText(cell.value))];
+      if (field) colMap.set(colNumber, field);
+    });
+    const fields = new Set(colMap.values());
+    if (fields.has('category') && fields.has('name')) {
+      return { rowNumber: r, colMap };
+    }
+  }
+  return null;
+}
+
+/**
+ * Parse a CSV or .xlsx buffer into raw MenuRows. Resilient to:
+ *   - the header being on row 2 or 3 (banner row above), within the first 5 rows;
+ *   - the data sheet not being the first tab (looks for a sheet named "Menu");
+ *   - hyperlinked / formula / rich-text headers;
+ *   - blank rows interspersed throughout the data;
+ *   - corrupted/encrypted .xlsx (clean error instead of an opaque crash).
+ *
+ * Throws an Error with a USER-FACING message — the route turns that into a
+ * 422 toast.
  */
 export async function parseMenuFile(buffer: Buffer, filename: string): Promise<MenuRow[]> {
   const wb = new ExcelJS.Workbook();
   const isCsv = filename.toLowerCase().endsWith('.csv');
-  if (isCsv) {
-    const stream = Readable.from(buffer.toString('utf8'));
-    await wb.csv.read(stream);
-  } else {
-    await wb.xlsx.load(buffer as any);
+  try {
+    if (isCsv) {
+      const stream = Readable.from(buffer.toString('utf8'));
+      await wb.csv.read(stream);
+    } else {
+      await wb.xlsx.load(buffer as any);
+    }
+  } catch (e) {
+    const msg = (e as Error)?.message ?? '';
+    // ExcelJS throws "End of central directory record signature not found" for
+    // non-xlsx blobs (e.g. .xls, .numbers, a renamed PDF). Translate.
+    if (/central directory/i.test(msg) || /not a valid zip/i.test(msg)) {
+      throw new Error('That file isn\'t a valid .xlsx workbook. If it\'s an older .xls, open it in Excel and "Save As .xlsx" first.');
+    }
+    if (/encrypted/i.test(msg) || /password/i.test(msg)) {
+      throw new Error('This workbook is password-protected. Remove the password and re-upload.');
+    }
+    throw new Error('Could not read that file. Try re-saving it from Excel/Sheets and uploading again.');
   }
-  const ws = wb.worksheets[0];
-  if (!ws) throw new Error('The file has no worksheet/data');
 
-  // Build header → column-index map from row 1.
-  const headerRow = ws.getRow(1);
-  const colMap = new Map<number, keyof MenuRow>();
-  headerRow.eachCell((cell, colNumber) => {
-    const field = COLUMN_ALIASES[normalizeHeader(String(cell.value ?? ''))];
-    if (field) colMap.set(colNumber, field);
-  });
-  const fields = new Set(colMap.values());
-  if (!fields.has('category') || !fields.has('name')) {
-    throw new Error('File must have at least "Category" and "Item Name" columns');
+  const ws = pickDataSheet(wb);
+  if (!ws) throw new Error('The file has no worksheet/data.');
+
+  const header = findHeaderRow(ws);
+  if (!header) {
+    throw new Error(
+      'No header row found. The sheet needs columns named "Category" and "Item Name" within the first 5 rows. ' +
+        'Download the blank template if you need a fresh start.'
+    );
   }
 
   const rows: MenuRow[] = [];
-  for (let r = 2; r <= ws.rowCount; r++) {
+  for (let r = header.rowNumber + 1; r <= ws.rowCount; r++) {
     const row = ws.getRow(r);
     const raw: Record<string, unknown> = {};
-    colMap.forEach((field, colNumber) => {
+    header.colMap.forEach((field, colNumber) => {
       raw[field] = row.getCell(colNumber).value;
     });
-    const category = String(raw.category ?? '').trim();
-    const name = String(raw.name ?? '').trim();
+    const category = cellText(raw.category).trim();
+    const name = cellText(raw.name).trim();
     if (!category && !name) continue; // skip blank rows
     rows.push({
       category,
       name,
-      description: raw.description != null ? String(raw.description).trim() : undefined,
-      price: parseNum(raw.price),
-      isVeg: parseVeg(raw.isVeg),
-      spicyLevel: parseNum(raw.spicyLevel),
-      prepTimeMin: parseNum(raw.prepTimeMin),
-      isAvailable: parseBool(raw.isAvailable),
+      description: raw.description != null ? cellText(raw.description).trim() : undefined,
+      price: parseNum(cellText(raw.price)),
+      isVeg: parseVeg(cellText(raw.isVeg)),
+      spicyLevel: parseNum(cellText(raw.spicyLevel)),
+      prepTimeMin: parseNum(cellText(raw.prepTimeMin)),
+      isAvailable: parseBool(cellText(raw.isAvailable)),
     });
   }
   return rows;

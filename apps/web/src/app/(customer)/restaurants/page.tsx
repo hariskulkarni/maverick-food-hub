@@ -135,7 +135,11 @@ export default async function RestaurantsListPage({
       include: {
         branches: { select: { id: true, latitude: true, longitude: true, serviceRadiusKm: true, city: true } },
         _count: { select: { branches: true } }
-      }
+      },
+      // Curated sequence (super-admin drag-and-drop on /platform/restaurants).
+      // Becomes the baseline order; nearest-first / name sort overlay it below
+      // when location is known or the customer picks an explicit sort.
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }]
     }),
     getDiscoveryRadiusKm(),
     // Active offers across the platform (platform-wide + per-restaurant), most

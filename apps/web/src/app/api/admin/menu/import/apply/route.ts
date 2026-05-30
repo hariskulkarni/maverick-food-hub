@@ -1,3 +1,10 @@
+/**
+ * POST /api/admin/menu/import/apply
+ *
+ * Persist the rows the admin confirmed in the preview step. Mirrors the
+ * preview route's JSON error shape (`{ error, reason }`) so the panel can
+ * surface the same actionable toasts for auth / scope failures.
+ */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { applyMenuImport, type MenuRow } from '@/server/menu-io';
@@ -13,12 +20,8 @@ const RowSchema = z.object({
   prepTimeMin: z.number().optional(),
   isAvailable: z.boolean().optional(),
 });
-const Body = z.object({ rows: z.array(RowSchema) });
+const Body = z.object({ rows: z.array(RowSchema).min(1).max(5000) });
 
-/**
- * POST /api/admin/menu/import/apply
- * Accepts the confirmed rows and upserts them via the import engine.
- */
 export async function POST(req: NextRequest) {
   let scope;
   try {
@@ -33,9 +36,22 @@ export async function POST(req: NextRequest) {
   try {
     parsed = Body.parse(await req.json());
   } catch (e) {
-    return new Response('Invalid request body', { status: 400 });
+    return Response.json(
+      { error: 'Invalid request body. Re-preview the file and retry.', reason: 'bad_body' },
+      { status: 400 }
+    );
   }
 
-  const summary = await applyMenuImport(scope.branchId, parsed.rows as MenuRow[]);
-  return Response.json(summary);
+  try {
+    const summary = await applyMenuImport(scope.branchId, parsed.rows as MenuRow[]);
+    return Response.json(summary);
+  } catch (e) {
+    // applyMenuImport runs in a transaction — anything that bubbles out is a
+    // DB-level failure (constraint, timeout). Don't leak the raw message, but
+    // give the operator a usable hint.
+    return Response.json(
+      { error: 'Saving the import failed mid-way. The menu is unchanged. Check the rows and retry.', reason: 'apply_failed' },
+      { status: 500 }
+    );
+  }
 }

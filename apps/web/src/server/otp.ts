@@ -4,8 +4,8 @@
  * Limits (India SMS-cost defensive defaults — all env-overridable):
  *   - OTP length 6, expiry 5 min
  *   - Resend cooldown: 45s between consecutive sends to the same phone
- *   - Per-phone: max 3 OTPs/hour, max 8 OTPs/day
- *   - Per-IP:    max 20 OTPs/hour
+ *   - Per-phone: max 10 OTPs/hour, max 20 OTPs/day
+ *   - Per-IP:    max 40 OTPs/hour
  *   - Per-OTP:   max 5 failed verify attempts → invalidate
  *   - Lockout:   30 minutes after repeated failures
  *   - Platform:  SMS_DAILY_BUDGET hard ceiling so a bug can't drain SMS credit
@@ -14,10 +14,10 @@
  *   OTP_RATE_LIMITS_DISABLED=true → skip ALL abuse limits (only resend cooldown
  *                                    + lockout still apply). The default is
  *                                    OFF, so production stays protected.
- *   OTP_MAX_PER_HOUR_PHONE        → override the 3/hr per-phone cap
- *   OTP_MAX_PER_DAY_PHONE         → override the 8/day per-phone cap
- *   OTP_MAX_PER_HOUR_IP           → override the 20/hr per-IP cap
- *   SMS_DAILY_BUDGET              → override the 500/day platform cap
+ *   OTP_MAX_PER_HOUR_PHONE        → override the 10/hr per-phone cap
+ *   OTP_MAX_PER_DAY_PHONE         → override the 20/day per-phone cap
+ *   OTP_MAX_PER_HOUR_IP           → override the 40/hr per-IP cap
+ *   SMS_DAILY_BUDGET              → override the 1000/day platform cap
  *
  * Demo mode (OTP_DEMO_MODE / OTP_DEBUG_LOG): rate limits are AUTOMATICALLY
  * skipped — there's no real SMS leaving the system, so 'abuse protection'
@@ -42,12 +42,12 @@ function envInt(name: string, dflt: number): number {
 
 const OTP_TTL_MS         = 5 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 45 * 1000;
-const MAX_OTP_PER_HOUR_PHONE = envInt('OTP_MAX_PER_HOUR_PHONE', 3);
-const MAX_OTP_PER_DAY_PHONE  = envInt('OTP_MAX_PER_DAY_PHONE',  8);
-const MAX_OTP_PER_HOUR_IP    = envInt('OTP_MAX_PER_HOUR_IP',   20);
+const MAX_OTP_PER_HOUR_PHONE = envInt('OTP_MAX_PER_HOUR_PHONE', 10);
+const MAX_OTP_PER_DAY_PHONE  = envInt('OTP_MAX_PER_DAY_PHONE',  20);
+const MAX_OTP_PER_HOUR_IP    = envInt('OTP_MAX_PER_HOUR_IP',    40);
 const MAX_FAILED_VERIFY      = 5;
 const LOCKOUT_MS             = 30 * 60 * 1000;
-const SMS_DAILY_BUDGET       = envInt('SMS_DAILY_BUDGET',     500); // total SMS the platform will send today
+const SMS_DAILY_BUDGET       = envInt('SMS_DAILY_BUDGET',     1000); // total SMS the platform will send today
 const RATE_LIMITS_DISABLED   = process.env.OTP_RATE_LIMITS_DISABLED === 'true';
 
 const IS_PROD = process.env.NODE_ENV === 'production';

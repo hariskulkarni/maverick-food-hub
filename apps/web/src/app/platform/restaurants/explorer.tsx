@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,7 +10,24 @@ import { DetailDrawer, DrawerSection } from '@/components/admin/detail-drawer';
 import { QrCard } from '@/components/qr-card';
 import { toast } from 'sonner';
 import {
-  Search, X, RefreshCw, Check, Pause, Play, ArrowUpRight, Building2, MapPin, Users, Utensils, Wallet, Plug, Save, Loader2, AlertTriangle, ExternalLink, Network, Link2Off, Pencil
+  DndContext,
+  DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
+  Search, X, RefreshCw, Check, Pause, Play, ArrowUpRight, Building2, MapPin, Users, Utensils, Wallet, Plug, Save, Loader2, AlertTriangle, ExternalLink, Network, Link2Off, Pencil, GripVertical, ArrowUpDown
 } from 'lucide-react';
 
 const STATUSES = ['ALL', 'PENDING', 'ACTIVE', 'SUSPENDED', 'REJECTED'] as const;
@@ -22,6 +39,26 @@ export function RestaurantsExplorer({ initial, cuisines, filters }: { initial: a
   const [status, setStatus] = useState(filters.status || 'ALL');
   const [cuisine, setCuisine] = useState(filters.cuisine);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // ── Reorder mode ──────────────────────────────────────────────────────────
+  // Drag-and-drop is gated behind an explicit toggle so an accidental drag
+  // can't reshuffle the list. It's also disabled whenever the visible set
+  // doesn't match the persisted set — reordering a filtered view would
+  // assign sortOrder values without any notion of where filtered-out rows
+  // belong, so we keep it strictly an "unfiltered, full-list" operation.
+  const filtersActive = q.trim() !== '' || status !== 'ALL' || cuisine !== '';
+  const [reorderMode, setReorderMode] = useState(false);
+  // Local copy of the cards so we can render the new order immediately while
+  // the save round-trips; on failure we revert to `initial`.
+  const [order, setOrder] = useState<any[]>(initial);
+  const [saving, setSaving] = useState(false);
+
+  // Keep local order in sync when the server props change (refresh, filter).
+  useEffect(() => { setOrder(initial); }, [initial]);
+
+  // If the user activates a filter while in reorder mode, drop out of it —
+  // mixing the two is the failure mode this UI is built to prevent.
+  useEffect(() => { if (filtersActive && reorderMode) setReorderMode(false); }, [filtersActive, reorderMode]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -36,6 +73,47 @@ export function RestaurantsExplorer({ initial, cuisines, filters }: { initial: a
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, status, cuisine]);
 
+  // Pointer needs a small activation distance so plain clicks (Open button) on
+  // the card don't get hijacked as drag starts. Keyboard sensor makes the
+  // reorder accessible — Tab to a card, Space to grab, arrows to move.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const ids = useMemo(() => order.map((r) => r.id), [order]);
+
+  async function persistOrder(nextIds: string[]) {
+    setSaving(true);
+    try {
+      const r = await fetch('/api/platform/restaurants/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: nextIds }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      toast.success('Outlet sequence saved');
+    } catch (e: any) {
+      toast.error('Could not save sequence', { description: String(e?.message ?? e).slice(0, 200) });
+      // Revert to the server-truth order so the UI doesn't keep showing a
+      // change that didn't stick.
+      setOrder(initial);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIndex = ids.indexOf(String(active.id));
+    const newIndex = ids.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    const next = arrayMove(order, oldIndex, newIndex);
+    setOrder(next);
+    persistOrder(next.map((r) => r.id));
+  }
+
   return (
     <>
       <Card>
@@ -43,33 +121,92 @@ export function RestaurantsExplorer({ initial, cuisines, filters }: { initial: a
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[240px] max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, slug, or tagline" className="pl-9" />
+              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, slug, or tagline" className="pl-9" disabled={reorderMode} />
               {q && <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="size-4" /></button>}
             </div>
-            <select value={cuisine} onChange={(e) => setCuisine(e.target.value)} className="h-9 rounded-md border bg-card px-2 text-sm min-w-[160px]">
+            <select value={cuisine} onChange={(e) => setCuisine(e.target.value)} className="h-9 rounded-md border bg-card px-2 text-sm min-w-[160px]" disabled={reorderMode}>
               <option value="">All cuisines</option>
               {cuisines.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            <Button variant="outline" size="sm" onClick={() => router.refresh()} className="ml-auto"><RefreshCw className="size-4" /></Button>
+            <Button
+              variant={reorderMode ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                if (reorderMode) {
+                  setReorderMode(false);
+                  return;
+                }
+                if (filtersActive) {
+                  toast.info('Clear filters to reorder', { description: 'Reordering applies to the whole list, so it needs every outlet visible.' });
+                  return;
+                }
+                setReorderMode(true);
+              }}
+              disabled={filtersActive && !reorderMode}
+              className="ml-auto"
+              title={filtersActive ? 'Clear filters to reorder' : 'Drag cards to reorder outlets'}
+            >
+              <ArrowUpDown className="size-4" /> {reorderMode ? 'Done' : 'Reorder'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => router.refresh()} disabled={reorderMode}><RefreshCw className="size-4" /></Button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground mr-1">Status:</span>
             {STATUSES.map((s) => (
-              <Chip key={s} active={status === s} onClick={() => setStatus(s)}>{s === 'ALL' ? 'All' : s}</Chip>
+              <Chip key={s} active={status === s} onClick={() => !reorderMode && setStatus(s)} disabled={reorderMode}>{s === 'ALL' ? 'All' : s}</Chip>
             ))}
+            {reorderMode && (
+              <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                {saving ? <><Loader2 className="size-3 animate-spin" /> Saving sequence…</> : <>Drag cards to reorder · changes save automatically</>}
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        {initial.map((r) => <RestaurantCard key={r.id} r={r} onOpen={() => setActiveId(r.id)} />)}
-        {initial.length === 0 && (
-          <div className="md:col-span-2 rounded-xl border border-dashed bg-muted/30 p-12 text-center text-muted-foreground">No restaurants match these filters.</div>
-        )}
-      </div>
+      {reorderMode ? (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={ids} strategy={rectSortingStrategy}>
+            <div className="grid gap-3 md:grid-cols-2">
+              {order.map((r) => (
+                <SortableRestaurantCard key={r.id} r={r} onOpen={() => setActiveId(r.id)} />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {initial.map((r) => <RestaurantCard key={r.id} r={r} onOpen={() => setActiveId(r.id)} />)}
+          {initial.length === 0 && (
+            <div className="md:col-span-2 rounded-xl border border-dashed bg-muted/30 p-12 text-center text-muted-foreground">No restaurants match these filters.</div>
+          )}
+        </div>
+      )}
 
       {activeId && <RestaurantDrawer id={activeId} onClose={() => setActiveId(null)} onChanged={() => router.refresh()} />}
     </>
+  );
+}
+
+/**
+ * Card variant rendered inside the SortableContext. The whole card is the
+ * drag handle (with a visible grip cue) — easier than trying to isolate a
+ * tiny handle on touch devices — but the "Open" button stops propagation so
+ * a tap still opens the drawer.
+ */
+function SortableRestaurantCard({ r, onOpen }: { r: any; onOpen: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: r.id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+  return (
+    <div ref={setNodeRef} style={style} className={`relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`} {...attributes} {...listeners}>
+      <div className="absolute left-2 top-2 z-10 rounded-md bg-card/90 border p-1 text-muted-foreground pointer-events-none"><GripVertical className="size-3.5" /></div>
+      <RestaurantCard r={r} onOpen={onOpen} />
+    </div>
   );
 }
 
@@ -497,8 +634,8 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button onClick={onClick} className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${active ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-accent text-muted-foreground'}`}>{children}</button>;
+function Chip({ active, onClick, children, disabled }: { active: boolean; onClick: () => void; children: React.ReactNode; disabled?: boolean }) {
+  return <button onClick={onClick} disabled={disabled} className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${active ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-accent text-muted-foreground'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>{children}</button>;
 }
 function Cell({ label, value }: { label: string; value: string }) {
   return <div className="p-3"><div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div><div className="font-bold mt-0.5">{value}</div></div>;

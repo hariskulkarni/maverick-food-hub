@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Download, Upload, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { money } from '@/lib/utils';
+import { reportApiError } from '@/lib/api-error';
 
 type RowAction = 'create' | 'update' | 'error';
 
@@ -72,16 +73,23 @@ export function ImportExportPanel() {
     try {
       const body = new FormData();
       body.append('file', file);
-      const r = await fetch('/api/admin/menu/import', { method: 'POST', body });
-      if (!r.ok) {
-        toast.error('Preview failed: ' + (await r.text()));
+      let r: Response;
+      try {
+        r = await fetch('/api/admin/menu/import', { method: 'POST', body });
+      } catch (e) {
+        toast.error('Preview failed', { description: 'Network problem — check your connection and retry.' });
         return;
       }
-      const j = (await r.json()) as { rows: MenuRow[]; diff: DiffRow[]; summary: Summary };
+      if (!r.ok) {
+        await reportApiError(r, 'Preview failed');
+        return;
+      }
+      const j = (await r.json()) as { rows: MenuRow[]; diff: DiffRow[]; summary: Summary; notice?: string };
       setRows(j.rows);
       setDiff(j.diff);
       setSummary(j.summary);
-      if (j.diff.length === 0) toast.message('No rows found in that file');
+      if (j.notice) toast.message(j.notice);
+      else if (j.diff.length === 0) toast.message('No rows found in that file');
     } finally {
       setPreviewing(false);
     }
@@ -98,13 +106,19 @@ export function ImportExportPanel() {
     const toApply = rows.filter((_, i) => okIndexes.has(i + 1));
     setApplying(true);
     try {
-      const r = await fetch('/api/admin/menu/import/apply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: toApply }),
-      });
+      let r: Response;
+      try {
+        r = await fetch('/api/admin/menu/import/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: toApply }),
+        });
+      } catch (e) {
+        toast.error('Apply failed', { description: 'Network problem — check your connection and retry.' });
+        return;
+      }
       if (!r.ok) {
-        toast.error('Apply failed: ' + (await r.text()));
+        await reportApiError(r, 'Apply failed');
         return;
       }
       const s = (await r.json()) as { created: number; updated: number; skipped: number; categoriesCreated: number };

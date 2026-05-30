@@ -30,7 +30,9 @@ export default async function PlatformRestaurantsPage({ searchParams }: { search
     prisma.restaurant.findMany({
       where,
       include: { owner: { select: { name: true, email: true } }, _count: { select: { branches: true } } },
-      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }]
+      // sortOrder = curated sequence (super-admin drag-and-drop); status keeps
+      // pending/active/etc. groups apart; createdAt is the final tiebreaker.
+      orderBy: [{ sortOrder: 'asc' }, { status: 'asc' }, { createdAt: 'desc' }]
     }),
     prisma.restaurant.groupBy({ by: ['status'], _count: true }),
     prisma.restaurant.findMany({ where: { cuisine: { not: null } }, distinct: ['cuisine'], select: { cuisine: true } }),

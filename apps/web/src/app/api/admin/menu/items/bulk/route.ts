@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { sendMenuToggleAlert } from '@/server/alerts';
@@ -18,8 +18,9 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const restaurant = await requireRestaurant();
   const { ids, patch, reason } = Body.parse(await req.json());
 
@@ -27,7 +28,12 @@ export async function POST(req: NextRequest) {
   const owned = await prisma.menuItem.count({
     where: { id: { in: ids }, branch: { restaurantId: restaurant.id } }
   });
-  if (owned !== ids.length) return new Response('Some items do not belong to this restaurant', { status: 403 });
+  if (owned !== ids.length) {
+    return Response.json(
+      { error: 'Some items do not belong to this restaurant.', code: 'auth/forbidden', reason: 'cross_tenant' },
+      { status: 403 }
+    );
+  }
 
   // Snapshot the before-state of isAvailable so we can determine how many rows
   // actually flipped. updateMany doesn't tell us this on its own.
