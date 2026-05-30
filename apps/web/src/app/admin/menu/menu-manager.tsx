@@ -79,71 +79,79 @@ export function MenuManager({ branchId, categories, items }: { branchId: string;
           {items.map((it) => {
             const cat = categories.find((c) => c.id === it.categoryId);
             const isSel = selected.has(it.id);
+            const checkboxId = `menu-item-select-${it.id}`;
             return (
-              <Card
-                key={it.id}
-                className={`tap-press card-lift cursor-pointer select-none ${isSel ? 'ring-2 ring-primary/50' : ''}`}
-                role="checkbox"
-                aria-checked={isSel}
-                tabIndex={0}
-                /**
-                 * Whole-card click toggles selection. This is the fix for the
-                 * "tiny native checkbox refuses to register clicks" symptom:
-                 * the `card-lift` hover-transform briefly moves the card mid-
-                 * click, so a precise tap on the 16x16 input often misses.
-                 * Now you can click ANYWHERE on the row to select it, and the
-                 * native checkbox stays as a visible affordance + a keyboard
-                 * target. The action buttons (toggle/edit/trash) call
-                 * `stopPropagation` so they DON'T also toggle the row.
-                 */
-                onClick={(e) => {
-                  // Don't toggle if the click came from an interactive child.
-                  // We rely on the action buttons stopping propagation, but
-                  // also bail on direct hits to inputs/links so a future
-                  // child element doesn't silently regress this.
-                  const target = e.target as HTMLElement;
-                  if (target.closest('button, a, [role="switch"], input, [data-no-select]')) return;
-                  toggleOne(it.id, !isSel);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === ' ' || e.key === 'Enter') {
-                    e.preventDefault();
-                    toggleOne(it.id, !isSel);
-                  }
-                }}
-              >
+              /**
+               * Selection structure:
+               *
+               *   <Card>
+               *     <CardContent>
+               *       <label htmlFor={checkboxId}> ← clickable region
+               *         <input id={checkboxId} type="checkbox" /> ← real input
+               *         {image + veg dot + name + meta}
+               *       </label>
+               *       <div data-actions> ← actions live OUTSIDE the label
+               *         {toggle + edit + delete}
+               *       </div>
+               *     </CardContent>
+               *   </Card>
+               *
+               * Why a `<label htmlFor>` instead of an onClick on the Card:
+               *   • The browser's label-input association is part of the
+               *     HTML spec — a click anywhere inside the label
+               *     synthesises a click on the associated input. NO CSS
+               *     transform / no React event-system quirk can break it.
+               *   • The previous fix used Card.onClick + closest() guards,
+               *     which `card-lift`'s hover translate-y could still
+               *     defeat (the mouse-down landed on the card; the lift
+               *     animated the card upward; mouse-up registered outside
+               *     and the browser treated the gesture as a drag, not a
+               *     click).
+               *   • Action buttons (availability switch, edit, delete) sit
+               *     OUTSIDE the label element, so clicking them can't
+               *     accidentally toggle the row's checkbox.
+               *
+               * Removed `card-lift` from this card entirely — a hover-
+               * lift visual cue suggests "click to navigate", which
+               * conflicts with the actual selection affordance.
+               */
+              <Card key={it.id} className={`tap-press ${isSel ? 'ring-2 ring-primary/50' : ''}`}>
                 <CardContent className="p-3 flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${it.name}`}
-                    className="size-5 shrink-0 accent-primary cursor-pointer"
-                    checked={isSel}
-                    onChange={(e) => toggleOne(it.id, e.target.checked)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <div className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-muted border">
-                    {it.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={it.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-                    ) : (
-                      <div className="absolute inset-0 grid place-items-center text-muted-foreground/40 text-xs">No img</div>
-                    )}
-                  </div>
-                  <span className={`flex h-3.5 w-3.5 rounded-sm border shrink-0 ${it.isVeg ? 'border-success' : 'border-destructive'}`}>
-                    <span className={`m-auto h-1.5 w-1.5 rounded-full ${it.isVeg ? 'bg-success' : 'bg-destructive'}`} />
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{it.name}</div>
-                    <div className="text-xs text-muted-foreground">{cat?.name} · {it.prepTimeMin} min · {money(it.price)}</div>
-                  </div>
-                  {/* Stop propagation on every interactive control so a click
-                      on the availability switch / edit pencil / delete trash
-                      doesn't ALSO toggle the row selection. */}
-                  <div onClick={(e) => e.stopPropagation()}>
+                  <label
+                    htmlFor={checkboxId}
+                    className="flex flex-1 min-w-0 items-center gap-3 cursor-pointer select-none"
+                  >
+                    <input
+                      id={checkboxId}
+                      type="checkbox"
+                      aria-label={`Select ${it.name}`}
+                      className="size-5 shrink-0 accent-primary cursor-pointer"
+                      checked={isSel}
+                      onChange={(e) => toggleOne(it.id, e.target.checked)}
+                    />
+                    <div className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-muted border">
+                      {it.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={it.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                      ) : (
+                        <div className="absolute inset-0 grid place-items-center text-muted-foreground/40 text-xs">No img</div>
+                      )}
+                    </div>
+                    <span className={`flex h-3.5 w-3.5 rounded-sm border shrink-0 ${it.isVeg ? 'border-success' : 'border-destructive'}`}>
+                      <span className={`m-auto h-1.5 w-1.5 rounded-full ${it.isVeg ? 'bg-success' : 'bg-destructive'}`} />
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{it.name}</div>
+                      <div className="text-xs text-muted-foreground">{cat?.name} · {it.prepTimeMin} min · {money(it.price)}</div>
+                    </div>
+                  </label>
+                  {/* Actions live OUTSIDE the label so clicking the switch
+                      / edit pencil / delete trash can't toggle the row. */}
+                  <div className="flex items-center gap-1 shrink-0">
                     <ToggleAvailability id={it.id} initial={it.isAvailable} />
+                    <Button size="icon" variant="ghost" onClick={() => setEditing(it)} title="Edit"><Pencil className="size-4" /></Button>
+                    <DeleteItem id={it.id} name={it.name} />
                   </div>
-                  <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(it); }} title="Edit"><Pencil className="size-4" /></Button>
-                  <DeleteItem id={it.id} name={it.name} />
                 </CardContent>
               </Card>
             );
