@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireSuperAdmin();
@@ -46,7 +47,9 @@ const PatchBody = z.object({
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireSuperAdmin();
   const { id } = await params;
-  const data = PatchBody.parse(await req.json());
+  const parsed = parseOrJsonError(PatchBody, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   if (data.earningsBonus !== undefined && data.earningsBonus !== 0) {
     await prisma.riderProfile.update({

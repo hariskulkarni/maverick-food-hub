@@ -9,6 +9,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { computeFromRule } from '@/server/payouts';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Scenario = z.object({
   label: z.string().optional(),
@@ -34,7 +35,9 @@ const Body = z.object({
 
 export async function POST(req: NextRequest) {
   await requireSuperAdmin();
-  const data = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
   // Construct a Date from hour/minute/dayOfWeek for placedAt
   const now = new Date();
   const monday = new Date(now);

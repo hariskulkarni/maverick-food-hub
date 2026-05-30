@@ -10,6 +10,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
+import { optionalString } from '@/server/zod-helpers';
 
 // Per-user data: never cache the response anywhere (browser, proxy, CDN). This
 // guarantees a second device always pulls the freshest address list.
@@ -23,7 +24,7 @@ const CreateBody = z.object({
   city: z.string().min(1).max(60),
   state: z.string().max(60).optional().nullable(),
   postalCode: z.string().min(3).max(12),
-  country: z.string().min(2).max(2).optional(),
+  country: optionalString(2),
   latitude: z.number().optional().nullable(),
   longitude: z.number().optional().nullable(),
   isDefault: z.boolean().optional()

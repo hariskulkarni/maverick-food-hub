@@ -4,6 +4,7 @@ import { prisma } from '@/server/db';
 import { pricing, type OfferReward } from '@/server/pricing';
 import { auth } from '@/server/auth';
 import { loadAndApplyOffers, loadOfferByCode } from '@/server/offers';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({
   branchId: z.string(),
@@ -17,7 +18,9 @@ const Body = z.object({
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  const body = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const body = parsed;
   const branch = await prisma.branch.findUniqueOrThrow({ where: { id: body.branchId } });
   const address = body.addressId ? await prisma.address.findUnique({ where: { id: body.addressId } }) : null;
 

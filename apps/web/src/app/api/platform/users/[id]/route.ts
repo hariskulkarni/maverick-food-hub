@@ -4,6 +4,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
+import { optionalString } from '@/server/zod-helpers';
 
 /**
  * GET    — return a full user profile (orders, wallet, loyalty, addresses, recent notifications)
@@ -50,7 +51,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
 }
 
 const PatchBody = z.object({
-  name: z.string().min(1).max(80).optional(),
+  name: optionalString(80),
   walletDelta: z.number().optional(),
   walletNote: z.string().optional(),
   suspended: z.boolean().optional(),

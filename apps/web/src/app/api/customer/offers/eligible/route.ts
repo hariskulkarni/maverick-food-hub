@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { loadAndApplyOffers, resolveCartBranch } from '@/server/offers';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +44,9 @@ export async function POST(req: NextRequest) {
     return new Response('Forbidden', { status: 403 });
   }
 
-  const data = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   // Authoritative branch: derive it from the cart's actual menu items. A menu
   // item belongs to exactly one branch, so this can never mismatch the items

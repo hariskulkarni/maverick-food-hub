@@ -7,6 +7,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({ amount: z.number().min(1).max(2000) });
 
@@ -18,7 +19,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!order || order.customerId !== session.user.id) return new Response('Not found', { status: 404 });
   if (!order.assignment) return new Response('No rider on this order', { status: 400 });
 
-  const { amount } = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const { amount } = parsed;
 
   const updated = await prisma.$transaction(async (tx) => {
     const newTip = Number(order.assignment!.tipAmt) + amount;

@@ -11,6 +11,7 @@ import { prisma } from '@/server/db';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 function notFound(label: string) {
   return Response.json({ error: `${label} not found.`, reason: 'not_found' }, { status: 404 });
@@ -57,7 +58,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const before = await fetchOwned(id, r.id);
   if (!before) return notFound('Cross-sell row');
 
-  const data = Patch.parse(await req.json());
+  const parsed = parseOrJsonError(Patch, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
   const patch: any = {};
   if (data.sortOrder !== undefined) patch.sortOrder = data.sortOrder;
   if (data.surface !== undefined) patch.surface = data.surface;

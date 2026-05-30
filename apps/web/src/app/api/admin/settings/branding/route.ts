@@ -16,34 +16,13 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
-
-/** Accept either a full URL or an in-app relative path beginning with "/". */
-const imageRef = z
-  .string()
-  .trim()
-  .max(2048)
-  .refine(
-    (v) => v === '' || v.startsWith('/') || /^https?:\/\//i.test(v),
-    'Must be a URL or a path starting with /'
-  )
-  .transform((v) => (v === '' ? undefined : v));
-
-/** Optional string — empty string collapses to undefined so we persist NULL. */
-const optionalString = (max: number) =>
-  z
-    .string()
-    .max(max)
-    .transform((v) => v.trim())
-    .transform((v) => (v === '' ? undefined : v))
-    .optional();
-
-const optionalEmail = z
-  .string()
-  .max(254)
-  .transform((v) => v.trim())
-  .transform((v) => (v === '' ? undefined : v))
-  .optional()
-  .refine((v) => v === undefined || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), 'Invalid email');
+import {
+  imageRef,
+  optionalString,
+  optionalEmail,
+  optionalPhone,
+  parseOrJsonError,
+} from '@/server/zod-helpers';
 
 const Body = z.object({
   name:          z.string().trim().min(2).max(80),
@@ -51,7 +30,7 @@ const Body = z.object({
   description:   optionalString(2000),
   cuisine:       optionalString(80),
   contactEmail:  optionalEmail,
-  contactPhone:  optionalString(40),
+  contactPhone:  optionalPhone,
   logoUrl:       imageRef.optional(),
   coverImageUrl: imageRef.optional(),
 });
@@ -62,24 +41,9 @@ export async function PATCH(req: NextRequest) {
 
   const restaurant = await requireRestaurant();
 
-  let data;
-  try {
-    data = Body.parse(await req.json());
-  } catch (e) {
-    // Surface the first zod issue so the panel can render an actionable toast
-    // instead of the generic "Save failed". The full issue list is too noisy
-    // for a toast but the first one is almost always the actionable bit.
-    const issue = (e as z.ZodError)?.issues?.[0];
-    return Response.json(
-      {
-        error: issue
-          ? `${issue.path.join('.') || 'field'}: ${issue.message}`
-          : 'Invalid branding data — please re-check your fields and retry.',
-        reason: 'bad_body',
-      },
-      { status: 400 }
-    );
-  }
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   const updated = await prisma.restaurant.update({
     where: { id: restaurant.id },

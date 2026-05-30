@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,12 +44,9 @@ export async function PATCH(req: NextRequest) {
   if (gate instanceof Response) return gate;
   const restaurant = await requireRestaurant();
 
-  let data;
-  try {
-    data = PatchBody.parse(await req.json());
-  } catch {
-    return Response.json({ error: 'Invalid request body', reason: 'invalid_body' }, { status: 400 });
-  }
+  const parsed = parseOrJsonError(PatchBody, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   const patch: any = {};
   if (data.riderDispatchMode !== undefined) patch.riderDispatchMode = data.riderDispatchMode;

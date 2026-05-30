@@ -2,9 +2,10 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireOwnedVariant, serializeVariant } from '../_helpers';
+import { optionalString } from '@/server/zod-helpers';
 
 const Patch = z.object({
-  name: z.string().min(1).optional(),
+  name: optionalString(80),
   price: z.number().nonnegative().optional(),
   isDefault: z.boolean().optional(),
   isAvailable: z.boolean().optional(),

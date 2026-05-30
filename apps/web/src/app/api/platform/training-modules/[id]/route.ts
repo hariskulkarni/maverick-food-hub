@@ -10,6 +10,7 @@ import { requireSuperAdmin } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { serializeModule } from '../_serializers';
+import { optionalString } from '@/server/zod-helpers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,10 +18,10 @@ export const dynamic = 'force-dynamic';
 const CATEGORIES = ['ONBOARDING', 'SAFETY', 'CUSTOMER_SERVICE', 'EARNINGS', 'APP_GUIDE'] as const;
 
 const PatchBody = z.object({
-  title: z.string().min(2).max(160).optional(),
+  title: optionalString(160),
   summary: z.string().max(500).nullable().optional(),
   category: z.enum(CATEGORIES).optional(),
-  contentBody: z.string().min(1).optional(),
+  contentBody: optionalString(20000),
   contentBlocks: z.array(z.any()).optional(),
   heroImageUrl: z.string().max(2048).nullable().optional(),
   quizQuestions: z.any().optional(),

@@ -9,6 +9,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
+import { optionalString } from '@/server/zod-helpers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,7 +30,7 @@ function serialize(i: any) {
 }
 
 const PatchBody = z.object({
-  title: z.string().min(2).max(120).optional(),
+  title: optionalString(120),
   description: z.string().max(500).nullable().optional(),
   period: z.enum(['DAILY', 'WEEKLY']).optional(),
   targetDeliveries: z.number().int().min(1).max(1000).optional(),

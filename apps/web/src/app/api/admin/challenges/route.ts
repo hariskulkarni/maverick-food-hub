@@ -15,6 +15,7 @@ import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { audit } from '@/server/audit';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,7 +73,9 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   await requireSuperAdmin();
 
-  const data = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   const created = await (prisma as any).challenge.create({
     data: {

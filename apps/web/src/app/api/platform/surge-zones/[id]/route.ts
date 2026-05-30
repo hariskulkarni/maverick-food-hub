@@ -9,6 +9,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
+import { optionalString } from '@/server/zod-helpers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,7 +31,7 @@ function serialize(zone: any) {
 }
 
 const PatchBody = z.object({
-  name: z.string().min(2).max(120).optional(),
+  name: optionalString(120),
   label: z.string().max(60).optional(),
   centerLat: z.number().min(-90).max(90).optional(),
   centerLng: z.number().min(-180).max(180).optional(),

@@ -24,6 +24,7 @@ import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { lifecycleBucket, priceForItem, type HappyHourRuleLite } from '@/server/happy-hours';
+import { optionalString, parseOrJsonError } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,7 @@ const ScheduleRow = z.object({
 // All-optional version of the create body. We intentionally accept partial
 // updates so the admin can flip just `isActive` without resending everything.
 const Patch = z.object({
-  name: z.string().min(2).max(200).optional(),
+  name: optionalString(200),
   description: z.string().max(1000).nullable().optional(),
   scope: Scope.optional(),
   categoryId: z.string().nullable().optional(),
@@ -104,7 +105,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const before = await fetchOwned(id, restaurant.id);
   if (!before) return Response.json({ error: 'Happy hour rule not found', reason: 'not_found' }, { status: 404 });
 
-  const data = Patch.parse(await req.json());
+  const parsed = parseOrJsonError(Patch, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   // If a new scope is supplied, validate tenancy of any newly-referenced entity.
   const nextScope = data.scope ?? before.scope;

@@ -29,13 +29,14 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
+import { optionalString, optionalEmail } from '@/server/zod-helpers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const PATCH_BODY = z.object({
-  name: z.string().trim().min(1).max(80).optional(),
-  email: z.string().trim().email().max(120).optional().nullable(),
+  name: optionalString(80),
+  email: optionalEmail.nullable(),
   emergencyPhone: z
     .string()
     .trim()

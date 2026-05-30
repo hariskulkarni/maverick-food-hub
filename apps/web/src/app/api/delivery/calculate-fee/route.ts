@@ -11,6 +11,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { haversineKm, clampTwo } from '@/lib/utils';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({
   branchId: z.string(),
@@ -22,7 +23,9 @@ const Body = z.object({
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  const { branchId, lat, lng } = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const { branchId, lat, lng } = parsed;
 
   const branch = await prisma.branch.findUnique({
     where: { id: branchId },

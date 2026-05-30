@@ -10,15 +10,16 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
+import { optionalString, parseOrJsonError } from '@/server/zod-helpers';
 
 const PatchBody = z.object({
-  label: z.string().min(1).max(40).optional(),
-  line1: z.string().min(2).max(200).optional(),
+  label: optionalString(40),
+  line1: optionalString(200),
   line2: z.string().max(200).optional().nullable(),
-  city: z.string().min(1).max(60).optional(),
+  city: optionalString(60),
   state: z.string().max(60).optional().nullable(),
-  postalCode: z.string().min(3).max(12).optional(),
-  country: z.string().min(2).max(2).optional(),
+  postalCode: optionalString(12),
+  country: optionalString(2),
   latitude: z.number().optional().nullable(),
   longitude: z.number().optional().nullable(),
   isDefault: z.boolean().optional()
@@ -37,11 +38,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const existing = await ownedAddress(id, session.user.id);
   if (!existing) return new Response('Not found', { status: 404 });
 
-  const parsed = PatchBody.safeParse(await req.json());
-  if (!parsed.success) {
-    return Response.json({ error: 'invalid', issues: parsed.error.flatten() }, { status: 400 });
-  }
-  const data = parsed.data;
+  const parsed = parseOrJsonError(PatchBody, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   const updated = await prisma.$transaction(async (tx) => {
     if (data.isDefault) {

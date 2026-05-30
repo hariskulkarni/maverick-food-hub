@@ -16,6 +16,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { loadOfferByCode, resolveCartBranch, couponCodeExistsElsewhere } from '@/server/offers';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +42,9 @@ export async function POST(req: NextRequest) {
     return new Response('Forbidden', { status: 403 });
   }
 
-  const data = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   // Authoritative branch derived from the cart's menu items — never trust a
   // possibly-stale client branchId (see resolveCartBranch).

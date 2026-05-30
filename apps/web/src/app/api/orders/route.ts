@@ -4,6 +4,7 @@ import { auth } from '@/server/auth';
 import { placeOrder } from '@/server/orders';
 import { PaymentMethod, FulfillmentType } from '@prisma/client';
 import { log } from '@/server/log';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({
   branchId: z.string(),
@@ -36,14 +37,9 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return new Response('Unauthorized', { status: 401 });
 
-  let body: z.infer<typeof Body>;
-  try {
-    body = Body.parse(await req.json());
-  } catch (err) {
-    const message = err instanceof z.ZodError ? err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') : (err as Error).message;
-    log.warn({ err: message }, 'placeOrder body invalid');
-    return Response.json({ error: 'Invalid request', detail: message }, { status: 400 });
-  }
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const body = parsed;
 
   try {
     const result = await placeOrder({

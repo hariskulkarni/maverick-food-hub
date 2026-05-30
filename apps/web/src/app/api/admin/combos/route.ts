@@ -15,6 +15,7 @@ import { prisma } from '@/server/db';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
+import { imageRef, parseOrJsonError } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,7 @@ const Body = z.object({
   slug: z.string().max(120).optional(),
   description: z.string().max(1000).nullable().optional(),
   price: z.number().min(0),
-  imageUrl: z.string().nullable().optional(),
+  imageUrl: imageRef.optional().nullable(),
   isAvailable: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
   items: z.array(ItemBody).min(2)
@@ -61,7 +62,9 @@ export async function POST(req: NextRequest) {
   const session = gate;
   const r = await requireRestaurant();
 
-  const data = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   // Tenancy + cross-branch checks.
   const branch = await prisma.branch.findFirst({

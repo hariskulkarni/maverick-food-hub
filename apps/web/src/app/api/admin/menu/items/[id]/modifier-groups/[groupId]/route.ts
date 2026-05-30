@@ -2,9 +2,10 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireOwnedGroup, serializeGroup } from '../../variants/_helpers';
+import { optionalString } from '@/server/zod-helpers';
 
 const Patch = z.object({
-  name: z.string().min(1).optional(),
+  name: optionalString(80),
   minSelect: z.number().int().min(0).optional(),
   maxSelect: z.number().int().min(1).optional(),
   required: z.boolean().optional(),

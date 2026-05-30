@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { getPlatformSecurity, setPlatformSecurity } from '@/server/2fa';
 import { audit } from '@/server/audit';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 export async function GET() {
   await requireSuperAdmin();
@@ -29,7 +30,9 @@ const PatchBody = z.object({
 
 export async function PATCH(req: NextRequest) {
   const session = await requireSuperAdmin();
-  const body = PatchBody.parse(await req.json());
+  const parsed = parseOrJsonError(PatchBody, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const body = parsed;
   const before = await getPlatformSecurity();
   await setPlatformSecurity({
     allowlist: body.allowlist?.map((s) => s.trim()).filter(Boolean),

@@ -12,12 +12,15 @@ import { z } from 'zod';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { getPlatformSecurity, setPlatformSecurity, verifyTotp } from '@/server/2fa';
 import { audit } from '@/server/audit';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({ token: z.string().min(6).max(8) });
 
 export async function POST(req: NextRequest) {
   const session = await requireSuperAdmin();
-  const { token } = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const { token } = parsed;
   const sec = await getPlatformSecurity();
   if (!sec.totpPending) {
     return Response.json({ ok: false, error: 'No pending TOTP setup. Call /setup first.' }, { status: 400 });

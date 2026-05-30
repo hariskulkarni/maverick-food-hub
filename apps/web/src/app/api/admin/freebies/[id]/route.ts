@@ -12,12 +12,13 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { primaryBranchForCurrentRestaurant, menuItemInBranch, serializeFreebieRule } from '../_helpers';
+import { optionalString } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
 const PatchBody = z.object({
-  name: z.string().min(1).max(80).optional(),
-  menuItemId: z.string().min(1).optional(),
+  name: optionalString(80),
+  menuItemId: optionalString(80),
   minOrderAmount: z.number().min(0).max(1_000_000).optional(),
   stock: z.number().int().min(0).max(1_000_000).optional(),
   sortOrder: z.number().int().min(0).max(9999).optional(),

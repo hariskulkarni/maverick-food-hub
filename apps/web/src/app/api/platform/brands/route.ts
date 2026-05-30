@@ -5,6 +5,7 @@ import { requireSuperAdmin } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { slugifyName } from '@/server/brands';
+import { imageRef, optionalString } from '@/server/zod-helpers';
 
 // ─── GET ────────────────────────────────────────────────────────────────────
 // Returns every brand on the platform, with cuisine counts and a cheap
@@ -78,11 +79,11 @@ export async function GET(_req: NextRequest) {
 // ─── POST (create) ──────────────────────────────────────────────────────────
 const CreateBody = z.object({
   name:           z.string().min(2),
-  slug:           z.string().min(2).optional(),
+  slug:           optionalString(80),
   tagline:        z.string().optional().nullable(),
   description:    z.string().optional().nullable(),
-  logoUrl:        z.string().url().optional().nullable().or(z.literal('').transform(() => null)),
-  coverImageUrl:  z.string().url().optional().nullable().or(z.literal('').transform(() => null)),
+  logoUrl:        imageRef.optional().nullable(),
+  coverImageUrl:  imageRef.optional().nullable(),
   contactEmail:   z.string().email().optional().nullable().or(z.literal('').transform(() => null)),
   contactPhone:   z.string().optional().nullable(),
   ownerUserId:    z.string().optional().nullable()

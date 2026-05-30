@@ -14,6 +14,7 @@ import { prisma } from '@/server/db';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,7 +64,9 @@ export async function POST(req: NextRequest) {
   const session = gate;
   const r = await requireRestaurant();
 
-  const data = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   if (data.parentItemId === data.suggestedItemId) {
     return Response.json({ error: 'parent and suggested item must differ', reason: 'same_item' }, { status: 400 });

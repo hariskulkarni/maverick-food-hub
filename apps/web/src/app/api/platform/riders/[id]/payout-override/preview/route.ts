@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { prisma } from '@/server/db';
 import { computeFromRule, mergeRule } from '@/server/payouts';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Money = z.number().min(0).max(100_000).nullish();
 const Draft = z.object({
@@ -51,7 +52,9 @@ const Body = z.object({
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireSuperAdmin();
   const { id } = await params;
-  const data = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   // Anchor: the active platform rule. Override is purely additive on top.
   const platformRule = await prisma.deliveryPayoutRule.findFirst({

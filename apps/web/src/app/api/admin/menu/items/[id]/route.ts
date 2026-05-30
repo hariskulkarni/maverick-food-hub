@@ -4,6 +4,7 @@ import { prisma } from '@/server/db';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { sendMenuToggleAlert } from '@/server/alerts';
 import { log } from '@/server/log';
+import { imageRef } from '@/server/zod-helpers';
 
 const Patch = z.object({
   name: z.string().optional(),
@@ -14,7 +15,7 @@ const Patch = z.object({
   isVeg: z.boolean().optional(),
   spicyLevel: z.number().optional(),
   prepTimeMin: z.number().optional(),
-  imageUrl: z.string().optional().nullable(),
+  imageUrl: imageRef.optional().nullable(),
   isAvailable: z.boolean().optional(),
   isPopular: z.boolean().optional(),
   isRecommended: z.boolean().optional(),

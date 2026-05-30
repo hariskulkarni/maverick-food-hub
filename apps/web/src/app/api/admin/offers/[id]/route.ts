@@ -15,6 +15,7 @@ import { prisma } from '@/server/db';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
+import { optionalString } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,10 +40,10 @@ const ScheduleRow = z.object({
 });
 
 const Patch = z.object({
-  name: z.string().min(1).max(200).optional(),
+  name: optionalString(200),
   description: z.string().max(1000).nullable().optional(),
   type: OfferType.optional(),
-  code: z.string().min(2).max(40).nullable().optional(),
+  code: optionalString(40).nullable(),
   percentOff: z.number().nullable().optional(),
   flatOff: z.number().nullable().optional(),
   maxDiscount: z.number().nullable().optional(),

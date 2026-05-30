@@ -26,12 +26,12 @@ import {
   normaliseRestaurantSlug,
   isValidLatLng
 } from '@/server/restaurant-wizard';
+import { imageRef } from '@/server/zod-helpers';
 
 // ── Zod schema ──────────────────────────────────────────────────────────────
 
 const NonEmptyString = z.string().min(1).max(200);
 const OptionalString = z.string().max(500).optional().nullable().or(z.literal('').transform(() => null));
-const OptionalUrl = z.string().url().optional().nullable().or(z.literal('').transform(() => null));
 const OptionalEmail = z.string().email().optional().nullable().or(z.literal('').transform(() => null));
 
 const IdentitySchema = z.object({
@@ -40,8 +40,8 @@ const IdentitySchema = z.object({
   cuisine:        OptionalString,
   tagline:        OptionalString,
   description:    OptionalString,
-  logoUrl:        OptionalUrl,
-  coverImageUrl:  OptionalUrl,
+  logoUrl:        imageRef.optional().nullable(),
+  coverImageUrl:  imageRef.optional().nullable(),
   contactEmail:   OptionalEmail,
   contactPhone:   OptionalString,
   commissionPct:  z.number().min(0).max(100).default(15)

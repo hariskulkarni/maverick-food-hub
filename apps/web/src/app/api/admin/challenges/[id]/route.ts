@@ -19,6 +19,7 @@ import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { audit } from '@/server/audit';
+import { optionalString, parseOrJsonError } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,7 @@ const ChallengeWindow = z.enum(['LIFETIME', 'MONTHLY', 'WEEKLY', 'CUSTOM']);
 const ChallengeRewardType = z.enum(['FIXED_OFF', 'PERCENT_OFF', 'FREE_DELIVERY']);
 
 const Patch = z.object({
-  name: z.string().min(2).max(200).optional(),
+  name: optionalString(200),
   description: z.string().max(2000).nullable().optional(),
   type: ChallengeType.optional(),
   target: z.number().int().positive().max(10_000).optional(),
@@ -75,7 +76,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const before = await (prisma as any).challenge.findUnique({ where: { id } });
   if (!before) return new Response('Not found', { status: 404 });
 
-  const data = Patch.parse(await req.json());
+  const parsed = parseOrJsonError(Patch, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   const patch: any = {};
   if (data.name !== undefined) patch.name = data.name.trim();

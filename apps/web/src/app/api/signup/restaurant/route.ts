@@ -4,6 +4,7 @@ import argon2 from 'argon2';
 import { prisma } from '@/server/db';
 import { Role, RestaurantStatus } from '@prisma/client';
 import { rateLimit } from '@/server/http/rate-limit';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 const HoursDay = z.object({
   dayOfWeek: z.number().int().min(0).max(6),
@@ -60,7 +61,9 @@ export async function POST(req: NextRequest) {
   const rl = await rateLimit(req, { name: 'signup-restaurant', limit: 5, windowMs: 600_000 });
   if (!rl.ok) return rl.response;
 
-  const data = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   // Make sure email isn't already a non-admin
   const existing = await prisma.user.findUnique({ where: { email: data.ownerEmail } });

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { Role } from '@prisma/client';
 import { requireRestaurant } from '@/server/tenancy';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({
   name: z.string().min(2),
@@ -14,7 +15,9 @@ const Body = z.object({
 
 export async function POST(req: NextRequest) {
   const restaurant = await requireRestaurant();
-  const data = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
   const branch = await prisma.branch.findFirst({ where: { id: data.branchId, restaurantId: restaurant.id } });
   if (!branch) return new Response('Branch not in your restaurant', { status: 403 });
 

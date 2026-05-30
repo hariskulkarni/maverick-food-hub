@@ -22,6 +22,7 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { computeEta, DEFAULT_RIDER_SPEED_KPH } from '@/server/eta';
 import { haversineKm, clampTwo } from '@/lib/utils';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({
   branchId: z.string().min(1),
@@ -35,12 +36,9 @@ const PICKUP_BUFFER_MIN = 3;
 const DEFAULT_PREP_MIN = 18;
 
 export async function POST(req: NextRequest) {
-  let data: z.infer<typeof Body>;
-  try {
-    data = Body.parse(await req.json());
-  } catch (e) {
-    return Response.json({ error: 'Invalid body' }, { status: 400 });
-  }
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   const branch = await prisma.branch.findUnique({
     where: { id: data.branchId },

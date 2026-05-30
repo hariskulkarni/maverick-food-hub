@@ -4,6 +4,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({
   name: z.string().min(2),
@@ -58,7 +59,9 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   await requireSuperAdmin();
   const session = await auth();
-  const data = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   // Snapshot the rule being superseded (for the audit trail).
   const prevActive = await prisma.deliveryPayoutRule.findFirst({ where: { isActive: true }, select: { id: true, name: true } });

@@ -14,6 +14,7 @@ import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { sendMenuToggleAlert } from '@/server/alerts';
 import { log } from '@/server/log';
+import { imageRef, optionalString, parseOrJsonError } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,11 +24,11 @@ const ItemPatch = z.object({
 });
 
 const Patch = z.object({
-  name: z.string().min(1).max(120).optional(),
+  name: optionalString(120),
   slug: z.string().max(120).optional(),
   description: z.string().max(1000).nullable().optional(),
   price: z.number().min(0).optional(),
-  imageUrl: z.string().nullable().optional(),
+  imageUrl: imageRef.optional().nullable(),
   isAvailable: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
   items: z.array(ItemPatch).min(2).optional(),
@@ -65,7 +66,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const before = await fetchOwned(id, r.id);
   if (!before) return Response.json({ error: 'Combo not found', reason: 'not_found' }, { status: 404 });
 
-  const data = Patch.parse(await req.json());
+  const parsed = parseOrJsonError(Patch, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   // If items are being replaced, validate they all belong to the combo's branch
   // and that we have at least 2 distinct items.

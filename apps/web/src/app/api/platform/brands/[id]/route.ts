@@ -4,6 +4,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
+import { imageRef, optionalString } from '@/server/zod-helpers';
 
 // ─── GET ────────────────────────────────────────────────────────────────────
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -50,11 +51,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 // ─── PATCH ──────────────────────────────────────────────────────────────────
 const PatchBody = z.object({
-  name:          z.string().min(2).optional(),
+  name:          optionalString(200),
   tagline:       z.string().nullable().optional(),
   description:   z.string().nullable().optional(),
-  logoUrl:       z.string().url().nullable().optional().or(z.literal('').transform(() => null)),
-  coverImageUrl: z.string().url().nullable().optional().or(z.literal('').transform(() => null)),
+  logoUrl:       imageRef.optional().nullable(),
+  coverImageUrl: imageRef.optional().nullable(),
   contactEmail:  z.string().email().nullable().optional().or(z.literal('').transform(() => null)),
   contactPhone:  z.string().nullable().optional(),
   ownerUserId:   z.string().nullable().optional()

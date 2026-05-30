@@ -13,6 +13,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { assertTransition, toPublicDoc } from '@/server/kyc';
+import { optionalString } from '@/server/zod-helpers';
 import { KycDocumentStatus } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -39,7 +40,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 const PatchBody = z.object({
   action: z.enum(['approve', 'reject', 'mark-expired']),
-  rejectionReason: z.string().min(3).max(500).optional()
+  rejectionReason: optionalString(500)
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

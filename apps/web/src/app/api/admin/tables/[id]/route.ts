@@ -9,11 +9,12 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { primaryBranchForCurrentRestaurant, serializeTable } from '../_helpers';
+import { optionalString } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
 const PatchBody = z.object({
-  name: z.string().min(1).max(60).optional(),
+  name: optionalString(60),
   capacity: z.number().int().min(1).max(100).optional(),
   sortOrder: z.number().int().min(0).max(9999).optional(),
   isActive: z.boolean().optional()

@@ -14,6 +14,7 @@ import { prisma } from '@/server/db';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
+import { optionalString, parseOrJsonError } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +42,7 @@ const Body = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(1000).nullable().optional(),
   type: OfferType,
-  code: z.string().min(2).max(40).nullable().optional(),
+  code: optionalString(40).nullable(),
   percentOff: z.number().nullable().optional(),
   flatOff: z.number().nullable().optional(),
   maxDiscount: z.number().nullable().optional(),
@@ -96,7 +97,9 @@ export async function POST(req: NextRequest) {
   const session = gate;
   const r = await requireRestaurant();
 
-  const data = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
   // Editor sends `itemIds`; older callers `menuItemIds`. Accept either.
   const menuItemIds = data.menuItemIds ?? data.itemIds ?? [];
 

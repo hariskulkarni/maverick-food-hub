@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { priceForItem, type HappyHourRuleLite } from '@/server/happy-hours';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +52,9 @@ export async function POST(req: NextRequest) {
   if (gate instanceof Response) return gate;
   await requireRestaurant();
 
-  const { draft, sampleItemPrice } = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const { draft, sampleItemPrice } = parsed;
 
   // Build a synthetic HappyHourRuleLite from the draft. We force isActive=true
   // and elastic validity bounds so the preview reflects the intent of the

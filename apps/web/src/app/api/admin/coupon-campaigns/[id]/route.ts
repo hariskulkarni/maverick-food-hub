@@ -18,11 +18,12 @@ import { prisma } from '@/server/db';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit, type AuditAction } from '@/server/audit';
+import { optionalString, parseOrJsonError } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
 const Patch = z.object({
-  name: z.string().trim().min(2).max(200).optional(),
+  name: optionalString(200),
   description: z.string().max(1000).nullable().optional(),
   distributedCount: z.number().int().nonnegative().optional(),
   status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'EXPIRED']).optional()
@@ -77,7 +78,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const before = await fetchOwned(id, r.id);
   if (!before) return Response.json({ error: 'Campaign not found', reason: 'not_found' }, { status: 404 });
 
-  const data = Patch.parse(await req.json());
+  const parsed = parseOrJsonError(Patch, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   const patch: any = { updatedById: session?.user?.id ?? null };
   if (data.name !== undefined) patch.name = data.name;

@@ -20,6 +20,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { getEffectivePayoutRule } from '@/server/payouts';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 // Optional, nullable Decimals — null/undefined ⇒ inherit. Zod `.nullish()`
 // covers both, so the client can clear an override field by sending `null`.
@@ -67,7 +68,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSuperAdmin();
   const { id } = await params;
-  const data = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
 
   const rider = await prisma.riderProfile.findUnique({ where: { id } });
   if (!rider) return new Response('Rider not found', { status: 404 });

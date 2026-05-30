@@ -10,9 +10,10 @@ import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
+import { optionalString } from '@/server/zod-helpers';
 
 const Patch = z.object({
-  code: z.string().min(2).max(40).optional(),
+  code: optionalString(40),
   description: z.string().max(500).nullable().optional(),
   flatOff: z.number().nullable().optional(),
   percentOff: z.number().nullable().optional(),

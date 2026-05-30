@@ -8,6 +8,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,9 @@ const PostBody = z.object({ menuItemId: z.string() });
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return new Response('Unauthorized', { status: 401 });
-  const { menuItemId } = PostBody.parse(await req.json());
+  const parsed = parseOrJsonError(PostBody, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const { menuItemId } = parsed;
   const fav = await prisma.favoriteItem.upsert({
     where: { userId_menuItemId: { userId: session.user.id, menuItemId } },
     create: { userId: session.user.id, menuItemId },

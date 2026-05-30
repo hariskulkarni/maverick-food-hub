@@ -6,6 +6,7 @@ import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { sendMenuToggleAlert } from '@/server/alerts';
 import { log } from '@/server/log';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({
   isActive: z.boolean(),
@@ -19,7 +20,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (gate instanceof Response) return gate;
   const session = gate;
   const restaurant = await requireRestaurant();
-  const { isActive, cascadeItems, reason } = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const { isActive, cascadeItems, reason } = parsed;
 
   // Tenancy: category's branch must belong to this restaurant.
   const cat = await prisma.category.findFirst({

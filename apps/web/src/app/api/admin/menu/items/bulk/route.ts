@@ -6,6 +6,7 @@ import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { sendMenuToggleAlert } from '@/server/alerts';
 import { log } from '@/server/log';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({
   ids: z.array(z.string().min(1)).min(1),
@@ -22,7 +23,9 @@ export async function POST(req: NextRequest) {
   if (gate instanceof Response) return gate;
   const session = gate;
   const restaurant = await requireRestaurant();
-  const { ids, patch, reason } = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const { ids, patch, reason } = parsed;
 
   // Tenancy: every item must belong to a branch of the requesting admin's restaurant.
   const owned = await prisma.menuItem.count({

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
+import { optionalString, parseOrJsonError } from '@/server/zod-helpers';
 
 const HoursDay = z.object({
   dayOfWeek: z.number().int().min(0).max(6),
@@ -35,11 +36,11 @@ const NullableText = (max: number) =>
     });
 
 const Body = z.object({
-  name:             z.string().min(2).max(80).optional(),
+  name:             optionalString(80),
   phone:            z.string().max(40).optional().or(z.literal('').transform(() => undefined)),
   email:            z.string().email().optional().or(z.literal('').transform(() => undefined)),
-  line1:            z.string().min(2).max(200).optional(),
-  city:             z.string().min(1).max(80).optional(),
+  line1:            optionalString(200),
+  city:             optionalString(80),
   state:            z.string().max(80).optional().or(z.literal('').transform(() => undefined)),
   postalCode:       z.string().max(20).optional(),
   country:          z.string().max(8).optional(),
@@ -75,7 +76,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const branch = await prisma.branch.findFirst({ where: { id, restaurantId: restaurant.id } });
   if (!branch) return new Response('Not found', { status: 404 });
 
-  const data = Body.parse(await req.json());
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const data = parsed;
   const { hours, ...rest } = data;
 
   await prisma.$transaction(async (tx) => {

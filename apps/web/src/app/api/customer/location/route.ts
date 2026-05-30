@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { LOCATION_COOKIE, serializeDeliveryLocation } from '@/server/discovery';
+import { parseOrJsonError } from '@/server/zod-helpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,12 +29,9 @@ const COOKIE_OPTS = {
 };
 
 export async function POST(req: NextRequest) {
-  let loc: z.infer<typeof Body>;
-  try {
-    loc = Body.parse(await req.json());
-  } catch {
-    return NextResponse.json({ error: 'lat, lng and label are required' }, { status: 400 });
-  }
+  const parsed = parseOrJsonError(Body, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const loc = parsed;
   const res = NextResponse.json({ ok: true, location: loc });
   res.cookies.set(LOCATION_COOKIE, serializeDeliveryLocation(loc), COOKIE_OPTS);
   return res;
