@@ -10,14 +10,14 @@
  */
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const restaurant = await requireRestaurant();
 
   // Riders dedicated to this restaurant.

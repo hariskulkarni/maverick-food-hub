@@ -8,14 +8,14 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const restaurant = await requireRestaurant();
   const { id } = await params;
 
@@ -24,7 +24,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     where: { id, riderType: 'DEDICATED', dedicatedRestaurantId: restaurant.id },
     select: { id: true }
   });
-  if (!profile) return new Response('Not found', { status: 404 });
+  if (!profile) return Response.json({ error: 'Rider not found', reason: 'not_found' }, { status: 404 });
 
   await prisma.riderProfile.update({
     where: { id },

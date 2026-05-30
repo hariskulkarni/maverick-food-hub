@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import { Save } from 'lucide-react';
 
 interface OrderFlowSettings {
@@ -46,7 +47,7 @@ export function OrderFlowForm({ initial }: { initial: OrderFlowSettings }) {
           allowFreebies: f.allowFreebies
         })
       });
-      if (!r.ok) return toast.error('Save failed: ' + (await r.text()));
+      if (!r.ok) { await reportApiError(r, 'Save failed'); return; }
       toast.success('Order-flow settings saved');
       router.refresh();
     } finally {

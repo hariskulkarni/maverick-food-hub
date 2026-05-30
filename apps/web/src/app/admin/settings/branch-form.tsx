@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import { Save, MapPin, ExternalLink, ChevronDown, ShieldCheck, AlertTriangle, FileCheck2 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import type { BranchLocationChange } from '@/components/branch-location-picker';
@@ -138,7 +139,7 @@ export function BranchForm({ branch }: { branch: Branch }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...f, hours })
       });
-      if (!r.ok) return toast.error('Save failed: ' + (await r.text()));
+      if (!r.ok) { await reportApiError(r, 'Save failed'); return; }
       toast.success(`${branch.name} saved`);
       router.refresh();
     } finally {
@@ -222,10 +223,12 @@ export function BranchForm({ branch }: { branch: Branch }) {
         </div>
 
         <Field label="Latitude">
-          <Input type="number" step="any" value={f.latitude ?? ''} onChange={(e) => set('latitude', e.target.value === '' ? null : Number(e.target.value))} />
+          {/* min/max guard so a stray digit doesn't dump the branch off the planet
+              (no client-side bounds previously). Server-side validation still applies. */}
+          <Input type="number" step="any" min={-90} max={90} value={f.latitude ?? ''} onChange={(e) => set('latitude', e.target.value === '' ? null : Number(e.target.value))} />
         </Field>
         <Field label="Longitude">
-          <Input type="number" step="any" value={f.longitude ?? ''} onChange={(e) => set('longitude', e.target.value === '' ? null : Number(e.target.value))} />
+          <Input type="number" step="any" min={-180} max={180} value={f.longitude ?? ''} onChange={(e) => set('longitude', e.target.value === '' ? null : Number(e.target.value))} />
         </Field>
 
         <div className="md:col-span-2 text-xs text-muted-foreground flex items-center gap-3">

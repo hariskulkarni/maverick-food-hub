@@ -24,6 +24,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Plus, Trash2, Copy, Save, X, Sparkles, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -127,7 +128,7 @@ export function CategorySchedulePanel({ categoryId, initial, onClose }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scheduleEnabled: enabled, rows: sorted })
       });
-      if (!r.ok) { toast.error('Save failed: ' + (await r.text())); return; }
+      if (!r.ok) { await reportApiError(r, 'Save failed'); return; }
       toast.success('Schedule saved');
       router.refresh();
       onClose();
@@ -139,7 +140,7 @@ export function CategorySchedulePanel({ categoryId, initial, onClose }: Props) {
     setBusy(true);
     try {
       const r = await fetch(`/api/admin/menu/categories/${categoryId}/schedule`, { method: 'DELETE' });
-      if (!r.ok) { toast.error('Failed: ' + (await r.text())); return; }
+      if (!r.ok) { await reportApiError(r, 'Failed to disable schedule'); return; }
       toast.success('Schedule disabled — category is always-on when active');
       router.refresh();
       onClose();

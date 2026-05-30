@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import { Save, Image as ImageIcon } from 'lucide-react';
 import { ImageUploader } from '@/components/image-uploader';
 
@@ -42,7 +43,7 @@ export function BrandingForm({ restaurant }: { restaurant: Restaurant }) {
     setBusy(true);
     try {
       const r = await fetch('/api/admin/settings/branding', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f) });
-      if (!r.ok) return toast.error('Save failed: ' + (await r.text()));
+      if (!r.ok) { await reportApiError(r, 'Save failed'); return; }
       toast.success('Branding saved');
       router.refresh();
     } finally {

@@ -6,7 +6,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { postMessage, serializeConversation } from '@/server/rider-messaging';
 
 export const runtime = 'nodejs';
@@ -28,8 +28,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const restaurant = await requireRestaurant();
 
   const conversation = await loadThread(id);
@@ -38,7 +38,7 @@ export async function GET(
     conversation.party !== 'ADMIN' ||
     conversation.restaurantId !== restaurant.id
   ) {
-    return new Response('Not found', { status: 404 });
+    return Response.json({ error: 'Conversation not found', reason: 'not_found' }, { status: 404 });
   }
 
   // Opening the thread = staff has seen everything the rider sent.
@@ -48,7 +48,7 @@ export async function GET(
   });
 
   const fresh = await loadThread(id);
-  if (!fresh) return new Response('Not found', { status: 404 });
+  if (!fresh) return Response.json({ error: 'Conversation not found', reason: 'not_found' }, { status: 404 });
   return Response.json({ conversation: serializeConversation(fresh, 'staff') });
 }
 
@@ -57,8 +57,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const restaurant = await requireRestaurant();
 
   const existing = await prisma.riderConversation.findUnique({
@@ -66,7 +67,7 @@ export async function POST(
     select: { id: true, party: true, restaurantId: true },
   });
   if (!existing || existing.party !== 'ADMIN' || existing.restaurantId !== restaurant.id) {
-    return new Response('Not found', { status: 404 });
+    return Response.json({ error: 'Conversation not found', reason: 'not_found' }, { status: 404 });
   }
 
   let body: { body?: unknown };
@@ -82,6 +83,6 @@ export async function POST(
   await postMessage(id, 'ADMIN', restaurant.name ?? session.user.name ?? null, text);
 
   const fresh = await loadThread(id);
-  if (!fresh) return new Response('Not found', { status: 404 });
+  if (!fresh) return Response.json({ error: 'Conversation not found', reason: 'not_found' }, { status: 404 });
   return Response.json({ conversation: serializeConversation(fresh, 'staff') });
 }

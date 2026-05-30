@@ -25,7 +25,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const gate = await requireRestaurantAdminApi();
   if (gate instanceof Response) return gate;
   const restaurant = await requireRestaurant();
-  if (!(await ownedItem(id, restaurant.id))) return new Response('Not found', { status: 404 });
+  if (!(await ownedItem(id, restaurant.id))) {
+    return Response.json({ error: 'Menu item not found.', reason: 'not_found' }, { status: 404 });
+  }
 
   const rows = await prisma.menuItemAvailability.findMany({
     where: { menuItemId: id },
@@ -49,17 +51,25 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (gate instanceof Response) return gate;
   const session = gate;
   const restaurant = await requireRestaurant();
-  if (!(await ownedItem(id, restaurant.id))) return new Response('Not found', { status: 404 });
+  if (!(await ownedItem(id, restaurant.id))) {
+    return Response.json({ error: 'Menu item not found.', reason: 'not_found' }, { status: 404 });
+  }
   const { days } = Body.parse(await req.json());
 
   // Validate logical times when not closed
   for (const d of days) {
     if (!d.closed) {
       if (d.openMin == null || d.closeMin == null) {
-        return new Response('openMin/closeMin required when not closed', { status: 400 });
+        return Response.json(
+          { error: 'Open and close times are required when a day is not marked closed.', reason: 'missing_times' },
+          { status: 400 }
+        );
       }
       if (d.openMin >= d.closeMin) {
-        return new Response('openMin must be < closeMin', { status: 400 });
+        return Response.json(
+          { error: 'Open time must come before close time.', reason: 'time_order' },
+          { status: 400 }
+        );
       }
     }
   }

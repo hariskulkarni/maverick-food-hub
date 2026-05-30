@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import { CalendarClock, Check, Armchair, CircleCheck, UserX, X } from 'lucide-react';
 
 type Status = 'PENDING' | 'CONFIRMED' | 'SEATED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
@@ -68,7 +69,7 @@ export function ReservationsClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, reason })
       });
-      if (!r.ok) return toast.error('Action failed: ' + (await r.text()));
+      if (!r.ok) { await reportApiError(r, 'Action failed'); return; }
       toast.success('Reservation updated');
       router.refresh();
     } finally {

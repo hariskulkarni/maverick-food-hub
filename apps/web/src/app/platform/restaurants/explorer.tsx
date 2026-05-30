@@ -81,7 +81,7 @@ export function RestaurantsExplorer({ initial, cuisines, filters }: { initial: a
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const ids = useMemo(() => order.map((r) => r.id), [order]);
+  const ids = useMemo(() => order.map((r: { id: string }) => r.id), [order]);
 
   async function persistOrder(nextIds: string[]) {
     setSaving(true);
@@ -111,7 +111,7 @@ export function RestaurantsExplorer({ initial, cuisines, filters }: { initial: a
     if (oldIndex < 0 || newIndex < 0) return;
     const next = arrayMove(order, oldIndex, newIndex);
     setOrder(next);
-    persistOrder(next.map((r) => r.id));
+    persistOrder(next.map((r: { id: string }) => r.id));
   }
 
   return (

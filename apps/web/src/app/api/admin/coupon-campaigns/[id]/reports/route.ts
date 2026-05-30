@@ -20,14 +20,14 @@
  */
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const r = await requireRestaurant();
   const { id } = await params;
 
@@ -41,17 +41,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const to = toStr ? new Date(toStr) : now;
 
   if (isNaN(from.getTime()) || isNaN(to.getTime())) {
-    return new Response('Invalid date range', { status: 400 });
+    return Response.json({ error: 'Invalid date range', reason: 'invalid_range' }, { status: 400 });
   }
   if (from >= to) {
-    return new Response('`from` must be before `to`', { status: 400 });
+    return Response.json({ error: '`from` must be before `to`', reason: 'invalid_range_order' }, { status: 400 });
   }
 
   const campaign = await (prisma as any).couponCampaign.findFirst({
     where: { id, restaurantId: r.id },
     include: { offers: { select: { id: true, usageLimit: true } } }
   });
-  if (!campaign) return new Response('Campaign not found', { status: 404 });
+  if (!campaign) return Response.json({ error: 'Campaign not found', reason: 'not_found' }, { status: 404 });
 
   const offerIds: string[] = (campaign.offers ?? []).map((o: any) => o.id);
   const usageLimit: number | null = campaign.maxUses ?? null;

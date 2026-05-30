@@ -8,7 +8,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import {
   confirmReservation,
   markReservationSeated,
@@ -27,13 +27,14 @@ const Body = z.object({
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const { branch } = await primaryBranchForCurrentRestaurant();
   const { id } = await params;
 
   const existing = await prisma.reservation.findFirst({ where: { id, branchId: branch.id } });
-  if (!existing) return new Response('Not found', { status: 404 });
+  if (!existing) return Response.json({ error: 'Reservation not found', reason: 'not_found' }, { status: 404 });
 
   const { action, reason, ref } = Body.parse(await req.json());
 
@@ -58,6 +59,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     return Response.json(serialize(updated));
   } catch (e: any) {
-    return new Response(e?.message ?? 'Action failed', { status: 400 });
+    return Response.json({ error: e?.message ?? 'Action failed', reason: 'action_failed' }, { status: 400 });
   }
 }

@@ -15,7 +15,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit, type AuditAction } from '@/server/audit';
 
@@ -36,13 +36,13 @@ async function fetchOwned(id: string, restaurantId: string) {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const r = await requireRestaurant();
   const { id } = await params;
 
   const campaign = await fetchOwned(id, r.id);
-  if (!campaign) return new Response('Campaign not found', { status: 404 });
+  if (!campaign) return Response.json({ error: 'Campaign not found', reason: 'not_found' }, { status: 404 });
 
   const offerIds: string[] = (campaign.offers ?? []).map((o: any) => o.id);
 
@@ -68,13 +68,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const r = await requireRestaurant();
   const { id } = await params;
 
   const before = await fetchOwned(id, r.id);
-  if (!before) return new Response('Campaign not found', { status: 404 });
+  if (!before) return Response.json({ error: 'Campaign not found', reason: 'not_found' }, { status: 404 });
 
   const data = Patch.parse(await req.json());
 
@@ -125,13 +126,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const r = await requireRestaurant();
   const { id } = await params;
 
   const before = await fetchOwned(id, r.id);
-  if (!before) return new Response('Campaign not found', { status: 404 });
+  if (!before) return Response.json({ error: 'Campaign not found', reason: 'not_found' }, { status: 404 });
 
   const updated = await prisma.$transaction(async (tx) => {
     await (tx as any).couponCampaign.update({

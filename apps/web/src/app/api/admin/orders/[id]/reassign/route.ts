@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { publish } from '@/server/realtime';
+import { unauthenticated, forbidden } from '@/server/api-auth';
 import { AssignmentStatus, Role } from '@prisma/client';
 
 const Body = z.object({ riderId: z.string(), reason: z.string().max(500).optional() });
@@ -21,10 +22,10 @@ const Body = z.object({ riderId: z.string(), reason: z.string().max(500).optiona
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await auth();
-  if (!session?.user) return new Response('Unauthorized', { status: 401 });
+  if (!session?.user) return unauthenticated();
   const role = session.user.role;
   if (role !== Role.SUPER_ADMIN && role !== Role.ADMIN) {
-    return new Response('Forbidden', { status: 403 });
+    return forbidden('Only ops admins can reassign orders.');
   }
 
   const body = Body.parse(await req.json());
@@ -33,14 +34,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     where: { id },
     include: { branch: { select: { restaurantId: true } }, assignment: true }
   });
-  if (!order) return new Response('Order not found', { status: 404 });
+  if (!order) {
+    return Response.json({ error: 'Order not found.', reason: 'not_found' }, { status: 404 });
+  }
 
   // Tenancy: restaurant admin must belong to the order's restaurant.
   if (role === Role.ADMIN) {
     const membership = await prisma.restaurantUser.findFirst({
       where: { userId: session.user.id, restaurantId: order.branch.restaurantId }
     });
-    if (!membership) return new Response('Forbidden', { status: 403 });
+    if (!membership) {
+      return forbidden('That order belongs to a different restaurant.');
+    }
   }
 
   // Bail if the order is already delivered/cancelled — nothing to reassign.
@@ -50,17 +55,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     'DELIVERY_FAILED', 'PAYMENT_FAILED'
   ]);
   if (TERMINAL.has(order.status)) {
-    return new Response('Order is not in a reassignable state', { status: 409 });
+    return Response.json(
+      { error: 'This order is already finished or cancelled — nothing to reassign.', reason: 'terminal_state' },
+      { status: 409 }
+    );
   }
 
   if (order.assignment && order.assignment.riderId === body.riderId) {
-    return new Response('Rider is already assigned to this order', { status: 409 });
+    return Response.json(
+      { error: 'That rider already has this order.', reason: 'already_assigned' },
+      { status: 409 }
+    );
   }
 
   // Sanity-check the target rider — must exist and be online.
   const target = await prisma.riderProfile.findUnique({ where: { id: body.riderId } });
-  if (!target) return new Response('Rider not found', { status: 404 });
-  if (!target.isOnline) return new Response('Target rider is offline', { status: 409 });
+  if (!target) {
+    return Response.json({ error: 'Rider not found.', reason: 'rider_not_found' }, { status: 404 });
+  }
+  if (!target.isOnline) {
+    return Response.json(
+      { error: 'That rider is offline — pick another or wait until they come online.', reason: 'rider_offline' },
+      { status: 409 }
+    );
+  }
 
   // Bypass the rider-allocator's status guard (which only allows ACCEPTED/
   // PREPARING/READY) — we want to be able to reassign mid-flight as well.

@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { money, fmtDate } from '@/lib/utils';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import { ChallengeEditor } from './challenge-editor';
 
 export type ChallengeType = 'ORDER_COUNT' | 'SPEND_THRESHOLD' | 'CUISINE_VARIETY' | 'WEEKEND_STREAK' | 'FIRST_N_ORDERS';
@@ -292,10 +293,7 @@ function ChallengeCard({
     setBusy(true);
     try {
       const r = await fetch(`/api/admin/challenges/${challenge.id}`, { method: 'DELETE' });
-      if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
-        return;
-      }
+      if (!r.ok) { await reportApiError(r, 'Could not deactivate'); return; }
       toast.success('Challenge deactivated');
       router.refresh();
     } finally {

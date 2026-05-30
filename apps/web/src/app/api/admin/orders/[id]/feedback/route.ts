@@ -10,12 +10,12 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { findFeedbackByOrder, summariseRatings, visibleForRole } from '@/server/feedback';
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const restaurant = await requireRestaurant();
   const { id } = await params;
 
@@ -24,7 +24,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     where: { id, branch: { restaurantId: restaurant.id } },
     select: { id: true }
   });
-  if (!order) return new Response('Not found', { status: 404 });
+  if (!order) return Response.json({ error: 'Order not found', reason: 'not_found' }, { status: 404 });
 
   const feedback = await findFeedbackByOrder(id);
   if (!feedback) return Response.json({ feedback: null, summary: null });

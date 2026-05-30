@@ -54,7 +54,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const restaurant = await requireRestaurant();
   const { id } = await params;
   const cat = await loadCategoryForTenant(id, restaurant.id);
-  if (!cat) return new Response('Not found', { status: 404 });
+  if (!cat) return Response.json({ error: 'Category not found.', reason: 'not_found' }, { status: 404 });
   const status = isCategoryAvailableNow({
     id: cat.id, name: cat.name,
     isActive: cat.isActive,
@@ -80,7 +80,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const data = Body.parse(await req.json());
 
   const before = await loadCategoryForTenant(id, restaurant.id);
-  if (!before) return new Response('Not found', { status: 404 });
+  if (!before) return Response.json({ error: 'Category not found.', reason: 'not_found' }, { status: 404 });
 
   // Replace rows atomically: simpler than diffing for a max-of-64 list.
   await prisma.$transaction(async (tx) => {
@@ -154,7 +154,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
 
   const before = await loadCategoryForTenant(id, restaurant.id);
-  if (!before) return new Response('Not found', { status: 404 });
+  if (!before) return Response.json({ error: 'Category not found.', reason: 'not_found' }, { status: 404 });
   if (!before.scheduleEnabled) {
     return Response.json({ ok: true, alreadyDisabled: true });
   }

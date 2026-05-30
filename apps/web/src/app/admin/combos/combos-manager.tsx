@@ -20,6 +20,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Plus, Package, Search, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 import { money } from '@/lib/utils';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import { ComboEditor, type ComboDraft, type MenuItemRef } from './combo-editor';
 
 export type Combo = {
@@ -87,7 +88,7 @@ export function CombosManager({
       body: JSON.stringify({ isAvailable: next })
     });
     if (!r.ok) {
-      toast.error('Failed: ' + (await r.text()));
+      await reportApiError(r, next ? 'Could not activate combo' : 'Could not deactivate combo');
       return;
     }
     toast.success(next ? 'Combo activated' : 'Combo deactivated');
@@ -98,7 +99,7 @@ export function CombosManager({
     if (!confirm(`Delete combo "${c.name}"?`)) return;
     const r = await fetch(`/api/admin/combos/${c.id}`, { method: 'DELETE' });
     if (!r.ok) {
-      toast.error('Failed: ' + (await r.text()));
+      await reportApiError(r, 'Could not delete combo');
       return;
     }
     toast.success('Combo deleted');

@@ -11,7 +11,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 
@@ -34,8 +34,8 @@ const Body = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const r = await requireRestaurant();
 
   const parent = req.nextUrl.searchParams.get('parent');
@@ -58,14 +58,15 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const r = await requireRestaurant();
 
   const data = Body.parse(await req.json());
 
   if (data.parentItemId === data.suggestedItemId) {
-    return new Response('parent and suggested item must differ', { status: 400 });
+    return Response.json({ error: 'parent and suggested item must differ', reason: 'same_item' }, { status: 400 });
   }
 
   // Both items must live under one of this restaurant's branches AND share a branch.
@@ -74,11 +75,11 @@ export async function POST(req: NextRequest) {
     select: { id: true, branchId: true }
   });
   if (items.length !== 2) {
-    return new Response('One or both items do not belong to this restaurant', { status: 400 });
+    return Response.json({ error: 'One or both items do not belong to this restaurant', reason: 'item_not_owned' }, { status: 400 });
   }
   const branchIds = new Set(items.map((i) => i.branchId));
   if (branchIds.size !== 1) {
-    return new Response('Parent and suggested item must be in the same branch', { status: 400 });
+    return Response.json({ error: 'Parent and suggested item must be in the same branch', reason: 'cross_branch' }, { status: 400 });
   }
 
   try {
@@ -109,7 +110,7 @@ export async function POST(req: NextRequest) {
     return Response.json(created);
   } catch (e: any) {
     if (e?.code === 'P2002') {
-      return new Response('This parent → suggested mapping already exists', { status: 409 });
+      return Response.json({ error: 'This parent → suggested mapping already exists', reason: 'duplicate_mapping' }, { status: 409 });
     }
     throw e;
   }

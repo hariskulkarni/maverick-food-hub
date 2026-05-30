@@ -7,7 +7,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { primaryBranchForCurrentRestaurant, serializeTable } from '../_helpers';
 
 export const dynamic = 'force-dynamic';
@@ -20,13 +20,13 @@ const PatchBody = z.object({
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const { branch } = await primaryBranchForCurrentRestaurant();
   const { id } = await params;
 
   const existing = await prisma.restaurantTable.findFirst({ where: { id, branchId: branch.id } });
-  if (!existing) return new Response('Not found', { status: 404 });
+  if (!existing) return Response.json({ error: 'Table not found', reason: 'not_found' }, { status: 404 });
 
   const data = PatchBody.parse(await req.json());
   const patch: any = {};
@@ -40,13 +40,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const { branch } = await primaryBranchForCurrentRestaurant();
   const { id } = await params;
 
   const existing = await prisma.restaurantTable.findFirst({ where: { id, branchId: branch.id } });
-  if (!existing) return new Response('Not found', { status: 404 });
+  if (!existing) return Response.json({ error: 'Table not found', reason: 'not_found' }, { status: 404 });
 
   // Soft-delete: tables are referenced by reservations (FK Restrict), so we
   // deactivate rather than hard-delete.

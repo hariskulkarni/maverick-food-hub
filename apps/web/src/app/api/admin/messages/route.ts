@@ -11,7 +11,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import {
   findOrCreateConversation,
   postMessage,
@@ -51,8 +51,8 @@ async function rosterFor(restaurantId: string) {
 }
 
 export async function GET() {
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const restaurant = await requireRestaurant();
 
   const [conversations, riders] = await Promise.all([
@@ -76,8 +76,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const restaurant = await requireRestaurant();
 
   let body: { riderId?: unknown; body?: unknown };
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest) {
       _count: { select: { messages: true } },
     },
   });
-  if (!full) return new Response('Conversation not found', { status: 404 });
+  if (!full) return Response.json({ error: 'Conversation not found', reason: 'not_found' }, { status: 404 });
 
   return Response.json({ conversation: serializeConversation(full, 'staff') }, { status: 201 });
 }

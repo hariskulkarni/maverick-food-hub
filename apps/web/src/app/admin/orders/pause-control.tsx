@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Pause, Play, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 
 type Status = { paused: boolean; reason?: string; until?: string; indefinite?: boolean };
 
@@ -45,10 +46,7 @@ export function PauseControl({ branchId, initial }: { branchId: string; initial:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ minutes, reason })
       });
-      if (!r.ok) {
-        toast.error('Could not pause: ' + (await r.text()));
-        return;
-      }
+      if (!r.ok) { await reportApiError(r, 'Could not pause'); return; }
       const data = await r.json();
       setStatus(data);
       setOpen(false);
@@ -62,10 +60,7 @@ export function PauseControl({ branchId, initial }: { branchId: string; initial:
     setBusy(true);
     try {
       const r = await fetch(`/api/admin/branch/${branchId}/unpause`, { method: 'POST' });
-      if (!r.ok) {
-        toast.error('Could not resume: ' + (await r.text()));
-        return;
-      }
+      if (!r.ok) { await reportApiError(r, 'Could not resume'); return; }
       const data = await r.json();
       setStatus(data);
       toast.success('Branch is taking orders again');

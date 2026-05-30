@@ -10,12 +10,12 @@
  */
 import { NextRequest } from 'next/server';
 import { requireRestaurant } from '@/server/tenancy';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { loadRestaurantFeedback } from '@/server/feedback';
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const restaurant = await requireRestaurant();
   const sp = req.nextUrl.searchParams;
 

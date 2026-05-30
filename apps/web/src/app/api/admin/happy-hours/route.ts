@@ -17,7 +17,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { lifecycleBucket, type HappyHourRuleLite } from '@/server/happy-hours';
@@ -75,8 +75,8 @@ const Body = z.object({
   }, { message: 'Reward fields do not match the chosen discountType' });
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const restaurant = await requireRestaurant();
 
   const bucket = req.nextUrl.searchParams.get('bucket') as 'active' | 'upcoming' | 'expired' | null;
@@ -95,8 +95,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const restaurant = await requireRestaurant();
 
   const data = Body.parse(await req.json());
@@ -107,21 +108,21 @@ export async function POST(req: NextRequest) {
       where: { id: data.categoryId, branch: { restaurantId: restaurant.id } },
       select: { id: true }
     });
-    if (!owned) return new Response('Category not in this restaurant', { status: 403 });
+    if (!owned) return Response.json({ error: 'Category not in this restaurant', reason: 'category_not_owned' }, { status: 403 });
   }
   if (data.scope === 'MENU_ITEM' && data.menuItemId) {
     const owned = await prisma.menuItem.findFirst({
       where: { id: data.menuItemId, branch: { restaurantId: restaurant.id } },
       select: { id: true }
     });
-    if (!owned) return new Response('Menu item not in this restaurant', { status: 403 });
+    if (!owned) return Response.json({ error: 'Menu item not in this restaurant', reason: 'item_not_owned' }, { status: 403 });
   }
   if (data.scope === 'COMBO' && data.comboId) {
     const owned = await prisma.combo.findFirst({
       where: { id: data.comboId, branch: { restaurantId: restaurant.id } },
       select: { id: true }
     });
-    if (!owned) return new Response('Combo not in this restaurant', { status: 403 });
+    if (!owned) return Response.json({ error: 'Combo not in this restaurant', reason: 'combo_not_owned' }, { status: 403 });
   }
 
   const schedules = data.schedules ?? [];

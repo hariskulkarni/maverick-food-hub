@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 
 export function AddRiderButton({ branches }: { branches: { id: string; name: string }[] }) {
   const router = useRouter();
@@ -33,7 +34,7 @@ export function AddRiderButton({ branches }: { branches: { id: string; name: str
               setBusy(true);
               const r = await fetch('/api/admin/riders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
               setBusy(false);
-              if (!r.ok) return toast.error('Failed: ' + (await r.text()));
+              if (!r.ok) { await reportApiError(r, 'Could not create rider'); return; }
               toast.success('Rider created');
               setOpen(false);
               router.refresh();

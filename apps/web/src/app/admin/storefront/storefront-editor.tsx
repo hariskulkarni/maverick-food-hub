@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import { Image as ImageIcon, Images, Plus, Trash2, ArrowUp, ArrowDown, Save, ExternalLink, Eye, EyeOff, ChevronDown, ChevronRight, Star, Loader2, Type, Megaphone, BookOpen, Blocks, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import type { StorefrontConfig, HeroSlide, HeroTransition, MenuLayout, FontPair, ButtonRadius, CardStyle, ContentBlock, BlockType, BlockPosition, Align } from '@/server/storefront-cms';
 
@@ -54,7 +55,7 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
     try {
       const items = (itemsByCat[catId] ?? []).map((it, idx) => ({ id: it.id, sortOrder: idx, isFeatured: it.isFeatured }));
       const r = await fetch('/api/admin/storefront/items', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
-      if (!r.ok) return toast.error(`Save failed: ${await r.text()}`);
+      if (!r.ok) { await reportApiError(r, 'Save failed'); return; }
       toast.success('Item order & featured saved'); router.refresh();
     } finally { setSavingItems(false); }
   }
@@ -102,7 +103,7 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
     setSavingCfg(true);
     try {
       const r = await fetch('/api/admin/storefront', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: cfg }) });
-      if (!r.ok) return toast.error(`Save failed: ${await r.text()}`);
+      if (!r.ok) { await reportApiError(r, 'Save failed'); return; }
       toast.success('Storefront design saved — live now'); router.refresh();
     } finally { setSavingCfg(false); }
   }
@@ -117,7 +118,7 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
     try {
       const items = cats.map((c, idx) => ({ id: c.id, sortOrder: idx, isActive: c.isActive }));
       const r = await fetch('/api/admin/storefront/categories', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
-      if (!r.ok) return toast.error(`Save failed: ${await r.text()}`);
+      if (!r.ok) { await reportApiError(r, 'Save failed'); return; }
       toast.success('Menu order & visibility saved'); router.refresh();
     } finally { setSavingCats(false); }
   }

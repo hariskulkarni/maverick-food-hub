@@ -29,6 +29,7 @@ import { Badge } from '@/components/ui/badge';
 import { Mail, Smartphone, Utensils, Trash2, Info, IndianRupee, Percent } from 'lucide-react';
 import { money } from '@/lib/utils';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import type { CampaignRow, CampaignChannel } from './campaigns-client';
 
 type DiscountType = 'PERCENTAGE' | 'FIXED';
@@ -144,7 +145,7 @@ export function CampaignEditor({
           body: JSON.stringify(body)
         });
         if (!r.ok) {
-          toast.error('Failed: ' + (await r.text()));
+          await reportApiError(r, 'Could not create campaign');
           return;
         }
         toast.success('Campaign created');
@@ -161,7 +162,7 @@ export function CampaignEditor({
           body: JSON.stringify(body)
         });
         if (!r.ok) {
-          toast.error('Failed: ' + (await r.text()));
+          await reportApiError(r, 'Could not save campaign');
           return;
         }
         toast.success('Campaign saved');
@@ -180,7 +181,7 @@ export function CampaignEditor({
     try {
       const r = await fetch(`/api/admin/coupon-campaigns/${campaign.id}`, { method: 'DELETE' });
       if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
+        await reportApiError(r, 'Could not deactivate campaign');
         return;
       }
       toast.success('Campaign deactivated');

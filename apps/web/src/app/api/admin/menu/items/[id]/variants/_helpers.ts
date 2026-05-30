@@ -35,7 +35,7 @@ export async function requireOwnedItem(itemId: string): Promise<Guard<{ itemId: 
     where: { id: itemId, branch: { restaurantId: r.restaurantId } },
     select: { id: true },
   });
-  if (!item) return { error: new Response('Not found', { status: 404 }) };
+  if (!item) return { error: Response.json({ error: 'Menu item not found.', reason: 'not_found' }, { status: 404 }) };
   return { itemId: item.id, restaurantId: r.restaurantId };
 }
 
@@ -47,7 +47,7 @@ export async function requireOwnedVariant(itemId: string, variantId: string): Pr
     where: { id: variantId, menuItemId: owned.itemId },
     select: { id: true },
   });
-  if (!variant) return { error: new Response('Not found', { status: 404 }) };
+  if (!variant) return { error: Response.json({ error: 'Variant not found.', reason: 'not_found' }, { status: 404 }) };
   return { variantId: variant.id };
 }
 
@@ -59,7 +59,7 @@ export async function requireOwnedGroup(itemId: string, groupId: string): Promis
     where: { id: groupId, menuItemId: owned.itemId },
     select: { id: true },
   });
-  if (!group) return { error: new Response('Not found', { status: 404 }) };
+  if (!group) return { error: Response.json({ error: 'Modifier group not found.', reason: 'not_found' }, { status: 404 }) };
   return { groupId: group.id };
 }
 
@@ -71,7 +71,7 @@ export async function requireOwnedOption(itemId: string, groupId: string, option
     where: { id: optionId, modifierGroupId: owned.groupId },
     select: { id: true },
   });
-  if (!option) return { error: new Response('Not found', { status: 404 }) };
+  if (!option) return { error: Response.json({ error: 'Modifier option not found.', reason: 'not_found' }, { status: 404 }) };
   return { optionId: option.id };
 }
 

@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { money } from '@/lib/utils';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import type {
   Challenge, ChallengeType, ChallengeWindow, ChallengeRewardType
 } from './challenges-client';
@@ -171,7 +172,7 @@ export function ChallengeEditor({
         body: JSON.stringify(body)
       });
       if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
+        await reportApiError(r, isNew ? 'Could not create challenge' : 'Could not save challenge');
         return;
       }
       toast.success(isNew ? 'Challenge created' : 'Challenge saved');
@@ -189,7 +190,7 @@ export function ChallengeEditor({
     try {
       const r = await fetch(`/api/admin/challenges/${challenge.id}`, { method: 'DELETE' });
       if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
+        await reportApiError(r, 'Could not deactivate challenge');
         return;
       }
       toast.success('Challenge deactivated');

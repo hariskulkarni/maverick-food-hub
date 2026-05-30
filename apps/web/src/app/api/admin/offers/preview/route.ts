@@ -15,7 +15,7 @@
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { evaluateOffer, type OfferRow, type OfferContext } from '@/server/offers';
 
@@ -99,8 +99,8 @@ const Body = z.preprocess((val: any) => {
 }, Shape);
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const r = await requireRestaurant();
 
   const data = Body.parse(await req.json());

@@ -31,6 +31,7 @@ import {
 import { Plus, X, Trash2, Sparkles, Search, Info } from 'lucide-react';
 import { money } from '@/lib/utils';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import { ImageUploader } from '@/components/image-uploader';
 import {
   type Offer, type OfferType, type ChannelScope, type Branch, type Category, type MenuItem,
@@ -219,7 +220,7 @@ export function OfferEditor({
         body: JSON.stringify(body)
       });
       if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
+        await reportApiError(r, isNew ? 'Could not create offer' : 'Could not save offer');
         return;
       }
       toast.success(isNew ? 'Offer created' : 'Offer saved');
@@ -237,7 +238,7 @@ export function OfferEditor({
     try {
       const r = await fetch(`/api/admin/offers/${offer.id}`, { method: 'DELETE' });
       if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
+        await reportApiError(r, 'Could not deactivate offer');
         return;
       }
       toast.success('Offer deactivated');

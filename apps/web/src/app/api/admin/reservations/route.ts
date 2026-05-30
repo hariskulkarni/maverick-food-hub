@@ -7,15 +7,15 @@
  */
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { ReservationStatus } from '@prisma/client';
 import { primaryBranchForCurrentRestaurant, serialize } from './_helpers';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const { branch } = await primaryBranchForCurrentRestaurant();
 
   const statusParam = req.nextUrl.searchParams.get('status');

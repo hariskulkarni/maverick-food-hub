@@ -9,7 +9,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { sendMenuToggleAlert } from '@/server/alerts';
@@ -46,23 +46,24 @@ async function fetchOwned(id: string, restaurantId: string) {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const r = await requireRestaurant();
   const { id } = await params;
   const row = await fetchOwned(id, r.id);
-  if (!row) return new Response('Not found', { status: 404 });
+  if (!row) return Response.json({ error: 'Combo not found', reason: 'not_found' }, { status: 404 });
   return Response.json(row);
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const r = await requireRestaurant();
   const { id } = await params;
 
   const before = await fetchOwned(id, r.id);
-  if (!before) return new Response('Not found', { status: 404 });
+  if (!before) return Response.json({ error: 'Combo not found', reason: 'not_found' }, { status: 404 });
 
   const data = Patch.parse(await req.json());
 
@@ -71,14 +72,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (data.items) {
     const itemIds = data.items.map((i) => i.menuItemId);
     if (new Set(itemIds).size !== itemIds.length) {
-      return new Response('Duplicate menu item in combo — adjust quantity instead', { status: 400 });
+      return Response.json({ error: 'Duplicate menu item in combo — adjust quantity instead', reason: 'duplicate_item' }, { status: 400 });
     }
     const found = await prisma.menuItem.findMany({
       where: { id: { in: itemIds }, branchId: before.branchId },
       select: { id: true }
     });
     if (found.length !== itemIds.length) {
-      return new Response('One or more menu items are missing or live under a different branch', { status: 400 });
+      return Response.json({ error: 'One or more menu items are missing or live under a different branch', reason: 'item_not_in_branch' }, { status: 400 });
     }
   }
 
@@ -107,7 +108,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   } catch (e: any) {
     if (e?.code === 'P2002') {
-      return new Response('A combo with this slug already exists in this branch', { status: 409 });
+      return Response.json({ error: 'A combo with this slug already exists in this branch', reason: 'duplicate_slug' }, { status: 409 });
     }
     throw e;
   }
@@ -150,13 +151,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const r = await requireRestaurant();
   const { id } = await params;
 
   const before = await fetchOwned(id, r.id);
-  if (!before) return new Response('Not found', { status: 404 });
+  if (!before) return Response.json({ error: 'Combo not found', reason: 'not_found' }, { status: 404 });
 
   // If any historical OrderItem references this combo, we can't hard-delete —
   // doing so would break order history. Soft-delete instead by toggling

@@ -14,7 +14,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,8 +27,8 @@ function serialize(r: { id: string; riderDispatchMode: string; fleetFallbackMinu
 }
 
 export async function GET() {
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const restaurant = await requireRestaurant();
   return Response.json(serialize(restaurant as any));
 }
@@ -39,15 +39,15 @@ const PatchBody = z.object({
 });
 
 export async function PATCH(req: NextRequest) {
-  const session = await auth();
-  if (session?.user.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const restaurant = await requireRestaurant();
 
   let data;
   try {
     data = PatchBody.parse(await req.json());
   } catch {
-    return new Response('Invalid request body', { status: 400 });
+    return Response.json({ error: 'Invalid request body', reason: 'invalid_body' }, { status: 400 });
   }
 
   const patch: any = {};
@@ -55,7 +55,7 @@ export async function PATCH(req: NextRequest) {
   if (data.fleetFallbackMinutes !== undefined) patch.fleetFallbackMinutes = data.fleetFallbackMinutes;
 
   if (Object.keys(patch).length === 0) {
-    return new Response('Nothing to update', { status: 400 });
+    return Response.json({ error: 'Nothing to update', reason: 'empty_patch' }, { status: 400 });
   }
 
   const after = await prisma.restaurant.update({

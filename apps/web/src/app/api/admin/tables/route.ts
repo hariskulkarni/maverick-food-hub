@@ -7,7 +7,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { primaryBranchForCurrentRestaurant, serializeTable } from './_helpers';
 
 export const dynamic = 'force-dynamic';
@@ -20,8 +20,8 @@ const CreateBody = z.object({
 });
 
 export async function GET() {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const { branch } = await primaryBranchForCurrentRestaurant();
 
   const tables = await prisma.restaurantTable.findMany({
@@ -32,8 +32,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const { branch } = await primaryBranchForCurrentRestaurant();
 
   const data = CreateBody.parse(await req.json());

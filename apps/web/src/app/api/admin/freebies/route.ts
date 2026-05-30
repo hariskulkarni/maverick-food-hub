@@ -8,7 +8,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { primaryBranchForCurrentRestaurant, menuItemInBranch, serializeFreebieRule } from './_helpers';
 
 export const dynamic = 'force-dynamic';
@@ -23,8 +23,8 @@ const CreateBody = z.object({
 });
 
 export async function GET() {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const { branch } = await primaryBranchForCurrentRestaurant();
 
   const rules = await prisma.freebieRule.findMany({
@@ -36,14 +36,14 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const { branch } = await primaryBranchForCurrentRestaurant();
 
   const data = CreateBody.parse(await req.json());
 
   if (!(await menuItemInBranch(data.menuItemId, branch.id))) {
-    return new Response('Gift item does not belong to this branch', { status: 400 });
+    return Response.json({ error: 'Gift item does not belong to this branch', reason: 'item_not_in_branch' }, { status: 400 });
   }
 
   const created = await prisma.freebieRule.create({

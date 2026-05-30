@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { money, fmtDate } from '@/lib/utils';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import { RuleEditor } from './rule-editor';
 
 export type HappyHourScope = 'RESTAURANT' | 'CATEGORY' | 'MENU_ITEM' | 'COMBO';
@@ -275,7 +276,7 @@ function RuleCard({
     try {
       const r = await fetch(`/api/admin/happy-hours/${rule.id}`, { method: 'DELETE' });
       if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
+        await reportApiError(r, 'Could not deactivate rule');
         return;
       }
       toast.success('Rule deactivated');

@@ -12,7 +12,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { restoreFreebieStock } from '@/server/freebies';
 import { primaryBranchForCurrentRestaurant, menuItemInBranch } from '../../../freebies/_helpers';
 
@@ -33,21 +33,21 @@ async function loadEditableOrder(id: string, branchId: string) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const { branch } = await primaryBranchForCurrentRestaurant();
   const { id } = await params;
 
   const order = await loadEditableOrder(id, branch.id);
-  if (!order) return new Response('Not found', { status: 404 });
+  if (!order) return Response.json({ error: 'Order not found', reason: 'not_found' }, { status: 404 });
   if (!EDITABLE_STATUSES.includes(order.status as any)) {
-    return new Response('Freebie can only be changed before prep (RECEIVED/ACCEPTED)', { status: 409 });
+    return Response.json({ error: 'Freebie can only be changed before prep (RECEIVED/ACCEPTED)', reason: 'status_locked' }, { status: 409 });
   }
 
   const freebieLine = order.items.find((i) => i.isFreebie);
   const ruleId = order.freebieRuleId;
   if (!freebieLine && !ruleId) {
-    return new Response('This order has no freebie', { status: 404 });
+    return Response.json({ error: 'This order has no freebie', reason: 'no_freebie' }, { status: 404 });
   }
 
   await prisma.$transaction(async (tx) => {
@@ -63,24 +63,24 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const { branch } = await primaryBranchForCurrentRestaurant();
   const { id } = await params;
 
   const data = SwapBody.parse(await req.json());
 
   const order = await loadEditableOrder(id, branch.id);
-  if (!order) return new Response('Not found', { status: 404 });
+  if (!order) return Response.json({ error: 'Order not found', reason: 'not_found' }, { status: 404 });
   if (!EDITABLE_STATUSES.includes(order.status as any)) {
-    return new Response('Freebie can only be changed before prep (RECEIVED/ACCEPTED)', { status: 409 });
+    return Response.json({ error: 'Freebie can only be changed before prep (RECEIVED/ACCEPTED)', reason: 'status_locked' }, { status: 409 });
   }
 
   const freebieLine = order.items.find((i) => i.isFreebie);
-  if (!freebieLine) return new Response('This order has no freebie to swap', { status: 404 });
+  if (!freebieLine) return Response.json({ error: 'This order has no freebie to swap', reason: 'no_freebie' }, { status: 404 });
 
   if (!(await menuItemInBranch(data.menuItemId, branch.id))) {
-    return new Response('Gift item does not belong to this branch', { status: 400 });
+    return Response.json({ error: 'Gift item does not belong to this branch', reason: 'item_not_in_branch' }, { status: 400 });
   }
 
   const newItem = await prisma.menuItem.findUnique({

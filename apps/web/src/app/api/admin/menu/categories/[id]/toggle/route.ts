@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       branch: { select: { id: true, name: true } }
     }
   });
-  if (!cat) return new Response('Not found', { status: 404 });
+  if (!cat) return Response.json({ error: 'Category not found.', reason: 'not_found' }, { status: 404 });
 
   let itemCount = 0;
   await prisma.$transaction(async (tx) => {

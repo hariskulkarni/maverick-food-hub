@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Check, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 
 export function ApplicationActions({ id, branches }: { id: string; branches: { id: string; name: string }[] }) {
   const router = useRouter();
@@ -23,7 +24,7 @@ export function ApplicationActions({ id, branches }: { id: string; branches: { i
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branchId })
         });
         setBusy(false);
-        if (!r.ok) return toast.error('Failed: ' + (await r.text()));
+        if (!r.ok) { await reportApiError(r, 'Could not approve rider'); return; }
         toast.success('Rider approved');
         router.refresh();
       }}>

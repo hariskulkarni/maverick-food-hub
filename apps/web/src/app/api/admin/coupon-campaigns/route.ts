@@ -16,7 +16,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 
@@ -71,8 +71,8 @@ function channelScopes(c: 'DINE_IN_TO_ONLINE' | 'ONLINE_TO_DINE_IN'): {
 }
 
 export async function GET(_req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const r = await requireRestaurant();
 
   const campaigns = await (prisma as any).couponCampaign.findMany({
@@ -89,8 +89,9 @@ export async function GET(_req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const r = await requireRestaurant();
 
   const raw = await req.json().catch(() => ({}));
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest) {
   const data = parsed.data;
 
   if (data.discountType === 'PERCENTAGE' && data.discountValue > 100) {
-    return new Response('Percentage discount cannot exceed 100', { status: 400 });
+    return Response.json({ error: 'Percentage discount cannot exceed 100', reason: 'percent_too_high' }, { status: 400 });
   }
 
   const scopes = channelScopes(data.channel);
@@ -187,7 +188,7 @@ export async function POST(req: NextRequest) {
     if (e?.code === 'P2002') {
       // Could be the campaign.codePrefix unique OR the Offer.code unique. Either
       // way it's a "code already in use" 409.
-      return new Response('A campaign or offer with that code already exists. Pick a different prefix.', { status: 409 });
+      return Response.json({ error: 'A campaign or offer with that code already exists. Pick a different prefix.', reason: 'duplicate_code' }, { status: 409 });
     }
     throw e;
   }

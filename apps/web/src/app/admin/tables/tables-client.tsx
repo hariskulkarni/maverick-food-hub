@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import { Plus, Pencil, Power, Armchair } from 'lucide-react';
 
 interface TableRow {
@@ -38,7 +39,7 @@ export function TablesClient({
       headers: { 'Content-Type': 'application/json' },
       body: t.isActive ? undefined : JSON.stringify({ isActive: true })
     });
-    if (!r.ok) return toast.error('Update failed: ' + (await r.text()));
+    if (!r.ok) { await reportApiError(r, 'Update failed'); return; }
     toast.success(t.isActive ? 'Table deactivated' : 'Table reactivated');
     router.refresh();
   }
@@ -121,7 +122,7 @@ function TableDialog({ editing, onDone }: { editing: TableRow | null; onDone: ()
       const r = editing
         ? await fetch(`/api/admin/tables/${editing.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body })
         : await fetch('/api/admin/tables', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
-      if (!r.ok) return toast.error('Save failed: ' + (await r.text()));
+      if (!r.ok) { await reportApiError(r, 'Save failed'); return; }
       toast.success(editing ? 'Table updated' : 'Table added');
       onDone();
     } finally {

@@ -8,6 +8,7 @@ import { useSSE } from '@/hooks/use-sse';
 import { money, fmtDate } from '@/lib/utils';
 import { Printer, X, Check, Bike, RefreshCw, Wifi, WifiOff, Gift } from 'lucide-react';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { SoundToggle } from '@/components/sound-toggle';
 // AssignRiderDialog removed — riders self-claim from the platform pool now.
@@ -265,7 +266,7 @@ export function OrdersBoard({
     setBusy((b) => ({ ...b, [id]: true }));
     try {
       const r = await fetch(`/api/admin/orders/${id}/transition`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: next, note: opts.note }) });
-      if (!r.ok) toast.error('Failed: ' + (await r.text()));
+      if (!r.ok) await reportApiError(r, 'Could not change order status');
     } finally {
       setBusy((b) => ({ ...b, [id]: false }));
     }
@@ -280,10 +281,7 @@ export function OrdersBoard({
     setBusy((b) => ({ ...b, [id]: true }));
     try {
       const r = await fetch(`/api/admin/orders/${id}/freebie`, { method: 'DELETE' });
-      if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
-        return;
-      }
+      if (!r.ok) { await reportApiError(r, 'Could not remove gift'); return; }
       setOrders((prev) => prev.map((o) =>
         o.id === id
           ? { ...o, freebieRuleId: null, items: (o.items ?? []).filter((i: any) => !i.isFreebie) }

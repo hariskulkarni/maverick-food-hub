@@ -13,6 +13,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { money } from '@/lib/utils';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import { Plus, Pencil, Power, Gift, PackagePlus, Trash2 } from 'lucide-react';
 
 interface MenuItemLite { id: string; name: string; isAvailable: boolean }
@@ -39,34 +40,60 @@ export function FreebiesClient({
   function openNew() { setEditing(null); setOpen(true); }
   function openEdit(r: FreebieRow) { setEditing(r); setOpen(true); }
 
-  async function toggleActive(r: FreebieRow) {
-    const res = await fetch(`/api/admin/freebies/${r.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isActive: !r.isActive })
+  // Per-row in-flight set so the Pause/Restock/Delete buttons on a single
+  // freebie disable while their PATCH is on the wire — without freezing all
+  // OTHER rows. A naive global `busy` flag would make rapid-fire admin work
+  // feel sluggish; per-id is the minimum that actually stops double-submits.
+  const [pending, setPending] = useState<Set<string>>(new Set());
+  const isPending = (id: string) => pending.has(id);
+  function markPending(id: string, on: boolean) {
+    setPending((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id); else next.delete(id);
+      return next;
     });
-    if (!res.ok) return toast.error('Update failed: ' + (await res.text()));
-    toast.success(r.isActive ? 'Freebie paused' : 'Freebie activated');
-    router.refresh();
+  }
+
+  async function toggleActive(r: FreebieRow) {
+    if (isPending(r.id)) return;
+    markPending(r.id, true);
+    try {
+      const res = await fetch(`/api/admin/freebies/${r.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !r.isActive })
+      });
+      if (!res.ok) { await reportApiError(res, 'Update failed'); return; }
+      toast.success(r.isActive ? 'Freebie paused' : 'Freebie activated');
+      router.refresh();
+    } finally { markPending(r.id, false); }
   }
 
   async function restock(r: FreebieRow, by: number) {
-    const res = await fetch(`/api/admin/freebies/${r.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stock: r.stock + by })
-    });
-    if (!res.ok) return toast.error('Restock failed: ' + (await res.text()));
-    toast.success(`Restocked +${by}`);
-    router.refresh();
+    if (isPending(r.id)) return;
+    markPending(r.id, true);
+    try {
+      const res = await fetch(`/api/admin/freebies/${r.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stock: r.stock + by })
+      });
+      if (!res.ok) { await reportApiError(res, 'Restock failed'); return; }
+      toast.success(`Restocked +${by}`);
+      router.refresh();
+    } finally { markPending(r.id, false); }
   }
 
   async function remove(r: FreebieRow) {
+    if (isPending(r.id)) return;
     if (!confirm(`Delete freebie rule "${r.name}"?`)) return;
-    const res = await fetch(`/api/admin/freebies/${r.id}`, { method: 'DELETE' });
-    if (!res.ok) return toast.error('Delete failed: ' + (await res.text()));
-    toast.success('Freebie deleted');
-    router.refresh();
+    markPending(r.id, true);
+    try {
+      const res = await fetch(`/api/admin/freebies/${r.id}`, { method: 'DELETE' });
+      if (!res.ok) { await reportApiError(res, 'Delete failed'); return; }
+      toast.success('Freebie deleted');
+      router.refresh();
+    } finally { markPending(r.id, false); }
   }
 
   return (
@@ -126,16 +153,16 @@ export function FreebiesClient({
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button variant="outline" size="sm" onClick={() => restock(r, 10)} title="Restock +10">
+                  <Button variant="outline" size="sm" disabled={isPending(r.id)} onClick={() => restock(r, 10)} title="Restock +10">
                     <PackagePlus className="size-4" /> +10
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => openEdit(r)} title="Edit">
+                  <Button variant="ghost" size="sm" disabled={isPending(r.id)} onClick={() => openEdit(r)} title="Edit">
                     <Pencil className="size-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => toggleActive(r)} title={r.isActive ? 'Pause' : 'Activate'}>
+                  <Button variant="ghost" size="sm" disabled={isPending(r.id)} onClick={() => toggleActive(r)} title={r.isActive ? 'Pause' : 'Activate'}>
                     <Power className={`size-4 ${r.isActive ? 'text-destructive' : 'text-success'}`} />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => remove(r)} title="Delete">
+                  <Button variant="ghost" size="sm" disabled={isPending(r.id)} onClick={() => remove(r)} title="Delete">
                     <Trash2 className="size-4 text-destructive" />
                   </Button>
                 </div>
@@ -164,7 +191,7 @@ function FreebieDialog({ editing, menuItems, onDone }: { editing: FreebieRow | n
       const res = editing
         ? await fetch(`/api/admin/freebies/${editing.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body })
         : await fetch('/api/admin/freebies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
-      if (!res.ok) return toast.error('Save failed: ' + (await res.text()));
+      if (!res.ok) { await reportApiError(res, 'Save failed'); return; }
       toast.success(editing ? 'Freebie updated' : 'Freebie added');
       onDone();
     } finally {

@@ -20,7 +20,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { lifecycleBucket, priceForItem, type HappyHourRuleLite } from '@/server/happy-hours';
@@ -65,13 +65,13 @@ async function fetchOwned(id: string, restaurantId: string) {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const restaurant = await requireRestaurant();
   const { id } = await params;
 
   const rule = await fetchOwned(id, restaurant.id);
-  if (!rule) return new Response('Not found', { status: 404 });
+  if (!rule) return Response.json({ error: 'Happy hour rule not found', reason: 'not_found' }, { status: 404 });
 
   const now = new Date();
   const lite = toLite(rule);
@@ -95,13 +95,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const restaurant = await requireRestaurant();
   const { id } = await params;
 
   const before = await fetchOwned(id, restaurant.id);
-  if (!before) return new Response('Not found', { status: 404 });
+  if (!before) return Response.json({ error: 'Happy hour rule not found', reason: 'not_found' }, { status: 404 });
 
   const data = Patch.parse(await req.json());
 
@@ -116,21 +117,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id: nextCategoryId, branch: { restaurantId: restaurant.id } },
       select: { id: true }
     });
-    if (!owned) return new Response('Category not in this restaurant', { status: 403 });
+    if (!owned) return Response.json({ error: 'Category not in this restaurant', reason: 'category_not_owned' }, { status: 403 });
   }
   if (nextScope === 'MENU_ITEM' && nextMenuItemId && nextMenuItemId !== before.menuItemId) {
     const owned = await prisma.menuItem.findFirst({
       where: { id: nextMenuItemId, branch: { restaurantId: restaurant.id } },
       select: { id: true }
     });
-    if (!owned) return new Response('Menu item not in this restaurant', { status: 403 });
+    if (!owned) return Response.json({ error: 'Menu item not in this restaurant', reason: 'item_not_owned' }, { status: 403 });
   }
   if (nextScope === 'COMBO' && nextComboId && nextComboId !== before.comboId) {
     const owned = await prisma.combo.findFirst({
       where: { id: nextComboId, branch: { restaurantId: restaurant.id } },
       select: { id: true }
     });
-    if (!owned) return new Response('Combo not in this restaurant', { status: 403 });
+    if (!owned) return Response.json({ error: 'Combo not in this restaurant', reason: 'combo_not_owned' }, { status: 403 });
   }
 
   const patch: any = {};
@@ -220,13 +221,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const restaurant = await requireRestaurant();
   const { id } = await params;
 
   const before = await fetchOwned(id, restaurant.id);
-  if (!before) return new Response('Not found', { status: 404 });
+  if (!before) return Response.json({ error: 'Happy hour rule not found', reason: 'not_found' }, { status: 404 });
 
   const updated = await (prisma as any).happyHourRule.update({
     where: { id },

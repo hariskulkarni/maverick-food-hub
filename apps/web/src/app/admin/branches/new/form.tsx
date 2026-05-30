@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 
 export function NewBranchForm() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export function NewBranchForm() {
             setBusy(true);
             const r = await fetch('/api/admin/branches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
             setBusy(false);
-            if (!r.ok) return toast.error('Failed: ' + (await r.text()));
+            if (!r.ok) { await reportApiError(r, 'Could not create branch'); return; }
             toast.success('Branch created');
             router.push('/admin/branches');
             router.refresh();

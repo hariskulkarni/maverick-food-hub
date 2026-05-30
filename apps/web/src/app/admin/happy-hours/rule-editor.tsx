@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { money } from '@/lib/utils';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 import {
   type Rule, type Category, type MenuItem, type Combo, type HappyHourScope,
   type HappyHourDiscountType, type ScheduleRow
@@ -221,7 +222,7 @@ export function RuleEditor({
         body: JSON.stringify(body)
       });
       if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
+        await reportApiError(r, isNew ? 'Could not create rule' : 'Could not save rule');
         return;
       }
       toast.success(isNew ? 'Happy hour rule created' : 'Rule saved');
@@ -239,7 +240,7 @@ export function RuleEditor({
     try {
       const r = await fetch(`/api/admin/happy-hours/${rule.id}`, { method: 'DELETE' });
       if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
+        await reportApiError(r, 'Could not deactivate rule');
         return;
       }
       toast.success('Rule deactivated');

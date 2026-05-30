@@ -11,7 +11,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 
@@ -72,8 +72,8 @@ const Body = z.object({
 });
 
 export async function GET(_req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const r = await requireRestaurant();
 
   const offers = await prisma.offer.findMany({
@@ -91,8 +91,9 @@ export async function GET(_req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const r = await requireRestaurant();
 
   const data = Body.parse(await req.json());
@@ -101,7 +102,7 @@ export async function POST(req: NextRequest) {
 
   const restaurantId = data.restaurantId ?? r.id;
   if (restaurantId !== r.id) {
-    return new Response('Cannot create offer for a different restaurant', { status: 403 });
+    return Response.json({ error: 'Cannot create offer for a different restaurant', reason: 'cross_tenant' }, { status: 403 });
   }
 
   // Validate branch (if supplied) belongs to this restaurant
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest) {
       where: { id: data.branchId, restaurantId: r.id },
       select: { id: true }
     });
-    if (!owned) return new Response('Branch not in this restaurant', { status: 403 });
+    if (!owned) return Response.json({ error: 'Branch not in this restaurant', reason: 'branch_not_owned' }, { status: 403 });
   }
 
   // Validate categories/items belong to this restaurant's branches
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest) {
       select: { id: true }
     });
     if (cats.length !== data.categoryIds.length) {
-      return new Response('One or more categories do not belong to this restaurant', { status: 400 });
+      return Response.json({ error: 'One or more categories do not belong to this restaurant', reason: 'category_not_owned' }, { status: 400 });
     }
   }
   if (menuItemIds.length > 0) {
@@ -129,7 +130,7 @@ export async function POST(req: NextRequest) {
       select: { id: true }
     });
     if (items.length !== menuItemIds.length) {
-      return new Response('One or more menu items do not belong to this restaurant', { status: 400 });
+      return Response.json({ error: 'One or more menu items do not belong to this restaurant', reason: 'item_not_owned' }, { status: 400 });
     }
   }
 
@@ -203,7 +204,7 @@ export async function POST(req: NextRequest) {
     return Response.json(created);
   } catch (e: any) {
     if (e?.code === 'P2002') {
-      return new Response('Code already in use', { status: 409 });
+      return Response.json({ error: 'Code already in use', reason: 'duplicate_code' }, { status: 409 });
     }
     throw e;
   }

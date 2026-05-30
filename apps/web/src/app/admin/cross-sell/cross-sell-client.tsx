@@ -23,6 +23,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Plus, Layers, Trash2, X, Search } from 'lucide-react';
 import { money } from '@/lib/utils';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 
 type CrossSell = {
   id: string;
@@ -268,7 +269,7 @@ function Composer({
         })
       });
       if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
+        await reportApiError(r, 'Could not add cross-sell');
         return;
       }
       toast.success('Cross-sell added');
@@ -406,7 +407,7 @@ function CrossSellRow({ row, suggested }: { row: CrossSell; suggested: MenuItem 
     try {
       const r = await fetch(`/api/admin/cross-sell/${row.id}`, { method: 'DELETE' });
       if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
+        await reportApiError(r, 'Could not remove cross-sell');
         return;
       }
       toast.success('Removed');

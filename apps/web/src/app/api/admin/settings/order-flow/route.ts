@@ -12,6 +12,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
+import { unauthenticated, forbidden } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 
@@ -29,9 +30,18 @@ const Body = z.object({
 });
 
 export async function PATCH(req: NextRequest) {
+  // Custom gate: this route is one of the few admin surfaces a SUPER_ADMIN
+  // can also write to (the platform team needs to flip flags during onboarding),
+  // so the standard requireRestaurantAdminApi (ADMIN-only) is too tight and
+  // requireAnyAdminApi (which also lets KITCHEN through) is too loose. Build
+  // the gate inline using the shared 401/403 helpers so the JSON shape is
+  // still uniform with everything else.
   const session = await auth();
-  const role = session?.user?.role;
-  if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') return new Response('Forbidden', { status: 403 });
+  if (!session?.user) return unauthenticated();
+  const role = session.user.role;
+  if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
+    return forbidden('Only a restaurant admin or platform super-admin can change order-flow settings.');
+  }
   const restaurant = await requireRestaurant();
 
   const data = Body.parse(await req.json());

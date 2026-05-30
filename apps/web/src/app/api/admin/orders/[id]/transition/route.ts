@@ -1,21 +1,27 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { auth } from '@/server/auth';
 import { transitionOrder, OrderTransitionError } from '@/server/orders';
+import { requireAnyAdminApi } from '@/server/api-auth';
 import { OrderStatus } from '@prisma/client';
 
 const Body = z.object({ status: z.nativeEnum(OrderStatus), note: z.string().optional() });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  if (!['ADMIN', 'KITCHEN'].includes(session?.user.role || '')) return new Response('Forbidden', { status: 403 });
+  const gate = await requireAnyAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const body = Body.parse(await req.json());
   try {
     const o = await transitionOrder(id, body.status, { actorId: session?.user.id, note: body.note });
     return Response.json(o);
   } catch (e) {
-    if (e instanceof OrderTransitionError) return new Response(e.message, { status: 400 });
+    if (e instanceof OrderTransitionError) {
+      return Response.json(
+        { error: e.message, reason: 'illegal_transition' },
+        { status: 400 }
+      );
+    }
     throw e;
   }
 }

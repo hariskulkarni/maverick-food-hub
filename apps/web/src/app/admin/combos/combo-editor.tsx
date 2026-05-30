@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { ImageUploader } from '@/components/image-uploader';
 import { AlertTriangle, X, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 
 export type MenuItemRef = {
   id: string;
@@ -138,7 +139,7 @@ export function ComboEditor({
         body: JSON.stringify(body)
       });
       if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
+        await reportApiError(r, isNew ? 'Could not create combo' : 'Could not update combo');
         return;
       }
       toast.success(isNew ? 'Combo created' : 'Combo updated');
@@ -155,7 +156,7 @@ export function ComboEditor({
     try {
       const r = await fetch(`/api/admin/combos/${form.id}`, { method: 'DELETE' });
       if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
+        await reportApiError(r, 'Could not delete combo');
         return;
       }
       toast.success('Combo deleted');

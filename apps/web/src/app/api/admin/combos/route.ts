@@ -12,7 +12,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 
@@ -40,8 +40,8 @@ function slugify(s: string) {
 }
 
 export async function GET(_req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const r = await requireRestaurant();
 
   const combos = await prisma.combo.findMany({
@@ -56,8 +56,9 @@ export async function GET(_req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const r = await requireRestaurant();
 
   const data = Body.parse(await req.json());
@@ -68,20 +69,20 @@ export async function POST(req: NextRequest) {
     select: { id: true }
   });
   if (!branch) {
-    return new Response('Branch does not belong to this restaurant', { status: 400 });
+    return Response.json({ error: 'Branch does not belong to this restaurant', reason: 'branch_not_owned' }, { status: 400 });
   }
 
   // All items must live under the same branch as the combo.
   const itemIds = data.items.map((i) => i.menuItemId);
   if (new Set(itemIds).size !== itemIds.length) {
-    return new Response('Duplicate menu item in combo — adjust quantity instead', { status: 400 });
+    return Response.json({ error: 'Duplicate menu item in combo — adjust quantity instead', reason: 'duplicate_item' }, { status: 400 });
   }
   const found = await prisma.menuItem.findMany({
     where: { id: { in: itemIds }, branchId: data.branchId },
     select: { id: true }
   });
   if (found.length !== itemIds.length) {
-    return new Response('One or more menu items are missing or live under a different branch', { status: 400 });
+    return Response.json({ error: 'One or more menu items are missing or live under a different branch', reason: 'item_not_in_branch' }, { status: 400 });
   }
 
   const slug = (data.slug?.trim() || slugify(data.name));
@@ -118,7 +119,7 @@ export async function POST(req: NextRequest) {
     return Response.json(created);
   } catch (e: any) {
     if (e?.code === 'P2002') {
-      return new Response('A combo with this slug already exists in this branch', { status: 409 });
+      return Response.json({ error: 'A combo with this slug already exists in this branch', reason: 'duplicate_slug' }, { status: 409 });
     }
     throw e;
   }

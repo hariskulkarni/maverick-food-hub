@@ -485,7 +485,7 @@ function CategoryRow({ category }: { category: any }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: next, cascadeItems })
       });
-      if (!r.ok) return toast.error('Failed: ' + (await r.text()));
+      if (!r.ok) { await reportApiError(r, 'Could not toggle category'); return; }
       const { itemCount } = await r.json();
       setActive(next);
       toast.success(cascadeItems ? `${next ? 'Enabled' : 'Disabled'} category + ${itemCount} items` : `${next ? 'Enabled' : 'Disabled'} ${category.name}`);

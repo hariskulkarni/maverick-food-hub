@@ -1,11 +1,11 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireAnyAdminApi } from '@/server/api-auth';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  if (!['ADMIN', 'KITCHEN'].includes(session?.user.role || '')) return new Response('Forbidden', { status: 403 });
+  const gate = await requireAnyAdminApi();
+  if (gate instanceof Response) return gate;
   const o = await prisma.order.findUniqueOrThrow({ where: { id }, include: { items: true, branch: true } });
   // Plain HTML KOT, auto-print on load
   const rows = o.items.map((i) => `<tr><td>${i.quantity}</td><td>${escape(i.name)}${i.notes ? `<div style="font-size:12px;color:#555">${escape(i.notes)}</div>` : ''}</td></tr>`).join('');

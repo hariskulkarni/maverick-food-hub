@@ -26,6 +26,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Plus, Sparkles, Trash2, Tag, Percent, IndianRupee } from 'lucide-react';
 import { money, fmtDate } from '@/lib/utils';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/api-error';
 
 type Coupon = {
   id: string;
@@ -79,7 +80,7 @@ export function CouponsClient({ coupons, branches }: { coupons: Coupon[]; branch
         })
       });
       if (!r.ok) {
-        toast.error('Failed: ' + (await r.text()));
+        await reportApiError(r, 'Could not create WELCOME50');
         return;
       }
       toast.success('WELCOME50 created');
@@ -259,7 +260,7 @@ function CouponDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
-      if (!r.ok) { toast.error('Failed: ' + (await r.text())); return; }
+      if (!r.ok) { await reportApiError(r, isNew ? 'Could not create coupon' : 'Could not save coupon'); return; }
       toast.success(isNew ? 'Coupon created' : 'Coupon saved');
       onClose();
       router.refresh();
@@ -272,7 +273,7 @@ function CouponDialog({
     setBusy(true);
     try {
       const r = await fetch(`/api/admin/coupons/${coupon.id}`, { method: 'DELETE' });
-      if (!r.ok) { toast.error('Failed: ' + (await r.text())); return; }
+      if (!r.ok) { await reportApiError(r, 'Could not deactivate coupon'); return; }
       toast.success('Coupon deactivated');
       onClose();
       router.refresh();

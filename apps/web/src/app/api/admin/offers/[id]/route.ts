@@ -12,7 +12,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 
@@ -77,24 +77,25 @@ async function fetchOwned(offerId: string, restaurantId: string) {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
   const r = await requireRestaurant();
   const { id } = await params;
 
   const offer = await fetchOwned(id, r.id);
-  if (!offer) return new Response('Offer not found', { status: 404 });
+  if (!offer) return Response.json({ error: 'Offer not found', reason: 'not_found' }, { status: 404 });
   return Response.json(offer);
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const r = await requireRestaurant();
   const { id } = await params;
 
   const before = await fetchOwned(id, r.id);
-  if (!before) return new Response('Offer not found', { status: 404 });
+  if (!before) return Response.json({ error: 'Offer not found', reason: 'not_found' }, { status: 404 });
 
   const data = Patch.parse(await req.json());
   // Editor sends `itemIds`; accept both as the per-item scope list.
@@ -106,7 +107,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id: data.branchId, restaurantId: r.id },
       select: { id: true }
     });
-    if (!owned) return new Response('Branch not in this restaurant', { status: 403 });
+    if (!owned) return Response.json({ error: 'Branch not in this restaurant', reason: 'branch_not_owned' }, { status: 403 });
   }
   if (data.categoryIds && data.categoryIds.length > 0) {
     const cats = await prisma.category.findMany({
@@ -114,7 +115,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       select: { id: true }
     });
     if (cats.length !== data.categoryIds.length) {
-      return new Response('One or more categories do not belong to this restaurant', { status: 400 });
+      return Response.json({ error: 'One or more categories do not belong to this restaurant', reason: 'category_not_owned' }, { status: 400 });
     }
   }
   if (itemIdsProvided && itemIdsProvided.length > 0) {
@@ -123,7 +124,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       select: { id: true }
     });
     if (items.length !== itemIdsProvided.length) {
-      return new Response('One or more menu items do not belong to this restaurant', { status: 400 });
+      return Response.json({ error: 'One or more menu items do not belong to this restaurant', reason: 'item_not_owned' }, { status: 400 });
     }
   }
 
@@ -204,20 +205,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return Response.json(updated);
   } catch (e: any) {
     if (e?.code === 'P2002') {
-      return new Response('Code already in use', { status: 409 });
+      return Response.json({ error: 'Code already in use', reason: 'duplicate_code' }, { status: 409 });
     }
     throw e;
   }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const r = await requireRestaurant();
   const { id } = await params;
 
   const before = await fetchOwned(id, r.id);
-  if (!before) return new Response('Offer not found', { status: 404 });
+  if (!before) return Response.json({ error: 'Offer not found', reason: 'not_found' }, { status: 404 });
 
   const updated = await prisma.offer.update({
     where: { id },

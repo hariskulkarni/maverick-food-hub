@@ -8,9 +8,13 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { auth } from '@/server/auth';
+import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
+
+function notFound(label: string) {
+  return Response.json({ error: `${label} not found.`, reason: 'not_found' }, { status: 404 });
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -33,23 +37,25 @@ async function fetchOwned(id: string, restaurantId: string) {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const r = await requireRestaurant();
   const { id } = await params;
   const row = await fetchOwned(id, r.id);
-  if (!row) return new Response('Not found', { status: 404 });
+  if (!row) return notFound('Cross-sell row');
   return Response.json(row);
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const r = await requireRestaurant();
   const { id } = await params;
 
   const before = await fetchOwned(id, r.id);
-  if (!before) return new Response('Not found', { status: 404 });
+  if (!before) return notFound('Cross-sell row');
 
   const data = Patch.parse(await req.json());
   const patch: any = {};
@@ -77,13 +83,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (session?.user?.role !== 'ADMIN') return new Response('Forbidden', { status: 403 });
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const r = await requireRestaurant();
   const { id } = await params;
 
   const before = await fetchOwned(id, r.id);
-  if (!before) return new Response('Not found', { status: 404 });
+  if (!before) return notFound('Cross-sell row');
 
   await prisma.crossSell.delete({ where: { id } });
 
