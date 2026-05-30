@@ -196,22 +196,18 @@ function BulkActionBar({
   }
 
   /**
-   * Hard-delete the selected items. The server pre-flights foreign-key
-   * references (freebie rules + order history) and either:
-   *   - returns 200 with `deleted, blocked` when SOME items are FK-locked;
-   *     we toast success and offer the "Hide blocked instead" follow-up,
-   *   - returns 409 reason=fk_in_use when EVERY item is locked; we offer
-   *     to hide them all instead,
-   *   - or returns a normal 200 with the count when nothing is locked.
-   * That single payload shape replaces the old "loop single-DELETE and
-   * pray" pattern that left the UI desynced when a partial failure hit.
+   * Hard-delete the selected items with full cascade. The server severs
+   * OrderItem references (snapshotted invoice data stays intact), drops
+   * ComboItem rows, drops FreebieRule rows, then deletes the MenuItems —
+   * all in one transaction. The response includes counts of what was
+   * cascaded so the toast can be honest about the side effects.
    */
   async function bulkDelete() {
     if (count === 0) return;
     const yes = confirm(
-      `Delete ${count} selected item${count === 1 ? '' : 's'}? This can't be undone. ` +
-      `Items with order history or freebie rules will be skipped — you'll be offered ` +
-      `to hide those instead.`
+      `Delete ${count} selected item${count === 1 ? '' : 's'}? This can't be undone.\n\n` +
+      `Past orders that contain these items will be preserved (invoices snapshot the name and price). ` +
+      `Combo memberships and freebie rules that reference them will be removed.`
     );
     if (!yes) return;
     setBusy(true);
@@ -221,34 +217,22 @@ function BulkActionBar({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: Array.from(selected) }),
       });
-      // Read the body whether the request succeeded or failed — the server
-      // packs the same `reason` + `blockedIds` shape into both.
       const body = await r.json().catch(() => ({} as any));
       if (!r.ok) {
-        if (r.status === 409 && body.reason === 'fk_in_use' && Array.isArray(body.blockedIds)) {
-          // EVERY item was blocked — offer the hide-instead path.
-          const ok = confirm(
-            `${body.blockedIds.length} item${body.blockedIds.length === 1 ? ' is' : 's are'} referenced by past orders or freebie rules and can't be deleted. ` +
-            `Hide them from the storefront instead?`
-          );
-          if (ok) await hideIds(body.blockedIds, 'replace-with-hidden');
-          return;
-        }
         await reportApiError(r, 'Bulk delete failed');
         return;
       }
-
-      if (body.blocked > 0) {
-        // Partial success — some deleted, some blocked.
-        toast.success(`${body.deleted} item${body.deleted === 1 ? '' : 's'} deleted`);
-        const ok = confirm(
-          `${body.blocked} item${body.blocked === 1 ? '' : 's'} could not be deleted because they have order history or freebie rules. ` +
-          `Hide them from the storefront instead?`
-        );
-        if (ok) await hideIds(body.blockedIds, 'hide-only-blocked');
-      } else {
-        toast.success(`Deleted ${body.deleted} item${body.deleted === 1 ? '' : 's'}`);
-      }
+      // Build a clear success toast that mentions the cascade side effects
+      // ONLY if they happened — quiet by default for the simple case.
+      const sideEffects: string[] = [];
+      const c = body.cascaded ?? {};
+      if (c.orderItems > 0) sideEffects.push(`${c.orderItems} past order${c.orderItems === 1 ? '' : 's'} kept intact`);
+      if (c.combos > 0) sideEffects.push(`${c.combos} combo membership${c.combos === 1 ? '' : 's'} removed`);
+      if (c.freebieRules > 0) sideEffects.push(`${c.freebieRules} freebie rule${c.freebieRules === 1 ? '' : 's'} removed`);
+      toast.success(
+        `Deleted ${body.deleted} item${body.deleted === 1 ? '' : 's'}`,
+        sideEffects.length > 0 ? { description: sideEffects.join(' · ') } : undefined,
+      );
       onApplied();
       router.refresh();
     } catch (e) {
@@ -256,21 +240,6 @@ function BulkActionBar({
     } finally {
       setBusy(false);
     }
-  }
-
-  /** Helper used by the FK-blocked fallback above. Hides the given ids and
-   *  refreshes the list — re-uses the bulk-toggle endpoint we already trust. */
-  async function hideIds(ids: string[], _label: string) {
-    const r = await fetch('/api/admin/menu/items/bulk', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids, patch: { isAvailable: false } }),
-    });
-    if (!r.ok) { await reportApiError(r, 'Could not hide blocked items'); return; }
-    const { count: n } = await r.json();
-    toast.success(`${n} item${n === 1 ? '' : 's'} hidden from the storefront`);
-    onApplied();
-    router.refresh();
   }
 
   return (
@@ -337,34 +306,48 @@ function DeleteItem({ id, name }: { id: string; name?: string }) {
   const [busy, setBusy] = useState(false);
 
   /**
-   * Click handler with the same FK-aware fallback the bulk-delete uses:
-   *   • 200 → toast + refresh
-   *   • 409 reason=fk_in_use → offer "Hide instead" via the bulk-toggle
-   *   • anything else → reportApiError shows the structured message
+   * Delete handler. The server performs a cascade-clean delete:
+   *   • Past orders (OrderItem) keep their snapshotted name/price/modifiers,
+   *     we just sever the FK.
+   *   • Combo memberships referencing this item are removed.
+   *   • Freebie rules gifting this item are removed.
+   *   • The MenuItem itself is deleted.
+   * All in one transaction, so a half-state can't happen.
+   *
+   * Only the future-FK safety net at the server (P2003) can return a 409;
+   * we still handle the "Hide instead" fallback for that edge case.
    */
   async function onDelete(e: React.MouseEvent) {
-    // The row-level "click to toggle selection" handler listens on the
-    // whole card. We MUST stop propagation so a trash click doesn't
-    // accidentally toggle the row's checkbox at the same time.
     e.stopPropagation();
     if (busy) return;
     const label = name ? `"${name}"` : 'this item';
-    if (!confirm(`Delete ${label}? This can't be undone.`)) return;
+    if (!confirm(
+      `Delete ${label}? This can't be undone.\n\n` +
+      `Past orders keep their item details (invoices snapshot the name and price). ` +
+      `Combo memberships and freebie rules that reference this item will also be removed.`
+    )) return;
 
     setBusy(true);
     try {
       const r = await fetch(`/api/admin/menu/items/${id}`, { method: 'DELETE' });
       const body = await r.json().catch(() => ({} as any));
       if (r.ok) {
-        toast.success(`Deleted ${body.name ?? label}`);
+        const c = body.cascaded ?? {};
+        const sideEffects: string[] = [];
+        if (c.orderItems > 0) sideEffects.push(`${c.orderItems} past order${c.orderItems === 1 ? '' : 's'} kept intact`);
+        if (c.combos > 0) sideEffects.push(`${c.combos} combo membership${c.combos === 1 ? '' : 's'} removed`);
+        if (c.freebieRules > 0) sideEffects.push(`${c.freebieRules} freebie rule${c.freebieRules === 1 ? '' : 's'} removed`);
+        toast.success(
+          `Deleted ${body.name ?? label}`,
+          sideEffects.length > 0 ? { description: sideEffects.join(' · ') } : undefined,
+        );
         router.refresh();
         return;
       }
+      // P2003 safety-net fallback — only hit if a future migration adds a
+      // restrict-FK we don't yet cascade-clean.
       if (r.status === 409 && body.reason === 'fk_in_use') {
-        // Item has order history or freebie rules — offer the safe fallback.
-        const ok = confirm(
-          `${body.error}\n\nHide it from the storefront instead?`
-        );
+        const ok = confirm(`${body.error}\n\nHide it from the storefront instead?`);
         if (!ok) return;
         const hide = await fetch('/api/admin/menu/items/bulk', {
           method: 'POST',
@@ -372,7 +355,7 @@ function DeleteItem({ id, name }: { id: string; name?: string }) {
           body: JSON.stringify({ ids: [id], patch: { isAvailable: false } }),
         });
         if (!hide.ok) { await reportApiError(hide, 'Could not hide item'); return; }
-        toast.success(`Hidden from storefront`);
+        toast.success('Hidden from storefront');
         router.refresh();
         return;
       }

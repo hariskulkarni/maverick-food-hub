@@ -153,85 +153,62 @@ export async function DELETE(req: NextRequest) {
     );
   }
 
-  // Pre-flight: surface FK references BEFORE attempting the delete so the
-  // error message can name the specific items that are locked.
-  //   - Active freebie rules (onDelete: Restrict — blocks delete).
-  //   - Order items that historically used this menu item (optional FK with
-  //     default NoAction — also blocks).
-  // Cross-sells, variants, modifier groups, item-availability rows all
-  // cascade automatically, so they don't need a check.
-  // Three FKs restrict MenuItem deletion. The same audit as the single-item
-  // handler — FreebieRule, ComboItem, OrderItem. Missing any one of these
-  // means deleteMany throws a P2003 inside the transaction and the whole
-  // batch rolls back; we catch it below as a safety net for future migrations.
-  const [freebieBlocked, comboBlocked, orderBlocked] = await Promise.all([
-    prisma.freebieRule.findMany({
-      where: { menuItemId: { in: ids } },
-      select: { menuItemId: true },
-    }),
-    prisma.comboItem.findMany({
-      where: { menuItemId: { in: ids } },
-      distinct: ['menuItemId'],
-      select: { menuItemId: true },
-    }),
-    prisma.orderItem.findMany({
-      where: { menuItemId: { in: ids } },
-      distinct: ['menuItemId'],
-      select: { menuItemId: true },
-    }),
-  ]);
-  const blockedIds = new Set<string>([
-    ...freebieBlocked.map((f) => f.menuItemId),
-    ...comboBlocked.map((c) => c.menuItemId),
-    ...(orderBlocked.map((o) => o.menuItemId).filter((id): id is string => !!id)),
+  // Count cascade-side-effects BEFORE the transaction so the audit log +
+  // the success toast can name what got swept up. See the single-item
+  // handler for the full rationale on why we sever OrderItem (snapshotted
+  // fields preserve invoice integrity) but delete ComboItem + FreebieRule.
+  const [orderRefCount, comboRefCount, freebieRefCount] = await Promise.all([
+    prisma.orderItem.count({ where: { menuItemId: { in: ids } } }),
+    prisma.comboItem.count({ where: { menuItemId: { in: ids } } }),
+    prisma.freebieRule.count({ where: { menuItemId: { in: ids } } }),
   ]);
 
-  const deletableIds = ids.filter((id) => !blockedIds.has(id));
-
-  if (deletableIds.length === 0) {
-    return Response.json(
-      {
-        error: `${ids.length} item${ids.length === 1 ? ' is' : 's are'} referenced by past orders, combos, or freebie rules and can't be deleted. Mark them Unavailable instead.`,
-        reason: 'fk_in_use',
-        blockedIds: Array.from(blockedIds),
-        deletableIds: [],
-      },
-      { status: 409 },
-    );
-  }
-
-  // Execute the delete for the items we CAN remove. `deleteMany` is wrapped
-  // in a transaction so a late-arriving order placement on one of these ids
-  // can't race us into an inconsistent state — the transaction either
-  // succeeds against all of `deletableIds` or rolls back.
+  // Cascade-clean bulk delete inside a single transaction. Atomic: a
+  // failure anywhere in the chain rolls back the OrderItem severance, so
+  // past invoices either ALL stay intact or NONE do — never a half-state.
   let deletedCount = 0;
   try {
     const result = await prisma.$transaction(async (tx) => {
+      // 1. Sever OrderItem references (preserve snapshotted invoice data).
+      if (orderRefCount > 0) {
+        await tx.orderItem.updateMany({
+          where: { menuItemId: { in: ids } },
+          data: { menuItemId: null },
+        });
+      }
+      // 2. Drop combo memberships.
+      if (comboRefCount > 0) {
+        await tx.comboItem.deleteMany({ where: { menuItemId: { in: ids } } });
+      }
+      // 3. Drop freebie rules that gift any of these items.
+      if (freebieRefCount > 0) {
+        await tx.freebieRule.deleteMany({ where: { menuItemId: { in: ids } } });
+      }
+      // 4. Finally, the menu items themselves (scoped to tenancy).
       return tx.menuItem.deleteMany({
-        where: { id: { in: deletableIds }, branch: { restaurantId: restaurant.id } },
+        where: { id: { in: ids }, branch: { restaurantId: restaurant.id } },
       });
     });
     deletedCount = result.count;
   } catch (err) {
     const e = err as { code?: string; message?: string };
-    // Safety net: an FK constraint we DIDN'T enumerate above (e.g. a future
-    // migration) surfaces here as P2003. We can't determine WHICH ids were
-    // blocked without a re-scan, so we tell the client the whole batch is
-    // FK-blocked and let them fall back to "Hide instead" — same recovery
-    // path the partial case already uses.
+    // Safety net: if a FUTURE migration adds another restrict-FK we
+    // didn't enumerate, the cascade chain is incomplete and Prisma
+    // raises P2003. Surface a structured 409 so the client can fall
+    // back to "Hide instead" rather than seeing a generic 500.
     if (e.code === 'P2003' || /Foreign key constraint/i.test(e.message ?? '')) {
-      log.warn({ ids: deletableIds, msg: e.message }, 'bulk delete blocked by an unenumerated FK');
+      log.warn({ ids, msg: e.message }, 'bulk delete blocked by an unenumerated FK');
       return Response.json(
         {
-          error: `${deletableIds.length} item${deletableIds.length === 1 ? ' is' : 's are'} still referenced elsewhere and can't be deleted. Mark them Unavailable instead.`,
+          error: `Selected items are still referenced by something we couldn't safely cascade. Mark them Unavailable instead.`,
           reason: 'fk_in_use',
-          blockedIds: deletableIds,
+          blockedIds: ids,
           deletableIds: [],
         },
         { status: 409 },
       );
     }
-    log.error({ err: e.message, restaurantId: restaurant.id, count: deletableIds.length }, 'bulk delete failed');
+    log.error({ err: e.message, restaurantId: restaurant.id, count: ids.length }, 'bulk delete failed');
     return Response.json(
       {
         error: 'Could not delete the selected items. Try again, or hide them instead.',
@@ -247,29 +224,25 @@ export async function DELETE(req: NextRequest) {
     entityType: 'MenuItem',
     after: {
       count: deletedCount,
-      names: ownedRows.filter((r) => deletableIds.includes(r.id)).map((r) => r.name),
-      blockedCount: blockedIds.size,
+      names: ownedRows.filter((r) => ids.includes(r.id)).map((r) => r.name),
+      cascaded: { orderItems: orderRefCount, combos: comboRefCount, freebieRules: freebieRefCount },
       reason: reason ?? null,
     },
   });
 
-  // Partial success: some items deleted, some blocked. The 207-style payload
-  // lets the client toast the success AND offer to hide the rest in one tap.
-  if (blockedIds.size > 0) {
-    return Response.json(
-      {
-        deleted: deletedCount,
-        blocked: blockedIds.size,
-        blockedIds: Array.from(blockedIds),
-        deletableIds,
-        // 200 (not 207) so the client treats this as a success that needs a
-        // follow-up nudge — the toast helper looks at the body, not status.
-        reason: 'partial_fk_in_use',
-        error: `${deletedCount} item${deletedCount === 1 ? '' : 's'} deleted. ${blockedIds.size} couldn't be deleted because they have order history, combos, or freebie rules — would you like to hide them instead?`,
+  // Cascade-clean bulk delete always deletes EVERY listed id (no partial
+  // FK-block path anymore), so the response shape is simple: deleted
+  // count + side-effect summary the UI can surface in its toast.
+  return Response.json(
+    {
+      deleted: deletedCount,
+      blocked: 0,
+      cascaded: {
+        orderItems: orderRefCount,
+        combos: comboRefCount,
+        freebieRules: freebieRefCount,
       },
-      { status: 200 },
-    );
-  }
-
-  return Response.json({ deleted: deletedCount, blocked: 0 });
+    },
+    { status: 200 },
+  );
 }

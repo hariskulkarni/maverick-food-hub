@@ -120,58 +120,74 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     );
   }
 
-  // FK pre-flight — count every relation that could block delete so the
-  // error message names the SPECIFIC source instead of a generic 500.
+  // Cascade-clean delete.
   //
-  // Three FKs restrict MenuItem deletion (Prisma schema audit):
-  //   • FreebieRule.menuItemId — onDelete: Restrict (line 828)
-  //   • ComboItem.menuItemId   — onDelete: Restrict (line 1031)
-  //   • OrderItem.menuItemId   — optional FK, default NoAction (line 1213)
+  // Three FKs reference MenuItem in a way that BLOCKS straight delete:
+  //   • OrderItem  — optional FK, NoAction. Past orders that ordered this
+  //                  item. We SEVER the FK (set menuItemId = NULL) instead
+  //                  of cascade-deleting the OrderItem rows; OrderItem
+  //                  snapshots name + unitPrice + variant + modifiers at
+  //                  order time (see schema line 1198 "snapshot for
+  //                  invoice"), so past invoices, kitchen tickets, and
+  //                  reports keep displaying correctly even after the
+  //                  menu item is gone.
+  //   • ComboItem  — Restrict. Combo memberships. We delete the rows
+  //                  (the combo still exists; it just no longer includes
+  //                  this item).
+  //   • FreebieRule — Restrict. Freebie offers giving this item away. We
+  //                  delete them; admins can recreate against a different
+  //                  item if needed.
   //
-  // All other relations to MenuItem cascade or set-null, so they don't
-  // block delete. If a future schema change introduces a fourth
-  // restrict-relation, the `catch` at the actual delete site (below)
-  // still surfaces a clean error message — this list is the
-  // best-effort-UX layer; the catch is the safety net.
-  const [freebieBlock, comboBlock, orderBlock] = await Promise.all([
-    prisma.freebieRule.count({ where: { menuItemId: id } }),
-    prisma.comboItem.count({ where: { menuItemId: id } }),
+  // This entire chain runs in ONE transaction — partial cascade plus a
+  // failed delete would leave invoices broken, so atomicity is required.
+  //
+  // Side-effect counts are captured BEFORE the cascade so we can surface
+  // them in the response. The UI uses them to write a clear success
+  // toast ("Deleted Phirni · 3 past orders preserved, 2 combos updated").
+  const [orderRefCount, comboRefCount, freebieRefCount] = await Promise.all([
     prisma.orderItem.count({ where: { menuItemId: id } }),
+    prisma.comboItem.count({ where: { menuItemId: id } }),
+    prisma.freebieRule.count({ where: { menuItemId: id } }),
   ]);
-  if (freebieBlock > 0 || comboBlock > 0 || orderBlock > 0) {
-    const reasons: string[] = [];
-    if (orderBlock > 0) reasons.push(`${orderBlock} past order item${orderBlock === 1 ? '' : 's'}`);
-    if (comboBlock > 0) reasons.push(`${comboBlock} combo${comboBlock === 1 ? '' : 's'}`);
-    if (freebieBlock > 0) reasons.push(`${freebieBlock} freebie rule${freebieBlock === 1 ? '' : 's'}`);
-    return Response.json(
-      {
-        error: `"${item.name}" is referenced by ${reasons.join(' and ')} and can't be deleted. Mark it Unavailable instead.`,
-        reason: 'fk_in_use',
-        itemId: id,
-        itemName: item.name,
-        blockedBy: { orders: orderBlock, combos: comboBlock, freebies: freebieBlock },
-      },
-      { status: 409 },
-    );
-  }
 
-  // Safety net: any FK constraint we DIDN'T enumerate above (e.g. a new
-  // relation introduced by a future migration) surfaces here as a Prisma
-  // P2003. We catch it specifically and translate to the same fk_in_use
-  // shape the client already handles — instead of leaking a 500 the user
-  // can't recover from. This is what made the previous "Delete failed"
-  // unactionable.
   try {
     await prisma.$transaction(async (tx) => {
+      // 1. Past orders: keep the OrderItem rows (their content is
+      //    snapshotted), just sever the FK so the MenuItem can drop.
+      if (orderRefCount > 0) {
+        await tx.orderItem.updateMany({
+          where: { menuItemId: id },
+          data: { menuItemId: null },
+        });
+      }
+      // 2. Combo memberships: delete the membership rows. The combos
+      //    themselves are untouched and continue to exist with their
+      //    remaining items.
+      if (comboRefCount > 0) {
+        await tx.comboItem.deleteMany({ where: { menuItemId: id } });
+      }
+      // 3. Freebie rules referencing this item: delete them. There's no
+      //    meaningful way to keep a "give away this nonexistent dish"
+      //    rule, so we drop them.
+      if (freebieRefCount > 0) {
+        await tx.freebieRule.deleteMany({ where: { menuItemId: id } });
+      }
+      // 4. Finally, the menu item itself. Other relations (variants,
+      //    modifier groups, cross-sells, availability rows, etc.) all
+      //    cascade automatically.
       await tx.menuItem.delete({ where: { id } });
     });
   } catch (err) {
     const e = err as { code?: string; meta?: Record<string, unknown>; message?: string };
+    // Safety net for any future FK we didn't enumerate above. We DON'T
+    // try to cascade-clean unknown relations — that would risk silently
+    // destroying data. Instead, surface the structured 409 so the UI's
+    // "Hide instead" flow takes over.
     if (e.code === 'P2003' || /Foreign key constraint/i.test(e.message ?? '')) {
       log.warn({ id, meta: e.meta, msg: e.message }, 'menu item delete blocked by an unenumerated FK');
       return Response.json(
         {
-          error: `"${item.name}" is still referenced elsewhere and can't be deleted. Mark it Unavailable instead.`,
+          error: `"${item.name}" is still referenced by something we couldn't safely cascade. Mark it Unavailable instead.`,
           reason: 'fk_in_use',
           itemId: id,
           itemName: item.name,
@@ -189,5 +205,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     );
   }
 
-  return Response.json({ ok: true, name: item.name });
+  return Response.json({
+    ok: true,
+    name: item.name,
+    cascaded: {
+      orderItems: orderRefCount,    // past orders that lost their MenuItem FK
+      combos: comboRefCount,        // combo memberships removed
+      freebieRules: freebieRefCount // freebie rules removed
+    },
+  });
 }
