@@ -1,13 +1,28 @@
 /**
  * OTP issuance and verification — with abuse protection.
  *
- * Limits (India SMS-cost defensive defaults):
+ * Limits (India SMS-cost defensive defaults — all env-overridable):
  *   - OTP length 6, expiry 5 min
  *   - Resend cooldown: 45s between consecutive sends to the same phone
  *   - Per-phone: max 3 OTPs/hour, max 8 OTPs/day
  *   - Per-IP:    max 20 OTPs/hour
  *   - Per-OTP:   max 5 failed verify attempts → invalidate
  *   - Lockout:   30 minutes after repeated failures
+ *   - Platform:  SMS_DAILY_BUDGET hard ceiling so a bug can't drain SMS credit
+ *
+ * Env overrides — handy for staging, load tests, demos, etc.:
+ *   OTP_RATE_LIMITS_DISABLED=true → skip ALL abuse limits (only resend cooldown
+ *                                    + lockout still apply). The default is
+ *                                    OFF, so production stays protected.
+ *   OTP_MAX_PER_HOUR_PHONE        → override the 3/hr per-phone cap
+ *   OTP_MAX_PER_DAY_PHONE         → override the 8/day per-phone cap
+ *   OTP_MAX_PER_HOUR_IP           → override the 20/hr per-IP cap
+ *   SMS_DAILY_BUDGET              → override the 500/day platform cap
+ *
+ * Demo mode (OTP_DEMO_MODE / OTP_DEBUG_LOG): rate limits are AUTOMATICALLY
+ * skipped — there's no real SMS leaving the system, so 'abuse protection'
+ * makes no sense and just breaks the demo experience. The resend cooldown +
+ * lockout still apply (good UX guards, no SMS cost involved).
  *
  * Counters live in OtpAttempt; one row per phone+purpose, updated on each call.
  */
@@ -17,14 +32,23 @@ import { prisma } from './db';
 import { notify } from './notifications';
 import { log } from './log';
 
+/** Parse a positive integer env var with a default. Tolerant of empty/NaN. */
+function envInt(name: string, dflt: number): number {
+  const raw = process.env[name];
+  if (raw == null || raw === '') return dflt;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : dflt;
+}
+
 const OTP_TTL_MS         = 5 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 45 * 1000;
-const MAX_OTP_PER_HOUR_PHONE = 3;
-const MAX_OTP_PER_DAY_PHONE  = 8;
-const MAX_OTP_PER_HOUR_IP    = 20;
+const MAX_OTP_PER_HOUR_PHONE = envInt('OTP_MAX_PER_HOUR_PHONE', 3);
+const MAX_OTP_PER_DAY_PHONE  = envInt('OTP_MAX_PER_DAY_PHONE',  8);
+const MAX_OTP_PER_HOUR_IP    = envInt('OTP_MAX_PER_HOUR_IP',   20);
 const MAX_FAILED_VERIFY      = 5;
 const LOCKOUT_MS             = 30 * 60 * 1000;
-const SMS_DAILY_BUDGET       = Number(process.env.SMS_DAILY_BUDGET ?? '500'); // total SMS the platform will send today
+const SMS_DAILY_BUDGET       = envInt('SMS_DAILY_BUDGET',     500); // total SMS the platform will send today
+const RATE_LIMITS_DISABLED   = process.env.OTP_RATE_LIMITS_DISABLED === 'true';
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 
@@ -65,8 +89,31 @@ if (IS_PROD && OTP_DEMO_MODE) {
   );
 }
 
+// Boot log: surface the active rate-limit policy ONCE so a quick `pm2 logs`
+// tells you whether limits are on, off, or in demo bypass — without diving
+// into source.
+{
+  const policy = OTP_DEMO_MODE
+    ? 'DEMO BYPASS (codes surfaced, abuse limits skipped)'
+    : RATE_LIMITS_DISABLED
+      ? 'DISABLED (OTP_RATE_LIMITS_DISABLED=true — staging escape hatch)'
+      : `phone ${MAX_OTP_PER_HOUR_PHONE}/hr ${MAX_OTP_PER_DAY_PHONE}/day · ip ${MAX_OTP_PER_HOUR_IP}/hr · platform ${SMS_DAILY_BUDGET}/day`;
+  // eslint-disable-next-line no-console
+  console.info(`[otp] rate-limit policy: ${policy}`);
+}
+
 function genCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+/** Friendly "in X" rendering for the rate-limit message. Avoids confusion
+ *  like "Try tomorrow" when the counter is a rolling 24h window — we tell
+ *  the user the actual time remaining instead. */
+function humanWait(seconds: number): string {
+  if (seconds < 90) return `${seconds}s`;
+  if (seconds < 60 * 60) return `${Math.ceil(seconds / 60)} min`;
+  const hours = Math.ceil(seconds / 3600);
+  return hours === 1 ? '1 hour' : `${hours} hours`;
 }
 
 /**
@@ -126,32 +173,60 @@ export async function sendOtp(args: { phone: string; purpose?: string; ipAddress
     throw new OtpRateLimitedError(wait, `Please wait ${wait}s before requesting another code.`);
   }
 
-  // Per-phone window limits
-  const sentInLastHour = await prisma.otpToken.count({ where: { phone: args.phone, purpose, createdAt: { gte: hourAgo } } });
-  if (sentInLastHour >= MAX_OTP_PER_HOUR_PHONE) {
-    throw new OtpRateLimitedError(60 * 60, 'Too many code requests this hour. Try again later.');
-  }
-  const sentInLastDay = await prisma.otpToken.count({ where: { phone: args.phone, purpose, createdAt: { gte: dayAgo } } });
-  if (sentInLastDay >= MAX_OTP_PER_DAY_PHONE) {
-    throw new OtpRateLimitedError(24 * 60 * 60, 'Daily code limit reached. Try tomorrow.');
-  }
-
-  // Per-IP window limit
-  if (args.ipAddress) {
-    const sentByIp = await prisma.otpAttempt.aggregate({
-      where: { ipAddress: args.ipAddress, createdAt: { gte: hourAgo } },
-      _sum: { sentCount: true }
-    });
-    if ((sentByIp._sum.sentCount ?? 0) >= MAX_OTP_PER_HOUR_IP) {
-      throw new OtpRateLimitedError(60 * 60, 'Too many requests from this network. Try again later.');
+  // ── Abuse-protection limits ────────────────────────────────────────────────
+  // Skipped when:
+  //   • OTP_DEMO_MODE is on — no real SMS leaves the system, so abuse
+  //     protection is meaningless and only breaks the demo experience.
+  //   • OTP_RATE_LIMITS_DISABLED=true — explicit escape hatch for staging,
+  //     load tests, etc. Production should NEVER set this.
+  // Resend cooldown + lockout still apply above; those are UX guards (not SMS
+  // cost guards) and stay on in every environment.
+  if (!OTP_DEMO_MODE && !RATE_LIMITS_DISABLED) {
+    // Per-phone window limits
+    const sentInLastHour = await prisma.otpToken.count({ where: { phone: args.phone, purpose, createdAt: { gte: hourAgo } } });
+    if (sentInLastHour >= MAX_OTP_PER_HOUR_PHONE) {
+      // Figure out when the oldest in-window code drops out — that's the real
+      // retry-after, not a flat 60 minutes.
+      const oldestInHour = await prisma.otpToken.findFirst({
+        where: { phone: args.phone, purpose, createdAt: { gte: hourAgo } },
+        orderBy: { createdAt: 'asc' },
+        select: { createdAt: true },
+      });
+      const wait = oldestInHour
+        ? Math.max(60, Math.ceil((oldestInHour.createdAt.getTime() + 60 * 60 * 1000 - now.getTime()) / 1000))
+        : 60 * 60;
+      throw new OtpRateLimitedError(wait, `Too many code requests this hour. Try again in ${humanWait(wait)}.`);
     }
-  }
+    const sentInLastDay = await prisma.otpToken.count({ where: { phone: args.phone, purpose, createdAt: { gte: dayAgo } } });
+    if (sentInLastDay >= MAX_OTP_PER_DAY_PHONE) {
+      const oldestInDay = await prisma.otpToken.findFirst({
+        where: { phone: args.phone, purpose, createdAt: { gte: dayAgo } },
+        orderBy: { createdAt: 'asc' },
+        select: { createdAt: true },
+      });
+      const wait = oldestInDay
+        ? Math.max(60, Math.ceil((oldestInDay.createdAt.getTime() + 24 * 60 * 60 * 1000 - now.getTime()) / 1000))
+        : 24 * 60 * 60;
+      throw new OtpRateLimitedError(wait, `Daily code limit reached. Try again in ${humanWait(wait)}.`);
+    }
 
-  // Platform-wide SMS daily budget — flat ceiling so a bug can't drain SMS credit
-  const sentTodayAll = await prisma.otpToken.count({ where: { createdAt: { gte: dayAgo } } });
-  if (sentTodayAll >= SMS_DAILY_BUDGET) {
-    log.error({ sentTodayAll, SMS_DAILY_BUDGET }, 'SMS daily budget reached — refusing further OTPs');
-    throw new OtpRateLimitedError(60 * 60, 'Verification temporarily unavailable. Please try again later.');
+    // Per-IP window limit
+    if (args.ipAddress) {
+      const sentByIp = await prisma.otpAttempt.aggregate({
+        where: { ipAddress: args.ipAddress, createdAt: { gte: hourAgo } },
+        _sum: { sentCount: true }
+      });
+      if ((sentByIp._sum.sentCount ?? 0) >= MAX_OTP_PER_HOUR_IP) {
+        throw new OtpRateLimitedError(60 * 60, 'Too many requests from this network. Try again in an hour.');
+      }
+    }
+
+    // Platform-wide SMS daily budget — flat ceiling so a bug can't drain SMS credit
+    const sentTodayAll = await prisma.otpToken.count({ where: { createdAt: { gte: dayAgo } } });
+    if (sentTodayAll >= SMS_DAILY_BUDGET) {
+      log.error({ sentTodayAll, SMS_DAILY_BUDGET }, 'SMS daily budget reached — refusing further OTPs');
+      throw new OtpRateLimitedError(60 * 60, 'Verification temporarily unavailable. Please try again later.');
+    }
   }
 
   // ── Issue
