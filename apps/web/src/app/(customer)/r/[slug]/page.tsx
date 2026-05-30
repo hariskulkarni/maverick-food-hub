@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { prisma } from '@/server/db';
+import { ImageWithFallback } from '@/components/image-with-fallback';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -177,7 +178,12 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
         </>
       ) : (
         <section className="relative h-64 md:h-[22rem] bg-muted overflow-hidden">
-          <Image src={heroImage} alt={restaurant.name} fill priority sizes="100vw" className="object-cover" />
+          {/* Use ImageWithFallback so a missing/404 cover URL (e.g. a logoUrl
+              persisted in the DB whose file is no longer on disk) renders the
+              on-brand gradient placeholder instead of the browser's broken-image
+              glyph. The dead-link case happens most often with the local-
+              storage driver when uploads were made on a different host. */}
+          <ImageWithFallback src={heroImage} alt={restaurant.name} fill priority sizes="100vw" className="object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/10" />
           <div className="absolute top-4 right-4 z-10">
             <HeartButton
@@ -190,7 +196,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
           </div>
           {restaurant.logoUrl && (
             <div className="absolute left-4 md:left-8 bottom-[-32px] md:bottom-[-40px] size-20 md:size-24 rounded-2xl overflow-hidden border-4 border-background shadow-xl bg-card">
-              <Image src={restaurant.logoUrl} alt={restaurant.name} fill sizes="96px" className="object-cover" />
+              <ImageWithFallback src={restaurant.logoUrl} alt={restaurant.name} fill sizes="96px" className="object-cover" />
             </div>
           )}
           <div className="absolute inset-x-0 bottom-0 container py-6 text-white reveal">
