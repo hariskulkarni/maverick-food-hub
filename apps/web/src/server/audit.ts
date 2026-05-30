@@ -40,6 +40,7 @@ export type AuditAction =
   | 'kyc.verification.success' | 'kyc.verification.failure' | 'kyc.verification.config.update'
   // Menu
   | 'menu.price.change' | 'menu.item.toggle'
+  | 'menu.bulk_toggle' | 'menu.bulk_delete'
   | 'menu.category.schedule.update'
   | 'menu.category.schedule.disable'
   | 'menu.category.toggle'

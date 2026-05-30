@@ -91,3 +91,155 @@ export async function POST(req: NextRequest) {
 
   return Response.json({ count: result.count });
 }
+
+/**
+ * DELETE /api/admin/menu/items/bulk
+ *
+ * Bulk-delete menu items. Body: `{ ids: string[], reason?: string }`.
+ *
+ * Why a custom handler rather than reusing the single-item DELETE in a loop:
+ *
+ *   1. ONE tenancy check up front (a loop would hit the DB N+1 times).
+ *   2. ATOMIC delete inside `prisma.menuItem.deleteMany` — either every
+ *      deletable item drops or none do, so a partial failure doesn't leave
+ *      the UI desynced.
+ *   3. CLEAR ERROR when foreign keys block the delete. Menu items are
+ *      referenced by FreebieRule (`onDelete: Restrict`) and historical
+ *      OrderItem rows. We CHECK for those first and tell the admin which
+ *      items can't be hard-deleted, with a one-button fallback to hide
+ *      them instead — the bulk-toggle codepath already supports that.
+ *
+ * Reasons the client knows how to render:
+ *   - `cross_tenant`     — at least one id isn't theirs
+ *   - `fk_in_use`        — some items are referenced (orders/freebies)
+ *                          and should be hidden rather than deleted
+ *   - `not_found`        — every id was already gone
+ */
+const DeleteBody = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(500),
+  reason: z.string().max(500).optional().nullable(),
+});
+
+export async function DELETE(req: NextRequest) {
+  const gate = await requireRestaurantAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
+  const restaurant = await requireRestaurant();
+
+  const parsed = parseOrJsonError(DeleteBody, await req.json());
+  if (parsed instanceof Response) return parsed;
+  const { ids, reason } = parsed;
+
+  // Tenancy: every id must belong to a branch of the caller's restaurant.
+  // We fetch the actual rows so we can also tell the audit log what NAMES
+  // were deleted (much friendlier than just IDs in the activity feed).
+  const ownedRows = await prisma.menuItem.findMany({
+    where: { id: { in: ids }, branch: { restaurantId: restaurant.id } },
+    select: { id: true, name: true, branchId: true },
+  });
+  const ownedIds = new Set(ownedRows.map((r) => r.id));
+  const missingIds = ids.filter((id) => !ownedIds.has(id));
+  if (missingIds.length > 0) {
+    return Response.json(
+      {
+        error: missingIds.length === ids.length
+          ? 'None of those items exist anymore.'
+          : `${missingIds.length} of ${ids.length} items don't belong to this restaurant or were already deleted.`,
+        code: 'auth/forbidden',
+        reason: missingIds.length === ids.length ? 'not_found' : 'cross_tenant',
+        missingIds,
+      },
+      { status: missingIds.length === ids.length ? 404 : 403 },
+    );
+  }
+
+  // Pre-flight: surface FK references BEFORE attempting the delete so the
+  // error message can name the specific items that are locked.
+  //   - Active freebie rules (onDelete: Restrict — blocks delete).
+  //   - Order items that historically used this menu item (optional FK with
+  //     default NoAction — also blocks).
+  // Cross-sells, variants, modifier groups, item-availability rows all
+  // cascade automatically, so they don't need a check.
+  const freebieBlocked = await prisma.freebieRule.findMany({
+    where: { menuItemId: { in: ids } },
+    select: { menuItemId: true },
+  });
+  const orderBlocked = await prisma.orderItem.findMany({
+    where: { menuItemId: { in: ids } },
+    distinct: ['menuItemId'],
+    select: { menuItemId: true },
+  });
+  const blockedIds = new Set<string>([
+    ...freebieBlocked.map((f) => f.menuItemId),
+    ...(orderBlocked.map((o) => o.menuItemId).filter((id): id is string => !!id)),
+  ]);
+
+  const deletableIds = ids.filter((id) => !blockedIds.has(id));
+
+  if (deletableIds.length === 0) {
+    return Response.json(
+      {
+        error: `${ids.length} item${ids.length === 1 ? ' is' : 's are'} referenced by past orders or freebie rules and can't be deleted. Mark them Unavailable instead.`,
+        reason: 'fk_in_use',
+        blockedIds: Array.from(blockedIds),
+        deletableIds: [],
+      },
+      { status: 409 },
+    );
+  }
+
+  // Execute the delete for the items we CAN remove. `deleteMany` is wrapped
+  // in a transaction so a late-arriving order placement on one of these ids
+  // can't race us into an inconsistent state — the transaction either
+  // succeeds against all of `deletableIds` or rolls back.
+  let deletedCount = 0;
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      return tx.menuItem.deleteMany({
+        where: { id: { in: deletableIds }, branch: { restaurantId: restaurant.id } },
+      });
+    });
+    deletedCount = result.count;
+  } catch (err) {
+    log.error({ err: (err as Error).message, restaurantId: restaurant.id, count: deletableIds.length }, 'bulk delete failed');
+    return Response.json(
+      {
+        error: 'Could not delete the selected items. Try again, or hide them instead.',
+        reason: 'delete_failed',
+      },
+      { status: 500 },
+    );
+  }
+
+  await audit('menu.bulk_delete', {
+    actorId: session.user.id,
+    restaurantId: restaurant.id,
+    entityType: 'MenuItem',
+    after: {
+      count: deletedCount,
+      names: ownedRows.filter((r) => deletableIds.includes(r.id)).map((r) => r.name),
+      blockedCount: blockedIds.size,
+      reason: reason ?? null,
+    },
+  });
+
+  // Partial success: some items deleted, some blocked. The 207-style payload
+  // lets the client toast the success AND offer to hide the rest in one tap.
+  if (blockedIds.size > 0) {
+    return Response.json(
+      {
+        deleted: deletedCount,
+        blocked: blockedIds.size,
+        blockedIds: Array.from(blockedIds),
+        deletableIds,
+        // 200 (not 207) so the client treats this as a success that needs a
+        // follow-up nudge — the toast helper looks at the body, not status.
+        reason: 'partial_fk_in_use',
+        error: `${deletedCount} item${deletedCount === 1 ? '' : 's'} deleted. ${blockedIds.size} couldn't be deleted because they have order history or freebie rules — would you like to hide them instead?`,
+      },
+      { status: 200 },
+    );
+  }
+
+  return Response.json({ deleted: deletedCount, blocked: 0 });
+}

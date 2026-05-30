@@ -150,6 +150,84 @@ function BulkActionBar({
     }
   }
 
+  /**
+   * Hard-delete the selected items. The server pre-flights foreign-key
+   * references (freebie rules + order history) and either:
+   *   - returns 200 with `deleted, blocked` when SOME items are FK-locked;
+   *     we toast success and offer the "Hide blocked instead" follow-up,
+   *   - returns 409 reason=fk_in_use when EVERY item is locked; we offer
+   *     to hide them all instead,
+   *   - or returns a normal 200 with the count when nothing is locked.
+   * That single payload shape replaces the old "loop single-DELETE and
+   * pray" pattern that left the UI desynced when a partial failure hit.
+   */
+  async function bulkDelete() {
+    if (count === 0) return;
+    const yes = confirm(
+      `Delete ${count} selected item${count === 1 ? '' : 's'}? This can't be undone. ` +
+      `Items with order history or freebie rules will be skipped — you'll be offered ` +
+      `to hide those instead.`
+    );
+    if (!yes) return;
+    setBusy(true);
+    try {
+      const r = await fetch('/api/admin/menu/items/bulk', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selected) }),
+      });
+      // Read the body whether the request succeeded or failed — the server
+      // packs the same `reason` + `blockedIds` shape into both.
+      const body = await r.json().catch(() => ({} as any));
+      if (!r.ok) {
+        if (r.status === 409 && body.reason === 'fk_in_use' && Array.isArray(body.blockedIds)) {
+          // EVERY item was blocked — offer the hide-instead path.
+          const ok = confirm(
+            `${body.blockedIds.length} item${body.blockedIds.length === 1 ? ' is' : 's are'} referenced by past orders or freebie rules and can't be deleted. ` +
+            `Hide them from the storefront instead?`
+          );
+          if (ok) await hideIds(body.blockedIds, 'replace-with-hidden');
+          return;
+        }
+        await reportApiError(r, 'Bulk delete failed');
+        return;
+      }
+
+      if (body.blocked > 0) {
+        // Partial success — some deleted, some blocked.
+        toast.success(`${body.deleted} item${body.deleted === 1 ? '' : 's'} deleted`);
+        const ok = confirm(
+          `${body.blocked} item${body.blocked === 1 ? '' : 's'} could not be deleted because they have order history or freebie rules. ` +
+          `Hide them from the storefront instead?`
+        );
+        if (ok) await hideIds(body.blockedIds, 'hide-only-blocked');
+      } else {
+        toast.success(`Deleted ${body.deleted} item${body.deleted === 1 ? '' : 's'}`);
+      }
+      onApplied();
+      router.refresh();
+    } catch (e) {
+      toast.error('Bulk delete failed', { description: 'Network problem — try again.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Helper used by the FK-blocked fallback above. Hides the given ids and
+   *  refreshes the list — re-uses the bulk-toggle endpoint we already trust. */
+  async function hideIds(ids: string[], _label: string) {
+    const r = await fetch('/api/admin/menu/items/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, patch: { isAvailable: false } }),
+    });
+    if (!r.ok) { await reportApiError(r, 'Could not hide blocked items'); return; }
+    const { count: n } = await r.json();
+    toast.success(`${n} item${n === 1 ? '' : 's'} hidden from the storefront`);
+    onApplied();
+    router.refresh();
+  }
+
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
       <Button size="sm" variant="ghost" onClick={onSelectAll} disabled={allIds.length === 0}>Select all</Button>
@@ -164,6 +242,18 @@ function BulkActionBar({
           <Button size="sm" variant="outline" disabled={busy} onClick={() => apply({ isPopular: false })}>Unmark popular</Button>
           <Button size="sm" variant="outline" disabled={busy} onClick={() => apply({ isRecommended: true })}>Mark recommended</Button>
           <Button size="sm" variant="outline" disabled={busy} onClick={() => apply({ isRecommended: false })}>Unmark recommended</Button>
+          {/* Visual separator so the destructive action doesn't accidentally
+              get adjacent-clicked with the safe ones. */}
+          <div className="mx-1 h-5 w-px bg-border" />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={bulkDelete}
+            className="text-destructive border-destructive/40 hover:bg-destructive/5"
+          >
+            <Trash2 className="size-4" /> Delete selected
+          </Button>
         </>
       )}
     </div>
