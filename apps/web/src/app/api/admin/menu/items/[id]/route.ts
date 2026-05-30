@@ -120,16 +120,28 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     );
   }
 
-  // FK pre-flight — see the bulk-delete handler for the full rationale.
-  // We DO the cheap check before invoking Prisma so the error message can
-  // name the specific blocking relations instead of leaking a 500.
-  const [freebieBlock, orderBlock] = await Promise.all([
+  // FK pre-flight — count every relation that could block delete so the
+  // error message names the SPECIFIC source instead of a generic 500.
+  //
+  // Three FKs restrict MenuItem deletion (Prisma schema audit):
+  //   • FreebieRule.menuItemId — onDelete: Restrict (line 828)
+  //   • ComboItem.menuItemId   — onDelete: Restrict (line 1031)
+  //   • OrderItem.menuItemId   — optional FK, default NoAction (line 1213)
+  //
+  // All other relations to MenuItem cascade or set-null, so they don't
+  // block delete. If a future schema change introduces a fourth
+  // restrict-relation, the `catch` at the actual delete site (below)
+  // still surfaces a clean error message — this list is the
+  // best-effort-UX layer; the catch is the safety net.
+  const [freebieBlock, comboBlock, orderBlock] = await Promise.all([
     prisma.freebieRule.count({ where: { menuItemId: id } }),
+    prisma.comboItem.count({ where: { menuItemId: id } }),
     prisma.orderItem.count({ where: { menuItemId: id } }),
   ]);
-  if (freebieBlock > 0 || orderBlock > 0) {
+  if (freebieBlock > 0 || comboBlock > 0 || orderBlock > 0) {
     const reasons: string[] = [];
     if (orderBlock > 0) reasons.push(`${orderBlock} past order item${orderBlock === 1 ? '' : 's'}`);
+    if (comboBlock > 0) reasons.push(`${comboBlock} combo${comboBlock === 1 ? '' : 's'}`);
     if (freebieBlock > 0) reasons.push(`${freebieBlock} freebie rule${freebieBlock === 1 ? '' : 's'}`);
     return Response.json(
       {
@@ -137,24 +149,40 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
         reason: 'fk_in_use',
         itemId: id,
         itemName: item.name,
+        blockedBy: { orders: orderBlock, combos: comboBlock, freebies: freebieBlock },
       },
       { status: 409 },
     );
   }
 
-  // Delete inside a transaction so a concurrent order placement on this
-  // item can't race us into an inconsistent state. The transaction will
-  // surface any LATE-ARRIVING FK violation cleanly (rare but possible if
-  // an order lands between the pre-flight count and the delete).
+  // Safety net: any FK constraint we DIDN'T enumerate above (e.g. a new
+  // relation introduced by a future migration) surfaces here as a Prisma
+  // P2003. We catch it specifically and translate to the same fk_in_use
+  // shape the client already handles — instead of leaking a 500 the user
+  // can't recover from. This is what made the previous "Delete failed"
+  // unactionable.
   try {
     await prisma.$transaction(async (tx) => {
       await tx.menuItem.delete({ where: { id } });
     });
   } catch (err) {
-    log.error({ err: (err as Error).message, id }, 'menu item delete failed at commit');
+    const e = err as { code?: string; meta?: Record<string, unknown>; message?: string };
+    if (e.code === 'P2003' || /Foreign key constraint/i.test(e.message ?? '')) {
+      log.warn({ id, meta: e.meta, msg: e.message }, 'menu item delete blocked by an unenumerated FK');
+      return Response.json(
+        {
+          error: `"${item.name}" is still referenced elsewhere and can't be deleted. Mark it Unavailable instead.`,
+          reason: 'fk_in_use',
+          itemId: id,
+          itemName: item.name,
+        },
+        { status: 409 },
+      );
+    }
+    log.error({ err: e.message, id }, 'menu item delete failed at commit');
     return Response.json(
       {
-        error: `Could not delete "${item.name}". An order may have just referenced it — hide it instead, or retry.`,
+        error: `Could not delete "${item.name}". Hide it instead, or retry.`,
         reason: 'delete_failed',
       },
       { status: 500 },

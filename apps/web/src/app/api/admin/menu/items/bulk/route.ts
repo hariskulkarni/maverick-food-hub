@@ -160,17 +160,29 @@ export async function DELETE(req: NextRequest) {
   //     default NoAction — also blocks).
   // Cross-sells, variants, modifier groups, item-availability rows all
   // cascade automatically, so they don't need a check.
-  const freebieBlocked = await prisma.freebieRule.findMany({
-    where: { menuItemId: { in: ids } },
-    select: { menuItemId: true },
-  });
-  const orderBlocked = await prisma.orderItem.findMany({
-    where: { menuItemId: { in: ids } },
-    distinct: ['menuItemId'],
-    select: { menuItemId: true },
-  });
+  // Three FKs restrict MenuItem deletion. The same audit as the single-item
+  // handler — FreebieRule, ComboItem, OrderItem. Missing any one of these
+  // means deleteMany throws a P2003 inside the transaction and the whole
+  // batch rolls back; we catch it below as a safety net for future migrations.
+  const [freebieBlocked, comboBlocked, orderBlocked] = await Promise.all([
+    prisma.freebieRule.findMany({
+      where: { menuItemId: { in: ids } },
+      select: { menuItemId: true },
+    }),
+    prisma.comboItem.findMany({
+      where: { menuItemId: { in: ids } },
+      distinct: ['menuItemId'],
+      select: { menuItemId: true },
+    }),
+    prisma.orderItem.findMany({
+      where: { menuItemId: { in: ids } },
+      distinct: ['menuItemId'],
+      select: { menuItemId: true },
+    }),
+  ]);
   const blockedIds = new Set<string>([
     ...freebieBlocked.map((f) => f.menuItemId),
+    ...comboBlocked.map((c) => c.menuItemId),
     ...(orderBlocked.map((o) => o.menuItemId).filter((id): id is string => !!id)),
   ]);
 
@@ -179,7 +191,7 @@ export async function DELETE(req: NextRequest) {
   if (deletableIds.length === 0) {
     return Response.json(
       {
-        error: `${ids.length} item${ids.length === 1 ? ' is' : 's are'} referenced by past orders or freebie rules and can't be deleted. Mark them Unavailable instead.`,
+        error: `${ids.length} item${ids.length === 1 ? ' is' : 's are'} referenced by past orders, combos, or freebie rules and can't be deleted. Mark them Unavailable instead.`,
         reason: 'fk_in_use',
         blockedIds: Array.from(blockedIds),
         deletableIds: [],
@@ -201,7 +213,25 @@ export async function DELETE(req: NextRequest) {
     });
     deletedCount = result.count;
   } catch (err) {
-    log.error({ err: (err as Error).message, restaurantId: restaurant.id, count: deletableIds.length }, 'bulk delete failed');
+    const e = err as { code?: string; message?: string };
+    // Safety net: an FK constraint we DIDN'T enumerate above (e.g. a future
+    // migration) surfaces here as P2003. We can't determine WHICH ids were
+    // blocked without a re-scan, so we tell the client the whole batch is
+    // FK-blocked and let them fall back to "Hide instead" — same recovery
+    // path the partial case already uses.
+    if (e.code === 'P2003' || /Foreign key constraint/i.test(e.message ?? '')) {
+      log.warn({ ids: deletableIds, msg: e.message }, 'bulk delete blocked by an unenumerated FK');
+      return Response.json(
+        {
+          error: `${deletableIds.length} item${deletableIds.length === 1 ? ' is' : 's are'} still referenced elsewhere and can't be deleted. Mark them Unavailable instead.`,
+          reason: 'fk_in_use',
+          blockedIds: deletableIds,
+          deletableIds: [],
+        },
+        { status: 409 },
+      );
+    }
+    log.error({ err: e.message, restaurantId: restaurant.id, count: deletableIds.length }, 'bulk delete failed');
     return Response.json(
       {
         error: 'Could not delete the selected items. Try again, or hide them instead.',
@@ -235,7 +265,7 @@ export async function DELETE(req: NextRequest) {
         // 200 (not 207) so the client treats this as a success that needs a
         // follow-up nudge — the toast helper looks at the body, not status.
         reason: 'partial_fk_in_use',
-        error: `${deletedCount} item${deletedCount === 1 ? '' : 's'} deleted. ${blockedIds.size} couldn't be deleted because they have order history or freebie rules — would you like to hide them instead?`,
+        error: `${deletedCount} item${deletedCount === 1 ? '' : 's'} deleted. ${blockedIds.size} couldn't be deleted because they have order history, combos, or freebie rules — would you like to hide them instead?`,
       },
       { status: 200 },
     );
