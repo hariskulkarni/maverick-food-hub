@@ -169,7 +169,10 @@ export function CampaignsClient({
               </SelectContent>
             </Select>
           </div>
-          <div className="relative flex-1 min-w-[180px] max-w-sm">
+          {/* On phones, take the full row (other filter chips wrap to their
+              own line). On sm+, share the row via flex-1 with a soft min so
+              the search box doesn't get squashed by a long select. */}
+          <div className="relative w-full sm:flex-1 sm:w-auto min-w-0 sm:min-w-[180px] max-w-sm">
             <Search className="size-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             <Input
               className="pl-8 h-9"

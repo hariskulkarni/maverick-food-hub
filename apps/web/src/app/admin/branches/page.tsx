@@ -25,7 +25,7 @@ export default async function BranchesPage() {
           <Card key={b.id}><CardContent className="p-5">
             <div className="font-semibold">{b.name}</div>
             <div className="text-sm text-muted-foreground">{b.line1}, {b.city}</div>
-            <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
               <Stat label="Menu items" value={String(b._count.menuItems)} />
               <Stat label="Orders" value={String(b._count.orders)} />
               <Stat label="Riders" value={String(b._count.riders)} />

@@ -84,7 +84,10 @@ export default async function AdminDashboardPage() {
       {report.rollup && breakdown.length > 0 && (
         <Card><CardContent className="p-5">
           <h3 className="font-semibold mb-3 flex items-center gap-2"><Network className="size-4" /> By restaurant (today)</h3>
-          <table className="w-full text-sm">
+          {/* overflow-x-auto so a long restaurant name doesn't push the
+              right-aligned Orders/Revenue columns off the phone viewport. */}
+          <div className="-mx-2 overflow-x-auto">
+          <table className="w-full text-sm min-w-[360px]">
             <thead className="text-left text-muted-foreground">
               <tr><th className="py-2">Restaurant</th><th className="text-right">Orders</th><th className="text-right">Revenue</th></tr>
             </thead>
@@ -108,6 +111,7 @@ export default async function AdminDashboardPage() {
               </tr>
             </tfoot>
           </table>
+          </div>
         </CardContent></Card>
       )}
 

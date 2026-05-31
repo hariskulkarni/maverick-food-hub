@@ -210,7 +210,7 @@ export function OffersClient({
               </SelectContent>
             </Select>
           </div>
-          <div className="relative flex-1 min-w-[180px] max-w-sm">
+          <div className="relative w-full sm:flex-1 sm:w-auto min-w-0 sm:min-w-[180px] max-w-sm">
             <Search className="size-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             <Input
               className="pl-8 h-9"

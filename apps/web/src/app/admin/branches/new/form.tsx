@@ -35,16 +35,22 @@ export function NewBranchForm() {
         >
           <Field label="Branch name" value={data.name} onChange={(v) => setData({ ...data, name: v })} placeholder="HSR Layout / Bandra West / etc" required />
           <Field label="Address line" value={data.line1} onChange={(v) => setData({ ...data, line1: v })} required />
-          <div className="grid grid-cols-3 gap-3">
+          {/* City / State / PIN: stack on phones, 3-up on tablet+. Three
+              inputs at 360px wide gives each ~95px — PIN works, City + State
+              names truncate. */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="City" value={data.city} onChange={(v) => setData({ ...data, city: v })} required />
             <Field label="State" value={data.state} onChange={(v) => setData({ ...data, state: v })} />
             <Field label="PIN" value={data.postalCode} onChange={(v) => setData({ ...data, postalCode: v })} required />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Branch phone" value={data.phone} onChange={(v) => setData({ ...data, phone: v })} />
             <Field label="Branch email" type="email" value={data.email} onChange={(v) => setData({ ...data, email: v })} />
           </div>
-          <div className="grid grid-cols-4 gap-3">
+          {/* Tax %, base fee, per-km, radius: 4 number inputs side-by-side
+              are unusable at 360px (~85px each, label cuts off). Stack 2-up
+              on phones, 4-up on lg+. */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Field label="Tax %" type="number" value={String(data.taxRatePct)} onChange={(v) => setData({ ...data, taxRatePct: Number(v) })} />
             <Field label="Base fee" type="number" value={String(data.baseDeliveryFee)} onChange={(v) => setData({ ...data, baseDeliveryFee: Number(v) })} />
             <Field label="Per-km fee" type="number" value={String(data.perKmDeliveryFee)} onChange={(v) => setData({ ...data, perKmDeliveryFee: Number(v) })} />

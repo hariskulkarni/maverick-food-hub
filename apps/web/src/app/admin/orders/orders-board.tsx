@@ -296,16 +296,21 @@ export function OrdersBoard({
   return (
     <>
       {alerts.length > 0 && (
-        <div className="sticky top-0 z-30 -mx-6 mb-2 space-y-1">
+        // `-mx-6` matches the desktop content padding so the alert strip
+        // bleeds to the panel edge. On phones the content is `px-4` and the
+        // AdminShell already has its own sticky top bar at z-30 — collapse
+        // the negative margin and drop our z below 30 so we sit beneath
+        // the hamburger header instead of overlapping it.
+        <div className="sticky top-0 z-20 -mx-4 md:-mx-6 mb-2 space-y-1">
           {alerts.map((a) => (
             <div
               key={a.orderId}
-              className="flex items-center justify-between gap-4 bg-destructive px-6 py-3 text-destructive-foreground shadow-lg animate-[pulse_1s_ease-in-out_infinite]"
+              className="flex items-center justify-between gap-3 bg-destructive px-4 md:px-6 py-2.5 md:py-3 text-destructive-foreground shadow-lg animate-[pulse_1s_ease-in-out_infinite]"
               role="alert"
               aria-live="assertive"
             >
-              <div className="font-semibold">NEW ORDER · {a.code} — please review</div>
-              <Button size="sm" variant="secondary" onClick={() => dismissAlert(a.orderId)}>Acknowledge</Button>
+              <div className="font-semibold truncate text-sm md:text-base">NEW ORDER · {a.code} — please review</div>
+              <Button size="sm" variant="secondary" onClick={() => dismissAlert(a.orderId)} className="shrink-0">Acknowledge</Button>
             </div>
           ))}
         </div>
