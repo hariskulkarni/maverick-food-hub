@@ -77,16 +77,11 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
     setCustomizeOpen(false);
   }
 
-  // App-style menu card (the canonical Indian food-app pattern):
-  //   • LEFT: text content — veg dot, name, price, description, prep time.
-  //   • RIGHT: a square image with the ADD button hanging halfway off the
-  //     bottom edge as a white "sticker" with a primary-coloured border
-  //     and bold uppercase text. Heart sits top-right of the image.
-  //
-  // Phone: 116-px image column + ~80-px sticker button positioned absolutely.
-  // md+: 144-px image column for a more generous desktop visual.
-  //
-  // The card has bottom padding reserved to clear the hanging button.
+  // Tight, bulletproof layout — right column is 80 px on phones (was
+  // 116, 96, 72 — none small enough). Image is 80x80 with the Heart
+  // on top, and a small "+ Add" button directly below the image at
+  // the same 80-px width. No hanging, no overlap, no surprises.
+  // md+ scales up to 112-px for a more generous desktop visual.
   const Heart = (
     <HeartButton
       menuItemId={item.id}
@@ -97,71 +92,13 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
     />
   );
 
-  // The "sticker" Add control — white background, primary border, uppercase
-  // primary text, slight shadow. Positioned absolutely so it hangs over the
-  // bottom edge of the image. We render the three states (Add / Customize /
-  // Stepper) at the same place so positioning is consistent.
-  const StickerButton = customizable ? (
-    <Button
-      size="sm"
-      variant="outline"
-      className="tap-press h-9 w-[88%] md:w-[80%] rounded-lg bg-background border-2 border-primary text-primary font-bold uppercase tracking-wider text-[11px] md:text-xs px-2 shadow-md hover:bg-primary/5"
-      onClick={() => setCustomizeOpen(true)}
-    >
-      <Plus className="size-3.5 mr-0.5" /> Add
-      {qty > 0 && (
-        <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground normal-case">
-          {qty}
-        </span>
-      )}
-    </Button>
-  ) : !simpleLine ? (
-    <Button
-      size="sm"
-      variant="outline"
-      className="tap-press h-9 w-[88%] md:w-[80%] rounded-lg bg-background border-2 border-primary text-primary font-bold uppercase tracking-wider text-[11px] md:text-xs px-2 shadow-md hover:bg-primary/5"
-      onClick={() => add({ id: item.id, refId: item.id, kind: 'item', branchId, name: item.name, unitPrice: Number(item.price), imageUrl: item.imageUrl, isVeg: item.isVeg })}
-    >
-      <Plus className="size-3.5 mr-0.5" /> Add
-    </Button>
-  ) : (
-    <div className="flex h-9 w-[88%] md:w-[80%] items-center justify-between rounded-lg border-2 border-primary bg-background overflow-hidden shadow-md">
-      <button
-        className="h-full w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
-        onClick={() => (simpleLine.quantity <= 1 ? remove(simpleLine.id) : setQty(simpleLine.id, simpleLine.quantity - 1))}
-        aria-label="Decrease quantity"
-      >
-        <Minus className="size-3.5" />
-      </button>
-      <span className="text-xs font-bold text-primary font-tabular-nums">{simpleLine.quantity}</span>
-      <button
-        className="h-full w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
-        onClick={() => setQty(simpleLine.id, simpleLine.quantity + 1)}
-        aria-label="Increase quantity"
-      >
-        <Plus className="size-3.5" />
-      </button>
-    </div>
-  );
-
-  // "Customizable" hint below the sticker button when there are variants
-  // or modifier groups — matches the standard food-app affordance.
-  const CustomizableHint = customizable ? (
-    <div className="text-center text-[9px] md:text-[10px] text-muted-foreground italic mt-0.5 leading-tight">
-      Customisable
-    </div>
-  ) : null;
-
   return (
     <div className="group relative flex w-full max-w-full flex-col rounded-2xl border bg-card card-lift overflow-hidden">
-      {/* Card body. Reserved bottom-padding equals the hanging button height
-          (h-9 = 36 px) split + the hint text height (~12 px), so the
-          sticker button doesn't get clipped by the card edge. */}
-      <div className="flex gap-3 md:gap-4 p-3 md:p-4 pb-7 md:pb-8 relative">
+      <div className="flex gap-2.5 md:gap-4 p-2.5 md:p-4 relative">
         <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-r from-primary/[0.03] via-transparent to-transparent" />
 
-        {/* LEFT — text content. min-w-0 keeps long titles from pushing
-            the right image column off-screen. */}
+        {/* LEFT — text. min-w-0 lets the title truncate so the right
+            column can never be pushed off-screen. */}
         <div className="relative flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span
@@ -195,28 +132,66 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
           </div>
         </div>
 
-        {/* RIGHT — square image with the sticker Add button hanging over
-            the bottom edge. The column is shrink-0 with an explicit width
-            so the left text can't push it off-screen. */}
-        <div className="relative w-[116px] md:w-[144px] shrink-0">
-          {/* Square image */}
-          <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-muted shadow-sm">
+        {/* RIGHT — 80-px image with the button directly below at the same
+            width. The column is shrink-0 with an explicit pixel width so
+            it CANNOT be pushed off-screen by left content. */}
+        <div className="flex w-20 md:w-28 shrink-0 flex-col items-stretch gap-2 md:gap-2.5">
+          {/* Square image, exactly the column width */}
+          <div className="relative h-20 w-20 md:h-28 md:w-28 overflow-hidden rounded-xl bg-muted shadow-sm">
             <Image
               src={item.imageUrl || imageFor(undefined)}
               alt={item.name}
               fill
-              sizes="(max-width: 768px) 116px, 144px"
+              sizes="(max-width: 768px) 80px, 112px"
               className="object-cover transition-transform duration-500 group-hover:scale-110"
             />
-            <div className="absolute top-1.5 right-1.5">{Heart}</div>
+            <div className="absolute top-1 right-1">{Heart}</div>
           </div>
 
-          {/* Sticker button — absolute, centered horizontally, hanging
-              ~half over the image's bottom edge for the floating effect. */}
-          <div className="absolute left-1/2 -translate-x-1/2 -bottom-4 flex flex-col items-center w-full">
-            {StickerButton}
-            {CustomizableHint}
-          </div>
+          {/* Button — exactly w-full of the 80/112-px column. The "+ Add"
+              text uses text-[11px] on phones so it never overflows. */}
+          {customizable ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="tap-press h-8 md:h-9 w-full rounded-lg border-2 border-primary bg-background text-primary font-bold uppercase tracking-wider text-[11px] md:text-xs px-1 shadow-sm hover:bg-primary/5"
+              onClick={() => setCustomizeOpen(true)}
+            >
+              <Plus className="size-3 mr-0.5" /> Add
+              {qty > 0 && (
+                <span className="ml-1 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-bold text-primary-foreground normal-case">
+                  {qty}
+                </span>
+              )}
+            </Button>
+          ) : !simpleLine ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="tap-press h-8 md:h-9 w-full rounded-lg border-2 border-primary bg-background text-primary font-bold uppercase tracking-wider text-[11px] md:text-xs px-1 shadow-sm hover:bg-primary/5"
+              onClick={() => add({ id: item.id, refId: item.id, kind: 'item', branchId, name: item.name, unitPrice: Number(item.price), imageUrl: item.imageUrl, isVeg: item.isVeg })}
+            >
+              <Plus className="size-3 mr-0.5" /> Add
+            </Button>
+          ) : (
+            <div className="flex h-8 md:h-9 w-full items-center justify-between rounded-lg border-2 border-primary bg-background overflow-hidden shadow-sm">
+              <button
+                className="h-full w-7 md:w-8 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
+                onClick={() => (simpleLine.quantity <= 1 ? remove(simpleLine.id) : setQty(simpleLine.id, simpleLine.quantity - 1))}
+                aria-label="Decrease quantity"
+              >
+                <Minus className="size-3" />
+              </button>
+              <span className="text-xs font-bold text-primary font-tabular-nums">{simpleLine.quantity}</span>
+              <button
+                className="h-full w-7 md:w-8 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
+                onClick={() => setQty(simpleLine.id, simpleLine.quantity + 1)}
+                aria-label="Increase quantity"
+              >
+                <Plus className="size-3" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
       {/* Cross-sells — only mount once the item is in the cart, so we don't
