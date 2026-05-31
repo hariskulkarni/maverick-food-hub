@@ -166,8 +166,10 @@ export default async function RiderAppPage() {
       {/* ─── STATS ─────────────────────────────────────────────────────────── */}
       <Reveal>
         <section className="border-y bg-muted/30">
-          <div className="container py-10">
-            <div className="grid grid-cols-3 gap-6 text-center">
+          <div className="container py-8 md:py-10">
+            {/* Phones: stack vertically — three big counters look better one-per-row
+                at 360px than crammed 3-up with tiny numbers. md+ keeps 3-col. */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
               <StatsCounter end={4.9} label="Avg rider rating" decimals={1} suffix=" ★" />
               <StatsCounter end={45000} label="Monthly deliveries" prefix="" />
               <StatsCounter end={1500} label="Active riders this week" prefix="" suffix="+" />

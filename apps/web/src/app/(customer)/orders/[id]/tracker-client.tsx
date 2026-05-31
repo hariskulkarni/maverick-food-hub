@@ -456,17 +456,55 @@ function Stepper({ progression, idx }: { progression: readonly string[]; idx: nu
   const pct = idx < 0 ? 0 : (idx / (progression.length - 1)) * 100;
   return (
     <div className="relative">
-      {/* Track + progress line */}
-      <div className="absolute left-5 right-5 top-5 h-1 rounded-full bg-muted overflow-hidden">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-primary via-warning to-primary transition-all duration-700"
-          style={{ width: `${pct}%`, backgroundSize: '200% 100%' }}
-        />
-      </div>
-      <div className="relative grid grid-cols-5 gap-2">
+      {/* PHONES (< md): vertical timeline. Each step is a full-width row with a
+          left-rail icon + the long label on the right. The vertical line
+          connecting steps runs through the rail at left:1.25rem. This avoids
+          5-up label overflow at 360px wide. */}
+      <ol className="md:hidden relative space-y-3">
+        {/* Vertical track behind the icons. left = icon center (1.25rem = 20px),
+            top/bottom offsets keep the line inside the first/last icon. */}
+        <span
+          aria-hidden
+          className="absolute left-5 top-5 bottom-5 w-1 rounded-full bg-muted overflow-hidden"
+        >
+          <span
+            className="block w-full rounded-full bg-gradient-to-b from-primary via-warning to-primary transition-all duration-700"
+            style={{ height: `${pct}%` }}
+          />
+        </span>
         {progression.map((s, i) => (
-          <Step key={s} done={i <= idx} active={i === idx} label={STATUS_LABELS[s as keyof typeof STATUS_LABELS]} icon={ICONS[s]} />
+          <li key={s} className="relative flex items-center gap-3 min-h-[40px]">
+            <StepIcon done={i <= idx} active={i === idx} icon={ICONS[s]} />
+            <span
+              className={`text-sm leading-tight ${
+                i <= idx ? 'font-semibold' : 'text-muted-foreground'
+              }`}
+            >
+              {STATUS_LABELS[s as keyof typeof STATUS_LABELS]}
+            </span>
+          </li>
         ))}
+      </ol>
+
+      {/* md+: original horizontal 5-up stepper. */}
+      <div className="hidden md:block relative">
+        <div className="absolute left-5 right-5 top-5 h-1 rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-primary via-warning to-primary transition-all duration-700"
+            style={{ width: `${pct}%`, backgroundSize: '200% 100%' }}
+          />
+        </div>
+        <div className="relative grid grid-cols-5 gap-2">
+          {progression.map((s, i) => (
+            <Step
+              key={s}
+              done={i <= idx}
+              active={i === idx}
+              label={STATUS_LABELS[s as keyof typeof STATUS_LABELS]}
+              icon={ICONS[s]}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -475,18 +513,26 @@ function Stepper({ progression, idx }: { progression: readonly string[]; idx: nu
 function Step({ done, active, label, icon: Icon }: { done: boolean; active: boolean; label: string; icon: any }) {
   return (
     <div className="flex flex-col items-center gap-1.5 relative">
-      <div
-        className={`grid h-10 w-10 place-items-center rounded-full transition-all duration-500 relative z-10 ${
-          done ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30' : 'bg-card border-2 border-muted text-muted-foreground'
-        } ${active ? 'ring-saffron scale-110' : ''}`}
-      >
-        <Icon className="size-5" />
-        {active && (
-          <span className="absolute inset-0 rounded-full bg-primary/30 pulse-soft" />
-        )}
-      </div>
+      <StepIcon done={done} active={active} icon={Icon} />
       <div className={`text-[10px] md:text-[11px] text-center leading-tight ${done ? 'font-medium' : 'text-muted-foreground'}`}>{label}</div>
     </div>
+  );
+}
+
+/**
+ * Shared icon disc used by both the vertical (phone) and horizontal
+ * (desktop) steppers — keeps colour and active-pulse logic in one place.
+ */
+function StepIcon({ done, active, icon: Icon }: { done: boolean; active: boolean; icon: any }) {
+  return (
+    <span
+      className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition-all duration-500 relative z-10 ${
+        done ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30' : 'bg-card border-2 border-muted text-muted-foreground'
+      } ${active ? 'ring-saffron scale-110' : ''}`}
+    >
+      <Icon className="size-5" />
+      {active && <span className="absolute inset-0 rounded-full bg-primary/30 pulse-soft" />}
+    </span>
   );
 }
 
