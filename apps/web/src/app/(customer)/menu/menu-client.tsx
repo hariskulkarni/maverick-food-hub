@@ -101,14 +101,19 @@ export function MenuClient({ data, branchId, showSearch = true, showFilters = tr
         </nav>
       </aside>
 
-      {/* ───────── Mobile sticky jumpnav + search ───────── */}
+      {/* ───────── Mobile sticky jumpnav + search ─────────
+          flex with min-w-0 on the search wrapper + shrink-0 on the diet
+          picker so the picker keeps its labels ('Veg' / 'Non-veg') and the
+          search shrinks instead of being squeezed off-screen on phones. */}
       <div className="md:hidden -mx-4 px-4 sticky top-[3.25rem] z-20 glass border-b pb-2 pt-2 space-y-2">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
+        <div className="flex gap-2 items-center">
+          <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search dishes" className="pl-9 h-9" />
           </div>
-          <DietPicker diet={diet} setDiet={setDiet} compact />
+          <div className="shrink-0">
+            <DietPicker diet={diet} setDiet={setDiet} compact />
+          </div>
         </div>
         <div ref={jumpRef} className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1">
           {filtered.map((c) => (

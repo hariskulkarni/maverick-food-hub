@@ -79,7 +79,10 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
 
   return (
     <div className="group relative flex flex-col gap-0 rounded-2xl border bg-card card-lift overflow-hidden">
-      <div className="flex gap-4 p-4 relative">
+      {/* Tighter horizontal padding on phones (p-3) so a 96-px image + button
+          fit under a 360-px viewport with room to spare. md+ uses p-4 to keep
+          the previous desktop breathing room. */}
+      <div className="flex gap-3 md:gap-4 p-3 md:p-4 relative">
       {/* Hover tint */}
       <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-r from-primary/[0.03] via-transparent to-transparent" />
 
@@ -116,13 +119,15 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
         </div>
       </div>
 
-      <div className="relative flex shrink-0 flex-col items-end justify-between gap-3">
-        <div className="relative h-24 w-24 overflow-hidden rounded-xl bg-muted shadow-sm">
+      {/* Right column: image + add/customize control. Tighter on phones
+          (80px image) for more left-text room, full size (96px) on md+. */}
+      <div className="relative flex shrink-0 flex-col items-end justify-between gap-2 md:gap-3">
+        <div className="relative h-20 w-20 md:h-24 md:w-24 overflow-hidden rounded-xl bg-muted shadow-sm">
           <Image
             src={item.imageUrl || imageFor(undefined)}
             alt={item.name}
             fill
-            sizes="96px"
+            sizes="(max-width: 768px) 80px, 96px"
             className="object-cover transition-transform duration-500 group-hover:scale-110"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -138,25 +143,33 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
         </div>
 
         {customizable ? (
-          // Customizable items always open the modal. A small qty badge shows
-          // the running total across all of this item's selection lines.
+          // Customizable items always open the modal. On phones we collapse
+          // to a compact icon+qty-badge so the button never exceeds the
+          // 80-px image column. md+ keeps the descriptive label.
           <Button
             size="sm"
             variant="outline"
-            className="tap-press shadow-sm hover:border-primary hover:text-primary h-11 min-w-[44px] px-4 md:h-9 md:px-3"
+            className="tap-press shadow-sm hover:border-primary hover:text-primary h-11 w-20 px-0 md:h-9 md:w-auto md:px-3"
             onClick={() => setCustomizeOpen(true)}
           >
-            <SlidersHorizontal className="size-4" /> {qty > 0 ? `Add more · ${qty}` : 'Customize'}
+            <SlidersHorizontal className="size-4 md:mr-1" />
+            <span className="hidden md:inline">{qty > 0 ? `Add more · ${qty}` : 'Customize'}</span>
+            {qty > 0 && (
+              <span className="md:hidden ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                {qty}
+              </span>
+            )}
           </Button>
         ) : !simpleLine ? (
-          // 44×44 minimum tap target on mobile (sm: keeps original height).
+          // Simple add. Phone: square 80×44 button bounded to the image's
+          // column width with just '+ Add'. md+: original sizing.
           <Button
             size="sm"
             variant="outline"
-            className="tap-press shadow-sm hover:border-primary hover:text-primary h-11 min-w-[44px] px-4 md:h-9 md:px-3"
+            className="tap-press shadow-sm hover:border-primary hover:text-primary h-11 w-20 px-0 md:h-9 md:w-auto md:px-3"
             onClick={() => add({ id: item.id, refId: item.id, kind: 'item', branchId, name: item.name, unitPrice: Number(item.price), imageUrl: item.imageUrl, isVeg: item.isVeg })}
           >
-            <Plus className="size-4" /> Add
+            <Plus className="size-4 md:mr-1" /> <span className="text-sm font-semibold md:font-normal">Add</span>
           </Button>
         ) : (
           // Stepper: each ± hit area is 44×44 on mobile.

@@ -49,7 +49,13 @@ export default async function CustomerLayout({ children }: { children: React.Rea
               and is accounted for visually (it overlays content, not pushes it).
             - Tablet/desktop: nav hidden, footer + top-nav remain primary.
         */}
-        <main className="flex-1 pb-[88px] md:pb-0">{children}</main>
+        {/* Universal overflow safety net: any deep child that overshoots the
+            viewport (long URL, hard-coded width, sticky element that escapes)
+            shouldn't let the body scroll horizontally on phones — that's
+            what makes cards look 'cut off on the right'. overflow-x-clip
+            (rather than -hidden) lets position:sticky still work for the
+            header above. */}
+        <main className="flex-1 pb-[88px] md:pb-0 overflow-x-clip">{children}</main>
 
         {/* Mobile-only chrome — both components self-hide on routes that
             shouldn't carry the nav (admin, kitchen, rider, platform, login,
