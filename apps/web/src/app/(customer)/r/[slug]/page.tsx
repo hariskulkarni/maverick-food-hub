@@ -339,8 +339,11 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
         </section>
       )}
 
-      {/* ───────── Combos + Menu ───────── */}
-      <section className="container py-10">
+      {/* ───────── Combos + Menu ─────────
+          max-w-full + overflow-x-hidden as a belt for the html/body braces:
+          even if some sub-component overshoots, this section can't make the
+          page scroll right on phones. */}
+      <section className="container py-10 max-w-full overflow-x-hidden">
         {cms.combos.enabled && combos.length > 0 && (
           <div className="mb-12">
             <div className="mb-5 reveal">

@@ -94,12 +94,23 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
 
   return (
     <div className="group relative flex w-full max-w-full flex-col rounded-2xl border bg-card card-lift overflow-hidden">
-      <div className="flex gap-2.5 md:gap-4 p-2.5 md:p-4 relative">
+      {/* CSS Grid with explicit pixel column tracks. Unlike flex, grid
+          tracks CANNOT be pushed wider by their content — the track is
+          fixed at exactly 80 px on phones / 112 px on md+. The left text
+          gets minmax(0,1fr) so its title truncates instead of pushing
+          the grid wider than its parent. */}
+      <style>{`
+        [data-mic="row"] { grid-template-columns: minmax(0,1fr) 80px; }
+        @media (min-width: 768px) {
+          [data-mic="row"] { grid-template-columns: minmax(0,1fr) 112px; }
+        }
+      `}</style>
+      <div data-mic="row" className="grid gap-2.5 md:gap-4 p-2.5 md:p-4 relative">
         <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-r from-primary/[0.03] via-transparent to-transparent" />
 
         {/* LEFT — text. min-w-0 lets the title truncate so the right
             column can never be pushed off-screen. */}
-        <div className="relative flex-1 min-w-0">
+        <div className="relative min-w-0">
           <div className="flex items-center gap-2">
             <span
               className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border-[1.5px] ${item.isVeg ? 'border-success' : 'border-destructive'}`}
@@ -132,12 +143,13 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
           </div>
         </div>
 
-        {/* RIGHT — 80-px image with the button directly below at the same
-            width. The column is shrink-0 with an explicit pixel width so
-            it CANNOT be pushed off-screen by left content. */}
-        <div className="flex w-20 md:w-28 shrink-0 flex-col items-stretch gap-2 md:gap-2.5">
-          {/* Square image, exactly the column width */}
-          <div className="relative h-20 w-20 md:h-28 md:w-28 overflow-hidden rounded-xl bg-muted shadow-sm">
+        {/* RIGHT — image + button. The grid track owns the 80/112 px
+            width; this div just fills it (w-full). The image and button
+            both fill the column width so they always align. */}
+        <div className="flex w-full min-w-0 flex-col items-stretch gap-2 md:gap-2.5">
+          {/* Square image — exactly fills the grid column. aspect-square
+              keeps the height equal to the column width. */}
+          <div className="relative w-full aspect-square overflow-hidden rounded-xl bg-muted shadow-sm">
             <Image
               src={item.imageUrl || imageFor(undefined)}
               alt={item.name}
