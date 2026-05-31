@@ -32,7 +32,13 @@ export default async function CustomerLayout({ children }: { children: React.Rea
 
   return (
     <CartProvider>
-      <div className="flex min-h-dvh flex-col">
+      {/* Outermost width clamp. max-w-[100vw] + overflow-x-hidden together
+          guarantee no descendant — even one with a hard-coded pixel width —
+          can ever make the page horizontally scrollable on phones. This is
+          a universal safety net that beats overflow-x-clip on older iOS
+          Safari (the user-reported case). The sticky <header> still works
+          because we don't put overflow on it directly. */}
+      <div className="flex min-h-dvh flex-col max-w-[100vw] overflow-x-hidden">
         <DemoBanner />
         {/* Context-aware top nav. Renders marketing chrome on `/` and tenant
             chrome on `/r/<slug>`. */}
@@ -48,14 +54,10 @@ export default async function CustomerLayout({ children }: { children: React.Rea
               StickyCartBar floats above the nav when the cart is non-empty
               and is accounted for visually (it overlays content, not pushes it).
             - Tablet/desktop: nav hidden, footer + top-nav remain primary.
+            - Belt-and-braces: width clamp on <main> too so a sticky child can
+              never escape its bounds.
         */}
-        {/* Universal overflow safety net: any deep child that overshoots the
-            viewport (long URL, hard-coded width, sticky element that escapes)
-            shouldn't let the body scroll horizontally on phones — that's
-            what makes cards look 'cut off on the right'. overflow-x-clip
-            (rather than -hidden) lets position:sticky still work for the
-            header above. */}
-        <main className="flex-1 pb-[88px] md:pb-0 overflow-x-clip">{children}</main>
+        <main className="flex-1 pb-[88px] md:pb-0 w-full max-w-full overflow-x-hidden">{children}</main>
 
         {/* Mobile-only chrome — both components self-hide on routes that
             shouldn't carry the nav (admin, kitchen, rider, platform, login,

@@ -78,11 +78,13 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
   }
 
   return (
-    <div className="group relative flex flex-col gap-0 rounded-2xl border bg-card card-lift overflow-hidden">
-      {/* Tighter horizontal padding on phones (p-3) so a 96-px image + button
-          fit under a 360-px viewport with room to spare. md+ uses p-4 to keep
-          the previous desktop breathing room. */}
-      <div className="flex gap-3 md:gap-4 p-3 md:p-4 relative">
+    // Card itself: w-full + max-w-full + overflow-hidden = it can never
+    // exceed its parent's content box no matter what's inside.
+    <div className="group relative flex w-full max-w-full flex-col gap-0 rounded-2xl border bg-card card-lift overflow-hidden">
+      {/* Tighter padding on phones, shrink to gap-2 so a 64-px image + button
+          column fit even on a 320-px viewport. md+ keeps the previous desktop
+          breathing room. */}
+      <div className="flex gap-2.5 md:gap-4 p-2.5 md:p-4 relative">
       {/* Hover tint */}
       <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-r from-primary/[0.03] via-transparent to-transparent" />
 
@@ -119,15 +121,18 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
         </div>
       </div>
 
-      {/* Right column: image + add/customize control. Tighter on phones
-          (80px image) for more left-text room, full size (96px) on md+. */}
-      <div className="relative flex shrink-0 flex-col items-end justify-between gap-2 md:gap-3">
-        <div className="relative h-20 w-20 md:h-24 md:w-24 overflow-hidden rounded-xl bg-muted shadow-sm">
+      {/* Right column: image + add control. Phone: 72-px image with the
+          button directly below at the same width — guaranteed to fit even
+          on a 320-px viewport. md+: original 96-px image. The whole column
+          is shrink-0 with an explicit width so the left content can't push
+          it past the card's right edge. */}
+      <div className="relative flex w-[72px] md:w-24 shrink-0 flex-col items-end justify-between gap-2 md:gap-3">
+        <div className="relative h-[72px] w-[72px] md:h-24 md:w-24 overflow-hidden rounded-xl bg-muted shadow-sm">
           <Image
             src={item.imageUrl || imageFor(undefined)}
             alt={item.name}
             fill
-            sizes="(max-width: 768px) 80px, 96px"
+            sizes="(max-width: 768px) 72px, 96px"
             className="object-cover transition-transform duration-500 group-hover:scale-110"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -143,13 +148,13 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
         </div>
 
         {customizable ? (
-          // Customizable items always open the modal. On phones we collapse
-          // to a compact icon+qty-badge so the button never exceeds the
-          // 80-px image column. md+ keeps the descriptive label.
+          // Customizable items always open the modal. On phones the button
+          // is fixed to the same width as the image (72 px) so it can never
+          // exceed the right column. md+ keeps the descriptive label.
           <Button
             size="sm"
             variant="outline"
-            className="tap-press shadow-sm hover:border-primary hover:text-primary h-11 w-20 px-0 md:h-9 md:w-auto md:px-3"
+            className="tap-press shadow-sm hover:border-primary hover:text-primary h-10 w-full px-0 md:h-9 md:w-auto md:px-3"
             onClick={() => setCustomizeOpen(true)}
           >
             <SlidersHorizontal className="size-4 md:mr-1" />
@@ -161,29 +166,31 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
             )}
           </Button>
         ) : !simpleLine ? (
-          // Simple add. Phone: square 80×44 button bounded to the image's
-          // column width with just '+ Add'. md+: original sizing.
+          // Simple add. Phone: w-full inside the 72px right column so the
+          // button never exceeds the image column. md+: original sizing.
           <Button
             size="sm"
             variant="outline"
-            className="tap-press shadow-sm hover:border-primary hover:text-primary h-11 w-20 px-0 md:h-9 md:w-auto md:px-3"
+            className="tap-press shadow-sm hover:border-primary hover:text-primary h-10 w-full px-0 md:h-9 md:w-auto md:px-3"
             onClick={() => add({ id: item.id, refId: item.id, kind: 'item', branchId, name: item.name, unitPrice: Number(item.price), imageUrl: item.imageUrl, isVeg: item.isVeg })}
           >
             <Plus className="size-4 md:mr-1" /> <span className="text-sm font-semibold md:font-normal">Add</span>
           </Button>
         ) : (
-          // Stepper: each ± hit area is 44×44 on mobile.
-          <div className="flex items-center rounded-full border-2 border-primary bg-background overflow-hidden shadow-sm tap-press">
+          // Stepper: width-bounded to the 72-px image column on phones.
+          // Phone tap target stays 40×40 (just above 40-min) so the whole
+          // stepper fits — minus + qty + plus = 24+24+24 = ~72px.
+          <div className="flex w-full items-center justify-between rounded-full border-2 border-primary bg-background overflow-hidden shadow-sm tap-press">
             <button
-              className="h-11 w-11 md:h-9 md:w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
+              className="h-10 w-10 md:h-9 md:w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
               onClick={() => (simpleLine.quantity <= 1 ? remove(simpleLine.id) : setQty(simpleLine.id, simpleLine.quantity - 1))}
               aria-label="Decrease quantity"
             >
               <Minus className="size-4" />
             </button>
-            <span className="w-7 text-center text-sm font-bold text-primary font-tabular-nums">{simpleLine.quantity}</span>
+            <span className="text-sm font-bold text-primary font-tabular-nums">{simpleLine.quantity}</span>
             <button
-              className="h-11 w-11 md:h-9 md:w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
+              className="h-10 w-10 md:h-9 md:w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
               onClick={() => setQty(simpleLine.id, simpleLine.quantity + 1)}
               aria-label="Increase quantity"
             >
