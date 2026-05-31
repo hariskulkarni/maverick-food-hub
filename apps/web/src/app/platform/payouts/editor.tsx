@@ -188,7 +188,7 @@ export function PayoutRuleEditor({ current }: { current: any }) {
           open={open.time} toggle={() => setOpen({ ...open, time: !open.time })}>
           <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
             <div className="text-xs font-semibold uppercase tracking-wider text-primary">Lunch peak</div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <TimeField label="Starts" value={data.lunchPeakStartMin} setValue={(v) => set('lunchPeakStartMin', v)} />
               <TimeField label="Ends" value={data.lunchPeakEndMin} setValue={(v) => set('lunchPeakEndMin', v)} />
               <NumField  label="Bonus" value={data.lunchPeakBonus} setValue={(v) => set('lunchPeakBonus', v)} prefix="₹" />
@@ -196,7 +196,7 @@ export function PayoutRuleEditor({ current }: { current: any }) {
           </div>
           <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
             <div className="text-xs font-semibold uppercase tracking-wider text-primary">Dinner peak</div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <TimeField label="Starts" value={data.dinnerPeakStartMin} setValue={(v) => set('dinnerPeakStartMin', v)} />
               <TimeField label="Ends" value={data.dinnerPeakEndMin} setValue={(v) => set('dinnerPeakEndMin', v)} />
               <NumField  label="Bonus" value={data.dinnerPeakBonus} setValue={(v) => set('dinnerPeakBonus', v)} prefix="₹" />

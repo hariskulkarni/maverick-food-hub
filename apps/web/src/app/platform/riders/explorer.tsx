@@ -56,7 +56,7 @@ export function RidersExplorer({ initial }: { initial: RiderRow[] }) {
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[240px] max-w-md">
+            <div className="relative w-full sm:flex-1 sm:w-auto min-w-0 sm:min-w-[240px] max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, phone, or plate" className="pl-9" />
               {q && <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="size-4" /></button>}
@@ -105,7 +105,9 @@ function RiderCard({ r, onOpen }: { r: RiderRow; onOpen: () => void }) {
             {!r.approvedAt && <Badge variant="warning" className="text-[10px] mt-1 block">Unapproved</Badge>}
           </div>
         </div>
-        <div className="mt-3 grid grid-cols-4 gap-2 text-[11px]">
+        {/* 4 mini-stats. At 360px four equal cells (~80px each) compress the
+            ₹-prefixed Earnings number. Stack 2-up on phones, 4-up on sm+. */}
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
           <Mini label="Active"    value={String(r.currentLoad)} />
           <Mini label="Rating"    value={`⭐ ${Number(r.rating ?? 0).toFixed(1)}`} />
           <Mini label="Trips"     value={String(r.totalDeliveries)} />

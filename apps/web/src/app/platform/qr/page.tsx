@@ -159,7 +159,10 @@ export default async function PlatformQrPage() {
                               <div className="space-y-1">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={q.qrPng} alt={`QR code for ${q.url}`} width={64} height={64} className="rounded border bg-white p-1" />
-                                <Button asChild size="sm" variant="outline" className="h-6 px-2 text-[10px]">
+                                {/* Touch target: 36px tall (h-9) on phones, smaller on
+                                    md+ where mouse precision makes h-7 fine. Was h-6
+                                    which violated the 44px tap-target minimum. */}
+                                <Button asChild size="sm" variant="outline" className="h-9 md:h-7 px-2 text-[11px]">
                                   <a href={q.qrPng} download={`qr-${q.code}.png`}>
                                     <Download className="size-3" /> PNG
                                   </a>

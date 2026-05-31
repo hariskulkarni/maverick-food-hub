@@ -526,7 +526,7 @@ function ErrorsTab() {
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[220px] max-w-md">
+            <div className="relative w-full sm:flex-1 sm:w-auto min-w-0 sm:min-w-[220px] max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search message, source, or path" className="pl-9" />
             </div>

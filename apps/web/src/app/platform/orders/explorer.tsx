@@ -72,12 +72,12 @@ export function OrdersExplorer({ initial, restaurants, filters }: { initial: Ord
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[240px] max-w-md">
+            <div className="relative w-full sm:flex-1 sm:w-auto min-w-0 sm:min-w-[240px] max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search order code, customer name, or phone" className="pl-9" />
               {q && <button onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="size-4" /></button>}
             </div>
-            <select value={restaurantId} onChange={(e) => setRestaurantId(e.target.value)} className="h-9 rounded-md border bg-card px-2 text-sm min-w-[180px]">
+            <select value={restaurantId} onChange={(e) => setRestaurantId(e.target.value)} className="h-9 w-full sm:w-auto sm:min-w-[180px] rounded-md border bg-card px-2 text-sm">
               <option value="">All restaurants</option>
               {restaurants.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
