@@ -77,128 +77,179 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
     setCustomizeOpen(false);
   }
 
+  // Mobile-first redesign: on phones the card is a VERTICAL stack —
+  // image-banner on top with overlaid heart, content in the middle,
+  // full-width Add button anchored at the bottom. No horizontal column
+  // can ever be clipped because there ARE no horizontal columns.
+  //
+  // On md+ we keep the original "text left, image+button right" layout
+  // because there's plenty of horizontal room and that layout reads
+  // faster when scanning many items.
+  const Heart = (
+    <HeartButton
+      menuItemId={item.id}
+      initial={Boolean(item.isAuthed && item.isFavorited)}
+      requireAuth={!item.isAuthed}
+      variant="glass"
+      size="sm"
+    />
+  );
+
+  // The two button states (Add vs Stepper). Kept as fragments so we can
+  // reuse them in both the phone and desktop layouts without duplicating
+  // the click handlers.
+  const AddButton = customizable ? (
+    <Button
+      size="sm"
+      variant="outline"
+      className="tap-press shadow-sm hover:border-primary hover:text-primary h-11 w-full md:h-9 md:w-auto md:px-3"
+      onClick={() => setCustomizeOpen(true)}
+    >
+      <SlidersHorizontal className="size-4 mr-1" />
+      {qty > 0 ? `Add more · ${qty}` : 'Customize'}
+    </Button>
+  ) : !simpleLine ? (
+    <Button
+      size="sm"
+      variant="outline"
+      className="tap-press shadow-sm hover:border-primary hover:text-primary h-11 w-full md:h-9 md:w-auto md:px-3"
+      onClick={() => add({ id: item.id, refId: item.id, kind: 'item', branchId, name: item.name, unitPrice: Number(item.price), imageUrl: item.imageUrl, isVeg: item.isVeg })}
+    >
+      <Plus className="size-4 mr-1" /> Add
+    </Button>
+  ) : (
+    <div className="flex w-full md:w-auto items-center justify-between rounded-full border-2 border-primary bg-background overflow-hidden shadow-sm tap-press">
+      <button
+        className="h-11 w-11 md:h-9 md:w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
+        onClick={() => (simpleLine.quantity <= 1 ? remove(simpleLine.id) : setQty(simpleLine.id, simpleLine.quantity - 1))}
+        aria-label="Decrease quantity"
+      >
+        <Minus className="size-4" />
+      </button>
+      <span className="flex-1 md:flex-none md:w-7 text-center text-sm font-bold text-primary font-tabular-nums">{simpleLine.quantity}</span>
+      <button
+        className="h-11 w-11 md:h-9 md:w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
+        onClick={() => setQty(simpleLine.id, simpleLine.quantity + 1)}
+        aria-label="Increase quantity"
+      >
+        <Plus className="size-4" />
+      </button>
+    </div>
+  );
+
   return (
-    // Card itself: w-full + max-w-full + overflow-hidden = it can never
-    // exceed its parent's content box no matter what's inside.
-    <div className="group relative flex w-full max-w-full flex-col gap-0 rounded-2xl border bg-card card-lift overflow-hidden">
-      {/* Tighter padding on phones, shrink to gap-2 so a 64-px image + button
-          column fit even on a 320-px viewport. md+ keeps the previous desktop
-          breathing room. */}
-      <div className="flex gap-2.5 md:gap-4 p-2.5 md:p-4 relative">
-      {/* Hover tint */}
-      <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-r from-primary/[0.03] via-transparent to-transparent" />
+    // Outer card is bounded by its parent (max-w-full) and overflow-hidden
+    // so nothing inside can ever escape on either axis.
+    <div className="group relative flex w-full max-w-full flex-col rounded-2xl border bg-card card-lift overflow-hidden">
 
-      <div className="relative flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span
-            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border-[1.5px] ${item.isVeg ? 'border-success' : 'border-destructive'}`}
-            title={item.isVeg ? 'Veg' : 'Non-veg'}
-          >
-            <span className={`h-1.5 w-1.5 rounded-full ${item.isVeg ? 'bg-success' : 'bg-destructive'}`} />
-          </span>
-          <h3 className="font-semibold truncate group-hover:text-primary transition-colors">{item.name}</h3>
-          {item.spicyLevel >= 2 && (
-            <span className="inline-flex items-center text-destructive" title={`Spicy ${item.spicyLevel}/3`}>
-              <Flame className="size-3.5" />
-              {item.spicyLevel >= 3 && <Flame className="size-3.5 -ml-1" />}
-            </span>
-          )}
-        </div>
-        <div className="mt-1.5 flex items-baseline gap-2 flex-wrap">
-          <span className={`text-base font-semibold ${item.originalPrice ? 'text-primary' : 'text-foreground'}`}>{money(item.price)}</span>
-          {item.originalPrice && (
-            <>
-              <span className="text-xs text-muted-foreground line-through">{money(item.originalPrice)}</span>
-              <span className="inline-flex items-center rounded-full bg-warning/10 text-warning border border-warning/30 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider">
-                {item.happyHourLabel ?? 'Happy Hour'}
-              </span>
-            </>
-          )}
-        </div>
-        {item.description && <p className="mt-2 text-sm text-muted-foreground line-clamp-2">{item.description}</p>}
-        <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1"><Clock className="size-3" /> ~{item.prepTimeMin} min</span>
-        </div>
-      </div>
-
-      {/* Right column: image + add control. Phone: 72-px image with the
-          button directly below at the same width — guaranteed to fit even
-          on a 320-px viewport. md+: original 96-px image. The whole column
-          is shrink-0 with an explicit width so the left content can't push
-          it past the card's right edge. */}
-      <div className="relative flex w-[72px] md:w-24 shrink-0 flex-col items-end justify-between gap-2 md:gap-3">
-        <div className="relative h-[72px] w-[72px] md:h-24 md:w-24 overflow-hidden rounded-xl bg-muted shadow-sm">
+      {/* ───────────── PHONE LAYOUT (< md) — vertical stack ─────────────
+          Image-banner on top (full card width), content underneath, full-
+          width Add button at the bottom. Nothing can be clipped because
+          there are no horizontal columns competing for space. */}
+      <div className="md:hidden flex flex-col">
+        {/* 16:9 banner — guaranteed to scale to viewport width with the
+            aspect-video ratio. Heart floats top-right; the price chip
+            optionally floats bottom-left for at-a-glance scanning. */}
+        <div className="relative w-full aspect-[16/10] bg-muted">
           <Image
             src={item.imageUrl || imageFor(undefined)}
             alt={item.name}
             fill
-            sizes="(max-width: 768px) 72px, 96px"
-            className="object-cover transition-transform duration-500 group-hover:scale-110"
+            sizes="100vw"
+            className="object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="absolute top-1 right-1">
-            <HeartButton
-              menuItemId={item.id}
-              initial={Boolean(item.isAuthed && item.isFavorited)}
-              requireAuth={!item.isAuthed}
-              variant="glass"
-              size="sm"
-            />
+          <div className="absolute top-2 right-2">{Heart}</div>
+        </div>
+
+        <div className="p-3 space-y-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border-[1.5px] ${item.isVeg ? 'border-success' : 'border-destructive'}`}
+              title={item.isVeg ? 'Veg' : 'Non-veg'}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${item.isVeg ? 'bg-success' : 'bg-destructive'}`} />
+            </span>
+            <h3 className="font-semibold truncate">{item.name}</h3>
+            {item.spicyLevel >= 2 && (
+              <span className="inline-flex items-center text-destructive shrink-0" title={`Spicy ${item.spicyLevel}/3`}>
+                <Flame className="size-3.5" />
+                {item.spicyLevel >= 3 && <Flame className="size-3.5 -ml-1" />}
+              </span>
+            )}
+          </div>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className={`text-base font-semibold ${item.originalPrice ? 'text-primary' : 'text-foreground'}`}>{money(item.price)}</span>
+            {item.originalPrice && (
+              <>
+                <span className="text-xs text-muted-foreground line-through">{money(item.originalPrice)}</span>
+                <span className="inline-flex items-center rounded-full bg-warning/10 text-warning border border-warning/30 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider">
+                  {item.happyHourLabel ?? 'Happy Hour'}
+                </span>
+              </>
+            )}
+          </div>
+          {item.description && <p className="text-sm text-muted-foreground line-clamp-2">{item.description}</p>}
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1"><Clock className="size-3" /> ~{item.prepTimeMin} min</span>
+          </div>
+          {/* Full-width Add button on phones — easiest tap target, can't
+              clip, matches the standard Indian food-app pattern. */}
+          <div className="pt-1">{AddButton}</div>
+        </div>
+      </div>
+
+      {/* ───────────── DESKTOP LAYOUT (md+) — horizontal row ─────────────
+          Text on left, image+button column on right. Plenty of room
+          here so the original visual is preserved. */}
+      <div className="hidden md:flex gap-4 p-4 relative">
+        <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-r from-primary/[0.03] via-transparent to-transparent" />
+
+        <div className="relative flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border-[1.5px] ${item.isVeg ? 'border-success' : 'border-destructive'}`}
+              title={item.isVeg ? 'Veg' : 'Non-veg'}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${item.isVeg ? 'bg-success' : 'bg-destructive'}`} />
+            </span>
+            <h3 className="font-semibold truncate group-hover:text-primary transition-colors">{item.name}</h3>
+            {item.spicyLevel >= 2 && (
+              <span className="inline-flex items-center text-destructive" title={`Spicy ${item.spicyLevel}/3`}>
+                <Flame className="size-3.5" />
+                {item.spicyLevel >= 3 && <Flame className="size-3.5 -ml-1" />}
+              </span>
+            )}
+          </div>
+          <div className="mt-1.5 flex items-baseline gap-2 flex-wrap">
+            <span className={`text-base font-semibold ${item.originalPrice ? 'text-primary' : 'text-foreground'}`}>{money(item.price)}</span>
+            {item.originalPrice && (
+              <>
+                <span className="text-xs text-muted-foreground line-through">{money(item.originalPrice)}</span>
+                <span className="inline-flex items-center rounded-full bg-warning/10 text-warning border border-warning/30 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider">
+                  {item.happyHourLabel ?? 'Happy Hour'}
+                </span>
+              </>
+            )}
+          </div>
+          {item.description && <p className="mt-2 text-sm text-muted-foreground line-clamp-2">{item.description}</p>}
+          <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1"><Clock className="size-3" /> ~{item.prepTimeMin} min</span>
           </div>
         </div>
 
-        {customizable ? (
-          // Customizable items always open the modal. On phones the button
-          // is fixed to the same width as the image (72 px) so it can never
-          // exceed the right column. md+ keeps the descriptive label.
-          <Button
-            size="sm"
-            variant="outline"
-            className="tap-press shadow-sm hover:border-primary hover:text-primary h-10 w-full px-0 md:h-9 md:w-auto md:px-3"
-            onClick={() => setCustomizeOpen(true)}
-          >
-            <SlidersHorizontal className="size-4 md:mr-1" />
-            <span className="hidden md:inline">{qty > 0 ? `Add more · ${qty}` : 'Customize'}</span>
-            {qty > 0 && (
-              <span className="md:hidden ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                {qty}
-              </span>
-            )}
-          </Button>
-        ) : !simpleLine ? (
-          // Simple add. Phone: w-full inside the 72px right column so the
-          // button never exceeds the image column. md+: original sizing.
-          <Button
-            size="sm"
-            variant="outline"
-            className="tap-press shadow-sm hover:border-primary hover:text-primary h-10 w-full px-0 md:h-9 md:w-auto md:px-3"
-            onClick={() => add({ id: item.id, refId: item.id, kind: 'item', branchId, name: item.name, unitPrice: Number(item.price), imageUrl: item.imageUrl, isVeg: item.isVeg })}
-          >
-            <Plus className="size-4 md:mr-1" /> <span className="text-sm font-semibold md:font-normal">Add</span>
-          </Button>
-        ) : (
-          // Stepper: width-bounded to the 72-px image column on phones.
-          // Phone tap target stays 40×40 (just above 40-min) so the whole
-          // stepper fits — minus + qty + plus = 24+24+24 = ~72px.
-          <div className="flex w-full items-center justify-between rounded-full border-2 border-primary bg-background overflow-hidden shadow-sm tap-press">
-            <button
-              className="h-10 w-10 md:h-9 md:w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
-              onClick={() => (simpleLine.quantity <= 1 ? remove(simpleLine.id) : setQty(simpleLine.id, simpleLine.quantity - 1))}
-              aria-label="Decrease quantity"
-            >
-              <Minus className="size-4" />
-            </button>
-            <span className="text-sm font-bold text-primary font-tabular-nums">{simpleLine.quantity}</span>
-            <button
-              className="h-10 w-10 md:h-9 md:w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
-              onClick={() => setQty(simpleLine.id, simpleLine.quantity + 1)}
-              aria-label="Increase quantity"
-            >
-              <Plus className="size-4" />
-            </button>
+        <div className="relative flex w-24 shrink-0 flex-col items-end justify-between gap-3">
+          <div className="relative h-24 w-24 overflow-hidden rounded-xl bg-muted shadow-sm">
+            <Image
+              src={item.imageUrl || imageFor(undefined)}
+              alt={item.name}
+              fill
+              sizes="96px"
+              className="object-cover transition-transform duration-500 group-hover:scale-110"
+            />
+            <div className="absolute top-1 right-1">{Heart}</div>
           </div>
-        )}
-      </div>
+          {AddButton}
+        </div>
       </div>
       {/* Cross-sells — only mount once the item is in the cart, so we don't
           fire an API call for every visible menu card. The strip is null-safe

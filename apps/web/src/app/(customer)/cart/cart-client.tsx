@@ -117,32 +117,45 @@ export function CartClient({ branchId }: { branchId: string | null }) {
 
         <Card className="rounded-2xl md:rounded-xl">
           <CardContent className="p-0 divide-y">
+            {/*
+              Mobile-first line item: on phones (<md) the row is image+text only.
+              The qty stepper + line total sit on a SECOND row beneath the text,
+              spanning the full card width so the 44×44 controls + price label
+              always have room to breathe at 360-414 px.
+
+              On md+ we keep the original horizontal layout: image left,
+              flex-1 text middle, right column with stepper + total.
+            */}
             {lines.map((l) => (
-              <div key={l.id} className="flex items-start gap-4 p-4">
-                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-muted">
-                  <Image src={l.imageUrl || FOOD_FALLBACK} alt={l.name} fill loading="lazy" sizes="64px" className="object-cover" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    {l.isVeg !== undefined && (
-                      <span
-                        className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${
-                          l.isVeg ? 'border-success' : 'border-destructive'
-                        }`}
-                      >
-                        <span className={`h-1.5 w-1.5 rounded-full ${l.isVeg ? 'bg-success' : 'bg-destructive'}`} />
-                      </span>
-                    )}
-                    <div className="font-medium truncate">{l.name}</div>
+              <div key={l.id} className="flex flex-col gap-3 p-4 md:flex-row md:items-start md:gap-4">
+                <div className="flex items-start gap-3 md:contents">
+                  <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-muted">
+                    <Image src={l.imageUrl || FOOD_FALLBACK} alt={l.name} fill loading="lazy" sizes="64px" className="object-cover" />
                   </div>
-                  {(l.variantName || l.modifiersSummary) && (
-                    <div className="mt-0.5 text-xs text-muted-foreground truncate">
-                      {[l.variantName, l.modifiersSummary].filter(Boolean).join(' • ')}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      {l.isVeg !== undefined && (
+                        <span
+                          className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${
+                            l.isVeg ? 'border-success' : 'border-destructive'
+                          }`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${l.isVeg ? 'bg-success' : 'bg-destructive'}`} />
+                        </span>
+                      )}
+                      <div className="font-medium truncate">{l.name}</div>
                     </div>
-                  )}
-                  <div className="mt-1 text-sm text-muted-foreground">{money(l.unitPrice)} each</div>
+                    {(l.variantName || l.modifiersSummary) && (
+                      <div className="mt-0.5 text-xs text-muted-foreground truncate">
+                        {[l.variantName, l.modifiersSummary].filter(Boolean).join(' • ')}
+                      </div>
+                    )}
+                    <div className="mt-1 text-sm text-muted-foreground">{money(l.unitPrice)} each</div>
+                  </div>
                 </div>
-                <div className="flex flex-col items-end gap-2">
+                {/* Phone: full-width stepper-and-total bar under the text.
+                    Desktop: vertical right column, identical to the original. */}
+                <div className="flex items-center justify-between gap-3 md:flex-col md:items-end md:gap-2">
                   {/* 44×44 controls on mobile; condensed on md+. */}
                   <div className="flex items-center rounded-md border bg-background">
                     <button

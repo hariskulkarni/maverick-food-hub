@@ -378,8 +378,14 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
                       <ul className="mt-3 text-sm text-muted-foreground space-y-0.5">
                         {c.items.map((i: any) => <li key={i.id}>• {i.quantity}× {i.menuItem.name}</li>)}
                       </ul>
-                      <div className="mt-4 flex items-center justify-between border-t pt-4">
-                        <div className="flex items-baseline gap-2">
+                      {/* Phone: stack price block on top, full-width Add combo
+                          button below — guarantees neither can clip at 360px
+                          even when the original-price + Happy Hour chip pair
+                          renders alongside the effective price. Desktop keeps
+                          the side-by-side row since there's ample horizontal
+                          room in a 3-up grid. */}
+                      <div className="mt-4 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-baseline gap-2 flex-wrap min-w-0">
                           <div className="font-semibold text-lg text-primary">{money(hh.effectivePrice as any)}</div>
                           {hh.savings > 0 && (
                             <>
@@ -388,7 +394,9 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
                             </>
                           )}
                         </div>
-                        <ComboAddButton id={c.id} name={c.name} price={hh.effectivePrice} imageUrl={c.imageUrl ?? COMBO_IMAGES[c.slug]} branchId={branch.id} />
+                        <div className="sm:shrink-0">
+                          <ComboAddButton id={c.id} name={c.name} price={hh.effectivePrice} imageUrl={c.imageUrl ?? COMBO_IMAGES[c.slug]} branchId={branch.id} />
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
