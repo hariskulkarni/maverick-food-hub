@@ -73,7 +73,9 @@ export function MenuClient({ data, branchId, showSearch = true, showFilters = tr
   const totalDishes = filtered.reduce((s, c) => s + c.items.length, 0);
 
   return (
-    <div className="grid gap-6 md:grid-cols-[240px_1fr]">
+    // min-w-0 + max-w-full + overflow-hidden so the desktop sidebar grid
+    // can never let its content push the page wider than the viewport.
+    <div className="grid gap-6 md:grid-cols-[240px_minmax(0,1fr)] min-w-0 max-w-full overflow-hidden">
       {/* ───────── Desktop sidebar ───────── */}
       <aside className="hidden md:block md:sticky md:top-[6.5rem] self-start space-y-4 max-h-[calc(100vh-8rem)] overflow-auto scrollbar-thin pr-1">
         {showSearch && (

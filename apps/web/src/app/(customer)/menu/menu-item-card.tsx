@@ -94,23 +94,16 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
 
   return (
     <div className="group relative flex w-full max-w-full flex-col rounded-2xl border bg-card card-lift overflow-hidden">
-      {/* CSS Grid with explicit pixel column tracks. Unlike flex, grid
-          tracks CANNOT be pushed wider by their content — the track is
-          fixed at exactly 80 px on phones / 112 px on md+. The left text
-          gets minmax(0,1fr) so its title truncates instead of pushing
-          the grid wider than its parent. */}
-      <style>{`
-        [data-mic="row"] { grid-template-columns: minmax(0,1fr) 80px; }
-        @media (min-width: 768px) {
-          [data-mic="row"] { grid-template-columns: minmax(0,1fr) 112px; }
-        }
-      `}</style>
-      <div data-mic="row" className="grid gap-2.5 md:gap-4 p-2.5 md:p-4 relative">
+      {/* CSS Grid with explicit pixel column tracks (Tailwind arbitrary
+          grid-cols-[…]). Grid tracks CANNOT be pushed wider by their
+          content — minmax(0,1fr) for the text forces it to shrink, the
+          80 px column is exactly 80 px. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_80px] md:grid-cols-[minmax(0,1fr)_112px] gap-2.5 md:gap-4 p-2.5 md:p-4 relative">
         <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-r from-primary/[0.03] via-transparent to-transparent" />
 
-        {/* LEFT — text. min-w-0 lets the title truncate so the right
-            column can never be pushed off-screen. */}
-        <div className="relative min-w-0">
+        {/* LEFT — text. min-w-0 + overflow-hidden so a long description
+            can never extend past the grid track. */}
+        <div className="relative min-w-0 overflow-hidden">
           <div className="flex items-center gap-2">
             <span
               className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border-[1.5px] ${item.isVeg ? 'border-success' : 'border-destructive'}`}
@@ -137,7 +130,11 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
               </>
             )}
           </div>
-          {item.description && <p className="mt-2 text-sm text-muted-foreground line-clamp-2">{item.description}</p>}
+          {item.description && (
+            <p className="mt-2 text-sm text-muted-foreground line-clamp-2 break-words max-w-full">
+              {item.description}
+            </p>
+          )}
           <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1"><Clock className="size-3" /> ~{item.prepTimeMin} min</span>
           </div>
