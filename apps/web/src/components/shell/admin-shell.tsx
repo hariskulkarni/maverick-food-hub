@@ -66,7 +66,11 @@ export function AdminShell({
   children,
 }: AdminShellProps) {
   return (
-    <div className="flex min-h-dvh flex-col">
+    // Outer wrapper width-clamped to viewport so any deep child (long
+    // restaurant name, big order code, JSON dump in a drawer) can't make
+    // the page scroll right on phones. max-w-[100vw]+overflow-x-hidden
+    // beats overflow-x-clip on older iOS Safari.
+    <div className="flex min-h-dvh flex-col max-w-[100vw] overflow-x-hidden">
       {topBanner}
 
       {/* Mobile top bar — hamburger + title + subtitle. Hidden on md+. */}
@@ -92,7 +96,11 @@ export function AdminShell({
           {footer && <div className="p-3 border-t">{footer}</div>}
         </aside>
 
-        <main className="bg-background overflow-x-auto">
+        {/* min-w-0 on the grid child: required so its content (long table
+            rows etc.) doesn't push the grid wider than the viewport on
+            phones. overflow-x-auto lets a wide table scroll internally
+            without breaking the page. */}
+        <main className="bg-background min-w-0 max-w-full overflow-x-auto">
           {contentTopSlot}
           {children}
         </main>

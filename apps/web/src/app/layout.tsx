@@ -58,8 +58,16 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={jakarta.variable}>
-      <body className="min-h-dvh antialiased">
+    // ULTIMATE width safety net:
+    //   • html: overflow-x-hidden — any descendant that escapes its bounds
+    //     can never cause the document to gain a horizontal scrollbar.
+    //   • body: max-w-[100vw] overflow-x-hidden — same clamp at the body
+    //     level. Belt-and-braces against iOS Safari where html-level clip
+    //     alone doesn't always take effect.
+    // This applies to every route in the app (customer, admin, platform,
+    // kitchen) so no future page can regress.
+    <html lang="en" className={`${jakarta.variable} overflow-x-hidden`}>
+      <body className="min-h-dvh max-w-[100vw] overflow-x-hidden antialiased">
         {children}
         <Toaster position="top-right" richColors closeButton />
       </body>
