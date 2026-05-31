@@ -1,88 +1,84 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
-import { Building2, ListOrdered, Users, Bike, BarChart3, Radio, Coins, AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet, History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones, GraduationCap, MessagesSquare, Banknote, LayoutTemplate } from 'lucide-react';
+import {
+  Building2, ListOrdered, Users, Bike, BarChart3, Radio, Coins,
+  AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet,
+  History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy,
+  Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones,
+  GraduationCap, MessagesSquare, Banknote, LayoutTemplate,
+} from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { DemoBanner } from '@/components/demo-banner';
 import { isDemoMode } from '@/lib/demo';
 import { DemoResetButton } from './demo-reset-button';
+import { AdminShell, type NavGroup } from '@/components/shell/admin-shell';
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    items: [
+      { href: '/platform',               icon: BarChart3,       label: 'Dashboard' },
+      { href: '/platform/analytics',     icon: BarChart3,       label: 'Deep analytics' },
+      { href: '/platform/restaurants',   icon: Building2,       label: 'Restaurants' },
+      { href: '/platform/brands',        icon: Layers,          label: 'Brands' },
+      { href: '/platform/discovery-cms', icon: LayoutTemplate,  label: 'Discovery CMS' },
+      { href: '/platform/signup-bonus',  icon: Gift,            label: 'Signup Bonus' },
+      { href: '/platform/orders',        icon: ListOrdered,     label: 'All orders' },
+      { href: '/platform/live',          icon: Radio,           label: 'Live tracking' },
+      { href: '/platform/feedback',      icon: MessageSquare,   label: 'Feedback' },
+      { href: '/platform/live-ops',      icon: AlertTriangle,   label: 'Live ops' },
+      { href: '/platform/riders',        icon: Bike,            label: 'Riders' },
+      { href: '/platform/kyc',           icon: BadgeCheck,      label: 'KYC review' },
+      { href: '/platform/payouts',       icon: ListOrdered,     label: 'Payout rules' },
+      { href: '/platform/cod',           icon: Coins,           label: 'COD' },
+      { href: '/platform/users',         icon: Users,           label: 'All users' },
+      { href: '/platform/support',       icon: LifeBuoy,        label: 'Support' },
+      { href: '/platform/qr',            icon: QrCode,          label: 'QR codes' },
+      { href: '/platform/settlements',   icon: Banknote,        label: 'Settlements' },
+      { href: '/platform/reports',       icon: FileSpreadsheet, label: 'Reports' },
+      { href: '/platform/security',      icon: Shield,          label: 'Security' },
+      { href: '/platform/audit-log',     icon: History,         label: 'Audit log' },
+      { href: '/platform/system-health', icon: Activity,        label: 'System health' },
+      { href: '/platform/observability', icon: Activity,        label: 'Observability' },
+    ],
+  },
+  {
+    title: 'Rider operations',
+    items: [
+      { href: '/platform/messages',          icon: MessagesSquare,  label: 'Messages' },
+      { href: '/platform/rider-payouts',     icon: Wallet,          label: 'Rider payouts' },
+      { href: '/platform/rider-incentives',  icon: Trophy,          label: 'Incentives' },
+      { href: '/platform/surge-zones',       icon: Flame,           label: 'Surge zones' },
+      { href: '/platform/rider-tiers',       icon: Award,           label: 'Rider tiers' },
+      { href: '/platform/rider-referrals',   icon: UserPlus,        label: 'Rider referrals' },
+      { href: '/platform/rider-sos',         icon: Siren,           label: 'SOS alerts' },
+      { href: '/platform/rider-incidents',   icon: ShieldAlert,     label: 'Incidents' },
+      { href: '/platform/rider-shifts',      icon: CalendarClock,   label: 'Rider shifts' },
+      { href: '/platform/rider-support',     icon: Headphones,      label: 'Rider support' },
+      { href: '/platform/training-modules',  icon: GraduationCap,   label: 'Training modules' },
+    ],
+  },
+];
 
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
-  if (!session?.user || session.user.role !== 'SUPER_ADMIN') redirect('/login?next=/platform&mode=admin');
+  if (!session?.user || session.user.role !== 'SUPER_ADMIN') {
+    redirect('/login?next=/platform&mode=admin');
+  }
   return (
-    <div className="flex min-h-dvh flex-col">
-      <DemoBanner />
-      <div className="grid flex-1 grid-cols-[240px_1fr]">
-      <aside className="border-r bg-card flex flex-col">
-        <div className="p-5 border-b">
-          <Link href="/platform" className="display text-lg font-bold text-primary">Platform</Link>
-          <div className="text-xs text-muted-foreground mt-0.5">Super admin</div>
-        </div>
-        <nav className="flex-1 p-3 space-y-1 text-sm">
-          <NavLink href="/platform" icon={BarChart3}>Dashboard</NavLink>
-          <NavLink href="/platform/analytics" icon={BarChart3}>Deep analytics</NavLink>
-          <NavLink href="/platform/restaurants" icon={Building2}>Restaurants</NavLink>
-          <NavLink href="/platform/brands" icon={Layers}>Brands</NavLink>
-          <NavLink href="/platform/discovery-cms" icon={LayoutTemplate}>Discovery CMS</NavLink>
-          <NavLink href="/platform/signup-bonus" icon={Gift}>Signup Bonus</NavLink>
-          <NavLink href="/platform/orders" icon={ListOrdered}>All orders</NavLink>
-          <NavLink href="/platform/live" icon={Radio}>Live tracking</NavLink>
-          <NavLink href="/platform/feedback" icon={MessageSquare}>Feedback</NavLink>
-          <NavLink href="/platform/live-ops" icon={AlertTriangle}>Live ops</NavLink>
-          <NavLink href="/platform/riders" icon={Bike}>Riders</NavLink>
-          <NavLink href="/platform/kyc" icon={BadgeCheck}>KYC review</NavLink>
-          <NavLink href="/platform/payouts" icon={ListOrdered}>Payout rules</NavLink>
-          <NavLink href="/platform/cod" icon={Coins}>COD</NavLink>
-          <NavLink href="/platform/users" icon={Users}>All users</NavLink>
-          <NavLink href="/platform/support" icon={LifeBuoy}>Support</NavLink>
-          <NavLink href="/platform/qr" icon={QrCode}>QR codes</NavLink>
-          <NavLink href="/platform/settlements" icon={Banknote}>Settlements</NavLink>
-          <NavLink href="/platform/reports" icon={FileSpreadsheet}>Reports</NavLink>
-          <NavLink href="/platform/security" icon={Shield}>Security</NavLink>
-          <NavLink href="/platform/audit-log" icon={History}>Audit log</NavLink>
-          <NavLink href="/platform/system-health" icon={Activity}>System health</NavLink>
-          <NavLink href="/platform/observability" icon={Activity}>Observability</NavLink>
-
-          <NavSection>Rider operations</NavSection>
-          <NavLink href="/platform/messages" icon={MessagesSquare}>Messages</NavLink>
-          <NavLink href="/platform/rider-payouts" icon={Wallet}>Rider payouts</NavLink>
-          <NavLink href="/platform/rider-incentives" icon={Trophy}>Incentives</NavLink>
-          <NavLink href="/platform/surge-zones" icon={Flame}>Surge zones</NavLink>
-          <NavLink href="/platform/rider-tiers" icon={Award}>Rider tiers</NavLink>
-          <NavLink href="/platform/rider-referrals" icon={UserPlus}>Rider referrals</NavLink>
-          <NavLink href="/platform/rider-sos" icon={Siren}>SOS alerts</NavLink>
-          <NavLink href="/platform/rider-incidents" icon={ShieldAlert}>Incidents</NavLink>
-          <NavLink href="/platform/rider-shifts" icon={CalendarClock}>Rider shifts</NavLink>
-          <NavLink href="/platform/rider-support" icon={Headphones}>Rider support</NavLink>
-          <NavLink href="/platform/training-modules" icon={GraduationCap}>Training modules</NavLink>
-        </nav>
-        <div className="p-3 border-t">
-          <div className="text-xs text-muted-foreground">{session.user.name ?? session.user.email}</div>
+    <AdminShell
+      title="Platform"
+      subtitle="Super admin"
+      navGroups={NAV_GROUPS}
+      topBanner={<DemoBanner />}
+      contentTopSlot={isDemoMode() ? <DemoResetButton /> : null}
+      footer={
+        <>
+          <div className="text-xs text-muted-foreground truncate">{session.user.name ?? session.user.email}</div>
           <LogoutButton />
-        </div>
-      </aside>
-      <main className="bg-background overflow-x-auto">
-        {isDemoMode() && <DemoResetButton />}
-        {children}
-      </main>
-      </div>
-    </div>
-  );
-}
-
-function NavLink({ href, icon: Icon, children }: { href: string; icon: any; children: React.ReactNode }) {
-  return (
-    <Link href={href} className="flex items-center gap-2 rounded-md px-3 py-2 hover:bg-accent">
-      <Icon className="size-4" /> {children}
-    </Link>
-  );
-}
-
-function NavSection({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        </>
+      }
+    >
       {children}
-    </div>
+    </AdminShell>
   );
 }

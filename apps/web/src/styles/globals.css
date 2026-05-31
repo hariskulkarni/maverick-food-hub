@@ -150,6 +150,24 @@
     100% { opacity: 1; transform: translateX(0); }
   }
 
+  /* Mobile nav drawer slide-in from the left */
+  .animate-slide-in-l { animation: slide-in-l 0.28s cubic-bezier(0.2,0.7,0.3,1) both; }
+  @keyframes slide-in-l {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(0); }
+  }
+
+  /* Bottom-sheet slide-up — used by ResponsiveDrawer on phones.
+     On md+ the same component uses translateX so this animation is gated by
+     a media query to avoid double-animating on desktop. */
+  @media (max-width: 767px) {
+    .animate-slide-up { animation: slide-up 0.32s cubic-bezier(0.2,0.7,0.3,1) both; }
+  }
+  @keyframes slide-up {
+    0%   { transform: translateY(100%); }
+    100% { transform: translateY(0); }
+  }
+
   /* Number-roll animation — used by the animated stats counter */
   .roll-up { animation: roll-up 0.45s ease-out both; }
   @keyframes roll-up {
