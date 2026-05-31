@@ -542,7 +542,7 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
             <>
               <div className="flex items-center gap-2"><Network className="size-4 text-primary" /> Child of <strong>{r.parent.name}</strong></div>
               <div className="flex flex-wrap gap-2">
-                <select value={parentSel} onChange={(e) => setParentSel(e.target.value)} className="h-9 rounded-md border bg-card px-2 text-sm flex-1 min-w-[180px]">
+                <select value={parentSel} onChange={(e) => setParentSel(e.target.value)} className="h-9 rounded-md border bg-card px-2 text-sm flex-1 w-full min-w-0 sm:min-w-[180px]">
                   {eligibleParents.filter((p) => p.id !== r.id).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
                 <Button size="sm" disabled={savingParent || parentSel === r.parentId} onClick={() => saveParent(parentSel || null)}><Save className="size-3.5" /> Move</Button>
@@ -553,7 +553,7 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
             <>
               <p className="text-xs text-muted-foreground">Standalone restaurant. Assign it under a top-level parent to operate it as part of a group.</p>
               <div className="flex flex-wrap gap-2">
-                <select value={parentSel} onChange={(e) => setParentSel(e.target.value)} className="h-9 rounded-md border bg-card px-2 text-sm flex-1 min-w-[180px]">
+                <select value={parentSel} onChange={(e) => setParentSel(e.target.value)} className="h-9 rounded-md border bg-card px-2 text-sm flex-1 w-full min-w-0 sm:min-w-[180px]">
                   <option value="">Select a parent…</option>
                   {eligibleParents.filter((p) => p.id !== r.id).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>

@@ -94,7 +94,8 @@ export function QrSection({ restaurantId, initial }: { restaurantId: string; ini
                           height={84}
                           className="rounded border bg-white p-1"
                         />
-                        <Button asChild size="sm" variant="outline" className="h-6 px-2 text-[10px]">
+                        {/* Touch target: matches /platform/qr — h-9 on phones, h-7 on md+. */}
+                        <Button asChild size="sm" variant="outline" className="h-9 md:h-7 px-2 text-[11px]">
                           <a href={q.qrPng} download={`qr-${q.code}.png`}>
                             <Download className="size-3" /> PNG
                           </a>

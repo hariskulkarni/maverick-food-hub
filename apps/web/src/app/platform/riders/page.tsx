@@ -66,7 +66,7 @@ export default async function PlatformRidersPage() {
             {applications.map((a) => (
               <Card key={a.id}>
                 <CardContent className="p-5 flex flex-wrap items-start gap-4">
-                  <div className="flex-1 min-w-[260px]">
+                  <div className="flex-1 w-full min-w-0 sm:min-w-[260px]">
                     <div className="font-semibold text-lg">{a.name}</div>
                     <div className="text-sm text-muted-foreground">{a.phone} · {a.vehicleType} {a.vehicleNumber ?? ''}</div>
                     {a.preferredZone && <div className="text-xs text-muted-foreground">Zone preference: {a.preferredZone}</div>}

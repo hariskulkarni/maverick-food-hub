@@ -48,6 +48,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Responsive guardrail
+        # Fails fast when the forbidden patterns from RESPONSIVE.md
+        # (unqualified grid-cols-3/4, min-w-[180-260px] without sm:,
+        # h-6 Buttons) sneak back into the codebase. See
+        # scripts/check-responsive.mjs and RESPONSIVE.md for details.
+        run: npm run check:responsive
+
       - name: Unit tests
         run: npm run test:ci
 

@@ -202,7 +202,11 @@ function RiderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
       )}
 
       <DrawerSection title="Lifetime">
-        <div className="grid grid-cols-4 divide-x text-center">
+        {/* 4 lifetime stats inside a side drawer. divide-x produces vertical
+            dividers; on phone the drawer is ~360px so 4-up gives ~85px per
+            cell, ₹-prefixed Earnings/Tips numbers clip. Stack 2-up on phones,
+            4-up on sm+. */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 divide-x text-center">
           <Cell label="Trips"     value={String(p.totalDeliveries)} />
           <Cell label="Rating"    value={`⭐ ${Number(p.rating ?? 0).toFixed(1)}`} />
           <Cell label="Earnings"  value={`₹${Number(p.totalEarnings).toLocaleString('en-IN')}`} />
