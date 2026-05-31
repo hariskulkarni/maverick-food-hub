@@ -1,5 +1,8 @@
 // Minimal service worker for offline shell + caching.
-const CACHE = 'restaurant-v1';
+// IMPORTANT: bump the CACHE constant on any layout-affecting deploy so the
+// activate step prunes the old shell and the next fetch pulls fresh HTML/
+// CSS. Phase 17 (mobile menu card redesign) → v2.
+const CACHE = 'restaurant-v2';
 const PRECACHE = ['/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {

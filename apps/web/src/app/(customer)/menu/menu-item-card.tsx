@@ -94,16 +94,122 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
 
   return (
     <div className="group relative flex w-full max-w-full flex-col rounded-2xl border bg-card card-lift overflow-hidden">
-      {/* CSS Grid with explicit pixel column tracks (Tailwind arbitrary
-          grid-cols-[…]). Grid tracks CANNOT be pushed wider by their
-          content — minmax(0,1fr) for the text forces it to shrink, the
-          80 px column is exactly 80 px. */}
-      <div className="grid grid-cols-[minmax(0,1fr)_80px] md:grid-cols-[minmax(0,1fr)_112px] gap-2.5 md:gap-4 p-2.5 md:p-4 relative">
+      {/*
+        Phone (< md): VERTICAL stack — image banner h-32 on top, content
+        + Add button below. There ARE no horizontal columns, so geometry
+        cannot clip horizontally. Uses only standard Tailwind utilities.
+        md+: classic horizontal layout (flex with explicit widths).
+      */}
+      {/* ───────── PHONE: vertical stack ───────── */}
+      <div className="md:hidden">
+        {/* Compact 128-px image banner; full card width by definition. */}
+        <div className="relative w-full h-32 bg-muted">
+          <Image
+            src={item.imageUrl || imageFor(undefined)}
+            alt={item.name}
+            fill
+            sizes="100vw"
+            className="object-cover"
+          />
+          <div className="absolute top-2 right-2">
+            <HeartButton
+              menuItemId={item.id}
+              initial={Boolean(item.isAuthed && item.isFavorited)}
+              requireAuth={!item.isAuthed}
+              variant="glass"
+              size="sm"
+            />
+          </div>
+        </div>
+        <div className="p-3 space-y-1.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border-[1.5px] ${item.isVeg ? 'border-success' : 'border-destructive'}`}
+              title={item.isVeg ? 'Veg' : 'Non-veg'}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${item.isVeg ? 'bg-success' : 'bg-destructive'}`} />
+            </span>
+            <h3 className="font-semibold truncate">{item.name}</h3>
+            {item.spicyLevel >= 2 && (
+              <span className="inline-flex items-center text-destructive shrink-0" title={`Spicy ${item.spicyLevel}/3`}>
+                <Flame className="size-3.5" />
+                {item.spicyLevel >= 3 && <Flame className="size-3.5 -ml-1" />}
+              </span>
+            )}
+          </div>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className={`text-base font-semibold ${item.originalPrice ? 'text-primary' : 'text-foreground'}`}>{money(item.price)}</span>
+            {item.originalPrice && (
+              <>
+                <span className="text-xs text-muted-foreground line-through">{money(item.originalPrice)}</span>
+                <span className="inline-flex items-center rounded-full bg-warning/10 text-warning border border-warning/30 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider">
+                  {item.happyHourLabel ?? 'Happy Hour'}
+                </span>
+              </>
+            )}
+          </div>
+          {item.description && (
+            <p className="text-sm text-muted-foreground line-clamp-2 break-words">
+              {item.description}
+            </p>
+          )}
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Clock className="size-3" /> ~{item.prepTimeMin} min
+            </span>
+            {customizable ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="tap-press h-9 px-4 rounded-lg border-2 border-primary bg-background text-primary font-bold uppercase tracking-wider text-xs shadow-sm hover:bg-primary/5"
+                onClick={() => setCustomizeOpen(true)}
+              >
+                <Plus className="size-4 mr-1" /> Add
+                {qty > 0 && (
+                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground normal-case">
+                    {qty}
+                  </span>
+                )}
+              </Button>
+            ) : !simpleLine ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="tap-press h-9 px-4 rounded-lg border-2 border-primary bg-background text-primary font-bold uppercase tracking-wider text-xs shadow-sm hover:bg-primary/5"
+                onClick={() => add({ id: item.id, refId: item.id, kind: 'item', branchId, name: item.name, unitPrice: Number(item.price), imageUrl: item.imageUrl, isVeg: item.isVeg })}
+              >
+                <Plus className="size-4 mr-1" /> Add
+              </Button>
+            ) : (
+              <div className="flex h-9 items-center rounded-lg border-2 border-primary bg-background overflow-hidden shadow-sm">
+                <button
+                  className="h-full w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
+                  onClick={() => (simpleLine.quantity <= 1 ? remove(simpleLine.id) : setQty(simpleLine.id, simpleLine.quantity - 1))}
+                  aria-label="Decrease quantity"
+                >
+                  <Minus className="size-4" />
+                </button>
+                <span className="w-7 text-center text-sm font-bold text-primary font-tabular-nums">{simpleLine.quantity}</span>
+                <button
+                  className="h-full w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
+                  onClick={() => setQty(simpleLine.id, simpleLine.quantity + 1)}
+                  aria-label="Increase quantity"
+                >
+                  <Plus className="size-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ───────── DESKTOP (md+): horizontal row ───────── */}
+      <div className="hidden md:flex gap-4 p-4 relative">
         <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-r from-primary/[0.03] via-transparent to-transparent" />
 
-        {/* LEFT — text. min-w-0 + overflow-hidden so a long description
-            can never extend past the grid track. */}
-        <div className="relative min-w-0 overflow-hidden">
+        {/* LEFT — text. min-w-0 + overflow-hidden so the description
+            can never extend past the column. */}
+        <div className="relative flex-1 min-w-0 overflow-hidden">
           <div className="flex items-center gap-2">
             <span
               className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border-[1.5px] ${item.isVeg ? 'border-success' : 'border-destructive'}`}
@@ -140,21 +246,27 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
           </div>
         </div>
 
-        {/* RIGHT — image + button. The grid track owns the 80/112 px
-            width; this div just fills it (w-full). The image and button
-            both fill the column width so they always align. */}
-        <div className="flex w-full min-w-0 flex-col items-stretch gap-2 md:gap-2.5">
-          {/* Square image — exactly fills the grid column. aspect-square
-              keeps the height equal to the column width. */}
-          <div className="relative w-full aspect-square overflow-hidden rounded-xl bg-muted shadow-sm">
+        {/* RIGHT — image (112×112) + button. Fixed pixel width, shrink-0,
+            cannot be pushed off-screen by left content. */}
+        <div className="flex w-28 shrink-0 flex-col items-stretch gap-2.5">
+          {/* 112×112 image (md+ only) */}
+          <div className="relative h-28 w-28 overflow-hidden rounded-xl bg-muted shadow-sm">
             <Image
               src={item.imageUrl || imageFor(undefined)}
               alt={item.name}
               fill
-              sizes="(max-width: 768px) 80px, 112px"
+              sizes="112px"
               className="object-cover transition-transform duration-500 group-hover:scale-110"
             />
-            <div className="absolute top-1 right-1">{Heart}</div>
+            <div className="absolute top-1 right-1">
+              <HeartButton
+                menuItemId={item.id}
+                initial={Boolean(item.isAuthed && item.isFavorited)}
+                requireAuth={!item.isAuthed}
+                variant="glass"
+                size="sm"
+              />
+            </div>
           </div>
 
           {/* Button — exactly w-full of the 80/112-px column. The "+ Add"
