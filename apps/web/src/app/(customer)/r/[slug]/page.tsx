@@ -312,7 +312,10 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
               card design on every restaurant page. This is what makes the
               two restaurant URLs visually consistent regardless of CMS
               configuration. */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 reveal-stagger">
+          {/* grid-cols-1 explicit at base — without it, the mobile track auto-sizes to
+              min-content and the Next.js Image (rendered with fill) lets the column expand
+              far beyond the viewport, clipping the description and Add button. */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 reveal-stagger">
             {topSellers.slice(0, cms.topSellers.limit).map((t: any) => {
               // Map the topSeller shape to MenuItemForCard. happyHourLabel
               // and variants/modifierGroups default to empty since

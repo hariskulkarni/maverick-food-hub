@@ -276,11 +276,16 @@
    *   • The phone-layout child uses normal block flow — image on
    *     top, content below, full-width Add button at the bottom.
    * ───────────────────────────────────────────────────────────── */
-  .mic-root { display: block; }
+  /* min-width: 0 is the load-bearing fix — without it, the card sits in a
+     CSS grid track that defaults to min-content sizing. The image inside
+     (Next.js <Image fill>) reports ~1300px intrinsic width, which inflates
+     the grid track and clips the description / Add button on phones.
+     min-width:0 forces the card to obey its parent's width. */
+  .mic-root { display: block; min-width: 0; width: 100%; max-width: 100%; }
   @media (min-width: 768px) {
     .mic-root { display: flex; flex-direction: column; }
   }
-  .mic-phone { display: block; width: 100%; max-width: 100%; overflow: hidden; }
+  .mic-phone { display: block; width: 100%; max-width: 100%; min-width: 0; overflow: hidden; }
   .mic-phone > * + * { margin-top: 0; }
   .mic-add-row { display: block; width: 100%; max-width: 100%; padding-top: 0.5rem; }
   .mic-add-row > * { width: 100%; max-width: 100%; }

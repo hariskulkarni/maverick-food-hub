@@ -19,7 +19,12 @@ type Diet = 'all' | 'veg' | 'nonveg';
 
 export function MenuClient({ data, branchId, showSearch = true, showFilters = true, menuLayout = 'list' }: { data: CategoryGroup[]; branchId: string; showSearch?: boolean; showFilters?: boolean; menuLayout?: 'list' | 'grid' }) {
   // 'list' keeps the established two-up layout; 'grid' is a denser card grid.
-  const itemGridClass = menuLayout === 'grid' ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3' : 'grid gap-3 lg:grid-cols-2';
+  // grid-cols-1 explicit at the base — without it, the mobile track auto-sizes to
+  // min-content and the Next.js Image (rendered with fill) lets the column expand
+  // far beyond the viewport, which clips the description and Add button.
+  const itemGridClass = menuLayout === 'grid'
+    ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'
+    : 'grid grid-cols-1 gap-3 lg:grid-cols-2';
   const [q, setQ] = useState('');
   const [diet, setDiet] = useState<Diet>('all');
   const [activeCat, setActiveCat] = useState<string | null>(null);

@@ -62,7 +62,7 @@ export function FavoritesClient({
         {restaurants.length === 0 ? (
           <EmptyRestaurants />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 reveal-stagger">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 reveal-stagger">
             {restaurants.map((r) => (
               <Card key={r.id} className="overflow-hidden card-lift">
                 <CardContent className="p-0">
@@ -125,7 +125,7 @@ export function FavoritesClient({
           // banner on top, content below. w-full max-w-full overflow-hidden on
           // the card so it can never overflow its grid cell; min-w-0 inside
           // text columns so titles truncate.
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 reveal-stagger">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 reveal-stagger">
             {items.map((i) => (
               <Card key={i.id} className="w-full max-w-full overflow-hidden card-lift">
                 <CardContent className="p-0">

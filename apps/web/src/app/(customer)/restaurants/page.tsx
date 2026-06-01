@@ -518,7 +518,7 @@ export default async function RestaurantsListPage({
       )}
 
       {/* Responsive grid: 1 / 2 / 3 / 4 cols. */}
-      <div className="grid gap-4 md:gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 reveal-stagger">
+      <div className="grid grid-cols-1 gap-4 md:gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 reveal-stagger">
         {cards.map((r) => (
           <Link key={r.id} href={`/r/${r.slug}`} className="group block tap-press">
             <Card className="overflow-hidden h-full card-lift rounded-2xl md:rounded-xl">
