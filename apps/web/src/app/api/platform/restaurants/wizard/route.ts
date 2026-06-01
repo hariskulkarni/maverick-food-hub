@@ -243,6 +243,36 @@ export async function POST(req: NextRequest) {
     preparedBrandSlug = await uniqueBrandSlug(base);
   }
 
+  // Duplicate-submission guard (Bug #2).
+  // The /platform/restaurants/new wizard persists its in-progress draft in
+  // sessionStorage. We previously saw a Wrap n Roll restaurant get created
+  // twice because the same draft was submitted from two tabs (or the user
+  // clicked submit twice while the spinner was still resolving). The slug
+  // collision was silently masked by uniqueRestaurantSlug() appending "-2".
+  //
+  // Block any submission for the same (name, ownerEmail) within the last 60s
+  // and surface a 409 so the client can show a clear error instead of minting
+  // a phantom row. We compare lowercased + trimmed identity strings.
+  const dupeName = body.identity.name.trim();
+  const dupeOwnerEmail = body.staff?.find((s: any) => s.role === 'ADMIN')?.email?.toLowerCase().trim();
+  if (dupeOwnerEmail) {
+    const recent = await prisma.restaurant.findFirst({
+      where: {
+        name: dupeName,
+        owner: { email: dupeOwnerEmail },
+        createdAt: { gt: new Date(Date.now() - 60_000) },
+      },
+      select: { id: true, slug: true, name: true, createdAt: true },
+    });
+    if (recent) {
+      return isJsonError(
+        409,
+        'DUPLICATE_SUBMISSION',
+        `A restaurant named "${recent.name}" was already created ${Math.round((Date.now() - recent.createdAt.getTime()) / 1000)}s ago. If this is a different restaurant, change the name slightly; otherwise the previous submission already succeeded.`,
+      );
+    }
+  }
+
   const restaurantSlug = await uniqueRestaurantSlug(restSlugBase);
   const branchSlug = await uniqueBranchSlug(slugifyName(`${restaurantSlug}-${body.branch.name}`) || `${restaurantSlug}-main`);
 

@@ -13,6 +13,15 @@ import {
   type ChildBreakdownRow,
 } from './reports/_group-metrics';
 
+// CRITICAL: every other /admin page sets dynamic = 'force-dynamic' (see
+// orders/page.tsx, settings/page.tsx, etc.). This dashboard was missed,
+// so after the user switches outlets via the sidebar, the Next.js Full
+// Route Cache served a stale render keyed to the OLD active_restaurant
+// cookie — and the dashboard appeared stuck on the previous outlet
+// even though the cookie had been updated. Forcing dynamic re-reads
+// cookies on every request, which is what `requireRestaurant()` needs.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 export const metadata = { title: 'Admin · Dashboard' };
 
 export default async function AdminDashboardPage() {

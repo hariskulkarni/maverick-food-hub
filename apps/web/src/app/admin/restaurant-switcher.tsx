@@ -78,10 +78,13 @@ export function RestaurantSwitcher({
         return;
       }
       setOpen(false);
-      // Hard navigation to /admin — guarantees every server component re-reads
-      // the new active-restaurant cookie from a clean render (a soft
-      // router.refresh() on the same route can leave the page/ spinner stuck).
-      window.location.assign('/admin');
+      // Hard reload of the CURRENT page (not a forced jump to /admin) so the
+      // user stays on whatever section they were viewing — Orders, Settings,
+      // Menu, etc. — but every server component re-reads the new
+      // active-restaurant cookie from a clean render. Combined with
+      // `export const dynamic = 'force-dynamic'` on each admin page, this
+      // guarantees the switch is reflected immediately.
+      window.location.reload();
     } catch {
       setPendingId(null);
     }

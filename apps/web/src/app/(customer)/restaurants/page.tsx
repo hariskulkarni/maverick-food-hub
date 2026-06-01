@@ -15,6 +15,7 @@ import type { SavedAddressOption } from './location-picker-dialog';
 import { FeatureCarousel } from '@/components/landing/feature-carousel';
 import { WhatsOnYourMind } from '@/components/discovery/whats-on-your-mind';
 import { getDiscoveryConfig } from '@/server/discovery-cms';
+import { parseStorefrontConfig } from '@/server/storefront-cms';
 import type { Metadata } from 'next';
 
 // SEO is super-admin editable (/platform/discovery-cms → SEO tab).
@@ -240,14 +241,29 @@ export default async function RestaurantsListPage({
   })();
 
   // Serialize for the cards (Decimal-free: only the geo fields we used, dropped here).
+  // imageUrl resolution priority (Bug #4 fix):
+  //   1. Storefront CMS hero — first carousel slide src. This is what the admin
+  //      Storefront editor writes when uploading via "Hero & carousel". For most
+  //      restaurants this is the field that actually got updated when the user
+  //      changed images, so reading it first eliminates the "I uploaded a new
+  //      image but the discovery card still shows the pink placeholder" symptom.
+  //   2. Restaurant.coverImageUrl — legacy column written by the older
+  //      Settings → Branding form.
+  //   3. Restaurant.logoUrl — last-resort identity image.
+  //   4. FOOD_FALLBACK — generic Unsplash hero so we never render a blank card.
   const cards = finalMatches.map((m) => {
-    const r = m.restaurant;
+    const r = m.restaurant as any;
+    const cfg = parseStorefrontConfig(r.storefrontConfig);
+    const cmsHero =
+      cfg.hero?.type === 'carousel' && cfg.hero.slides[0]?.src ? cfg.hero.slides[0].src : null;
+    const imageUrl = cmsHero || r.coverImageUrl || r.logoUrl || FOOD_FALLBACK;
     return {
       id: r.id,
       slug: r.slug,
       name: r.name,
       tagline: r.tagline,
       cuisine: r.cuisine,
+      imageUrl,
       coverImageUrl: r.coverImageUrl,
       logoUrl: r.logoUrl,
       branchCount: r._count.branches,
@@ -524,7 +540,7 @@ export default async function RestaurantsListPage({
             <Card className="overflow-hidden h-full card-lift rounded-2xl md:rounded-xl">
               <div className="relative aspect-[16/9] md:aspect-[4/3] bg-muted overflow-hidden">
                 <ImageWithFallback
-                  src={r.coverImageUrl || r.logoUrl || FOOD_FALLBACK}
+                  src={r.imageUrl}
                   alt={r.name}
                   fill
                   loading="lazy"
