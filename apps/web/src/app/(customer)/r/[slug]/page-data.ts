@@ -28,6 +28,7 @@ import {
   isCategoryAvailableNow,
   formatNextOpenLabel
 } from '@/server/category-availability';
+import { isBranchOpenAt, type BranchOpenStatus } from '@/server/operating-hours';
 import type { CategoryFabEntry } from './category-fab';
 
 // Inline result type — readable enough; callers destructure what they need.
@@ -71,6 +72,13 @@ export interface RestaurantPageData {
   rating: string;
   dishCount: number;
   now: Date;
+
+  /**
+   * Whether the branch is currently inside its operating hours.
+   * Used by the storefront to render the closed banner, grey out the menu,
+   * and force checkout into scheduled-order mode.
+   */
+  openStatus: BranchOpenStatus;
 }
 
 export async function loadRestaurantPageData(slug: string): Promise<RestaurantPageData> {
@@ -95,13 +103,19 @@ export async function loadRestaurantPageData(slug: string): Promise<RestaurantPa
       })
     : 0;
 
+  // include: { hours } so we can compute the open/closed status without a
+  // second round-trip. Hours come back as OperatingHours[] (7 rows max).
   const branch = await prisma.branch.findFirst({
     where: { restaurantId: restaurant.id, isActive: true },
-    orderBy: { createdAt: 'asc' }
-  });
+    orderBy: { createdAt: 'asc' },
+    include: { hours: { orderBy: { dayOfWeek: 'asc' } } } as any,
+  } as any) as any;
   if (!branch) return notFound();
 
   const now = new Date();
+  // Branch operating-hours status. If the branch has no rows configured we
+  // treat it as always-open (consistent with the resolver's legacy default).
+  const openStatus = isBranchOpenAt((branch.hours ?? []) as any, now);
   // Happy-hour rules currently active for this restaurant.
   const happyHourRules = await loadRulesForRestaurant(restaurant.id, now);
   const happyHourEnds = minutesUntilHappyHourEnds(happyHourRules, now);
@@ -242,6 +256,7 @@ export async function loadRestaurantPageData(slug: string): Promise<RestaurantPa
     isAuthed,
     rating,
     dishCount,
-    now
+    now,
+    openStatus
   };
 }
