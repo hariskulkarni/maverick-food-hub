@@ -201,11 +201,15 @@ function StripSection({
             const s = row.suggestedItem;
             const inCart = linesInCart.some((l) => l.kind === 'item' && l.refId === s.id);
             return (
+              // Vertical card matching MenuItemCard pattern: image banner on
+              // top, content below. w-full max-w-full overflow-hidden so the
+              // 144-px fixed-width tile can never overflow inside its horizontal
+              // scroll rail; min-w-0 inside so the title truncates cleanly.
               <div
                 key={row.id}
-                className="shrink-0 snap-start w-36 rounded-xl border bg-card overflow-hidden flex flex-col tap-press card-lift"
+                className="shrink-0 snap-start w-36 max-w-full rounded-xl border bg-card overflow-hidden flex flex-col tap-press card-lift"
               >
-                <div className="relative h-20 w-full bg-muted">
+                <div className="relative h-20 w-full bg-muted overflow-hidden">
                   <Image
                     src={s.imageUrl || FOOD_FALLBACK}
                     alt={s.name}
@@ -226,18 +230,21 @@ function StripSection({
                     </span>
                   )}
                 </div>
-                <div className="p-2 flex flex-col flex-1">
-                  <div className="text-xs font-medium leading-snug line-clamp-2 flex-1">{s.name}</div>
+                <div className="p-2 flex flex-col flex-1 min-w-0">
+                  <div className="text-xs font-medium leading-snug line-clamp-2 flex-1 break-words">{s.name}</div>
                   <div className="mt-1.5 flex items-center justify-between gap-1">
                     <div className="text-xs font-semibold">{money(s.price)}</div>
+                    {/* White "sticker" Add button matching MenuItemCard — primary
+                        border, primary text on background, uppercase bold so
+                        every Add button on the storefront reads the same. */}
                     <Button
                       size="sm"
-                      variant={inCart ? 'secondary' : 'outline'}
-                      className="h-7 px-2 text-xs"
+                      variant="outline"
+                      className="tap-press h-7 px-2 rounded-md border-2 border-primary bg-background text-primary font-bold uppercase tracking-wider text-[10px] shadow-sm hover:bg-primary/5"
                       onClick={() => onAdd(s)}
                       aria-label={`Add ${s.name} to cart`}
                     >
-                      <Plus className="size-3" /> {inCart ? 'Added' : 'Add'}
+                      <Plus className="size-3 mr-0.5" /> {inCart ? 'Added' : 'Add'}
                     </Button>
                   </div>
                 </div>
