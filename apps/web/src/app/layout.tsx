@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans } from 'next/font/google';
 import { Toaster } from 'sonner';
 import '@/styles/globals.css';
 import { brand } from '@/lib/brand';
+import { BuiltCredit } from '@/components/built-credit';
 
 // One friendly geometric-sans family across the whole product (body + headings),
 // mirroring Swiggy's single-typeface look. `--font-display` is bound to the same
@@ -67,8 +68,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // This applies to every route in the app (customer, admin, platform,
     // kitchen) so no future page can regress.
     <html lang="en" className={`${jakarta.variable} overflow-x-hidden`}>
-      <body className="min-h-dvh max-w-[100vw] overflow-x-hidden antialiased">
-        {children}
+      <body className="min-h-dvh max-w-[100vw] overflow-x-hidden antialiased flex flex-col">
+        {/*
+          {children} fills the flex column; BuiltCredit sits at the absolute
+          bottom of every page (after each layout's own footer if any). It is
+          hardcoded — NOT editable in the Discovery CMS Footer panel — so the
+          attribution stays put even after a super-admin saves new legal text.
+          See @/components/built-credit for layout-clearance notes (mobile
+          bottom nav, iOS safe-area).
+        */}
+        <div className="flex-1 w-full">
+          {children}
+        </div>
+        <BuiltCredit />
         <Toaster position="top-right" richColors closeButton />
       </body>
     </html>
