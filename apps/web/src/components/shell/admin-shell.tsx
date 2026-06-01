@@ -82,11 +82,26 @@ export function AdminShell({
     <div className="flex min-h-dvh flex-col max-w-[100vw] overflow-x-hidden">
       {topBanner}
 
-      {/* Mobile top bar — hamburger + title + subtitle. Hidden on md+. */}
+      {/* Mobile top bar — hamburger + title + subtitle. Hidden on md+.
+          We pre-render the entire drawer nav body HERE in the server tree
+          (using SidebarGroup) and pass the resulting React node to
+          MobileNavBar as `drawerContent`. This is the load-bearing fix
+          for the Next.js 15 RSC serialization rule: passing the navGroups
+          ARRAY (which contains pre-rendered lucide JSX whose element type
+          still resolves to a forwardRef function) to a Client Component
+          throws "Functions cannot be passed directly to Client Components".
+          A fully-rendered React tree of intrinsic elements + already-
+          resolved client components serializes cleanly. */}
       <MobileNavBar
         title={title}
         subtitle={subtitle}
-        navGroups={navGroups}
+        drawerContent={
+          <div className="space-y-1">
+            {navGroups.map((g, i) => (
+              <SidebarGroup key={i} group={g} />
+            ))}
+          </div>
+        }
         footer={footer}
       />
 

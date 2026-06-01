@@ -2,10 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import Link from 'next/link';
-import type { ReactNode } from 'react';
 import { Menu, X } from 'lucide-react';
-import type { NavGroup } from './admin-shell';
 
 /**
  * Mobile top bar + slide-in drawer for the admin/platform shell.
@@ -22,12 +19,17 @@ import type { NavGroup } from './admin-shell';
 export function MobileNavBar({
   title,
   subtitle,
-  navGroups,
+  drawerContent,
   footer,
 }: {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
-  navGroups: NavGroup[];
+  /**
+   * Pre-rendered drawer nav body. Comes in as an already-resolved React
+   * tree from the SERVER shell so the lucide icon function references
+   * never need to cross the RSC boundary.
+   */
+  drawerContent: React.ReactNode;
   footer?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -102,10 +104,12 @@ export function MobileNavBar({
                 <X className="size-5" />
               </button>
             </div>
+            {/* Render the drawer nav body that the SERVER pre-rendered for
+                us. Tapping any link inside will navigate; the useEffect on
+                pathname (above) closes the drawer automatically on route
+                change, so we don't need an onClick prop on every link. */}
             <nav className="flex-1 overflow-y-auto p-3 space-y-1 text-sm">
-              {navGroups.map((g, i) => (
-                <DrawerGroup key={i} group={g} onNavigate={() => setOpen(false)} />
-              ))}
+              {drawerContent}
             </nav>
             {footer && <div className="p-3 border-t">{footer}</div>}
           </aside>
@@ -115,27 +119,3 @@ export function MobileNavBar({
   );
 }
 
-function DrawerGroup({ group, onNavigate }: { group: NavGroup; onNavigate: () => void }) {
-  return (
-    <div className="space-y-1">
-      {group.title && (
-        <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {group.title}
-        </div>
-      )}
-      {group.items.map((item) => <DrawerLink key={item.href} item={item} onNavigate={onNavigate} />)}
-    </div>
-  );
-}
-
-function DrawerLink({ item, onNavigate }: { item: { href: string; icon: ReactNode; label: string }; onNavigate: () => void }) {
-  return (
-    <Link
-      href={item.href}
-      onClick={onNavigate}
-      className="flex items-center gap-2 rounded-md px-3 py-3 min-h-[44px] hover:bg-accent active:bg-accent"
-    >
-      {item.icon} <span className="truncate">{item.label}</span>
-    </Link>
-  );
-}
