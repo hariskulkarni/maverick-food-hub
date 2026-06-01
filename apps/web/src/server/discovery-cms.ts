@@ -21,10 +21,40 @@
  * the page render.
  */
 
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { prisma } from '@/server/db';
 import { DISCOVERY_BANNERS } from '@/lib/discovery-banners';
 import { DISCOVERY_CATEGORIES } from '@/lib/discovery-categories';
 import { wrap, invalidateTag, keys } from '@/server/cache';
+
+/**
+ * Local-file existence check for same-origin image URLs.
+ *
+ * Background: the discovery CMS lets admins upload PNGs that get stored in
+ * `public/discovery/<timestamp>-<random>.png` and the URL written into the
+ * SiteContent JSON. But if (a) the upload silently lost the file, (b) the
+ * file was deleted out-of-band, or (c) DB was synced from another env
+ * without the matching public/ asset, the URL points at a 404 — and the
+ * customer page renders a pink placeholder.
+ *
+ * This helper returns true ONLY when the URL is a relative same-origin
+ * path AND the file resolves on disk. Absolute URLs (https://…) always
+ * pass through — we trust those to handle their own availability.
+ */
+function localFileExists(url: string): boolean {
+  if (!url) return false;
+  if (/^https?:\/\//i.test(url)) return true; // can't easily check remote; trust it
+  if (!url.startsWith('/')) return false; // odd relative path — refuse
+  // Strip query string and resolve against the Next.js `public/` directory.
+  const cleanPath = url.split('?')[0];
+  const fullPath = join(process.cwd(), 'public', cleanPath);
+  try {
+    return existsSync(fullPath);
+  } catch {
+    return false;
+  }
+}
 
 export const DISCOVERY_CONTENT_KEY = 'discovery';
 
@@ -363,16 +393,25 @@ function parseTile(t: unknown): CategoryTile | null {
   const slug = str(o.slug, 64).trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
   const label = str(o.label, 60).trim();
   if (!slug || !label) return null;
-  // If the admin saved the tile without an image (or with a URL that gets
-  // stripped to '' by url() because it's not a valid URL), default to the
-  // curated catalogue image. This is the "root" fix that prevents the saved
-  // record from ever being image-less — older saves still need the
-  // client-side fallback cascade, but new saves are clean.
+  // Two-step image resolution:
+  //   (a) If the admin saved an explicit URL, use it — UNLESS it's a
+  //       local same-origin path whose file no longer exists on disk
+  //       (orphaned CMS upload, env-mismatched DB sync, accidental
+  //       deletion). In that case treat the URL as missing.
+  //   (b) Fall back to the curated catalog image by slug or label match.
+  //   (c) Final fallback to '' lets the client cascade pick a generic.
+  //
+  // This is the load-bearing fix for "the tile shows a pink placeholder
+  // even though the CMS says it has an image" — the URL in the DB is a
+  // 404 on prod, and we now detect that at render time.
   const explicitImage = url(o.image);
+  const usableImage = explicitImage && localFileExists(explicitImage)
+    ? explicitImage
+    : '';
   return {
     slug,
     label,
-    image: explicitImage || curatedTileImage(slug, label),
+    image: usableImage || curatedTileImage(slug, label),
     alt: str(o.alt, 160),
     enabled: bool(o.enabled, true),
   };
