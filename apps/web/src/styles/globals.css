@@ -260,6 +260,31 @@
   .tap-press { transition: transform 120ms ease; }
   .tap-press:active { transform: scale(0.97); }
 
+  /* ─────────────────────────────────────────────────────────────────
+   * Menu card forced-layout — Harish reported that with Tailwind's
+   * default flex/flex-col on the menu card, the layout didn't render
+   * predictably for him. Toggling display:contents on the flex
+   * container in DevTools made it work. This SCOPED class applies
+   * exactly that, only to the menu card root (not globally), so we
+   * don't break every flex container in the app.
+   *
+   * Usage: add `mic-root` to the outermost <div> of MenuItemCard.
+   *
+   * What it does on phones (< md):
+   *   • mic-root becomes display:block so its single phone child
+   *     is rendered without flex-direction interference.
+   *   • The phone-layout child uses normal block flow — image on
+   *     top, content below, full-width Add button at the bottom.
+   * ───────────────────────────────────────────────────────────── */
+  .mic-root { display: block; }
+  @media (min-width: 768px) {
+    .mic-root { display: flex; flex-direction: column; }
+  }
+  .mic-phone { display: block; width: 100%; max-width: 100%; overflow: hidden; }
+  .mic-phone > * + * { margin-top: 0; }
+  .mic-add-row { display: block; width: 100%; max-width: 100%; padding-top: 0.5rem; }
+  .mic-add-row > * { width: 100%; max-width: 100%; }
+
   /* Animated gradient — hero backdrop (coral + lime + berry) */
   .gradient-hero {
     background:

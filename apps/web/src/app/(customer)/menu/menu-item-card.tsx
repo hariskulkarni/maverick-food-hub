@@ -93,7 +93,12 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
   );
 
   return (
-    <div className="group relative flex w-full max-w-full flex-col rounded-2xl border bg-card card-lift overflow-hidden">
+    // mic-root is a scoped class in globals.css that uses plain `display:
+    // block` on phones (no flex) and switches to `display: flex; flex-
+    // direction: column` on md+. This bypasses whatever was making
+    // Tailwind's `flex flex-col` render unpredictably for the user on
+    // the production build.
+    <div className="mic-root group relative w-full max-w-full rounded-2xl border bg-card card-lift overflow-hidden">
       {/*
         Phone (< md): VERTICAL stack — image banner h-32 on top, content
         + Add button below. There ARE no horizontal columns, so geometry
@@ -101,7 +106,7 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
         md+: classic horizontal layout (flex with explicit widths).
       */}
       {/* ───────── PHONE: vertical stack ───────── */}
-      <div className="md:hidden">
+      <div className="md:hidden mic-phone">
         {/* Compact 128-px image banner; full card width by definition. */}
         <div className="relative w-full h-32 bg-muted">
           <Image
@@ -159,10 +164,10 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
             </span>
           </div>
           {/* Add button gets its OWN full-width row below everything else.
-              On its own line it cannot be pushed off-screen by long titles
-              or descriptions on the rows above. w-full + max-w-full keep
-              it bounded to the card. */}
-          <div className="pt-2">
+              mic-add-row is a scoped class in globals.css that forces
+              display:block + w-100% + max-w-100% on the row and its
+              direct child, so the button always spans the card width. */}
+          <div className="mic-add-row">
             {customizable ? (
               <Button
                 size="sm"
