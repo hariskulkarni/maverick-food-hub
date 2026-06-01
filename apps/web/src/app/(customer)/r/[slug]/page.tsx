@@ -24,6 +24,7 @@ import { HappyHourBanner } from './happy-hour-banner';
 import { DeliveryEtaCard } from './delivery-eta-card';
 import { BrandRibbon } from './brand-ribbon';
 import { CategoryFab } from './category-fab';
+import { ClosedBanner } from './closed-banner';
 import { FoodLicenseFooter } from './food-license-footer';
 import { JsonLd } from '@/components/seo/json-ld';
 import { brand } from '@/lib/brand';
@@ -107,10 +108,30 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
     rating,
     dishCount,
     now,
+    openStatus,
   } = await loadRestaurantPageData(slug);
+
+  // When the branch is closed we dim the menu surfaces (apply opacity-60 to
+  // the wrapper that holds the cards), show a sticky amber banner at the top
+  // explaining when it reopens, and still let customers add items to cart so
+  // they can pre-order. Checkout enforces a scheduled-order slot inside the
+  // next open window. See server/operating-hours.ts for the resolver.
+  const isClosed = !openStatus.isOpen;
+  const closedMenuClass = isClosed ? 'opacity-60 [&_button[data-add-to-cart]]:opacity-100' : '';
 
   return (
     <div style={themeVars}>
+      {/* Operating-hours banner — sits above the announcement bar so it's the
+          first thing customers see when the branch is closed. Includes a live
+          countdown to the next open window. */}
+      {isClosed && (
+        <ClosedBanner
+          label={openStatus.label}
+          nextChangeAtIso={openStatus.nextChangeAt ? openStatus.nextChangeAt.toISOString() : null}
+          reason={openStatus.reason}
+        />
+      )}
+
       {cms.announcement.enabled && cms.announcement.text && (
         <StorefrontAnnouncementBar
           text={cms.announcement.text}
@@ -350,8 +371,10 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
       {/* ───────── Combos + Menu ─────────
           max-w-full + overflow-x-hidden as a belt for the html/body braces:
           even if some sub-component overshoots, this section can't make the
-          page scroll right on phones. */}
-      <section className="container py-10 max-w-full overflow-x-hidden">
+          page scroll right on phones.
+          When the branch is closed we dim this whole section so the menu reads
+          as "browsable but inactive". The amber banner above explains why. */}
+      <section className={`container py-10 max-w-full overflow-x-hidden transition-opacity ${closedMenuClass}`} aria-disabled={isClosed}>
         {cms.combos.enabled && combos.length > 0 && (
           <div className="mb-12">
             <div className="mb-5 reveal">

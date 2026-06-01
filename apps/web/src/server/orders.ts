@@ -28,6 +28,7 @@ import { previewSignupBonusForUser, holdSignupBonusForOrder, commitSignupBonusFo
 import { sendDeliveryOtpSms } from './notify-templates';
 import { resolveLineSelections } from './menu-selections';
 import { groupOrderChannel } from './group-scope';
+import { isBranchOpenAt, isScheduledTimeInsideOpenWindow } from './operating-hours';
 
 // State machine. Cancellation is allowed from any pre-delivery state into the
 // matching CANCELLED_BY_* terminal. Legacy CANCELLED is kept for back-compat.
@@ -107,12 +108,47 @@ export interface PlaceOrderInput {
 }
 
 export async function placeOrder(input: PlaceOrderInput) {
-  const branch = await prisma.branch.findUniqueOrThrow({ where: { id: input.branchId } });
+  const branch = await prisma.branch.findUniqueOrThrow({
+    where: { id: input.branchId },
+    include: { hours: true } as any,
+  } as any) as any;
   if (!branch.isActive) {
     // Paused/inactive branches reject *new* orders. In-flight orders continue
     // through transitionOrder unaffected. validate-address surfaces this earlier
     // in the funnel but a direct POST to /api/orders must still be guarded.
     throw new Error('Branch is not accepting new orders right now');
+  }
+
+  // Operating-hours guard. Same data the customer storefront uses to render
+  // the "Closed — opens at X" banner; replicated here so a direct API call
+  // (curl, mobile app, replayed request) can't bypass the front-end.
+  // Policy (per product decision 2026-06-01):
+  //   • ASAP order while CLOSED → reject
+  //   • SCHEDULED order while OPEN → allow only if scheduledFor falls inside
+  //     a future open window
+  //   • SCHEDULED order while CLOSED → allow if scheduledFor inside next open
+  //     window (so customers can pre-order before opening time)
+  const nowForHours = new Date();
+  const openStatus = isBranchOpenAt((branch.hours ?? []) as any, nowForHours);
+  const scheduledForGuard = input.scheduledFor
+    ? input.scheduledFor instanceof Date
+      ? input.scheduledFor
+      : new Date(input.scheduledFor)
+    : null;
+  if (scheduledForGuard && !Number.isNaN(scheduledForGuard.getTime())) {
+    if (scheduledForGuard.getTime() <= nowForHours.getTime()) {
+      throw new Error('Scheduled time must be in the future.');
+    }
+    if (!isScheduledTimeInsideOpenWindow((branch.hours ?? []) as any, scheduledForGuard)) {
+      throw new Error(
+        `Scheduled time is outside operating hours. ${openStatus.label}`,
+      );
+    }
+  } else if (!openStatus.isOpen) {
+    // No scheduledFor + branch closed = trying to order ASAP outside hours.
+    throw new Error(
+      `Restaurant is closed. ${openStatus.label}. Pick a scheduled time to pre-order.`,
+    );
   }
   const address = input.addressId
     ? await prisma.address.findUnique({ where: { id: input.addressId } })
