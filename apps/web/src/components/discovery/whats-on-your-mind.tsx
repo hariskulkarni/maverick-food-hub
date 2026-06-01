@@ -3,6 +3,43 @@ import { Sparkles } from 'lucide-react';
 import { ImageWithFallback } from '@/components/image-with-fallback';
 import { DISCOVERY_CATEGORIES } from '@/lib/discovery-categories';
 
+/**
+ * Map a CMS-saved tile to a real image URL.
+ *
+ * Bug-fix context (2026-06-01): super-admins were creating tiles on
+ * /platform/discovery-cms with names like "Indian Breads" / "South Indian" /
+ * "Burger" but without uploading a hero image. The customer page then
+ * rendered a pink placeholder (the `<ImageWithFallback>` no-image gradient).
+ *
+ * Fallback chain:
+ *   1. Tile's own `image` if it's a non-empty string and not the same as the
+ *      gradient placeholder.
+ *   2. DISCOVERY_CATEGORIES matched by slug (curated catalogue includes a
+ *      proper Unsplash image for the canonical category slugs).
+ *   3. DISCOVERY_CATEGORIES matched by label keyword (handles renames like
+ *      "Indian Breads" → "breads" → image).
+ *   4. A neutral generic-food image (Unsplash, lazy-loaded) so the tile is
+ *      never empty.
+ */
+const GENERIC_FOOD_IMAGE =
+  'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=80';
+
+function resolveTileImage(tile: { slug: string; label: string; image: string }): string {
+  if (tile.image && tile.image.trim() && !tile.image.startsWith('linear-gradient')) {
+    return tile.image;
+  }
+  // Try exact slug match against curated catalogue.
+  const bySlug = DISCOVERY_CATEGORIES.find((c) => c.slug === tile.slug);
+  if (bySlug?.image) return bySlug.image;
+  // Try keyword match on the label, e.g. "Indian Breads" → match=["bread"].
+  const labelLow = tile.label.toLowerCase();
+  const byLabel = DISCOVERY_CATEGORIES.find(
+    (c) => c.label.toLowerCase() === labelLow || c.match.some((m) => labelLow.includes(m)),
+  );
+  if (byLabel?.image) return byLabel.image;
+  return GENERIC_FOOD_IMAGE;
+}
+
 /** A renderable tile. `alt` falls back to the label when empty. */
 export interface WoymTile {
   slug: string;
@@ -53,7 +90,7 @@ export function WhatsOnYourMind({
             >
               <div className="relative size-20 overflow-hidden rounded-2xl bg-muted ring-1 ring-black/5 shadow-sm transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:shadow-md md:size-full md:aspect-square">
                 <ImageWithFallback
-                  src={c.image}
+                  src={resolveTileImage(c)}
                   alt={c.alt || c.label}
                   fill
                   sizes="(min-width:768px) 14vw, 80px"

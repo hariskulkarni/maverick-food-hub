@@ -243,32 +243,41 @@ export async function POST(req: NextRequest) {
     preparedBrandSlug = await uniqueBrandSlug(base);
   }
 
-  // Duplicate-submission guard (Bug #2).
-  // The /platform/restaurants/new wizard persists its in-progress draft in
-  // sessionStorage. We previously saw a Wrap n Roll restaurant get created
-  // twice because the same draft was submitted from two tabs (or the user
-  // clicked submit twice while the spinner was still resolving). The slug
-  // collision was silently masked by uniqueRestaurantSlug() appending "-2".
+  // Duplicate-creation guard (Bug #2).
   //
-  // Block any submission for the same (name, ownerEmail) within the last 60s
-  // and surface a 409 so the client can show a clear error instead of minting
-  // a phantom row. We compare lowercased + trimmed identity strings.
+  // The /platform/restaurants/new wizard creates a Restaurant + owner User +
+  // brand membership + branch + menu in a single transaction. There is NO
+  // "edit existing restaurant" mode in this wizard — yet users have been
+  // reaching it from contexts where they meant to edit, ending up with two
+  // outlets named the same thing (e.g. two "Wrap n Roll"). The 60-second
+  // window we used previously didn't help when the wizard was re-run hours
+  // or days apart.
+  //
+  // Defensive policy: if ANY existing restaurant has the same (name,
+  // ownerEmail) regardless of how long ago it was created — assume the user
+  // means to EDIT, not CREATE. Return 409 with the existing restaurant's id
+  // so the client can route them to /platform/restaurants/<id> instead.
+  // Legitimate franchise reuse (same owner, two outlets with same name) is
+  // rare; admins can vary the name slightly ("Wrap n Roll · Banjara Hills")
+  // to bypass.
   const dupeName = body.identity.name.trim();
   const dupeOwnerEmail = body.staff?.find((s: any) => s.role === 'ADMIN')?.email?.toLowerCase().trim();
   if (dupeOwnerEmail) {
-    const recent = await prisma.restaurant.findFirst({
+    const existing = await prisma.restaurant.findFirst({
       where: {
         name: dupeName,
         owner: { email: dupeOwnerEmail },
-        createdAt: { gt: new Date(Date.now() - 60_000) },
+        status: { not: 'REJECTED' as any },
       },
-      select: { id: true, slug: true, name: true, createdAt: true },
+      select: { id: true, slug: true, name: true, createdAt: true, status: true },
+      orderBy: { createdAt: 'asc' },
     });
-    if (recent) {
+    if (existing) {
       return isJsonError(
         409,
-        'DUPLICATE_SUBMISSION',
-        `A restaurant named "${recent.name}" was already created ${Math.round((Date.now() - recent.createdAt.getTime()) / 1000)}s ago. If this is a different restaurant, change the name slightly; otherwise the previous submission already succeeded.`,
+        'DUPLICATE_RESTAURANT',
+        `A restaurant named "${existing.name}" owned by ${dupeOwnerEmail} already exists (created ${existing.createdAt.toISOString()}). To EDIT it, open /platform/restaurants/${existing.id}. To create a different outlet under the same name, append a distinguisher (e.g. "${existing.name} · Banjara Hills").`,
+        { existingRestaurantId: existing.id, existingSlug: existing.slug },
       );
     }
   }
