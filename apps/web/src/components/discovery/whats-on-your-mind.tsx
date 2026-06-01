@@ -4,40 +4,50 @@ import { ImageWithFallback } from '@/components/image-with-fallback';
 import { DISCOVERY_CATEGORIES } from '@/lib/discovery-categories';
 
 /**
- * Map a CMS-saved tile to a real image URL.
+ * Build a fallback cascade for a WhatsOnYourMind tile.
  *
- * Bug-fix context (2026-06-01): super-admins were creating tiles on
- * /platform/discovery-cms with names like "Indian Breads" / "South Indian" /
- * "Burger" but without uploading a hero image. The customer page then
- * rendered a pink placeholder (the `<ImageWithFallback>` no-image gradient).
+ * Why this exists: super-admins can create tiles on /platform/discovery-cms
+ * with arbitrary labels ("Indian Breads", "South Indian", "Burger") and may
+ * either leave the image blank, OR upload a file whose URL gets saved in DB
+ * but the file is missing on production (file copy not synced, S3 mis-route,
+ * etc.). Either way the tile would render as a pink placeholder.
  *
- * Fallback chain:
- *   1. Tile's own `image` if it's a non-empty string and not the same as the
- *      gradient placeholder.
- *   2. DISCOVERY_CATEGORIES matched by slug (curated catalogue includes a
- *      proper Unsplash image for the canonical category slugs).
- *   3. DISCOVERY_CATEGORIES matched by label keyword (handles renames like
- *      "Indian Breads" → "breads" → image).
- *   4. A neutral generic-food image (Unsplash, lazy-loaded) so the tile is
- *      never empty.
+ * We now pass BOTH the CMS image (if any) as the primary `src` AND a list of
+ * curated category images as the `fallbackSrc` to <ImageWithFallback>. When
+ * the primary 404s, the component transparently tries each fallback before
+ * giving up on the gradient. End-user experience: tiles ALWAYS show an
+ * image now, even if the CMS save was incomplete or the file vanished.
  */
 const GENERIC_FOOD_IMAGE =
   'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=80';
 
-function resolveTileImage(tile: { slug: string; label: string; image: string }): string {
-  if (tile.image && tile.image.trim() && !tile.image.startsWith('linear-gradient')) {
-    return tile.image;
-  }
-  // Try exact slug match against curated catalogue.
+function buildTileImageCascade(tile: { slug: string; label: string; image: string }) {
+  // Primary: CMS-saved value if it looks like a real URL (not blank, not the
+  // dev-mode gradient string we used to leak through).
+  const primary =
+    tile.image && tile.image.trim() && !tile.image.startsWith('linear-gradient')
+      ? tile.image
+      : '';
+  // Fallback ladder: curated catalogue matched by slug, then by label
+  // keyword, then a neutral generic food shot. ImageWithFallback walks down
+  // the list whenever the previous one errors at the browser layer.
+  const fallbacks: string[] = [];
   const bySlug = DISCOVERY_CATEGORIES.find((c) => c.slug === tile.slug);
-  if (bySlug?.image) return bySlug.image;
-  // Try keyword match on the label, e.g. "Indian Breads" → match=["bread"].
+  if (bySlug?.image) fallbacks.push(bySlug.image);
   const labelLow = tile.label.toLowerCase();
   const byLabel = DISCOVERY_CATEGORIES.find(
     (c) => c.label.toLowerCase() === labelLow || c.match.some((m) => labelLow.includes(m)),
   );
-  if (byLabel?.image) return byLabel.image;
-  return GENERIC_FOOD_IMAGE;
+  if (byLabel?.image && byLabel.image !== bySlug?.image) fallbacks.push(byLabel.image);
+  fallbacks.push(GENERIC_FOOD_IMAGE);
+  // If there's no primary, use the first fallback as primary so we don't
+  // start the cascade on an empty string (which would short-circuit to the
+  // gradient).
+  if (!primary) {
+    const [first, ...rest] = fallbacks;
+    return { src: first, fallbackSrc: rest };
+  }
+  return { src: primary, fallbackSrc: fallbacks };
 }
 
 /** A renderable tile. `alt` falls back to the label when empty. */
@@ -81,7 +91,9 @@ export function WhatsOnYourMind({
       {/* Mobile: horizontal scroll. md+: responsive wrap grid. */}
       <div className="-mx-4 overflow-x-auto no-scrollbar px-4 md:mx-0 md:overflow-visible md:px-0">
         <div className="flex gap-3 md:grid md:grid-cols-6 lg:grid-cols-7 md:gap-4">
-          {tiles.map((c) => (
+          {tiles.map((c) => {
+            const cascade = buildTileImageCascade(c);
+            return (
             <Link
               key={c.slug}
               href={`/category/${c.slug}`}
@@ -90,7 +102,8 @@ export function WhatsOnYourMind({
             >
               <div className="relative size-20 overflow-hidden rounded-2xl bg-muted ring-1 ring-black/5 shadow-sm transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:shadow-md md:size-full md:aspect-square">
                 <ImageWithFallback
-                  src={resolveTileImage(c)}
+                  src={cascade.src}
+                  fallbackSrc={cascade.fallbackSrc}
                   alt={c.alt || c.label}
                   fill
                   sizes="(min-width:768px) 14vw, 80px"
@@ -102,7 +115,8 @@ export function WhatsOnYourMind({
                 {c.label}
               </span>
             </Link>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>

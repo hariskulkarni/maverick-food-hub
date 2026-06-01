@@ -340,16 +340,39 @@ function parseSlide(s: unknown): CarouselSlide | null {
   };
 }
 
+/**
+ * Resolve the best fallback image for a tile from the curated catalogue.
+ * Matches by slug first, then by label-keyword (so "Indian Breads" picks up
+ * the "breads" curated image). Returns '' if no match — the client-side
+ * ImageWithFallback cascade in `whats-on-your-mind.tsx` has a generic
+ * food-image as the final ladder rung in that case.
+ */
+function curatedTileImage(slug: string, label: string): string {
+  const bySlug = DISCOVERY_CATEGORIES.find((c) => c.slug === slug);
+  if (bySlug?.image) return bySlug.image;
+  const labelLow = label.toLowerCase();
+  const byLabel = DISCOVERY_CATEGORIES.find(
+    (c) => c.label.toLowerCase() === labelLow || c.match.some((m) => labelLow.includes(m)),
+  );
+  return byLabel?.image ?? '';
+}
+
 function parseTile(t: unknown): CategoryTile | null {
   if (!t || typeof t !== 'object') return null;
   const o = t as Record<string, unknown>;
   const slug = str(o.slug, 64).trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
   const label = str(o.label, 60).trim();
   if (!slug || !label) return null;
+  // If the admin saved the tile without an image (or with a URL that gets
+  // stripped to '' by url() because it's not a valid URL), default to the
+  // curated catalogue image. This is the "root" fix that prevents the saved
+  // record from ever being image-less — older saves still need the
+  // client-side fallback cascade, but new saves are clean.
+  const explicitImage = url(o.image);
   return {
     slug,
     label,
-    image: url(o.image),
+    image: explicitImage || curatedTileImage(slug, label),
     alt: str(o.alt, 160),
     enabled: bool(o.enabled, true),
   };
