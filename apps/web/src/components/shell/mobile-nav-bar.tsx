@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Menu, X, LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { Menu, X } from 'lucide-react';
 import type { NavGroup } from './admin-shell';
 
 /**
@@ -127,15 +128,14 @@ function DrawerGroup({ group, onNavigate }: { group: NavGroup; onNavigate: () =>
   );
 }
 
-function DrawerLink({ item, onNavigate }: { item: { href: string; icon: LucideIcon; label: string }; onNavigate: () => void }) {
-  const Icon = item.icon;
+function DrawerLink({ item, onNavigate }: { item: { href: string; icon: ReactNode; label: string }; onNavigate: () => void }) {
   return (
     <Link
       href={item.href}
       onClick={onNavigate}
       className="flex items-center gap-2 rounded-md px-3 py-3 min-h-[44px] hover:bg-accent active:bg-accent"
     >
-      <Icon className="size-4 shrink-0" /> <span className="truncate">{item.label}</span>
+      {item.icon} <span className="truncate">{item.label}</span>
     </Link>
   );
 }

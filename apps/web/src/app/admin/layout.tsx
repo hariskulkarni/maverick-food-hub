@@ -12,28 +12,36 @@ import { RestaurantSwitcher } from './restaurant-switcher';
 import { DemoBanner } from '@/components/demo-banner';
 import { AdminShell, type NavGroup } from '@/components/shell/admin-shell';
 
+// CRITICAL: icons are pre-rendered as JSX elements (not component
+// references) because AdminShell passes navGroups across the
+// Server -> Client component boundary into MobileNavBar. Lucide icon
+// components are forwardRef-wrapped functions and cannot be serialized
+// directly — but a pre-rendered React element CAN be. Passing
+// `icon: SomeIcon` (function reference) here crashes the page with
+// "Functions cannot be passed directly to Client Components".
+const ICON = 'size-4 shrink-0';
 const NAV_GROUPS: NavGroup[] = [
   {
     items: [
-      { href: '/admin',                icon: LayoutDashboard,   label: 'Dashboard' },
-      { href: '/admin/orders',         icon: ScrollText,        label: 'Orders' },
-      { href: '/admin/reservations',   icon: CalendarClock,     label: 'Reservations' },
-      { href: '/admin/tables',         icon: Armchair,          label: 'Tables' },
-      { href: '/admin/live',           icon: Radio,             label: 'Live tracking' },
-      { href: '/admin/branches',       icon: Building2,         label: 'Branches' },
-      { href: '/admin/riders',         icon: Bike,              label: 'Dedicated Riders' },
-      { href: '/admin/safety',         icon: ShieldAlert,       label: 'Rider Safety' },
-      { href: '/admin/messages',       icon: MessagesSquare,    label: 'Messages' },
-      { href: '/admin/reports',        icon: BarChart3,         label: 'Reports' },
-      { href: '/admin/activity',       icon: History,           label: 'Activity' },
-      { href: '/admin/feedback',       icon: MessageSquare,     label: 'Feedback' },
+      { href: '/admin',                icon: <LayoutDashboard className={ICON} />, label: 'Dashboard' },
+      { href: '/admin/orders',         icon: <ScrollText className={ICON} />,      label: 'Orders' },
+      { href: '/admin/reservations',   icon: <CalendarClock className={ICON} />,   label: 'Reservations' },
+      { href: '/admin/tables',         icon: <Armchair className={ICON} />,        label: 'Tables' },
+      { href: '/admin/live',           icon: <Radio className={ICON} />,           label: 'Live tracking' },
+      { href: '/admin/branches',       icon: <Building2 className={ICON} />,       label: 'Branches' },
+      { href: '/admin/riders',         icon: <Bike className={ICON} />,            label: 'Dedicated Riders' },
+      { href: '/admin/safety',         icon: <ShieldAlert className={ICON} />,     label: 'Rider Safety' },
+      { href: '/admin/messages',       icon: <MessagesSquare className={ICON} />,  label: 'Messages' },
+      { href: '/admin/reports',        icon: <BarChart3 className={ICON} />,       label: 'Reports' },
+      { href: '/admin/activity',       icon: <History className={ICON} />,         label: 'Activity' },
+      { href: '/admin/feedback',       icon: <MessageSquare className={ICON} />,   label: 'Feedback' },
     ],
   },
   {
     title: 'Storefront',
     items: [
-      { href: '/admin/storefront',     icon: Paintbrush,        label: 'Storefront CMS' },
-      { href: '/admin/settings',       icon: Settings,          label: 'Settings' },
+      { href: '/admin/storefront',     icon: <Paintbrush className={ICON} />,      label: 'Storefront CMS' },
+      { href: '/admin/settings',       icon: <Settings className={ICON} />,        label: 'Settings' },
     ],
   },
 ];

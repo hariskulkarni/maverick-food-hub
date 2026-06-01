@@ -1,5 +1,5 @@
+import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { LucideIcon } from 'lucide-react';
 import { MobileNavBar } from './mobile-nav-bar';
 
 /**
@@ -19,7 +19,16 @@ import { MobileNavBar } from './mobile-nav-bar';
 
 export interface NavItem {
   href: string;
-  icon: LucideIcon;
+  /**
+   * Pre-rendered icon JSX element. We deliberately accept a ReactNode
+   * (not a LucideIcon component reference) so callers can pass
+   * `<SomeIcon className="size-4 shrink-0" />`. This is REQUIRED to
+   * cross the Server -> Client component boundary: Lucide icons are
+   * forwardRef-wrapped functions ({$$typeof, render, displayName}) and
+   * cannot be serialized as props from a Server Component to a Client
+   * Component. A pre-rendered React element CAN be.
+   */
+  icon: ReactNode;
   label: string;
 }
 
@@ -125,13 +134,12 @@ function SidebarGroup({ group }: { group: NavGroup }) {
 }
 
 function SidebarLink({ item }: { item: NavItem }) {
-  const Icon = item.icon;
   return (
     <Link
       href={item.href}
       className="flex items-center gap-2 rounded-md px-3 py-2 hover:bg-accent min-h-[44px]"
     >
-      <Icon className="size-4 shrink-0" /> <span className="truncate">{item.label}</span>
+      {item.icon} <span className="truncate">{item.label}</span>
     </Link>
   );
 }
