@@ -306,15 +306,20 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
               <p className="mt-1.5 text-sm text-muted-foreground max-w-2xl">{cms.topSellers.subheading}</p>
             )}
           </div>
+          {/* Phone-first vertical card matching MenuItemCard:
+              h-32 image banner on top, content below with min-w-0 so the title
+              truncates. w-full max-w-full overflow-hidden on the card so it can
+              never overflow its grid cell. md+ keeps the same vertical stack
+              but bumps the banner to h-36 to fill the 4-up grid more generously. */}
           <div className="grid gap-4 md:grid-cols-4 reveal-stagger">
             {topSellers.slice(0, cms.topSellers.limit).map((t: any, i: number) => (
-              <div key={t.id} className="relative group overflow-hidden rounded-2xl border bg-card card-lift tap-press">
-                <div className="relative h-36 overflow-hidden">
+              <div key={t.id} className="relative group w-full max-w-full overflow-hidden rounded-2xl border bg-card card-lift tap-press">
+                <div className="relative h-32 md:h-36 w-full overflow-hidden bg-muted">
                   <Image
                     src={t.imageUrl || FOOD_FALLBACK}
                     alt={t.name}
                     fill
-                    sizes="(min-width: 768px) 25vw, 50vw"
+                    sizes="(min-width: 768px) 25vw, 100vw"
                     className="object-cover transition-transform duration-700 group-hover:scale-110"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
@@ -324,12 +329,12 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
                     </div>
                   )}
                 </div>
-                <div className="p-3">
+                <div className="p-3 min-w-0">
                   <div className="font-semibold text-sm truncate">{t.name}</div>
                   {cms.topSellers.showSoldCount && (
-                    <div className="mt-0.5 text-xs text-muted-foreground flex items-center gap-1">
-                      <Flame className="size-3 text-primary" />
-                      {t.soldCount} ordered in 30 days
+                    <div className="mt-0.5 text-xs text-muted-foreground flex items-center gap-1 min-w-0">
+                      <Flame className="size-3 shrink-0 text-primary" />
+                      <span className="truncate">{t.soldCount} ordered in 30 days</span>
                     </div>
                   )}
                 </div>
@@ -357,12 +362,17 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
                 <p className="mt-1.5 text-sm text-muted-foreground max-w-2xl">{cms.combos.subheading}</p>
               )}
             </div>
+            {/* Phone-first vertical card matching MenuItemCard:
+                h-32 image banner on top, content below. w-full max-w-full
+                overflow-hidden on the card so it can never overflow its grid
+                cell; min-w-0 inside text columns so titles truncate. md+ bumps
+                the banner to h-44 to fill the 2/3-up grid more generously. */}
             <div className="grid gap-4 md:gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 reveal-stagger">
               {combos.slice(0, cms.combos.limit).map((c: any) => {
                 const hh = priceForCombo({ id: c.id, price: Number(c.price) }, happyHourRules, now);
                 return (
-                  <Card key={c.id} className="overflow-hidden group card-lift">
-                    <div className="relative h-44 bg-muted overflow-hidden">
+                  <Card key={c.id} className="w-full max-w-full overflow-hidden group card-lift">
+                    <div className="relative h-32 md:h-44 w-full bg-muted overflow-hidden">
                       <Image
                         src={c.imageUrl || COMBO_IMAGES[c.slug] || FOOD_FALLBACK}
                         alt={c.name}
@@ -375,11 +385,11 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
                         <Badge className="absolute top-3 left-3 bg-warning/95 text-warning-foreground border-transparent">Combo</Badge>
                       )}
                     </div>
-                    <CardContent className="p-5">
-                      <div className="display text-lg font-semibold group-hover:text-primary transition-colors">{c.name}</div>
-                      {c.description && <div className="mt-1 text-sm text-muted-foreground line-clamp-2">{c.description}</div>}
+                    <CardContent className="p-4 md:p-5 min-w-0">
+                      <div className="display text-lg font-semibold truncate group-hover:text-primary transition-colors">{c.name}</div>
+                      {c.description && <div className="mt-1 text-sm text-muted-foreground line-clamp-2 break-words">{c.description}</div>}
                       <ul className="mt-3 text-sm text-muted-foreground space-y-0.5">
-                        {c.items.map((i: any) => <li key={i.id}>• {i.quantity}× {i.menuItem.name}</li>)}
+                        {c.items.map((i: any) => <li key={i.id} className="truncate">• {i.quantity}× {i.menuItem.name}</li>)}
                       </ul>
                       {/* Phone: stack price block on top, full-width Add combo
                           button below — guarantees neither can clip at 360px
