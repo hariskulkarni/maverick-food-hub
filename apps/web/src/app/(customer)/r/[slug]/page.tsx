@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { MenuClient } from '../../menu/menu-client';
+import { MenuItemCard, type MenuItemForCard } from '../../menu/menu-item-card';
 import { ComboAddButton } from '../../combos/combo-add-button';
 import { StorefrontHeroCarousel } from '@/components/storefront/hero-carousel';
 import { StorefrontAnnouncementBar } from '@/components/storefront/announcement-bar';
@@ -306,40 +307,39 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
               <p className="mt-1.5 text-sm text-muted-foreground max-w-2xl">{cms.topSellers.subheading}</p>
             )}
           </div>
-          {/* Phone-first vertical card matching MenuItemCard:
-              h-32 image banner on top, content below with min-w-0 so the title
-              truncates. w-full max-w-full overflow-hidden on the card so it can
-              never overflow its grid cell. md+ keeps the same vertical stack
-              but bumps the banner to h-36 to fill the 4-up grid more generously. */}
-          <div className="grid gap-4 md:grid-cols-4 reveal-stagger">
-            {topSellers.slice(0, cms.topSellers.limit).map((t: any, i: number) => (
-              <div key={t.id} className="relative group w-full max-w-full overflow-hidden rounded-2xl border bg-card card-lift tap-press">
-                <div className="relative h-32 md:h-36 w-full overflow-hidden bg-muted">
-                  <Image
-                    src={t.imageUrl || FOOD_FALLBACK}
-                    alt={t.name}
-                    fill
-                    sizes="(min-width: 768px) 25vw, 100vw"
-                    className="object-cover transition-transform duration-700 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                  {cms.topSellers.showRankBadge && (
-                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-primary/95 text-primary-foreground text-[10px] font-bold tracking-wider shadow-lg">
-                      #{i + 1} BESTSELLER
-                    </div>
-                  )}
-                </div>
-                <div className="p-3 min-w-0">
-                  <div className="font-semibold text-sm truncate">{t.name}</div>
-                  {cms.topSellers.showSoldCount && (
-                    <div className="mt-0.5 text-xs text-muted-foreground flex items-center gap-1 min-w-0">
-                      <Flame className="size-3 shrink-0 text-primary" />
-                      <span className="truncate">{t.soldCount} ordered in 30 days</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+          {/* Use the SAME MenuItemCard component the main Menu uses, so Top
+              Sellers, Combos, and the main Menu all render the exact same
+              card design on every restaurant page. This is what makes the
+              two restaurant URLs visually consistent regardless of CMS
+              configuration. */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 reveal-stagger">
+            {topSellers.slice(0, cms.topSellers.limit).map((t: any) => {
+              // Map the topSeller shape to MenuItemForCard. happyHourLabel
+              // and variants/modifierGroups default to empty since
+              // topSellers come from a denormalised query.
+              const hh = priceForItem(
+                { id: t.id, categoryId: t.categoryId, price: Number(t.price) },
+                happyHourRules,
+                now,
+              );
+              const item: MenuItemForCard = {
+                id: t.id,
+                name: t.name,
+                description: t.description ?? null,
+                price: hh.effectivePrice,
+                originalPrice: hh.savings > 0 ? hh.originalPrice : null,
+                happyHourLabel: hh.label,
+                imageUrl: t.imageUrl ?? null,
+                isVeg: t.isVeg ?? true,
+                spicyLevel: t.spicyLevel ?? 0,
+                prepTimeMin: t.prepTimeMin ?? 20,
+                isAuthed,
+                isFavorited: favItemSet.has(t.id),
+                variants: [],
+                modifierGroups: [],
+              };
+              return <MenuItemCard key={t.id} item={item} branchId={branch.id} />;
+            })}
           </div>
         </section>
       )}
