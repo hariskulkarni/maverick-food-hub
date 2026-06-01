@@ -9,7 +9,7 @@
  *
  * USAGE (on the VPS):
  *
- *   cd /opt/restaurant-manager
+ *   cd /opt/restaurant-manager/apps/web
  *   npx tsx scripts/find-duplicate-restaurants.ts        # report only
  *   npx tsx scripts/find-duplicate-restaurants.ts --delete-empty
  *     # delete every duplicate that has ZERO orders AND ZERO branches AND
@@ -17,12 +17,8 @@
  *     # Anything with real data is left alone — you delete those manually
  *     # from /platform/restaurants after a human review.
  *
- * WHAT IT DOES
- *   1. SELECT every restaurant, group by (lower(name), owner.email).
- *   2. For each group with size > 1, print:
- *        - id, slug, name, status, createdAt, _count.branches, _count.orders
- *   3. With --delete-empty, atomically delete the "younger empty" siblings.
- *      Refuses to delete the OLDEST row in each group (the canonical one).
+ * NOTE: this file lives under apps/web/scripts/ (not the repo-root scripts/)
+ * because tsx resolves @prisma/client from the nearest node_modules.
  */
 import { PrismaClient } from '@prisma/client';
 
@@ -86,7 +82,7 @@ async function main() {
   const dups = Array.from(groups.values()).filter((g) => g.rows.length > 1);
 
   if (dups.length === 0) {
-    console.log('No duplicate restaurants found. ✅');
+    console.log('No duplicate restaurants found.');
     return;
   }
 
@@ -95,7 +91,7 @@ async function main() {
     console.log(`Group: ${g.key}`);
     for (const r of g.rows) {
       console.log(
-        `  • ${r.id}  slug=${r.slug.padEnd(28)}  status=${r.status.padEnd(8)}  ` +
+        `  - ${r.id}  slug=${r.slug.padEnd(28)}  status=${r.status.padEnd(8)}  ` +
           `created=${r.createdAt.toISOString().split('T')[0]}  ` +
           `branches=${r.branchCount}  orders=${r.orderCount}`,
       );
@@ -119,10 +115,8 @@ async function main() {
     console.log(`Group ${g.key}: keeping ${keep.id} (${keep.slug})`);
     for (const r of rest) {
       if (r.branchCount === 0 && r.orderCount === 0) {
-        console.log(`  → deleting empty duplicate ${r.id} (${r.slug})`);
-        // Cascade: delete dependent rows first (RestaurantUser, Menu items, etc.
-        // are typically @relation onDelete: Cascade, but if your schema is
-        // stricter, expand this section).
+        console.log(`  -> deleting empty duplicate ${r.id} (${r.slug})`);
+        // Cascade: delete dependent rows first.
         await prisma.$transaction(async (tx) => {
           await tx.restaurantUser.deleteMany({ where: { restaurantId: r.id } });
           await tx.restaurant.delete({ where: { id: r.id } });
@@ -130,7 +124,7 @@ async function main() {
         deleted++;
       } else {
         console.log(
-          `  → SKIPPING ${r.id} (${r.slug}) — has ${r.branchCount} branch(es), ${r.orderCount} order(s). Delete via /platform/restaurants after manual review.`,
+          `  -> SKIPPING ${r.id} (${r.slug}) - has ${r.branchCount} branch(es), ${r.orderCount} order(s). Delete via /platform/restaurants after manual review.`,
         );
       }
     }
