@@ -3,10 +3,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ImageWithFallback } from '@/components/image-with-fallback';
 import { HeartButton } from '@/components/heart-button';
+import {
+  HERO_WIDTH_WRAP_CLASS,
+  HERO_WIDTH_INNER_CLASS,
+  HERO_HEIGHT_CLASS,
+  type HeroWidth,
+  type HeroHeight,
+} from '@/server/storefront-cms';
 
 /**
- * StorefrontHeroCarousel — a full-bleed, mobile-first hero carousel for a
- * restaurant storefront, driven by the Storefront CMS.
+ * StorefrontHeroCarousel — a CMS-configurable, mobile-first hero carousel for
+ * a restaurant storefront.
+ *
+ * Width/height are driven by the storefront CMS (HeroWidth / HeroHeight
+ * presets). The wrapper applies the width preset (full-bleed, container,
+ * card, narrow, etc.) and the inner image stage applies the height preset
+ * (fixed heights OR aspect ratios). Both class maps live in
+ * @/server/storefront-cms so the admin live preview and the customer page
+ * render identically (single source of truth).
  *
  * Each slide can carry an optional headline / subtext / CTA which are overlaid
  * (bottom-left) with a legibility gradient; the CTA uses the restaurant's
@@ -36,6 +50,8 @@ export function StorefrontHeroCarousel({
   transition = 'slide',
   autoplayMs = DEFAULT_AUTOPLAY_MS,
   accentColor = '#f23e5c',
+  width = 'full-bleed',
+  height = 'wide',
 }: {
   slides: HeroCarouselSlide[];
   alt: string;
@@ -45,6 +61,18 @@ export function StorefrontHeroCarousel({
   transition?: Transition;
   autoplayMs?: number;
   accentColor?: string;
+  /**
+   * CMS-configured width preset. See HeroWidth in @/server/storefront-cms for
+   * the full list and what each preset looks like. Defaults to 'full-bleed'
+   * to preserve historical behaviour.
+   */
+  width?: HeroWidth;
+  /**
+   * CMS-configured height preset. See HeroHeight in @/server/storefront-cms.
+   * Defaults to 'wide' (aspect 2:1, max 64vh) which is the historical carousel
+   * shape.
+   */
+  height?: HeroHeight;
 }) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -72,16 +100,26 @@ export function StorefrontHeroCarousel({
     if (Math.abs(dx) > 40) go(index + (dx < 0 ? 1 : -1));
   };
 
+  // The width preset drives the OUTER wrapper (full-bleed, container, card,
+  // narrow…); the height preset drives the INNER image stage (fixed height OR
+  // aspect ratio). Card/box-style width presets also round the inner stage so
+  // it visually reads as a hosted card. See @/server/storefront-cms for the
+  // exact CSS for each preset.
+  const wrapCls = HERO_WIDTH_WRAP_CLASS[width] ?? HERO_WIDTH_WRAP_CLASS['full-bleed'];
+  const innerCls = HERO_WIDTH_INNER_CLASS[width] ?? '';
+  const stageCls = HERO_HEIGHT_CLASS[height] ?? HERO_HEIGHT_CLASS['wide'];
+
   return (
-    <section className="relative" aria-label={`${alt} highlights`} aria-roledescription="carousel">
+    <section className={`relative ${wrapCls}`} aria-label={`${alt} highlights`} aria-roledescription="carousel">
       <div
-        className="relative w-full overflow-hidden bg-muted"
+        className={`relative w-full overflow-hidden bg-muted ${innerCls}`}
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >
-        <div className="relative aspect-[2/1] max-h-[64vh] w-full">
+        <div className={`relative w-full ${stageCls}`}>
+
           {slides.map((s, i) => {
             const active = i === index;
             const style: React.CSSProperties =

@@ -27,6 +27,31 @@ describe('storefront-cms config', () => {
     expect(parseStorefrontConfig({ hero: { transition: 'fade' } }).hero.transition).toBe('fade');
   });
 
+  it('falls back to default hero width + height when missing (legacy config)', () => {
+    const c = parseStorefrontConfig({ hero: { type: 'cover' } });
+    // Defaults preserve historical look so existing storefronts don't change.
+    expect(c.hero.width).toBe('full-bleed');
+    expect(c.hero.height).toBe('wide');
+  });
+
+  it('parses every valid hero width preset', () => {
+    for (const w of ['full-bleed','wide-95','container','card','narrow','reading','mobile-gutter'] as const) {
+      expect(parseStorefrontConfig({ hero: { width: w } }).hero.width).toBe(w);
+    }
+  });
+
+  it('parses every valid hero height preset', () => {
+    for (const h of ['compact','standard','tall','cinematic','wide','classic','half-screen','full-screen'] as const) {
+      expect(parseStorefrontConfig({ hero: { height: h } }).hero.height).toBe(h);
+    }
+  });
+
+  it('rejects garbage hero width / height and falls back to defaults', () => {
+    const c = parseStorefrontConfig({ hero: { width: 'bogus-width', height: 42 } });
+    expect(c.hero.width).toBe('full-bleed');
+    expect(c.hero.height).toBe('wide');
+  });
+
   it('parses + caps slides and drops invalid ones', () => {
     const c = parseStorefrontConfig({
       hero: { type: 'carousel', slides: [{ src: '/a.jpg', headline: 'Hi' }, { src: '' }, { nope: 1 }] },

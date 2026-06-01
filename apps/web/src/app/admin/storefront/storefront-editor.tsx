@@ -7,8 +7,13 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { reportApiError } from '@/lib/api-error';
 import { Image as ImageIcon, Images, Plus, Trash2, ArrowUp, ArrowDown, Save, ExternalLink, Eye, EyeOff, ChevronDown, ChevronRight, Star, Loader2, Type, Megaphone, BookOpen, Blocks, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
-import type { StorefrontConfig, HeroSlide, HeroTransition, MenuLayout, FontPair, ButtonRadius, CardStyle, ContentBlock, BlockType, BlockPosition, Align, LogoFit, LogoShape } from '@/server/storefront-cms';
-import { LOGO_FITS, LOGO_SHAPES, LOGO_FIT_LABELS, LOGO_SHAPE_LABELS, LOGO_FIT_CLASS, LOGO_SHAPE_RADIUS_CLASS } from '@/server/storefront-cms';
+import type { StorefrontConfig, HeroSlide, HeroTransition, MenuLayout, FontPair, ButtonRadius, CardStyle, ContentBlock, BlockType, BlockPosition, Align, LogoFit, LogoShape, HeroWidth, HeroHeight } from '@/server/storefront-cms';
+import {
+  LOGO_FITS, LOGO_SHAPES, LOGO_FIT_LABELS, LOGO_SHAPE_LABELS, LOGO_FIT_CLASS, LOGO_SHAPE_RADIUS_CLASS,
+  HERO_WIDTHS, HERO_HEIGHTS, HERO_WIDTH_LABELS, HERO_HEIGHT_LABELS,
+  HERO_WIDTH_HINTS, HERO_HEIGHT_HINTS,
+  HERO_WIDTH_WRAP_CLASS, HERO_WIDTH_INNER_CLASS, HERO_HEIGHT_CLASS,
+} from '@/server/storefront-cms';
 
 type Cat = { id: string; name: string; sortOrder: number; isActive: boolean; itemCount: number };
 type Item = { id: string; name: string; sortOrder: number; isAvailable: boolean; isFeatured: boolean };
@@ -142,6 +147,17 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
         {cfg.hero.type === 'cover' && (
           <p className="text-xs text-muted-foreground">Uses your restaurant cover image{coverImageUrl ? '' : ' (none set — add one under Settings → Branding)'}.</p>
         )}
+
+        {/* SIZE — applies to BOTH cover and carousel hero, so it sits OUTSIDE
+            the carousel-only block. Width + Height presets are CMS-controlled
+            and rendered identically here and on the customer page (same class
+            map, one source of truth). */}
+        <HeroSizePicker
+          width={cfg.hero.width}
+          height={cfg.hero.height}
+          onWidth={(w) => setHero({ width: w })}
+          onHeight={(h) => setHero({ height: h })}
+        />
 
         {cfg.hero.type === 'carousel' && (
           <>
@@ -747,6 +763,253 @@ function LogoDisplayPanel({
     </div>
   );
 }
+/**
+ * Hero size picker — surfaces the 7 width × 8 height presets as two
+ * Choice-tile grids with a tiny live thumbnail under each preset so admins
+ * can see at a glance what each setting will look like before saving.
+ *
+ * The thumbnail uses the SAME class maps (HERO_WIDTH_WRAP_CLASS,
+ * HERO_WIDTH_INNER_CLASS, HERO_HEIGHT_CLASS) that the customer storefront
+ * uses, so what admins see here is exactly what customers get.
+ */
+function HeroSizePicker({
+  width,
+  height,
+  onWidth,
+  onHeight,
+}: {
+  width: HeroWidth;
+  height: HeroHeight;
+  onWidth: (w: HeroWidth) => void;
+  onHeight: (h: HeroHeight) => void;
+}) {
+  return (
+    <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h4 className="text-sm font-semibold">Hero size</h4>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            How wide and tall your hero banner / carousel renders. Applies to
+            both modes. Try a few — the live preview shows what each looks like.
+          </p>
+        </div>
+        {/* The "big" preview at the top right — sized so it stays readable in
+            the editor without dominating the page. Reuses the real class maps
+            so admins can trust what they're seeing. */}
+        <HeroPreview width={width} height={height} className="hidden sm:block w-64 shrink-0" />
+      </div>
+
+      {/* WIDTH */}
+      <div className="space-y-1.5">
+        <label className="text-[11px] uppercase tracking-wider text-muted-foreground block">Width</label>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+          {HERO_WIDTHS.map((w) => (
+            <SizeTile
+              key={w}
+              active={width === w}
+              onClick={() => onWidth(w)}
+              label={HERO_WIDTH_LABELS[w]}
+              hint={HERO_WIDTH_HINTS[w]}
+              swatch={<WidthSwatch width={w} />}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* HEIGHT */}
+      <div className="space-y-1.5">
+        <label className="text-[11px] uppercase tracking-wider text-muted-foreground block">Height</label>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+          {HERO_HEIGHTS.map((h) => (
+            <SizeTile
+              key={h}
+              active={height === h}
+              onClick={() => onHeight(h)}
+              label={HERO_HEIGHT_LABELS[h]}
+              hint={HERO_HEIGHT_HINTS[h]}
+              swatch={<HeightSwatch height={h} />}
+            />
+          ))}
+        </div>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        Tip: <span className="font-medium">Full bleed + Wide</span> is the
+        classic Zomato / Swiggy look. <span className="font-medium">Card +
+        Standard</span> looks more like a hosted brand site.
+        <span className="font-medium"> Full screen</span> is dramatic but pushes
+        the menu below the fold — best for restaurants with strong photography.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * One tile in the width/height picker. Visually mirrors the existing Choice
+ * component but adds room for a swatch thumbnail and a hint line.
+ */
+function SizeTile({
+  active,
+  onClick,
+  label,
+  hint,
+  swatch,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  hint: string;
+  swatch: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group flex flex-col items-stretch gap-2 rounded-lg border p-2.5 text-left transition-colors ${
+        active
+          ? 'border-primary bg-primary/10 ring-1 ring-primary'
+          : 'hover:bg-accent border-input'
+      }`}
+    >
+      <div className="grid place-items-center h-16 rounded-md bg-background border overflow-hidden">
+        {swatch}
+      </div>
+      <div className="min-w-0">
+        <div className={`text-xs font-semibold truncate ${active ? 'text-primary' : ''}`}>{label}</div>
+        <div className="text-[10px] text-muted-foreground leading-snug line-clamp-2">{hint}</div>
+      </div>
+    </button>
+  );
+}
+
+/**
+ * Tiny SVG swatch that visualises how wide a hero will be on the page,
+ * relative to a stylised "phone frame" outline. Quick visual reference so
+ * admins don't have to read every label.
+ */
+function WidthSwatch({ width }: { width: HeroWidth }) {
+  // Coordinates are tuned to read at 64×?? — outer = phone frame, inner = hero.
+  // Each width preset gets a unique inner rect so the swatches are visually
+  // distinguishable at a glance.
+  const inner: Record<HeroWidth, { x: number; w: number; r: number; shadow?: boolean }> = {
+    'full-bleed':    { x: 0,    w: 100,  r: 0 },
+    'wide-95':       { x: 2.5,  w: 95,   r: 1.5, shadow: true },
+    'container':     { x: 12,   w: 76,   r: 1 },
+    'card':          { x: 10,   w: 80,   r: 3, shadow: true },
+    'narrow':        { x: 22,   w: 56,   r: 0.5 },
+    'reading':       { x: 16,   w: 68,   r: 0.5 },
+    'mobile-gutter': { x: 6,    w: 88,   r: 0.5 },
+  };
+  const cfg = inner[width];
+  return (
+    <svg viewBox="0 0 100 32" className="w-full h-full" preserveAspectRatio="xMidYMid meet" aria-hidden>
+      {/* Phone / page frame */}
+      <rect x="1" y="2" width="98" height="28" rx="2" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="0.6" />
+      {/* The hero */}
+      {cfg.shadow && (
+        <rect x={cfg.x} y={9} width={cfg.w} height={14} rx={cfg.r} fill="#000" opacity="0.06" transform="translate(0,1)" />
+      )}
+      <rect
+        x={cfg.x}
+        y={8}
+        width={cfg.w}
+        height={14}
+        rx={cfg.r}
+        fill="currentColor"
+        opacity="0.45"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Tiny SVG swatch that visualises hero height as a relative bar. Aspect-ratio
+ * presets get a notched outline cue; fixed-pixel presets get solid blocks.
+ */
+function HeightSwatch({ height }: { height: HeroHeight }) {
+  // Approximate visual heights for the swatch (0..28).
+  const cfg: Record<HeroHeight, { h: number; ratio?: string }> = {
+    'compact':     { h: 6 },
+    'standard':    { h: 9 },
+    'tall':        { h: 14 },
+    'cinematic':   { h: 7,  ratio: '21:9' },
+    'wide':        { h: 10, ratio: '2:1' },
+    'classic':     { h: 11, ratio: '16:9' },
+    'half-screen': { h: 17 },
+    'full-screen': { h: 26 },
+  };
+  const c = cfg[height];
+  return (
+    <svg viewBox="0 0 100 32" className="w-full h-full" preserveAspectRatio="xMidYMid meet" aria-hidden>
+      <rect x="1" y="2" width="98" height="28" rx="2" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="0.6" />
+      <rect
+        x="6"
+        y={28 - c.h}
+        width="88"
+        height={c.h}
+        rx="1"
+        fill="currentColor"
+        opacity="0.45"
+      />
+      {c.ratio && (
+        <text x="50" y="20" textAnchor="middle" fontSize="6" fill="currentColor" opacity="0.7" fontWeight="700">
+          {c.ratio}
+        </text>
+      )}
+    </svg>
+  );
+}
+
+/**
+ * Real-CSS preview of the currently-selected width + height. Uses the same
+ * class maps as the customer page so admins see exactly what will ship. The
+ * box is bounded to a fixed width here (w-64) so the proportions stay
+ * representative inside the editor.
+ */
+function HeroPreview({
+  width,
+  height,
+  className = '',
+}: {
+  width: HeroWidth;
+  height: HeroHeight;
+  className?: string;
+}) {
+  const wrap = HERO_WIDTH_WRAP_CLASS[width];
+  const inner = HERO_WIDTH_INNER_CLASS[width];
+  const stage = HERO_HEIGHT_CLASS[height];
+
+  // The preview is rendered INSIDE the editor (constrained width), but the
+  // production page is full-window. To make the preview honest we wrap the
+  // hero in a faux "page" frame so width presets like 'container' (max-w-7xl)
+  // visually scale down. Some classes (e.g. 'h-[90dvh]') would be huge inside
+  // an editor card, so we cap the rendered height to keep the preview useful.
+  return (
+    <div className={`relative rounded-md border bg-muted/40 overflow-hidden ${className}`} aria-label="Hero preview">
+      <div className="text-[9px] uppercase tracking-wider text-muted-foreground px-2 pt-1.5">Preview</div>
+      <div className="p-2">
+        <div className="relative bg-card border rounded overflow-hidden" style={{ maxHeight: 140 }}>
+          {/* Apply the same wrap class the customer page uses, but bounded so
+              full-screen / half-screen don't blow up the editor card. */}
+          <div className={wrap || 'w-full'}>
+            <div
+              className={`relative w-full overflow-hidden bg-gradient-to-br from-primary/40 to-secondary/40 ${inner}`}
+              // Cap visual height; otherwise full-screen (90dvh) is unreadable.
+              style={{ maxHeight: 110 }}
+            >
+              <div
+                className={`relative w-full ${stage}`}
+                style={{ maxHeight: 110 }}
+                aria-hidden
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Choice({ active, onClick, icon: Icon, label }: { active: boolean; onClick: () => void; icon?: any; label: string }) {
   return (
     <button type="button" onClick={onClick}

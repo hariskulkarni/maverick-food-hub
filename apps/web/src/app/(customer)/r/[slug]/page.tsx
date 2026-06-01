@@ -2,7 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { prisma } from '@/server/db';
 import { ImageWithFallback } from '@/components/image-with-fallback';
-import { LOGO_FIT_CLASS, LOGO_SHAPE_RADIUS_CLASS } from '@/server/storefront-cms';
+import { LOGO_FIT_CLASS, LOGO_SHAPE_RADIUS_CLASS, HERO_WIDTH_WRAP_CLASS, HERO_WIDTH_INNER_CLASS, HERO_HEIGHT_CLASS } from '@/server/storefront-cms';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -190,6 +190,12 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
             transition={cms.hero.transition}
             autoplayMs={cms.hero.autoplayMs}
             accentColor={cms.branding.accentColor}
+            // Hero size — CMS-controlled. See HeroWidth / HeroHeight in
+            // @/server/storefront-cms for the 7 width × 8 height presets.
+            // Old configs (missing these fields) fall through the parser to
+            // 'full-bleed' / 'wide', which is the historical look.
+            width={cms.hero.width}
+            height={cms.hero.height}
           />
           <div className="container py-4 reveal">
             <div className="flex flex-wrap items-center gap-2">
@@ -200,7 +206,14 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
           </div>
         </>
       ) : (
-        <section className="relative h-64 md:h-[22rem] bg-muted overflow-hidden">
+        // Cover (single-image) hero — also honours the CMS-controlled width +
+        // height presets so the size picker in /admin/storefront applies
+        // whether the restaurant uses a single cover or a carousel. The wrap
+        // class controls the page-level width (full-bleed, container, card,
+        // narrow…); the inner classes add rounded corners + shadow where
+        // appropriate; the height class controls the vertical rhythm.
+        <div className={HERO_WIDTH_WRAP_CLASS[cms.hero.width] || ''}>
+        <section className={`relative bg-muted overflow-hidden ${HERO_WIDTH_INNER_CLASS[cms.hero.width]} ${HERO_HEIGHT_CLASS[cms.hero.height]}`}>
           {/* Use ImageWithFallback so a missing/404 cover URL (e.g. a logoUrl
               persisted in the DB whose file is no longer on disk) renders the
               on-brand gradient placeholder instead of the browser's broken-image
@@ -254,6 +267,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
             </div>
           </div>
         </section>
+        </div>
       )}
 
       {/* ───────── Sticky info bar ───────── */}

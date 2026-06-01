@@ -25,6 +25,45 @@
 
 export type HeroType = 'cover' | 'carousel';
 export type HeroTransition = 'slide' | 'fade' | 'zoom';
+/**
+ * How wide the hero (cover image OR carousel) renders on the storefront.
+ *   full-bleed     — edge-to-edge with NO horizontal margins (default; cinematic feel)
+ *   wide-95        — 95vw centered with rounded corners (slight inset, premium look)
+ *   container      — sits inside the page container (proper page margins on both sides)
+ *   card           — container width + heavy rounded corners + soft shadow (Spotify/Apple style)
+ *   narrow         — max-w-3xl (≈ 768px), story / article width
+ *   reading        — max-w-5xl (≈ 1024px), balanced large
+ *   mobile-gutter  — edge-to-edge on desktop, 16px gutter on phone (breathing room on small screens)
+ */
+export type HeroWidth =
+  | 'full-bleed'
+  | 'wide-95'
+  | 'container'
+  | 'card'
+  | 'narrow'
+  | 'reading'
+  | 'mobile-gutter';
+/**
+ * How tall the hero renders. Mix of fixed responsive heights and aspect-ratio
+ * presets so admins can pick the visual rhythm without doing math.
+ *   compact      — 176 / 224 px (mobile / desktop)        — quick scroll past
+ *   standard     — 224 / 288 px                            — modest hero
+ *   tall         — 288 / 384 px                            — generous hero
+ *   cinematic    — aspect 21:9, capped at 70vh             — wide cinema
+ *   wide         — aspect 2:1, capped at 64vh              — current carousel default
+ *   classic      — aspect 16:9, capped at 70vh             — standard video ratio
+ *   half-screen  — 50dvh                                    — half the viewport
+ *   full-screen  — 90dvh                                    — hero takeover
+ */
+export type HeroHeight =
+  | 'compact'
+  | 'standard'
+  | 'tall'
+  | 'cinematic'
+  | 'wide'
+  | 'classic'
+  | 'half-screen'
+  | 'full-screen';
 export type MenuLayout = 'list' | 'grid';
 export type FontPair = 'modern' | 'classic' | 'playful' | 'editorial';
 export type ButtonRadius = 'sharp' | 'rounded' | 'pill';
@@ -90,6 +129,17 @@ export interface StorefrontConfig {
     transition: HeroTransition;
     autoplayMs: number;     // 0 = no autoplay
     slides: HeroSlide[];
+    /**
+     * How wide the hero renders. Applies to both the cover (single-image) and
+     * the carousel variant so the page rhythm stays consistent regardless of
+     * which mode the admin picks.
+     */
+    width: HeroWidth;
+    /**
+     * How tall the hero renders. Mix of fixed-pixel and aspect-ratio presets;
+     * see HeroHeight for what each preset means.
+     */
+    height: HeroHeight;
   };
   branding: {
     tagline: string;        // '' ⇒ fall back to Restaurant.tagline
@@ -179,6 +229,107 @@ export interface StorefrontConfig {
 }
 
 export const HERO_TRANSITIONS: HeroTransition[] = ['slide', 'fade', 'zoom'];
+export const HERO_WIDTHS: HeroWidth[] = [
+  'full-bleed', 'wide-95', 'container', 'card', 'narrow', 'reading', 'mobile-gutter',
+];
+export const HERO_HEIGHTS: HeroHeight[] = [
+  'compact', 'standard', 'tall', 'cinematic', 'wide', 'classic', 'half-screen', 'full-screen',
+];
+
+/** Human-readable label for the CMS picker. */
+export const HERO_WIDTH_LABELS: Record<HeroWidth, string> = {
+  'full-bleed':    'Full bleed (edge-to-edge)',
+  'wide-95':       'Wide (95% viewport, inset)',
+  'container':     'Container (boxed in page)',
+  'card':          'Card (rounded + shadow)',
+  'narrow':        'Narrow (story width)',
+  'reading':       'Reading (balanced large)',
+  'mobile-gutter': 'Mobile gutter (full desktop, 16px phone)',
+};
+export const HERO_HEIGHT_LABELS: Record<HeroHeight, string> = {
+  'compact':     'Compact (176 / 224 px)',
+  'standard':    'Standard (224 / 288 px)',
+  'tall':        'Tall (288 / 384 px)',
+  'cinematic':   'Cinematic 21:9',
+  'wide':        'Wide 2:1 (default)',
+  'classic':     'Classic 16:9',
+  'half-screen': 'Half screen (50dvh)',
+  'full-screen': 'Full screen (90dvh)',
+};
+
+/**
+ * One-liner blurb that describes when to use each preset. Surfaced as a small
+ * hint under the picker so the restaurant admin can choose with intent.
+ */
+export const HERO_WIDTH_HINTS: Record<HeroWidth, string> = {
+  'full-bleed':    'Cinematic feel. Best for high-quality wide photography.',
+  'wide-95':       'Premium e-commerce vibe. Small inset on both sides.',
+  'container':     'Sits inside the page container, with the rest of the page.',
+  'card':          'Looks like a hosted card. Great for branded promo banners.',
+  'narrow':        'Article-width. Good when the hero is mostly text/CTA.',
+  'reading':       'Balanced large width. Doesn\'t overwhelm the menu below.',
+  'mobile-gutter': 'Full-bleed on tablet/desktop, breathing room on phones.',
+};
+export const HERO_HEIGHT_HINTS: Record<HeroHeight, string> = {
+  'compact':     'Lets customers see menu fast. Best for repeat visitors.',
+  'standard':    'Modest impact, fast scroll. Sensible default.',
+  'tall':        'Generous photo space. Good for food photography.',
+  'cinematic':   'Wide cinema bar. Looks dramatic on desktop.',
+  'wide':        'Current default. Works at most viewports.',
+  'classic':     'Same shape as YouTube videos. Familiar.',
+  'half-screen': 'Always takes half the screen. Responsive on any device.',
+  'full-screen': 'Maximum drama. Hero takes the whole viewport on entry.',
+};
+
+/**
+ * CSS classes the WRAPPER around the hero gets. This controls how WIDE
+ * the hero is on the page. Empty string means no wrapper-level constraint
+ * (full-bleed).
+ *
+ * The CSS is identical between the admin live preview and the customer
+ * storefront — single source of truth so what admins design is what
+ * customers see.
+ */
+export const HERO_WIDTH_WRAP_CLASS: Record<HeroWidth, string> = {
+  'full-bleed':    '',
+  'wide-95':       'mx-auto w-[95vw] max-w-[1800px]',
+  'container':     'container mx-auto',
+  'card':          'container mx-auto',
+  'narrow':        'mx-auto w-full max-w-3xl px-4',
+  'reading':       'mx-auto w-full max-w-5xl px-4',
+  'mobile-gutter': 'px-4 sm:px-0',
+};
+/**
+ * Extra classes the INNER (image container) gets per width preset. The card
+ * width preset adds heavy rounded corners + shadow so it visually reads as a
+ * hosted card; others just round lightly so they don't look raw.
+ */
+export const HERO_WIDTH_INNER_CLASS: Record<HeroWidth, string> = {
+  'full-bleed':    '',
+  'wide-95':       'rounded-xl overflow-hidden shadow-md',
+  'container':     'rounded-lg overflow-hidden',
+  'card':          'rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5',
+  'narrow':        'rounded-md overflow-hidden',
+  'reading':       'rounded-lg overflow-hidden',
+  'mobile-gutter': 'rounded-md overflow-hidden sm:rounded-none',
+};
+
+/**
+ * CSS classes for the height/aspect-ratio of the inner image container.
+ * Some presets drive height by aspect ratio (relative to width); some by
+ * fixed responsive heights. Both are valid and read the same to the layout
+ * engine because the outer wrapper sets a definite width.
+ */
+export const HERO_HEIGHT_CLASS: Record<HeroHeight, string> = {
+  'compact':     'h-44 md:h-56',
+  'standard':    'h-56 md:h-72',
+  'tall':        'h-72 md:h-96',
+  'cinematic':   'aspect-[21/9] max-h-[70vh]',
+  'wide':        'aspect-[2/1] max-h-[64vh]',
+  'classic':     'aspect-[16/9] max-h-[70vh]',
+  'half-screen': 'h-[50dvh]',
+  'full-screen': 'h-[90dvh]',
+};
 export const FONT_PAIRS: FontPair[] = ['modern', 'classic', 'playful', 'editorial'];
 export const BUTTON_RADII: ButtonRadius[] = ['sharp', 'rounded', 'pill'];
 export const CARD_STYLES: CardStyle[] = ['flat', 'shadow', 'border'];
@@ -229,7 +380,18 @@ export const RADIUS_PX: Record<ButtonRadius, number> = { sharp: 4, rounded: 12, 
 
 export function defaultStorefrontConfig(): StorefrontConfig {
   return {
-    hero: { type: 'cover', transition: 'slide', autoplayMs: 5000, slides: [] },
+    hero: {
+      type: 'cover',
+      transition: 'slide',
+      autoplayMs: 5000,
+      slides: [],
+      // Defaults preserve historical behaviour: full-bleed width and the 2:1
+      // aspect ratio capped at 64vh. Any storefront that existed before this
+      // PR will continue to render exactly as before because parseStorefrontConfig
+      // falls back to these when the keys are missing.
+      width: 'full-bleed',
+      height: 'wide',
+    },
     branding: {
       tagline: '',
       accentColor: '#f23e5c',
@@ -410,6 +572,11 @@ export function parseStorefrontConfig(raw: unknown): StorefrontConfig {
       transition: oneOf<HeroTransition>(hero.transition, HERO_TRANSITIONS, d.hero.transition),
       autoplayMs: clampInt(hero.autoplayMs, 0, 30000, d.hero.autoplayMs),
       slides,
+      // Falls back to the historical defaults ('full-bleed' / 'wide') when an
+      // older config doesn't have these fields, so existing storefronts render
+      // identically before and after the size-picker upgrade.
+      width: oneOf<HeroWidth>(hero.width, HERO_WIDTHS, d.hero.width),
+      height: oneOf<HeroHeight>(hero.height, HERO_HEIGHTS, d.hero.height),
     },
     branding: {
       tagline: str(branding.tagline, 160),
