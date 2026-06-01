@@ -262,10 +262,16 @@ function MostOrderedCard({ items }: { items: MostOrderedProp[] }) {
     <Card>
       <CardContent className="p-5">
         <SectionHeader icon={<Flame className="size-4 text-primary" />} title="Most ordered here" />
+        {/* Phone-first vertical card matching MenuItemCard:
+            h-28 image banner on top (slightly shorter than the storefront h-32
+            so two-up still feels balanced inside the inset card), content below
+            with veg dot + name + price + a white "sticker" ADD button on the
+            bottom row. w-full max-w-full overflow-hidden so the card can never
+            overflow its 2-up grid cell. */}
         <div className="mt-4 grid grid-cols-2 gap-3">
           {items.map((it) => (
-            <div key={it.id} className="rounded-2xl border bg-card overflow-hidden card-lift tap-press group">
-              <div className="relative h-24 overflow-hidden bg-muted">
+            <div key={it.id} className="w-full max-w-full rounded-2xl border bg-card overflow-hidden card-lift tap-press group">
+              <div className="relative h-28 w-full overflow-hidden bg-muted">
                 <Image
                   src={it.imageUrl || FOOD_FALLBACK}
                   alt={it.name}
@@ -274,22 +280,27 @@ function MostOrderedCard({ items }: { items: MostOrderedProp[] }) {
                   className="object-cover transition-transform duration-500 group-hover:scale-110"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                <div className="absolute top-1.5 left-1.5">
-                  <span className={`flex h-3.5 w-3.5 items-center justify-center rounded-sm border-[1.5px] bg-background/95 ${it.isVeg ? 'border-success' : 'border-destructive'}`}>
-                    <span className={`h-1 w-1 rounded-full ${it.isVeg ? 'bg-success' : 'bg-destructive'}`} />
-                  </span>
-                </div>
               </div>
-              <div className="p-2.5">
-                <div className="font-medium text-sm truncate">{it.name}</div>
-                <div className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                  <Flame className="size-3 text-primary" /> Ordered {it.timesOrdered}×
+              <div className="p-3 space-y-1.5 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border-[1.5px] ${it.isVeg ? 'border-success' : 'border-destructive'}`}
+                    title={it.isVeg ? 'Veg' : 'Non-veg'}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${it.isVeg ? 'bg-success' : 'bg-destructive'}`} />
+                  </span>
+                  <h3 className="font-semibold text-sm truncate">{it.name}</h3>
                 </div>
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <div className="font-semibold text-sm text-primary">{money(it.price)}</div>
+                <div className="text-base font-semibold text-foreground">{money(it.price)}</div>
+                <div className="text-[11px] text-muted-foreground flex items-center gap-1 min-w-0">
+                  <Flame className="size-3 shrink-0 text-primary" />
+                  <span className="truncate">Ordered {it.timesOrdered}×</span>
+                </div>
+                <div className="flex items-center justify-end pt-1">
                   <Button
                     size="sm"
-                    className="h-7 px-2 gap-1"
+                    variant="outline"
+                    className="tap-press h-9 px-3 rounded-lg border-2 border-primary bg-background text-primary font-bold uppercase tracking-wider text-xs shadow-sm hover:bg-primary/5"
                     onClick={() => add({
                       id: it.id,
                       refId: it.id,
@@ -301,7 +312,7 @@ function MostOrderedCard({ items }: { items: MostOrderedProp[] }) {
                       isVeg: it.isVeg
                     })}
                   >
-                    <Plus className="size-3" /> Add
+                    <Plus className="size-4 mr-1" /> Add
                   </Button>
                 </div>
               </div>
