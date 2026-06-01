@@ -29,6 +29,28 @@ describe('discovery-cms config', () => {
     expect(parseDiscoveryConfig({ carousel: { autoplayMs: -5 } }).carousel.autoplayMs).toBe(0);
   });
 
+  it('falls back to default carousel width + height when missing (legacy config)', () => {
+    const c = parseDiscoveryConfig({ carousel: { autoplayMs: 4000 } });
+    // 'mobile-gutter' / 'wide' is the closest preserved-look default.
+    expect(c.carousel.width).toBe('mobile-gutter');
+    expect(c.carousel.height).toBe('wide');
+  });
+
+  it('parses every valid carousel width + height preset', () => {
+    for (const w of ['full-bleed','wide-95','container','card','narrow','reading','mobile-gutter'] as const) {
+      expect(parseDiscoveryConfig({ carousel: { width: w } }).carousel.width).toBe(w);
+    }
+    for (const h of ['compact','standard','tall','cinematic','wide','classic','half-screen','full-screen'] as const) {
+      expect(parseDiscoveryConfig({ carousel: { height: h } }).carousel.height).toBe(h);
+    }
+  });
+
+  it('rejects garbage carousel width / height and falls back to defaults', () => {
+    const c = parseDiscoveryConfig({ carousel: { width: 'bogus', height: 7 } });
+    expect(c.carousel.width).toBe('mobile-gutter');
+    expect(c.carousel.height).toBe('wide');
+  });
+
   it('drops carousel slides with no image but keeps valid ones', () => {
     const c = parseDiscoveryConfig({
       carousel: { slides: [{ src: '', alt: 'x' }, { src: '/banners/a.jpg', alt: 'A', href: '/r/a' }] },

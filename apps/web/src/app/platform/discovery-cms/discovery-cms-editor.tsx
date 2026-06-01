@@ -11,6 +11,12 @@ import type {
   DiscoveryConfig, CarouselSlide, CategoryTile, FooterColumn, NearbySort, SlideCtaStyle,
   SlideObjectFit, SlideOverlayPosition, CarouselTransition, CarouselAspectRatio,
 } from '@/server/discovery-cms';
+import type { HeroWidth, HeroHeight } from '@/server/storefront-cms';
+import {
+  HERO_WIDTHS, HERO_HEIGHTS,
+  HERO_WIDTH_LABELS, HERO_HEIGHT_LABELS,
+  HERO_WIDTH_HINTS, HERO_HEIGHT_HINTS,
+} from '@/server/storefront-cms';
 
 type OfferLifecycle = 'active' | 'scheduled' | 'paused' | 'expired';
 type OfferOpt = {
@@ -257,7 +263,7 @@ function CarouselTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: Patc
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
           />
         </Field>
-        <Field label="Banner shape" hint="2:1 is the historical default. 21:9 = ultrawide cinematic.">
+        <Field label="Banner shape (legacy)" hint="Kept for back-compat. The richer Carousel size panel below overrides this when set.">
           <select
             value={cfg.carousel.aspectRatio}
             onChange={(e) => patch('carousel', { aspectRatio: e.target.value as CarouselAspectRatio })}
@@ -270,6 +276,17 @@ function CarouselTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: Patc
           </select>
         </Field>
       </div>
+
+      {/* ── NEW: Carousel size panel (7 widths × 8 heights) ─────────────────
+           Shared presets with the per-restaurant storefront hero so the look
+           is consistent across both admin surfaces. The picked Height
+           supersedes the legacy "Banner shape" field above. */}
+      <CarouselSizePanel
+        width={cfg.carousel.width}
+        height={cfg.carousel.height}
+        onWidth={(w) => patch('carousel', { width: w })}
+        onHeight={(h) => patch('carousel', { height: h })}
+      />
 
       <div className="space-y-3">
         {slides.map((s, i) => (
@@ -709,6 +726,69 @@ function FooterTab({ cfg, patch }: { cfg: DiscoveryConfig; patch: PatchFn }) {
         <Field label="Legal line (left)" hint="Blank ⇒ © YEAR Brand. All rights reserved."><Text value={cfg.footer.legalLeft} onChange={(v) => patch('footer', { legalLeft: v })} max={200} /></Field>
         <Field label="Legal line (right)"><Text value={cfg.footer.legalRight} onChange={(v) => patch('footer', { legalRight: v })} max={200} /></Field>
       </div>
+    </div>
+  );
+}
+
+// ────────────────── Carousel size panel (Width + Height) ──────────────────
+//
+// Same 7 width × 8 height presets as the per-restaurant storefront hero
+// (HeroSizePicker in /admin/storefront). Surfaces them as two dropdowns with
+// a small hint line per option — full picker tiles felt heavy for the
+// already-busy Carousel tab, but the underlying choices are identical so
+// /restaurants and /r/<slug> carousels share the exact same vocabulary.
+function CarouselSizePanel({
+  width,
+  height,
+  onWidth,
+  onHeight,
+}: {
+  width: HeroWidth;
+  height: HeroHeight;
+  onWidth: (w: HeroWidth) => void;
+  onHeight: (h: HeroHeight) => void;
+}) {
+  return (
+    <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+      <div>
+        <h4 className="text-sm font-semibold">Carousel size</h4>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          7 width × 8 height presets. The picked height overrides the legacy
+          &quot;Banner shape&quot; field above. Same vocabulary as the per-restaurant
+          storefront hero so admins compare like-for-like.
+        </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="Width" hint={HERO_WIDTH_HINTS[width]}>
+          <select
+            value={width}
+            onChange={(e) => onWidth(e.target.value as HeroWidth)}
+            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+          >
+            {HERO_WIDTHS.map((w) => (
+              <option key={w} value={w}>{HERO_WIDTH_LABELS[w]}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Height" hint={HERO_HEIGHT_HINTS[height]}>
+          <select
+            value={height}
+            onChange={(e) => onHeight(e.target.value as HeroHeight)}
+            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+          >
+            {HERO_HEIGHTS.map((h) => (
+              <option key={h} value={h}>{HERO_HEIGHT_LABELS[h]}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Default: <span className="font-medium">Mobile gutter + Wide 2:1</span>{' '}
+        — preserves the historical /restaurants look. Try{' '}
+        <span className="font-medium">Card + Standard</span> for a more
+        contained, premium feel; <span className="font-medium">Full bleed +
+        Cinematic</span> for a brochure-style hero.
+      </p>
     </div>
   );
 }

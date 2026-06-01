@@ -3,6 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { DISCOVERY_BANNERS } from '@/lib/discovery-banners';
+import {
+  HERO_WIDTH_WRAP_CLASS,
+  HERO_WIDTH_INNER_CLASS,
+  HERO_HEIGHT_CLASS,
+  type HeroWidth,
+  type HeroHeight,
+} from '@/server/storefront-cms';
 
 /**
  * FeatureCarousel — the auto-rotating promo banner on the discovery page.
@@ -67,12 +74,34 @@ export function FeatureCarousel({
   transition = 'slide',
   transitionMs = 700,
   aspectRatio = '2:1',
+  width,
+  height,
 }: {
   slides?: CarouselSlideData[];
   autoplayMs?: number;
   transition?: CarouselTransition;
   transitionMs?: number;
+  /**
+   * Legacy banner shape. Used only as a fallback when neither `height` nor a
+   * historical config is present. The newer `height` prop (8 presets) takes
+   * precedence so existing pages keep working while new ones get the richer
+   * picker.
+   */
   aspectRatio?: CarouselAspectRatio;
+  /**
+   * Hero-size width preset (full-bleed, container, card, narrow…). Controls
+   * how wide the carousel renders on the page. Shared with the storefront
+   * hero so the size pickers feel identical across both admin surfaces.
+   * Defaults to historical behaviour (md:container) when not set.
+   */
+  width?: HeroWidth;
+  /**
+   * Hero-size height preset (compact, standard, tall, cinematic 21:9, wide
+   * 2:1, classic 16:9, half-screen, full-screen). When set, overrides
+   * `aspectRatio`. When NOT set, the carousel falls back to aspectRatio for
+   * backwards compatibility.
+   */
+  height?: HeroHeight;
 } = {}) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -107,7 +136,27 @@ export function FeatureCarousel({
 
   if (count === 0) return null;
 
-  const aspectStyle = { aspectRatio: ASPECT_TO_CSS[aspectRatio] } as React.CSSProperties;
+  // Resolve the rendered shape:
+  //   • If `height` is set, the hero-size CSS class drives the box (richer
+  //     8-preset enum, e.g. half-screen / full-screen / cinematic 21:9).
+  //   • Otherwise we fall back to the legacy CSS `aspect-ratio` inline style
+  //     using the 4-preset aspectRatio prop, preserving historical behaviour
+  //     for any caller that hasn't migrated.
+  const useHeroSize = Boolean(height);
+  const heightCls = height ? HERO_HEIGHT_CLASS[height] : '';
+  const aspectStyle: React.CSSProperties | undefined = useHeroSize
+    ? undefined
+    : { aspectRatio: ASPECT_TO_CSS[aspectRatio] };
+
+  // Width preset chooses the wrapper class. Default (when `width` is unset)
+  // keeps the historical `md:container` look — full-bleed mobile, container
+  // desktop. When the admin picks a preset we honour it exactly.
+  const wrapCls = width ? HERO_WIDTH_WRAP_CLASS[width] : 'md:container';
+  // Inner card classes (rounded corners / shadow / ring) — taken from the
+  // width preset when set, otherwise the historical aggressive rounding.
+  const innerExtraCls = width
+    ? HERO_WIDTH_INNER_CLASS[width]
+    : 'rounded-b-[1.75rem] md:rounded-3xl shadow-lg shadow-primary/10';
 
   return (
     <section
@@ -120,9 +169,9 @@ export function FeatureCarousel({
       }}
       tabIndex={0}
     >
-      <div className="md:container">
+      <div className={wrapCls}>
         <div
-          className="relative w-full overflow-hidden rounded-b-[1.75rem] md:rounded-3xl shadow-lg shadow-primary/10"
+          className={`relative w-full overflow-hidden ${innerExtraCls} ${heightCls}`}
           onMouseEnter={() => setPaused(true)}
           onMouseLeave={() => setPaused(false)}
           onTouchStart={onTouchStart}
@@ -138,6 +187,7 @@ export function FeatureCarousel({
               aspectStyle={aspectStyle}
               transitionMs={transitionMs}
               setPaused={setPaused}
+              useHeroSize={useHeroSize}
             />
           ) : (
             <StackedSlides
@@ -150,6 +200,7 @@ export function FeatureCarousel({
               transitionMs={transitionMs}
               transition={transition}
               setPaused={setPaused}
+              useHeroSize={useHeroSize}
             />
           )}
 
@@ -185,20 +236,27 @@ function SlidingTrack(props: {
   count: number;
   failed: Record<number, boolean>;
   setFailed: (f: (prev: Record<number, boolean>) => Record<number, boolean>) => void;
-  aspectStyle: React.CSSProperties;
+  aspectStyle: React.CSSProperties | undefined;
   transitionMs: number;
   setPaused: (v: boolean) => void;
+  /**
+   * When true, the parent has set an explicit height (via HERO_HEIGHT_CLASS),
+   * so the slide track + each slide must stretch with `h-full` instead of
+   * sizing themselves via aspect-ratio.
+   */
+  useHeroSize: boolean;
 }) {
-  const { slides, index, count, failed, setFailed, aspectStyle, transitionMs, setPaused } = props;
+  const { slides, index, count, failed, setFailed, aspectStyle, transitionMs, setPaused, useHeroSize } = props;
+  const stretch = useHeroSize ? 'h-full' : '';
   return (
     <div
-      className="flex ease-[cubic-bezier(0.2,0.7,0.3,1)]"
+      className={`flex ease-[cubic-bezier(0.2,0.7,0.3,1)] ${stretch}`}
       style={{ transform: `translateX(-${index * 100}%)`, transition: `transform ${transitionMs}ms` }}
     >
       {slides.map((s, i) => (
         <div
           key={s.src + i}
-          className="w-full shrink-0"
+          className={`w-full shrink-0 ${stretch}`}
           role="group"
           aria-roledescription="slide"
           aria-label={`${i + 1} of ${count}`}
@@ -213,6 +271,7 @@ function SlidingTrack(props: {
             kenBurns={false}
             tabIndex={i === index ? 0 : -1}
             onPauseChange={setPaused}
+            useHeroSize={useHeroSize}
           />
         </div>
       ))}
@@ -229,16 +288,18 @@ function StackedSlides(props: {
   count: number;
   failed: Record<number, boolean>;
   setFailed: (f: (prev: Record<number, boolean>) => Record<number, boolean>) => void;
-  aspectStyle: React.CSSProperties;
+  aspectStyle: React.CSSProperties | undefined;
   transitionMs: number;
   transition: 'fade' | 'zoom' | 'kenBurns';
   setPaused: (v: boolean) => void;
+  useHeroSize: boolean;
 }) {
-  const { slides, index, count, failed, setFailed, aspectStyle, transitionMs, transition, setPaused } = props;
+  const { slides, index, count, failed, setFailed, aspectStyle, transitionMs, transition, setPaused, useHeroSize } = props;
 
-  // Outer wrapper takes the aspect ratio. Inner slides are absolutely stacked.
+  // Outer wrapper takes the aspect ratio in legacy mode, or h-full when a
+  // hero-size height class is driving the parent.
   return (
-    <div className="relative w-full" style={aspectStyle}>
+    <div className={`relative w-full ${useHeroSize ? 'h-full' : ''}`} style={aspectStyle}>
       {slides.map((s, i) => {
         const isActive = i === index;
         const fadeStyle: React.CSSProperties = {
@@ -291,8 +352,15 @@ function SlideContent(props: {
   kenBurns: boolean;
   tabIndex: number;
   onPauseChange: (v: boolean) => void;
+  /**
+   * When true, parent has set explicit height via HERO_HEIGHT_CLASS — SlideContent
+   * root should stretch with h-full instead of relying on aspectStyle.
+   * Optional + defaults to false so the existing call sites (StackedSlides
+   * inner content) keep working unchanged.
+   */
+  useHeroSize?: boolean;
 }) {
-  const { slide: s, isActive, isFailed, onError, aspectStyle, kenBurns, tabIndex, onPauseChange } = props;
+  const { slide: s, isActive, isFailed, onError, aspectStyle, kenBurns, tabIndex, onPauseChange, useHeroSize } = props;
   const hasOverlay = Boolean(s.eyebrow || s.headline || s.subtext || s.ctaLabel);
   const objectFit = OBJECT_FIT_CSS[s.objectFit ?? 'contain'];
   const objectPosition = s.focalPoint || 'center';
@@ -302,7 +370,7 @@ function SlideContent(props: {
   const overlayPosition = s.overlayPosition ?? 'bottom-left';
 
   return (
-    <div className={`relative w-full overflow-hidden bg-gradient-to-br ${s.fallback}`} style={aspectStyle}>
+    <div className={`relative w-full overflow-hidden bg-gradient-to-br ${s.fallback} ${useHeroSize ? 'h-full' : ''}`} style={aspectStyle}>
       {/* Blurred backdrop — gives wide screens a designed hero feel even when
           the banner image is centered with object-contain. */}
       {!isFailed && (

@@ -27,6 +27,15 @@ import { prisma } from '@/server/db';
 import { DISCOVERY_BANNERS } from '@/lib/discovery-banners';
 import { DISCOVERY_CATEGORIES } from '@/lib/discovery-categories';
 import { wrap, invalidateTag, keys } from '@/server/cache';
+// Reuse the per-restaurant hero-size types so the discovery carousel and the
+// storefront hero share the SAME 7 width × 8 height presets. The class maps
+// also come from there (single source of truth for CSS).
+import {
+  HERO_WIDTHS,
+  HERO_HEIGHTS,
+  type HeroWidth,
+  type HeroHeight,
+} from '@/server/storefront-cms';
 
 /**
  * Local-file existence check for same-origin image URLs.
@@ -188,8 +197,27 @@ export interface DiscoveryConfig {
     transition: CarouselTransition;
     /** Transition duration in ms (200-2000). */
     transitionMs: number;
-    /** Banner shape. */
+    /**
+     * Legacy banner-shape field (2:1 | 21:9 | 16:9 | 1:1). Preserved on the
+     * type for back-compat reads / writes. The renderer prefers `height` (the
+     * richer 8-preset enum) when it is set; this stays as a fallback so configs
+     * saved before the size-picker upgrade still work.
+     */
     aspectRatio: CarouselAspectRatio;
+    /**
+     * Hero-style width preset (7 options) shared with the per-restaurant
+     * storefront hero. Controls how wide the carousel renders on the page —
+     * full-bleed, container, card, narrow, etc. See HeroWidth in
+     * @/server/storefront-cms.
+     */
+    width: HeroWidth;
+    /**
+     * Hero-style height preset (8 options) shared with the per-restaurant
+     * storefront hero. Mix of fixed-pixel and aspect-ratio shapes. When set,
+     * supersedes the legacy `aspectRatio` field above. See HeroHeight in
+     * @/server/storefront-cms.
+     */
+    height: HeroHeight;
     slides: CarouselSlide[];
   };
   topOffers: {
@@ -252,6 +280,15 @@ export function defaultDiscoveryConfig(): DiscoveryConfig {
       transition: 'slide' as CarouselTransition,
       transitionMs: 700,
       aspectRatio: '2:1' as CarouselAspectRatio,
+      // The historical /restaurants carousel rendered full-bleed on phones
+      // and inside md:container on desktop. The closest preset that preserves
+      // that look is 'mobile-gutter' (full desktop, breathing room on phone).
+      // Customers picking a new preset will override this. We keep 'wide'
+      // (aspect 2:1, capped at 64vh) as the default height — same as the
+      // legacy aspectRatio '2:1' so visual behaviour is unchanged for users
+      // who haven't touched the new picker yet.
+      width: 'mobile-gutter' as HeroWidth,
+      height: 'wide' as HeroHeight,
       slides: DISCOVERY_BANNERS.map((b) => ({
         src: b.src,
         alt: b.alt,
@@ -472,6 +509,10 @@ export function parseDiscoveryConfig(raw: unknown): DiscoveryConfig {
       transition: oneOf<CarouselTransition>(carousel.transition, CAROUSEL_TRANSITIONS, d.carousel.transition),
       transitionMs: clampInt(carousel.transitionMs, 200, 2000, d.carousel.transitionMs),
       aspectRatio: oneOf<CarouselAspectRatio>(carousel.aspectRatio, CAROUSEL_ASPECT_RATIOS, d.carousel.aspectRatio),
+      // New width/height presets (see HeroWidth / HeroHeight). Both fall back
+      // to defaults when missing so legacy configs render the same as before.
+      width: oneOf<HeroWidth>(carousel.width, HERO_WIDTHS, d.carousel.width),
+      height: oneOf<HeroHeight>(carousel.height, HERO_HEIGHTS, d.carousel.height),
       slides,
     },
     topOffers: {
