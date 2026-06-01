@@ -149,24 +149,30 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
             )}
           </div>
           {item.description && (
-            <p className="text-sm text-muted-foreground line-clamp-2 break-words">
+            <p className="text-sm text-muted-foreground line-clamp-2 break-words max-w-full overflow-hidden">
               {item.description}
             </p>
           )}
-          <div className="flex items-center justify-between gap-2 pt-1">
+          <div className="pt-1">
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Clock className="size-3" /> ~{item.prepTimeMin} min
             </span>
+          </div>
+          {/* Add button gets its OWN full-width row below everything else.
+              On its own line it cannot be pushed off-screen by long titles
+              or descriptions on the rows above. w-full + max-w-full keep
+              it bounded to the card. */}
+          <div className="pt-2">
             {customizable ? (
               <Button
                 size="sm"
                 variant="outline"
-                className="tap-press h-9 px-4 rounded-lg border-2 border-primary bg-background text-primary font-bold uppercase tracking-wider text-xs shadow-sm hover:bg-primary/5"
+                className="tap-press h-10 w-full max-w-full rounded-lg border-2 border-primary bg-background text-primary font-bold uppercase tracking-wider text-sm shadow-sm hover:bg-primary/5"
                 onClick={() => setCustomizeOpen(true)}
               >
                 <Plus className="size-4 mr-1" /> Add
                 {qty > 0 && (
-                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground normal-case">
+                  <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground normal-case">
                     {qty}
                   </span>
                 )}
@@ -175,23 +181,23 @@ export function MenuItemCard({ item, branchId }: { item: MenuItemForCard; branch
               <Button
                 size="sm"
                 variant="outline"
-                className="tap-press h-9 px-4 rounded-lg border-2 border-primary bg-background text-primary font-bold uppercase tracking-wider text-xs shadow-sm hover:bg-primary/5"
+                className="tap-press h-10 w-full max-w-full rounded-lg border-2 border-primary bg-background text-primary font-bold uppercase tracking-wider text-sm shadow-sm hover:bg-primary/5"
                 onClick={() => add({ id: item.id, refId: item.id, kind: 'item', branchId, name: item.name, unitPrice: Number(item.price), imageUrl: item.imageUrl, isVeg: item.isVeg })}
               >
                 <Plus className="size-4 mr-1" /> Add
               </Button>
             ) : (
-              <div className="flex h-9 items-center rounded-lg border-2 border-primary bg-background overflow-hidden shadow-sm">
+              <div className="flex h-10 w-full items-center justify-between rounded-lg border-2 border-primary bg-background overflow-hidden shadow-sm">
                 <button
-                  className="h-full w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
+                  className="h-full w-12 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
                   onClick={() => (simpleLine.quantity <= 1 ? remove(simpleLine.id) : setQty(simpleLine.id, simpleLine.quantity - 1))}
                   aria-label="Decrease quantity"
                 >
                   <Minus className="size-4" />
                 </button>
-                <span className="w-7 text-center text-sm font-bold text-primary font-tabular-nums">{simpleLine.quantity}</span>
+                <span className="text-base font-bold text-primary font-tabular-nums">{simpleLine.quantity}</span>
                 <button
-                  className="h-full w-9 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
+                  className="h-full w-12 grid place-items-center text-primary hover:bg-primary/10 transition-colors"
                   onClick={() => setQty(simpleLine.id, simpleLine.quantity + 1)}
                   aria-label="Increase quantity"
                 >
