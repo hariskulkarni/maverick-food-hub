@@ -121,12 +121,16 @@ export function FavoritesClient({
         {items.length === 0 ? (
           <EmptyDishes />
         ) : (
+          // Phone-first vertical dish card matching MenuItemCard: h-32 image
+          // banner on top, content below. w-full max-w-full overflow-hidden on
+          // the card so it can never overflow its grid cell; min-w-0 inside
+          // text columns so titles truncate.
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 reveal-stagger">
             {items.map((i) => (
-              <Card key={i.id} className="overflow-hidden card-lift">
+              <Card key={i.id} className="w-full max-w-full overflow-hidden card-lift">
                 <CardContent className="p-0">
                   <Link href={`/r/${i.restaurantSlug}`} className="block">
-                    <div className="relative h-36 bg-muted overflow-hidden">
+                    <div className="relative h-32 w-full bg-muted overflow-hidden">
                       <Image
                         src={i.imageUrl || FOOD_FALLBACK}
                         alt={i.name}
@@ -158,7 +162,7 @@ export function FavoritesClient({
                       </div>
                     </div>
                   </Link>
-                  <div className="p-4">
+                  <div className="p-4 min-w-0">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <Link href={`/r/${i.restaurantSlug}`} className="font-semibold truncate hover:text-primary transition-colors block">
