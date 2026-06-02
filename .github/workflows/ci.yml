@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-# Cancel superseded runs on the same ref to save minutes.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -15,13 +14,24 @@ jobs:
   web:
     name: Web (apps/web)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     defaults:
       run:
         working-directory: apps/web
     env:
-      # Placeholders so `prisma generate` + `next build` run without a live DB.
-      # No migrations/queries are executed at build time (pages are force-dynamic),
-      # so a dummy connection string is sufficient and never connects.
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
       NEXTAUTH_SECRET: ci-placeholder-secret-not-used-in-production
       NEXTAUTH_URL: http://localhost:3000
@@ -42,6 +52,9 @@ jobs:
       - name: Prisma generate
         run: npm run db:generate
 
+      - name: Prepare CI database (push schema)
+        run: npx prisma db push --skip-generate
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -49,19 +62,12 @@ jobs:
         run: npm run lint
 
       - name: Responsive guardrail
-        # Fails fast when the forbidden patterns from RESPONSIVE.md
-        # (unqualified grid-cols-3/4, min-w-[180-260px] without sm:,
-        # h-6 Buttons) sneak back into the codebase. See
-        # scripts/check-responsive.mjs and RESPONSIVE.md for details.
         run: npm run check:responsive
 
       - name: Unit tests
         run: npm run test:ci
 
       - name: Build
-        # Raise the open-file limit: Next.js opens many descriptors while
-        # collecting page data for a large route tree and can otherwise hit
-        # EMFILE on runners with a low soft limit.
         run: |
           ulimit -n 8192 || true
           npm run build
