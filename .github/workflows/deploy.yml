@@ -28,7 +28,9 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "bash -lc 'cd ${APP_DIR} && ./deploy/deploy.sh'"
-      - name: On failure hint at rollback
-        if: failure()
-        run: echo "::warning::Roll back: cd /opt/restaurant-manager && ./deploy/deploy.sh rollback"
+            "bash -lc 'cd ${APP_DIR} && ./scripts/deploy-remote.sh'"
+      - name: Health check
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "curl -fsS --max-time 8 http://127.0.0.1:3000/api/system/health >/dev/null && echo healthy"
