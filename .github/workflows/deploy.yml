@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 concurrency:
   group: deploy-production
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   deploy:
     name: Deploy production
@@ -17,15 +17,24 @@ jobs:
           printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -t ed25519 "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
-      - name: Deploy over SSH
+      - name: Deploy over SSH (with retry)
         env:
           APP_DIR: ${{ vars.APP_DIR || '/opt/restaurant-manager' }}
         run: |
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
-            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "bash -lc 'cd ${APP_DIR} && git fetch origin main && git reset --hard origin/main && ./scripts/deploy-remote.sh'"
+          for attempt in 1 2 3; do
+            echo "== deploy attempt $attempt =="
+            if ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+                 -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=8 \
+                 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+                 "bash -lc 'cd ${APP_DIR} && git fetch origin main && git reset --hard origin/main && ./scripts/deploy-remote.sh'"; then
+              echo "deploy ok on attempt $attempt"; exit 0
+            fi
+            echo "attempt $attempt failed; retrying in 15s"; sleep 15
+          done
+          echo "all attempts failed"; exit 1
       - name: Health check
         run: |
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=20 \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "curl -fsS --max-time 8 http://127.0.0.1:3000/api/system/health >/dev/null && echo healthy"
