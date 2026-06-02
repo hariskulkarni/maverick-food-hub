@@ -261,8 +261,8 @@ function computeBogo(cfgRaw: any, cart: OfferCartLine[], maxCap: number): OfferE
   const cfg = (cfgRaw ?? {}) as BogoConfig;
 
   // Normalise legacy single-item config into the scope-based shape.
-  let buyScope = (cfg.buyScope ?? (cfg.buyItemId ? 'ITEMS' : 'ALL')) as BogoScope;
-  let getScope = (cfg.getScope ?? (cfg.getItemId ? 'ITEMS' : buyScope)) as BogoScope;
+  const buyScope = (cfg.buyScope ?? (cfg.buyItemId ? 'ITEMS' : 'ALL')) as BogoScope;
+  const getScope = (cfg.getScope ?? (cfg.getItemId ? 'ITEMS' : buyScope)) as BogoScope;
   const buyItemIds = new Set<string>(cfg.buyItemIds ?? (cfg.buyItemId ? [cfg.buyItemId] : []));
   const getItemIds = new Set<string>(cfg.getItemIds ?? (cfg.getItemId ? [cfg.getItemId] : []));
   const buyCatIds = new Set<string>(cfg.buyCategoryIds ?? []);

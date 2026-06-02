@@ -206,7 +206,7 @@ export class RedisStore implements Store {
     } catch (err) {
       // Local require to avoid a circular import — `log` itself never depends
       // on the cache module.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { log } = require('../log');
       log.warn({ err: (err as Error).message, label }, '[cache] redis op degraded');
       return fallback;

@@ -99,7 +99,7 @@ function boot(): CacheRuntime {
   // Defer `require` so a build that doesn't run Node code (e.g. static prerender
   // of a CSS-only page) never pulls ioredis in. The dependency lives in
   // package.json regardless.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const IORedis: typeof Redis = require('ioredis');
 
   const client: Redis = new IORedis(url, {
