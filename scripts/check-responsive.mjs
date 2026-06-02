@@ -31,7 +31,14 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { glob } from 'node:fs/promises';
+import { readdirSync } from 'node:fs';
+// Node 20 shim: fsPromises.glob is Node 22+. Emulate '**/*.{tsx,ts}' walk.
+async function* glob(_pattern, { cwd }) {
+  for (const entry of readdirSync(cwd, { recursive: true })) {
+    const f = String(entry).replace(/\\/g, '/');
+    if (/\.(tsx|ts)$/.test(f)) yield f;
+  }
+}
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
