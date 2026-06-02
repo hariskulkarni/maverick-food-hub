@@ -23,7 +23,7 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "bash -lc 'cd ${APP_DIR} && ./scripts/deploy-remote.sh'"
+            "bash -lc 'cd ${APP_DIR} && git fetch origin main && git reset --hard origin/main && ./scripts/deploy-remote.sh'"
       - name: Health check
         run: |
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
