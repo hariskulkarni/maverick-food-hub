@@ -39,6 +39,12 @@ export function ImageWithFallback({ src, alt, className, fallbackSrc, ...rest }:
 
   const current = cascade[idx];
 
+  // The self-hosted Next image optimizer returns 400 ("isn't a valid image")
+  // for local /uploads + /banners files behind the proxy. Those files DO serve
+  // fine directly from /public, so render them unoptimized (skip /_next/image).
+  // Remote images (Unsplash, CDN) keep optimization.
+  const isLocalAsset = typeof current === 'string' && (current.startsWith('/uploads') || current.startsWith('/banners'));
+
   if (!current) {
     return (
       <div
@@ -54,6 +60,7 @@ export function ImageWithFallback({ src, alt, className, fallbackSrc, ...rest }:
   return (
     <Image
       {...rest}
+      unoptimized={(rest as { unoptimized?: boolean }).unoptimized ?? isLocalAsset}
       src={current}
       alt={alt}
       className={className}
