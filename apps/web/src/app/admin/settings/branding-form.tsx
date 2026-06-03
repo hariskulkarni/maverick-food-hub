@@ -124,6 +124,7 @@ export function BrandingForm({ restaurant, initialConfig }: { restaurant: Restau
         </Field>
         <Field label="Contact phone">
           <Input value={f.contactPhone} onChange={(e) => set('contactPhone', e.target.value)} placeholder="+91…" />
+          <p className="text-[11px] text-muted-foreground">Brand-wide support number shown to customers on your storefront. (Each branch also has its own phone under Branches.)</p>
         </Field>
         <div className="md:col-span-2 grid gap-4 md:grid-cols-[180px_1fr]">
           <ImageUploader

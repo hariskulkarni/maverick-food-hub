@@ -176,6 +176,7 @@ export function BranchForm({ branch }: { branch: Branch }) {
         </Field>
         <Field label="Phone">
           <Input value={f.phone} onChange={(e) => set('phone', e.target.value)} />
+          <p className="text-[11px] text-muted-foreground">This location’s direct line (per branch). For the brand-wide support number shown on your storefront, use Branding → Contact phone.</p>
         </Field>
         <Field label="Address" className="md:col-span-2">
           <Input value={f.line1} onChange={(e) => set('line1', e.target.value)} />
