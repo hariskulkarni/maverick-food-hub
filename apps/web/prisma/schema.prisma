@@ -394,6 +394,7 @@ model Restaurant {
   contactEmail         String?
   contactPhone         String?
   status               RestaurantStatus  @default(PENDING)
+  deletedAt            DateTime?         // archive (soft-delete): hidden from customers + listings, restorable by super-admin; distinct from a manual Suspend
   ownerUserId          String // primary owner — User.role=ADMIN
   approvedAt           DateTime?
   rejectedReason       String?

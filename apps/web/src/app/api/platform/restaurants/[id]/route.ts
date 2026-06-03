@@ -158,3 +158,40 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return Response.json({ ok: true });
 }
+
+
+/**
+ * DELETE /api/platform/restaurants/[id] — super-admin PERMANENT delete.
+ * Cascade: only Order→Branch and Branch→Restaurant are Restrict; everything
+ * else (menu, reservations, tables, offers, QR codes, integrations, members,
+ * favorites, happy-hours, coupons) cascades or set-nulls at the DB level. So
+ * we delete orders → branches → restaurant inside one transaction.
+ *
+ * Guard: refuses (409) if the restaurant has ANY orders unless `?force=1`,
+ * so order/payment history can't be wiped by accident.
+ */
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  await requireSuperAdmin();
+  const { id } = await params;
+  const force = new URL(req.url).searchParams.get('force') === '1';
+
+  const branches = await prisma.branch.findMany({ where: { restaurantId: id }, select: { id: true } });
+  const branchIds = branches.map((b) => b.id);
+
+  if (!force && branchIds.length) {
+    const orderCount = await prisma.order.count({ where: { branchId: { in: branchIds } } });
+    if (orderCount > 0) return Response.json({ error: 'has_orders', orderCount }, { status: 409 });
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (branchIds.length) await tx.order.deleteMany({ where: { branchId: { in: branchIds } } });
+      await tx.branch.deleteMany({ where: { restaurantId: id } });
+      await tx.restaurant.delete({ where: { id } });
+    });
+  } catch (e) {
+    return Response.json({ error: 'delete_failed', detail: (e as Error).message }, { status: 500 });
+  }
+
+  return Response.json({ ok: true });
+}

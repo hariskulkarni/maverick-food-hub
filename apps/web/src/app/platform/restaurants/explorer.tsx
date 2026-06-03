@@ -27,7 +27,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  Search, X, RefreshCw, Check, Pause, Play, ArrowUpRight, Building2, MapPin, Users, Utensils, Wallet, Plug, Save, Loader2, AlertTriangle, ExternalLink, Network, Link2Off, Pencil, GripVertical, ArrowUpDown
+  Search, X, RefreshCw, Check, Pause, Play, ArrowUpRight, Building2, MapPin, Users, Utensils, Wallet, Plug, Save, Loader2, AlertTriangle, ExternalLink, Network, Link2Off, Pencil, GripVertical, ArrowUpDown, Archive, Trash2, RotateCcw
 } from 'lucide-react';
 
 const STATUSES = ['ALL', 'PENDING', 'ACTIVE', 'SUSPENDED', 'REJECTED'] as const;
@@ -306,6 +306,34 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
     toast.success('Done');
     load(); onChanged();
   }
+
+  async function archiveRestaurant() {
+    const name = data?.restaurant?.name ?? 'this restaurant';
+    if (!window.confirm(`Archive \"${name}\"?\n\nIt will be hidden from customers and its name freed for reuse. No data is deleted \u2014 you can Restore it from this panel later.`)) return;
+    const res = await fetch(`/api/platform/restaurants/${id}/archive`, { method: 'POST' });
+    if (!res.ok) return toast.error('Archive failed: ' + (await res.text()));
+    toast.success('Restaurant archived'); load(); onChanged();
+  }
+  async function restoreRestaurant() {
+    const res = await fetch(`/api/platform/restaurants/${id}/restore`, { method: 'POST' });
+    if (!res.ok) return toast.error('Restore failed: ' + (await res.text()));
+    toast.success('Restored \u2014 it is Suspended; click Reactivate to go live.'); load(); onChanged();
+  }
+  async function permanentlyDelete() {
+    const name = data?.restaurant?.name ?? '';
+    const typed = window.prompt(`PERMANENT DELETE \u2014 cannot be undone.\n\nThis erases the restaurant and ALL its data: branches, menu, orders, payment history, reservations, QR codes.\n\nType the restaurant name to confirm:\n${name}`);
+    if (typed == null) return;
+    if (typed.trim() !== name.trim()) return toast.error('Name did not match \u2014 cancelled.');
+    let res = await fetch(`/api/platform/restaurants/${id}`, { method: 'DELETE' });
+    if (res.status === 409) {
+      const info = await res.json().catch(() => ({} as any));
+      if (!window.confirm(`This restaurant has ${info.orderCount ?? 'existing'} order(s). Permanently deleting erases that order + payment history too.\n\nProceed anyway?`)) return;
+      res = await fetch(`/api/platform/restaurants/${id}?force=1`, { method: 'DELETE' });
+    }
+    if (!res.ok) return toast.error('Delete failed: ' + (await res.text()));
+    toast.success('Restaurant permanently deleted');
+    onClose(); onChanged();
+  }
   async function saveCommission() {
     setSaving(true);
     const r = await fetch(`/api/platform/restaurants/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commissionPct: commission }) });
@@ -470,20 +498,31 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
       {/* Lifecycle actions */}
       <DrawerSection title="Lifecycle">
         <div className="p-4 flex flex-wrap gap-2">
-          {r.status === 'PENDING' && (
+          {r.deletedAt ? (
             <>
-              <Button size="sm" onClick={() => lifecycle('approve')}><Check className="size-4" /> Approve</Button>
-              <Button size="sm" variant="outline" onClick={() => { const reason = prompt('Reason for rejection?'); if (reason) lifecycle('reject', { reason }); }}><X className="size-4" /> Reject</Button>
+              <div className="w-full text-xs text-destructive flex items-center gap-2"><AlertTriangle className="size-3.5" /> Archived — hidden from customers. Restore it, or permanently delete.</div>
+              <Button size="sm" onClick={restoreRestaurant}><RotateCcw className="size-4" /> Restore</Button>
+              <Button size="sm" variant="outline" className="text-destructive border-destructive/40 hover:bg-destructive/5" onClick={permanentlyDelete}><Trash2 className="size-4" /> Permanently delete</Button>
             </>
-          )}
-          {r.status === 'ACTIVE' && (
-            <Button size="sm" variant="outline" className="text-destructive border-destructive/40 hover:bg-destructive/5" onClick={() => lifecycle('suspend')}><Pause className="size-4" /> Suspend</Button>
-          )}
-          {r.status === 'SUSPENDED' && (
-            <Button size="sm" onClick={() => lifecycle('approve')}><Play className="size-4" /> Reactivate</Button>
-          )}
-          {r.status === 'REJECTED' && r.rejectedReason && (
-            <div className="text-xs text-destructive flex items-center gap-2"><AlertTriangle className="size-3.5" /> Rejected: {r.rejectedReason}</div>
+          ) : (
+            <>
+              {r.status === 'PENDING' && (
+                <>
+                  <Button size="sm" onClick={() => lifecycle('approve')}><Check className="size-4" /> Approve</Button>
+                  <Button size="sm" variant="outline" onClick={() => { const reason = prompt('Reason for rejection?'); if (reason) lifecycle('reject', { reason }); }}><X className="size-4" /> Reject</Button>
+                </>
+              )}
+              {r.status === 'ACTIVE' && (
+                <Button size="sm" variant="outline" className="text-destructive border-destructive/40 hover:bg-destructive/5" onClick={() => lifecycle('suspend')}><Pause className="size-4" /> Suspend</Button>
+              )}
+              {r.status === 'SUSPENDED' && (
+                <Button size="sm" onClick={() => lifecycle('approve')}><Play className="size-4" /> Reactivate</Button>
+              )}
+              {r.status === 'REJECTED' && r.rejectedReason && (
+                <div className="text-xs text-destructive flex items-center gap-2"><AlertTriangle className="size-3.5" /> Rejected: {r.rejectedReason}</div>
+              )}
+              <Button size="sm" variant="outline" className="text-destructive border-destructive/40 hover:bg-destructive/5" onClick={archiveRestaurant}><Archive className="size-4" /> Archive</Button>
+            </>
           )}
         </div>
       </DrawerSection>
