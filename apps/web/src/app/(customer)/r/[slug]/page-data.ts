@@ -70,6 +70,9 @@ export interface RestaurantPageData {
 
   // Derived display state
   rating: string;
+  ratingValue: string | null;
+  ratingCount: number;
+  isVerified: boolean;
   dishCount: number;
   now: Date;
 
@@ -228,8 +231,26 @@ export async function loadRestaurantPageData(slug: string): Promise<RestaurantPa
         nextOpenLabel: status.available ? null : formatNextOpenLabel(status)
       };
     });
-  // Deterministic-looking rating from restaurant id, so it stays stable per page
-  const rating = (4 + ((restaurant.id.charCodeAt(0) % 9) / 10)).toFixed(1);
+  // Real rating from delivered-order feedback, Bayesian-smoothed so a handful
+  // of reviews don't swing the badge to extremes. Prior: mean 4.2 weighted as
+  // 12 phantom reviews (standard "shrinkage" — see Google/Yelp style averages).
+  const _fb = await prisma.orderFeedback.aggregate({
+    _avg: { overallRating: true },
+    _count: { overallRating: true },
+    where: { overallRating: { not: null }, order: { branch: { restaurantId: restaurant.id } } },
+  });
+  const ratingCount = _fb._count.overallRating ?? 0;
+  const _avg = _fb._avg.overallRating ?? 0;
+  const PRIOR_MEAN = 4.2;
+  const PRIOR_WEIGHT = 12;
+  const ratingValue =
+    ratingCount > 0
+      ? ((PRIOR_WEIGHT * PRIOR_MEAN + _avg * ratingCount) / (PRIOR_WEIGHT + ratingCount)).toFixed(1)
+      : null;
+  // Back-compat: some callers still read `rating` as a plain string.
+  const rating = ratingValue ?? PRIOR_MEAN.toFixed(1);
+  // "Verified" badge tracks platform approval (super-admin gated).
+  const isVerified = (restaurant as any).approvedAt != null;
 
   // Theme CSS variables (accent/secondary/radius/font) applied on the wrapper
   // so the CMS-driven sections (announcement, about, blocks, CTAs, social) pick
@@ -255,6 +276,9 @@ export async function loadRestaurantPageData(slug: string): Promise<RestaurantPa
     favItemSet,
     isAuthed,
     rating,
+    ratingValue,
+    ratingCount,
+    isVerified,
     dishCount,
     now,
     openStatus

@@ -22,6 +22,7 @@ import { OfferCards } from './offer-cards';
 import { priceForItem, priceForCombo } from '@/server/happy-hours';
 import { HappyHourBanner } from './happy-hour-banner';
 import { DeliveryEtaCard } from './delivery-eta-card';
+import { DeliveryEtaChip } from './delivery-eta-chip';
 import { BrandRibbon } from './brand-ribbon';
 import { CategoryFab } from './category-fab';
 import { ClosedBanner } from './closed-banner';
@@ -106,6 +107,9 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
     favItemSet,
     isAuthed,
     rating,
+    ratingValue,
+    ratingCount,
+    isVerified,
     dishCount,
     now,
     openStatus,
@@ -164,7 +168,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
               name: 'Guntur',
               containedInPlace: { '@type': 'AdministrativeArea', name: 'Andhra Pradesh' },
             },
-            aggregateRating: { '@type': 'AggregateRating', ratingValue: rating, ratingCount: 200 },
+            aggregateRating: ratingCount > 0 ? { '@type': 'AggregateRating', ratingValue, ratingCount } : undefined,
           },
           {
             '@context': 'https://schema.org',
@@ -273,17 +277,23 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
       {/* ───────── Sticky info bar ───────── */}
       <div className="sticky top-0 z-30 glass border-b">
         <div className="container py-3 flex items-center gap-4 md:gap-6 text-xs md:text-sm overflow-x-auto no-scrollbar">
-          <div className={`flex items-center gap-1.5 font-medium ${restaurant.logoUrl ? 'md:ml-32' : ''}`}>
+          <div className={`flex items-center gap-1.5 font-medium ${restaurant.logoUrl ? 'md:ml-32' : ''} ${openStatus.isOpen ? '' : 'text-muted-foreground'}`}>
             <span className="relative inline-flex">
-              <span className="size-2 rounded-full bg-success" />
-              <span className="absolute inset-0 size-2 rounded-full bg-success pulse-soft" />
+              <span className={`size-2 rounded-full ${openStatus.isOpen ? 'bg-success' : 'bg-muted-foreground/60'}`} />
+              {openStatus.isOpen && <span className="absolute inset-0 size-2 rounded-full bg-success pulse-soft" />}
             </span>
-            Open now
+            {openStatus.isOpen ? 'Open now' : (openStatus.label || 'Closed')}
           </div>
-          <div className="flex items-center gap-1.5 text-muted-foreground"><Clock className="size-4" /> ~35 min delivery</div>
-          <div className="flex items-center gap-1.5 text-muted-foreground"><Star className="size-4 fill-warning text-warning" /> {rating} <span className="hidden md:inline">· 200+ ratings</span></div>
+          <DeliveryEtaChip branchId={branch.id} hasGeo={branch.latitude != null && branch.longitude != null} />
+          {ratingValue ? (
+            <div className="flex items-center gap-1.5 text-muted-foreground"><Star className="size-4 fill-warning text-warning" /> {ratingValue} <span className="hidden md:inline">· {ratingCount.toLocaleString('en-IN')} rating{ratingCount === 1 ? '' : 's'}</span></div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-muted-foreground"><Star className="size-4" /> New</div>
+          )}
           <div className="flex items-center gap-1.5 text-muted-foreground"><MapPin className="size-4" /> {branch.city}</div>
+          {isVerified && (
           <div className="flex items-center gap-1.5 text-muted-foreground"><ShieldCheck className="size-4 text-success" /> Verified</div>
+          )}
           {(restaurant as any).dineInEnabled && (
             <Button asChild size="sm" variant="outline" className="shrink-0">
               <Link href={`/r/${slug}/reserve`}>Reserve a table</Link>
