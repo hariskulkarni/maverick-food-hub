@@ -4,6 +4,7 @@ import { Building2, MapPin, Bell, Plug, Workflow, ChevronRight } from 'lucide-re
 import { requireRestaurant } from '@/server/tenancy';
 import { prisma } from '@/server/db';
 import { BrandingForm } from './branding-form';
+import { parseStorefrontConfig } from '@/server/storefront-cms';
 import { BranchForm } from './branch-form';
 import { NotificationsTable } from './notifications-table';
 import { IntegrationsSection } from './integrations-section';
@@ -33,7 +34,7 @@ export default async function SettingsPage() {
       {/* ─── Branding ─── */}
       <section className="space-y-3">
         <SectionHeader icon={Building2} title="Storefront branding" subtitle="What customers see on your restaurant page." />
-        <Card><CardContent className="p-6"><BrandingForm restaurant={JSON.parse(JSON.stringify(restaurant))} /></CardContent></Card>
+        <Card><CardContent className="p-6"><BrandingForm restaurant={JSON.parse(JSON.stringify(restaurant))} initialConfig={parseStorefrontConfig((restaurant as { storefrontConfig?: unknown }).storefrontConfig)} /></CardContent></Card>
       </section>
 
       {/* ─── Order flow ─── */}

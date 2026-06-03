@@ -9,6 +9,14 @@ import { toast } from 'sonner';
 import { reportApiError } from '@/lib/api-error';
 import { Save, Image as ImageIcon } from 'lucide-react';
 import { ImageUploader } from '@/components/image-uploader';
+import type { StorefrontConfig, HeroWidth, HeroHeight, HeroFit, HeroPosition, LogoFit, LogoShape } from '@/server/storefront-cms';
+import {
+  HERO_WIDTHS, HERO_WIDTH_LABELS, HERO_HEIGHTS, HERO_HEIGHT_LABELS,
+  HERO_FITS, HERO_FIT_LABELS, HERO_POSITIONS, HERO_POSITION_LABELS,
+  LOGO_FITS, LOGO_FIT_LABELS, LOGO_SHAPES, LOGO_SHAPE_LABELS,
+} from '@/server/storefront-cms';
+
+const SELECT_CLS = 'w-full rounded-md border border-input bg-background px-3 h-10 text-sm focus:outline-none focus:border-primary';
 
 interface Restaurant {
   id: string;
@@ -23,7 +31,7 @@ interface Restaurant {
   coverImageUrl?: string | null;
 }
 
-export function BrandingForm({ restaurant }: { restaurant: Restaurant }) {
+export function BrandingForm({ restaurant, initialConfig }: { restaurant: Restaurant; initialConfig: StorefrontConfig }) {
   const router = useRouter();
   const [f, setF] = useState({
     name: restaurant.name,
@@ -36,15 +44,26 @@ export function BrandingForm({ restaurant }: { restaurant: Restaurant }) {
     coverImageUrl: restaurant.coverImageUrl ?? ''
   });
   const [busy, setBusy] = useState(false);
+  const [cfg, setCfg] = useState<StorefrontConfig>(initialConfig);
+  const setHero = (patch: Partial<StorefrontConfig['hero']>) => setCfg((c) => ({ ...c, hero: { ...c.hero, ...patch } }));
+  const setLogo = (patch: Partial<StorefrontConfig['branding']['logoDisplay']>) =>
+    setCfg((c) => ({ ...c, branding: { ...c.branding, logoDisplay: { ...c.branding.logoDisplay, ...patch } } }));
 
   function set<K extends keyof typeof f>(k: K, v: string) { setF((p) => ({ ...p, [k]: v })); }
 
   async function save() {
     setBusy(true);
     try {
-      const r = await fetch('/api/admin/settings/branding', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f) });
-      if (!r.ok) { await reportApiError(r, 'Save failed'); return; }
-      toast.success('Branding saved');
+      // Save identity/images AND the hero+logo layout (the latter lives in the
+      // storefront CMS config). We send the FULL config so untouched sections
+      // (announcement, blocks, info bar, etc.) are preserved.
+      const [r1, r2] = await Promise.all([
+        fetch('/api/admin/settings/branding', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f) }),
+        fetch('/api/admin/storefront', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: cfg }) }),
+      ]);
+      if (!r1.ok) { await reportApiError(r1, 'Save failed'); return; }
+      if (!r2.ok) { await reportApiError(r2, 'Hero/logo save failed'); return; }
+      toast.success('Branding & layout saved');
       router.refresh();
     } finally {
       setBusy(false);
@@ -123,6 +142,54 @@ export function BrandingForm({ restaurant }: { restaurant: Restaurant }) {
             label="Cover image"
             recommended="1920×1080 px (16:9, landscape) · shown at the top of your restaurant page"
           />
+        </div>
+      </div>
+
+      <div className="rounded-xl border p-4 space-y-4">
+        <div>
+          <div className="text-sm font-semibold">Hero &amp; logo display</div>
+          <p className="text-xs text-muted-foreground">How your cover image and logo render at the top of your page. Saved with the button below.</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Hero width">
+            <select value={cfg.hero.width} onChange={(e) => setHero({ width: e.target.value as HeroWidth })} className={SELECT_CLS}>
+              {HERO_WIDTHS.map((w) => <option key={w} value={w}>{HERO_WIDTH_LABELS[w]}</option>)}
+            </select>
+          </Field>
+          <Field label="Hero height">
+            <select value={cfg.hero.height} onChange={(e) => setHero({ height: e.target.value as HeroHeight })} className={SELECT_CLS}>
+              {HERO_HEIGHTS.map((h) => <option key={h} value={h}>{HERO_HEIGHT_LABELS[h]}</option>)}
+            </select>
+          </Field>
+          <Field label="Hero image fit">
+            <select value={cfg.hero.imageFit} onChange={(e) => setHero({ imageFit: e.target.value as HeroFit })} className={SELECT_CLS}>
+              {HERO_FITS.map((x) => <option key={x} value={x}>{HERO_FIT_LABELS[x]}</option>)}
+            </select>
+          </Field>
+          <Field label="Hero focal position">
+            <select value={cfg.hero.imagePosition} onChange={(e) => setHero({ imagePosition: e.target.value as HeroPosition })} className={SELECT_CLS}>
+              {HERO_POSITIONS.map((x) => <option key={x} value={x}>{HERO_POSITION_LABELS[x]}</option>)}
+            </select>
+          </Field>
+          <Field label="Logo fit (fill / cover / contain)">
+            <select value={cfg.branding.logoDisplay.fit} onChange={(e) => setLogo({ fit: e.target.value as LogoFit })} className={SELECT_CLS}>
+              {LOGO_FITS.map((x) => <option key={x} value={x}>{LOGO_FIT_LABELS[x]}</option>)}
+            </select>
+          </Field>
+          <Field label="Logo shape">
+            <select value={cfg.branding.logoDisplay.shape} onChange={(e) => setLogo({ shape: e.target.value as LogoShape })} className={SELECT_CLS}>
+              {LOGO_SHAPES.map((x) => <option key={x} value={x}>{LOGO_SHAPE_LABELS[x]}</option>)}
+            </select>
+          </Field>
+          <Field label={`Logo padding — ${cfg.branding.logoDisplay.padding}px`}>
+            <Input type="number" min={0} max={24} value={cfg.branding.logoDisplay.padding}
+              onChange={(e) => setLogo({ padding: Math.max(0, Math.min(24, Number(e.target.value) || 0)) })} />
+          </Field>
+          <Field label="Logo background">
+            <input type="color" value={cfg.branding.logoDisplay.background || '#ffffff'}
+              onChange={(e) => setLogo({ background: e.target.value })}
+              className="h-10 w-full rounded-md border border-input bg-background p-1" />
+          </Field>
         </div>
       </div>
 
