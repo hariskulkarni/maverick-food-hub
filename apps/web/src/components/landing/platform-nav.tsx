@@ -8,6 +8,18 @@ import { BrandMark } from '@/components/brand-mark';
 import { CartButton } from '@/app/(customer)/cart-button';
 import { NavBackButton } from '@/components/nav-back-button';
 
+// Role-aware home for an authenticated user's "Account" link. Fixes admins/
+// super-admins landing on the customer /profile page from the header.
+function accountHref(role?: string | null): string {
+  switch (role) {
+    case 'SUPER_ADMIN': return '/platform';
+    case 'ADMIN': return '/admin';
+    case 'KITCHEN': return '/kitchen';
+    case 'RIDER': return '/rider-app';
+    default: return '/profile';
+  }
+}
+
 /**
  * Context-aware header for the (customer) route group.
  *
@@ -26,18 +38,20 @@ import { NavBackButton } from '@/components/nav-back-button';
  */
 export function PlatformNav({
   isAuthed,
-  userName
+  userName,
+  role
 }: {
   isAuthed: boolean;
   userName?: string | null;
+  role?: string | null;
 }) {
   const pathname = usePathname() ?? '/';
   const isTenant = pathname.startsWith('/r/');
 
   return isTenant ? (
-    <TenantNav isAuthed={isAuthed} userName={userName} pathname={pathname} />
+    <TenantNav isAuthed={isAuthed} userName={userName} role={role} pathname={pathname} />
   ) : (
-    <MarketingNav isAuthed={isAuthed} userName={userName} pathname={pathname} />
+    <MarketingNav isAuthed={isAuthed} userName={userName} role={role} pathname={pathname} />
   );
 }
 
@@ -59,10 +73,12 @@ function shouldShowMobileSignIn(pathname: string): boolean {
 function MarketingNav({
   isAuthed,
   userName,
+  role,
   pathname
 }: {
   isAuthed: boolean;
   userName?: string | null;
+  role?: string | null;
   pathname: string;
 }) {
   const showMobileAuth = shouldShowMobileSignIn(pathname);
@@ -94,7 +110,7 @@ function MarketingNav({
       <div className="ml-auto flex items-center gap-2">
         {/* Desktop sign-in pill — always visible. */}
         <Link
-          href={isAuthed ? '/profile' : '/login?role=staff'}
+          href={isAuthed ? accountHref(role) : '/login?role=staff'}
           className="hidden md:inline-flex h-9 items-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 shadow-sm"
         >
           {isAuthed ? (userName?.split(' ')[0] ?? 'Account') : 'Sign in'}
@@ -111,13 +127,13 @@ function MarketingNav({
           </Link>
         )}
 
-        <MarketingMobileSheet isAuthed={isAuthed} />
+        <MarketingMobileSheet isAuthed={isAuthed} role={role} />
       </div>
     </div>
   );
 }
 
-function MarketingMobileSheet({ isAuthed }: { isAuthed: boolean }) {
+function MarketingMobileSheet({ isAuthed, role }: { isAuthed: boolean; role?: string | null }) {
   const [open, setOpen] = React.useState(false);
   const close = () => setOpen(false);
   const linkClass =
@@ -188,7 +204,7 @@ function MarketingMobileSheet({ isAuthed }: { isAuthed: boolean }) {
               </Link>
             ) : (
               <Link
-                href="/profile"
+                href={accountHref(role)}
                 className="inline-flex h-11 items-center justify-center rounded-md px-4 text-sm font-medium text-muted-foreground hover:text-foreground"
                 onClick={close}
               >
@@ -211,10 +227,12 @@ function MarketingMobileSheet({ isAuthed }: { isAuthed: boolean }) {
 function TenantNav({
   isAuthed,
   userName,
+  role,
   pathname
 }: {
   isAuthed: boolean;
   userName?: string | null;
+  role?: string | null;
   pathname: string;
 }) {
   const showMobileAuth = shouldShowMobileSignIn(pathname);
@@ -234,7 +252,7 @@ function TenantNav({
 
         {isAuthed ? (
           <Link
-            href="/profile"
+            href={accountHref(role)}
             className="hidden md:inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm hover:bg-accent"
           >
             <User className="size-4" />
@@ -243,14 +261,14 @@ function TenantNav({
         ) : (
           <>
             <Link
-              href="/login"
+              href={`/login?next=${encodeURIComponent(pathname)}`}
               className="hidden md:inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 shadow-sm"
             >
               Sign in
             </Link>
             {showMobileAuth && (
               <Link
-                href="/login"
+                href={`/login?next=${encodeURIComponent(pathname)}`}
                 className="md:hidden inline-flex h-8 items-center rounded-full bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 shadow-sm"
               >
                 Sign in
@@ -259,13 +277,13 @@ function TenantNav({
           </>
         )}
 
-        <TenantMobileSheet isAuthed={isAuthed} />
+        <TenantMobileSheet isAuthed={isAuthed} role={role} pathname={pathname} />
       </div>
     </div>
   );
 }
 
-function TenantMobileSheet({ isAuthed }: { isAuthed: boolean }) {
+function TenantMobileSheet({ isAuthed, role, pathname }: { isAuthed: boolean; role?: string | null; pathname: string }) {
   const [open, setOpen] = React.useState(false);
   const close = () => setOpen(false);
   const linkClass =
@@ -304,7 +322,7 @@ function TenantMobileSheet({ isAuthed }: { isAuthed: boolean }) {
               My orders
             </Link>
             {isAuthed && (
-              <Link href="/profile" className={linkClass} onClick={close}>
+              <Link href={accountHref(role)} className={linkClass} onClick={close}>
                 My account
               </Link>
             )}
@@ -313,7 +331,7 @@ function TenantMobileSheet({ isAuthed }: { isAuthed: boolean }) {
           {!isAuthed && (
             <div className="mt-6">
               <Link
-                href="/login"
+                href={`/login?next=${encodeURIComponent(pathname)}`}
                 className="inline-flex h-11 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
                 onClick={close}
               >

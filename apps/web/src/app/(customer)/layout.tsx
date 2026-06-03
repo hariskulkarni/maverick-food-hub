@@ -43,7 +43,7 @@ export default async function CustomerLayout({ children }: { children: React.Rea
         {/* Context-aware top nav. Renders marketing chrome on `/` and tenant
             chrome on `/r/<slug>`. */}
         <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
-          <PlatformNav isAuthed={isAuthed} userName={userName} />
+          <PlatformNav isAuthed={isAuthed} userName={userName} role={session?.user?.role ?? null} />
         </header>
 
         {/*
