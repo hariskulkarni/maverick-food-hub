@@ -83,6 +83,10 @@ export type Align = 'left' | 'center' | 'right';
 export type LogoFit = 'contain' | 'cover' | 'fill' | 'scale-down' | 'none';
 /** Container shape behind the logo. */
 export type LogoShape = 'rounded' | 'circle' | 'square';
+export type EtaMode = 'auto' | 'range' | 'fixed';
+export type RatingMode = 'auto' | 'manual';
+export const ETA_MODES = ['auto', 'range', 'fixed'] as const;
+export const RATING_MODES = ['auto', 'manual'] as const;
 
 export interface HeroSlide {
   src: string;          // image URL (under /public or absolute)
@@ -214,6 +218,26 @@ export interface StorefrontConfig {
     text: string;           // '' ⇒ no custom footer note
   };
   blocks: ContentBlock[];
+  /**
+   * The status row rendered directly under the hero (open · ETA · rating ·
+   * city · verified). Every chip can be hidden, the delivery-time source can
+   * be auto/range/fixed, and the rating can be overridden. Admin + super-admin
+   * editable. Missing (legacy configs) ⇒ all shown, ETA auto, rating auto.
+   */
+  infoBar: {
+    showOpen: boolean;
+    showEta: boolean;
+    showRating: boolean;
+    showLocation: boolean;
+    showVerified: boolean;
+    etaMode: EtaMode;        // auto = live by customer location; range = static min–max; fixed = custom label
+    etaRangeMin: number;     // minutes
+    etaRangeMax: number;     // minutes
+    etaFixedLabel: string;   // used when etaMode = 'fixed'
+    ratingMode: RatingMode;  // auto = real feedback average; manual = override below
+    ratingManualValue: string; // e.g. '4.5'; '' ⇒ fall back to auto
+    ratingManualCount: number; // e.g. 250; 0 ⇒ no count shown
+  };
   layout: {
     showSearch: boolean;
     showFilters: boolean;
@@ -426,6 +450,20 @@ export function defaultStorefrontConfig(): StorefrontConfig {
     seo: { metaTitle: '', metaDescription: '', ogImage: '' },
     footer: { text: '' },
     blocks: [],
+    infoBar: {
+      showOpen: true,
+      showEta: true,
+      showRating: true,
+      showLocation: true,
+      showVerified: true,
+      etaMode: 'auto',
+      etaRangeMin: 30,
+      etaRangeMax: 40,
+      etaFixedLabel: '',
+      ratingMode: 'auto',
+      ratingManualValue: '',
+      ratingManualCount: 0,
+    },
     layout: {
       showSearch: true,
       showFilters: true,
@@ -547,6 +585,7 @@ export function parseStorefrontConfig(raw: unknown): StorefrontConfig {
   const seo = r.seo ?? {};
   const footer = r.footer ?? {};
   const layout = r.layout ?? {};
+  const infoBar = r.infoBar ?? {};
   const topSellersRaw = r.topSellers ?? {};
   const combosRaw = r.combos ?? {};
 
@@ -628,6 +667,20 @@ export function parseStorefrontConfig(raw: unknown): StorefrontConfig {
     },
     footer: { text: str(footer.text, 600) },
     blocks,
+    infoBar: {
+      showOpen: bool(infoBar.showOpen, d.infoBar.showOpen),
+      showEta: bool(infoBar.showEta, d.infoBar.showEta),
+      showRating: bool(infoBar.showRating, d.infoBar.showRating),
+      showLocation: bool(infoBar.showLocation, d.infoBar.showLocation),
+      showVerified: bool(infoBar.showVerified, d.infoBar.showVerified),
+      etaMode: oneOf<EtaMode>(infoBar.etaMode, ETA_MODES, d.infoBar.etaMode),
+      etaRangeMin: clampInt(infoBar.etaRangeMin, 1, 240, d.infoBar.etaRangeMin),
+      etaRangeMax: clampInt(infoBar.etaRangeMax, 1, 240, d.infoBar.etaRangeMax),
+      etaFixedLabel: str(infoBar.etaFixedLabel, 40),
+      ratingMode: oneOf<RatingMode>(infoBar.ratingMode, RATING_MODES, d.infoBar.ratingMode),
+      ratingManualValue: str(infoBar.ratingManualValue, 4),
+      ratingManualCount: clampInt(infoBar.ratingManualCount, 0, 100000, d.infoBar.ratingManualCount),
+    },
     layout: {
       showSearch: bool(layout.showSearch, d.layout.showSearch),
       showFilters: bool(layout.showFilters, d.layout.showFilters),

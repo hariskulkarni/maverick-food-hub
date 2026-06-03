@@ -69,6 +69,7 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
   const setHero = (patch: Partial<StorefrontConfig['hero']>) => setCfg((c) => ({ ...c, hero: { ...c.hero, ...patch } }));
   const setBrand = (patch: Partial<StorefrontConfig['branding']>) => setCfg((c) => ({ ...c, branding: { ...c.branding, ...patch } }));
   const setLayout = (patch: Partial<StorefrontConfig['layout']>) => setCfg((c) => ({ ...c, layout: { ...c.layout, ...patch } }));
+  const setInfoBar = (patch: Partial<StorefrontConfig['infoBar']>) => setCfg((c) => ({ ...c, infoBar: { ...c.infoBar, ...patch } }));
   const setTheme = (patch: Partial<StorefrontConfig['theme']>) => setCfg((c) => ({ ...c, theme: { ...c.theme, ...patch } }));
   const setAnn = (patch: Partial<StorefrontConfig['announcement']>) => setCfg((c) => ({ ...c, announcement: { ...c.announcement, ...patch } }));
   const setAbout = (patch: Partial<StorefrontConfig['about']>) => setCfg((c) => ({ ...c, about: { ...c.about, ...patch } }));
@@ -440,6 +441,67 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
       </Section>
 
       {/* LAYOUT */}
+      <Section title="Info bar (under the hero)" subtitle="The status row beneath your banner — open status, delivery time, rating, city and the verified badge. Hide any chip, or fix the delivery time / rating.">
+        <div className="grid sm:grid-cols-2 gap-2">
+          <Toggle on={cfg.infoBar.showOpen} onClick={() => setInfoBar({ showOpen: !cfg.infoBar.showOpen })} label="Open / closed status" />
+          <Toggle on={cfg.infoBar.showEta} onClick={() => setInfoBar({ showEta: !cfg.infoBar.showEta })} label="Delivery time" />
+          <Toggle on={cfg.infoBar.showRating} onClick={() => setInfoBar({ showRating: !cfg.infoBar.showRating })} label="Rating & reviews" />
+          <Toggle on={cfg.infoBar.showLocation} onClick={() => setInfoBar({ showLocation: !cfg.infoBar.showLocation })} label="City / location" />
+          <Toggle on={cfg.infoBar.showVerified} onClick={() => setInfoBar({ showVerified: !cfg.infoBar.showVerified })} label="Verified badge" />
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-end gap-4">
+          <Field label="Delivery time mode">
+            <select value={cfg.infoBar.etaMode} onChange={(e) => setInfoBar({ etaMode: e.target.value as StorefrontConfig['infoBar']['etaMode'] })}
+              className="h-9 rounded-md border bg-background px-2 text-sm w-[230px]">
+              <option value="auto">Auto — live by customer location</option>
+              <option value="range">Fixed range (min–max)</option>
+              <option value="fixed">Custom label</option>
+            </select>
+          </Field>
+          {cfg.infoBar.etaMode !== 'fixed' ? (
+            <>
+              <Field label="Min minutes">
+                <Input type="number" min={1} max={240} value={cfg.infoBar.etaRangeMin}
+                  onChange={(e) => setInfoBar({ etaRangeMin: Number(e.target.value) || 0 })} className="h-9 w-[110px]" />
+              </Field>
+              <Field label="Max minutes">
+                <Input type="number" min={1} max={240} value={cfg.infoBar.etaRangeMax}
+                  onChange={(e) => setInfoBar({ etaRangeMax: Number(e.target.value) || 0 })} className="h-9 w-[110px]" />
+              </Field>
+            </>
+          ) : (
+            <Field label="Custom delivery label">
+              <Input value={cfg.infoBar.etaFixedLabel} onChange={(e) => setInfoBar({ etaFixedLabel: e.target.value })}
+                placeholder="e.g. Same-day delivery" className="h-9 w-[230px]" />
+            </Field>
+          )}
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-end gap-4">
+          <Field label="Rating source">
+            <select value={cfg.infoBar.ratingMode} onChange={(e) => setInfoBar({ ratingMode: e.target.value as StorefrontConfig['infoBar']['ratingMode'] })}
+              className="h-9 rounded-md border bg-background px-2 text-sm w-[230px]">
+              <option value="auto">Auto — from real customer reviews</option>
+              <option value="manual">Manual override</option>
+            </select>
+          </Field>
+          {cfg.infoBar.ratingMode === 'manual' && (
+            <>
+              <Field label="Rating (e.g. 4.5)">
+                <Input value={cfg.infoBar.ratingManualValue} onChange={(e) => setInfoBar({ ratingManualValue: e.target.value })}
+                  placeholder="4.5" className="h-9 w-[110px]" />
+              </Field>
+              <Field label="Review count">
+                <Input type="number" min={0} value={cfg.infoBar.ratingManualCount}
+                  onChange={(e) => setInfoBar({ ratingManualCount: Number(e.target.value) || 0 })} className="h-9 w-[130px]" />
+              </Field>
+            </>
+          )}
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Auto rating uses your real order reviews (shows “New” until you have enough). Manual override is handy for launch or for super-admins.</p>
+      </Section>
+
       <Section title="Layout & Sections" subtitle="Toggle what customers see and how the menu is laid out.">
         <div className="grid sm:grid-cols-2 gap-2">
           <Toggle on={cfg.layout.showSearch} onClick={() => setLayout({ showSearch: !cfg.layout.showSearch })} label="Search bar" />

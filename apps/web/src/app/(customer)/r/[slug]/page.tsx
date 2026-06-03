@@ -121,6 +121,13 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
   // they can pre-order. Checkout enforces a scheduled-order slot inside the
   // next open window. See server/operating-hours.ts for the resolver.
   const isClosed = !openStatus.isOpen;
+
+  // Info-bar CMS controls (visibility toggles + ETA mode + optional manual
+  // rating override). Defaults (all-on / auto) preserve historical behaviour.
+  const _ib = cms.infoBar;
+  const _useManualRating = _ib.ratingMode === 'manual' && _ib.ratingManualValue !== '';
+  const _ratingValue: string | null = _useManualRating ? _ib.ratingManualValue : ratingValue;
+  const _ratingCount: number = _useManualRating ? _ib.ratingManualCount : ratingCount;
   const closedMenuClass = isClosed ? 'opacity-60 [&_button[data-add-to-cart]]:opacity-100' : '';
 
   return (
@@ -277,6 +284,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
       {/* ───────── Sticky info bar ───────── */}
       <div className="sticky top-0 z-30 glass border-b">
         <div className="container py-3 flex items-center gap-4 md:gap-6 text-xs md:text-sm overflow-x-auto no-scrollbar">
+          {_ib.showOpen && (
           <div className={`flex items-center gap-1.5 font-medium ${restaurant.logoUrl ? 'md:ml-32' : ''} ${openStatus.isOpen ? '' : 'text-muted-foreground'}`}>
             <span className="relative inline-flex">
               <span className={`size-2 rounded-full ${openStatus.isOpen ? 'bg-success' : 'bg-muted-foreground/60'}`} />
@@ -284,14 +292,19 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
             </span>
             {openStatus.isOpen ? 'Open now' : (openStatus.label || 'Closed')}
           </div>
-          <DeliveryEtaChip branchId={branch.id} hasGeo={branch.latitude != null && branch.longitude != null} />
-          {ratingValue ? (
-            <div className="flex items-center gap-1.5 text-muted-foreground"><Star className="size-4 fill-warning text-warning" /> {ratingValue} <span className="hidden md:inline">· {ratingCount.toLocaleString('en-IN')} rating{ratingCount === 1 ? '' : 's'}</span></div>
+          )}
+          {_ib.showEta && (
+          <DeliveryEtaChip branchId={branch.id} hasGeo={branch.latitude != null && branch.longitude != null} mode={_ib.etaMode} rangeMin={_ib.etaRangeMin} rangeMax={_ib.etaRangeMax} fixedLabel={_ib.etaFixedLabel} />
+          )}
+          {_ib.showRating && (_ratingValue ? (
+            <div className="flex items-center gap-1.5 text-muted-foreground"><Star className="size-4 fill-warning text-warning" /> {_ratingValue} {_ratingCount > 0 && <span className="hidden md:inline">· {_ratingCount.toLocaleString('en-IN')} rating{_ratingCount === 1 ? '' : 's'}</span>}</div>
           ) : (
             <div className="flex items-center gap-1.5 text-muted-foreground"><Star className="size-4" /> New</div>
-          )}
+          ))}
+          {_ib.showLocation && (
           <div className="flex items-center gap-1.5 text-muted-foreground"><MapPin className="size-4" /> {branch.city}</div>
-          {isVerified && (
+          )}
+          {_ib.showVerified && isVerified && (
           <div className="flex items-center gap-1.5 text-muted-foreground"><ShieldCheck className="size-4 text-success" /> Verified</div>
           )}
           {(restaurant as any).dineInEnabled && (
