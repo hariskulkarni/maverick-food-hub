@@ -250,7 +250,7 @@ function SlidingTrack(props: {
   const stretch = useHeroSize ? 'h-full' : '';
   return (
     <div
-      className={`flex ease-[cubic-bezier(0.2,0.7,0.3,1)] ${stretch}`}
+      className={`flex ease-smooth ${stretch}`}
       style={{ transform: `translateX(-${index * 100}%)`, transition: `transform ${transitionMs}ms` }}
     >
       {slides.map((s, i) => (

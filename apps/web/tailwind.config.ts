@@ -11,6 +11,9 @@ const config: Config = {
       screens: { '2xl': '1400px' }
     },
     extend: {
+      transitionTimingFunction: {
+        smooth: 'cubic-bezier(0.2,0.7,0.3,1)',
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',

@@ -132,7 +132,7 @@ export function StorefrontHeroCarousel({
             return (
               <div
                 key={i}
-                className="absolute inset-0 h-full w-full transition-all duration-700 ease-[cubic-bezier(0.2,0.7,0.3,1)]"
+                className="absolute inset-0 h-full w-full transition-all duration-700 ease-smooth"
                 style={style}
                 role="group"
                 aria-roledescription="slide"
