@@ -87,6 +87,19 @@ export type EtaMode = 'auto' | 'range' | 'fixed';
 export type RatingMode = 'auto' | 'manual';
 export const ETA_MODES = ['auto', 'range', 'fixed'] as const;
 export const RATING_MODES = ['auto', 'manual'] as const;
+export type HeroFit = 'cover' | 'contain' | 'fill' | 'scale-down';
+export type HeroPosition = 'center' | 'top' | 'bottom' | 'left' | 'right';
+export const HERO_FITS = ['cover', 'contain', 'fill', 'scale-down'] as const;
+export const HERO_POSITIONS = ['center', 'top', 'bottom', 'left', 'right'] as const;
+export const HERO_FIT_LABELS: Record<HeroFit, string> = {
+  cover: 'Cover (fill, may crop)',
+  contain: 'Contain (whole image)',
+  fill: 'Stretch to fill',
+  'scale-down': 'Scale down',
+};
+export const HERO_POSITION_LABELS: Record<HeroPosition, string> = {
+  center: 'Center', top: 'Top', bottom: 'Bottom', left: 'Left', right: 'Right',
+};
 
 export interface HeroSlide {
   src: string;          // image URL (under /public or absolute)
@@ -144,6 +157,9 @@ export interface StorefrontConfig {
      * see HeroHeight for what each preset means.
      */
     height: HeroHeight;
+    /** How the hero IMAGE sits inside the box (object-fit) + its focal point. */
+    imageFit: HeroFit;
+    imagePosition: HeroPosition;
   };
   branding: {
     tagline: string;        // '' ⇒ fall back to Restaurant.tagline
@@ -354,6 +370,20 @@ export const HERO_HEIGHT_CLASS: Record<HeroHeight, string> = {
   'half-screen': 'h-[50dvh]',
   'full-screen': 'h-[90dvh]',
 };
+
+export const HERO_FIT_CLASS: Record<HeroFit, string> = {
+  cover: 'object-cover',
+  contain: 'object-contain',
+  fill: 'object-fill',
+  'scale-down': 'object-scale-down',
+};
+export const HERO_POSITION_CLASS: Record<HeroPosition, string> = {
+  center: 'object-center',
+  top: 'object-top',
+  bottom: 'object-bottom',
+  left: 'object-left',
+  right: 'object-right',
+};
 export const FONT_PAIRS: FontPair[] = ['modern', 'classic', 'playful', 'editorial'];
 export const BUTTON_RADII: ButtonRadius[] = ['sharp', 'rounded', 'pill'];
 export const CARD_STYLES: CardStyle[] = ['flat', 'shadow', 'border'];
@@ -415,6 +445,8 @@ export function defaultStorefrontConfig(): StorefrontConfig {
       // falls back to these when the keys are missing.
       width: 'full-bleed',
       height: 'wide',
+      imageFit: 'cover',
+      imagePosition: 'center',
     },
     branding: {
       tagline: '',
@@ -616,6 +648,8 @@ export function parseStorefrontConfig(raw: unknown): StorefrontConfig {
       // identically before and after the size-picker upgrade.
       width: oneOf<HeroWidth>(hero.width, HERO_WIDTHS, d.hero.width),
       height: oneOf<HeroHeight>(hero.height, HERO_HEIGHTS, d.hero.height),
+      imageFit: oneOf<HeroFit>(hero.imageFit, HERO_FITS, d.hero.imageFit),
+      imagePosition: oneOf<HeroPosition>(hero.imagePosition, HERO_POSITIONS, d.hero.imagePosition),
     },
     branding: {
       tagline: str(branding.tagline, 160),

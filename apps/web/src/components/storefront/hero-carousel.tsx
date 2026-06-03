@@ -10,6 +10,7 @@ import {
   type HeroWidth,
   type HeroHeight,
 } from '@/server/storefront-cms';
+import { HERO_FIT_CLASS, HERO_POSITION_CLASS, type HeroFit, type HeroPosition } from '@/server/storefront-cms';
 
 /**
  * StorefrontHeroCarousel — a CMS-configurable, mobile-first hero carousel for
@@ -52,6 +53,8 @@ export function StorefrontHeroCarousel({
   accentColor = '#f23e5c',
   width = 'full-bleed',
   height = 'wide',
+  imageFit = 'cover',
+  imagePosition = 'center',
 }: {
   slides: HeroCarouselSlide[];
   alt: string;
@@ -73,6 +76,8 @@ export function StorefrontHeroCarousel({
    * shape.
    */
   height?: HeroHeight;
+  imageFit?: HeroFit;
+  imagePosition?: HeroPosition;
 }) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -139,7 +144,7 @@ export function StorefrontHeroCarousel({
                 aria-label={`${i + 1} of ${count}`}
                 aria-hidden={!active}
               >
-                <ImageWithFallback src={s.src} alt={`${alt} — ${s.headline ?? `promotion ${i + 1}`}`} fill priority={i === 0} sizes="100vw" className="object-cover" />
+                <ImageWithFallback src={s.src} alt={`${alt} — ${s.headline ?? `promotion ${i + 1}`}`} fill priority={i === 0} sizes="100vw" className={`${HERO_FIT_CLASS[imageFit]} ${HERO_POSITION_CLASS[imagePosition]}`} />
                 {hasCaption && (
                   <>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />

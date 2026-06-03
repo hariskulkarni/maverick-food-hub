@@ -2,7 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { prisma } from '@/server/db';
 import { ImageWithFallback } from '@/components/image-with-fallback';
-import { LOGO_FIT_CLASS, LOGO_SHAPE_RADIUS_CLASS, HERO_WIDTH_WRAP_CLASS, HERO_WIDTH_INNER_CLASS, HERO_HEIGHT_CLASS } from '@/server/storefront-cms';
+import { LOGO_FIT_CLASS, LOGO_SHAPE_RADIUS_CLASS, HERO_WIDTH_WRAP_CLASS, HERO_WIDTH_INNER_CLASS, HERO_HEIGHT_CLASS, HERO_FIT_CLASS, HERO_POSITION_CLASS } from '@/server/storefront-cms';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -207,6 +207,8 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
             // 'full-bleed' / 'wide', which is the historical look.
             width={cms.hero.width}
             height={cms.hero.height}
+            imageFit={cms.hero.imageFit}
+            imagePosition={cms.hero.imagePosition}
           />
           <div className="container py-4 reveal">
             <div className="flex flex-wrap items-center gap-2">
@@ -230,7 +232,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
               on-brand gradient placeholder instead of the browser's broken-image
               glyph. The dead-link case happens most often with the local-
               storage driver when uploads were made on a different host. */}
-          <ImageWithFallback src={heroImage} alt={restaurant.name} fill priority sizes="100vw" className="object-cover" />
+          <ImageWithFallback src={heroImage} alt={restaurant.name} fill priority sizes="100vw" className={`${HERO_FIT_CLASS[cms.hero.imageFit]} ${HERO_POSITION_CLASS[cms.hero.imagePosition]}`} />
           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/10" />
           <div className="absolute top-4 right-4 z-10">
             <HeartButton

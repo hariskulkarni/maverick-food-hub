@@ -13,6 +13,7 @@ import {
   HERO_WIDTHS, HERO_HEIGHTS, HERO_WIDTH_LABELS, HERO_HEIGHT_LABELS,
   HERO_WIDTH_HINTS, HERO_HEIGHT_HINTS,
   HERO_WIDTH_WRAP_CLASS, HERO_WIDTH_INNER_CLASS, HERO_HEIGHT_CLASS,
+  HERO_FITS, HERO_POSITIONS, HERO_FIT_LABELS, HERO_POSITION_LABELS,
 } from '@/server/storefront-cms';
 
 type Cat = { id: string; name: string; sortOrder: number; isActive: boolean; itemCount: number };
@@ -159,6 +160,22 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
           onWidth={(w) => setHero({ width: w })}
           onHeight={(h) => setHero({ height: h })}
         />
+
+        <div className="mt-3 flex flex-wrap items-end gap-4">
+          <Field label="Hero image fit">
+            <select value={cfg.hero.imageFit} onChange={(e) => setHero({ imageFit: e.target.value as StorefrontConfig['hero']['imageFit'] })}
+              className="h-9 rounded-md border bg-background px-2 text-sm w-[210px]">
+              {HERO_FITS.map((f) => <option key={f} value={f}>{HERO_FIT_LABELS[f]}</option>)}
+            </select>
+          </Field>
+          <Field label="Focal position">
+            <select value={cfg.hero.imagePosition} onChange={(e) => setHero({ imagePosition: e.target.value as StorefrontConfig['hero']['imagePosition'] })}
+              className="h-9 rounded-md border bg-background px-2 text-sm w-[150px]">
+              {HERO_POSITIONS.map((pos) => <option key={pos} value={pos}>{HERO_POSITION_LABELS[pos]}</option>)}
+            </select>
+          </Field>
+          <p className="w-full text-xs text-muted-foreground">“Cover” fills the box (may crop the edges); “Contain” shows the whole image (may letterbox). Focal position picks which part stays visible when cropped.</p>
+        </div>
 
         {cfg.hero.type === 'carousel' && (
           <>
