@@ -226,7 +226,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
         // narrow…); the inner classes add rounded corners + shadow where
         // appropriate; the height class controls the vertical rhythm.
         <div className={HERO_WIDTH_WRAP_CLASS[cms.hero.width] || ''}>
-        <section className={`relative bg-muted overflow-hidden ${HERO_WIDTH_INNER_CLASS[cms.hero.width]} ${HERO_HEIGHT_CLASS[cms.hero.height]}`}>
+        <section className={`relative w-full bg-muted overflow-hidden ${HERO_WIDTH_INNER_CLASS[cms.hero.width]} ${HERO_HEIGHT_CLASS[cms.hero.height]}`}>
           {/* Use ImageWithFallback so a missing/404 cover URL (e.g. a logoUrl
               persisted in the DB whose file is no longer on disk) renders the
               on-brand gradient placeholder instead of the browser's broken-image
