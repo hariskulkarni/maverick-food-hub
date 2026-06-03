@@ -14,6 +14,11 @@ const nextConfig = {
     serverActions: { bodySizeLimit: '10mb' }
   },
   images: {
+    // Next's built-in optimizer 400s ("isn't a valid image") on local /uploads
+    // files in this self-hosted + Cloudflare setup, so every uploaded cover/logo
+    // silently fell back to a stock image. Serve originals directly and let
+    // Cloudflare handle edge optimization + caching (standard self-host pattern).
+    unoptimized: true,
     // Allowlist only — no wildcard `**`. Unsplash covers seed/demo imagery.
     // Restaurant-uploaded images are served from the same origin (local storage)
     // or your configured object store: set IMAGE_CDN_HOST (e.g. cdn.example.com
