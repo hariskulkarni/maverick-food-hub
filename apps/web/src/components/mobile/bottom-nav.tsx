@@ -5,12 +5,12 @@
  * Two variants depending on route context:
  *
  *  ◾ DEFAULT (global, customer-facing):
- *     Home / Explore / Cart / Orders / Profile  (5 tabs)
+ *     Home / Dine In / Cart / Orders / Profile  (5 tabs)
  *     The standard nav for the discovery surface + cart + orders + profile.
  *
  *  ◾ RESTAURANT ORDERING (when path is /r/<slug> or any /r/<slug>/...):
  *     Dine-In / Orders / Cart / Profile  (4 tabs)
- *     The Home + Explore tabs are replaced by a single Dine-In tab that opens
+ *     The Home + Dine In tabs are replaced by a single Dine-In tab that opens
  *     a chooser sheet ("Reserve a table" / "Scan the table QR") instead of
  *     navigating. This matches the in-restaurant customer flow where the
  *     customer has already committed to one restaurant — the flavrly URL was
@@ -36,7 +36,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Search, ShoppingBag, Receipt, UserRound, UtensilsCrossed } from 'lucide-react';
+import { Home, ShoppingBag, Receipt, UserRound, UtensilsCrossed } from 'lucide-react';
 import { useCart } from '@/app/(customer)/cart-context';
 import { DineInChooser } from '@/components/storefront/dine-in-chooser';
 
@@ -54,7 +54,7 @@ interface NavItem {
 
 const DEFAULT_ITEMS: NavItem[] = [
   { label: 'Home',    icon: Home,        activeOn: ['/'],                                action: { kind: 'link', href: '/' } },
-  { label: 'Explore', icon: Search,      activeOn: ['/restaurants', '/r/', '/brand/'],  action: { kind: 'link', href: '/restaurants' } },
+  { label: 'Dine In', icon: UtensilsCrossed, activeOn: ['/dine-in'],                       action: { kind: 'link', href: '/dine-in' } },
   { label: 'Cart',    icon: ShoppingBag, activeOn: ['/cart'],                            action: { kind: 'link', href: '/cart' }, promotable: true },
   { label: 'Orders',  icon: Receipt,     activeOn: ['/orders', '/track'],                action: { kind: 'link', href: '/orders' } },
   { label: 'Profile', icon: UserRound,   activeOn: ['/profile'],                         action: { kind: 'link', href: '/profile' } },

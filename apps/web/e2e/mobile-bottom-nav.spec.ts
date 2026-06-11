@@ -119,11 +119,11 @@ test.describe('mobile (390x844) — active tab', () => {
     expect(pillTransform).toMatch(/translateX\(0%?\)/);
   });
 
-  test('clicking Explore navigates to /restaurants and flips aria-current', async ({ page }) => {
+  test('clicking Dine In navigates to /dine-in and flips aria-current', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('link', { name: /^explore/i }).click();
-    await page.waitForURL(/\/restaurants$/);
-    await expect(page.getByRole('link', { name: /^explore/i })).toHaveAttribute(
+    await page.getByRole('link', { name: /^dine in/i }).click();
+    await page.waitForURL(/\/dine-in$/);
+    await expect(page.getByRole('link', { name: /^dine in/i })).toHaveAttribute(
       'aria-current',
       'page'
     );
@@ -135,9 +135,9 @@ test.describe('mobile (390x844) — active tab', () => {
     expect(pillTransform).toMatch(/translateX\(100%\)/);
   });
 
-  test('Explore stays active on /r/<slug> (activeOn includes "/r/")', async ({ page }) => {
-    await page.goto(`/r/${RESTAURANT_SLUG}`);
-    await expect(page.getByRole('link', { name: /^explore/i })).toHaveAttribute(
+  test('Dine In stays active on /dine-in', async ({ page }) => {
+    await page.goto('/dine-in');
+    await expect(page.getByRole('link', { name: /^dine in/i })).toHaveAttribute(
       'aria-current',
       'page'
     );
