@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -125,13 +125,13 @@ function RiderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const [bonusNote, setBonusNote] = useState('');
   const [busy, setBusy] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     const r = await fetch(`/api/platform/riders/${id}`, { cache: 'no-store' });
     if (r.ok) setData(await r.json());
     setLoading(false);
-  }
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
 
   async function applyBonus(sign: 1 | -1) {
     if (!bonusAmount || bonusAmount <= 0) return;

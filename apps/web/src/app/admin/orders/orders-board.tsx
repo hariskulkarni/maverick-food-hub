@@ -81,7 +81,7 @@ export function OrdersBoard({
     }
   }, []);
 
-  function fireAlert(code: string) {
+  const fireAlert = useCallback((code: string) => {
     chime.play();
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       try {
@@ -90,7 +90,7 @@ export function OrdersBoard({
         /* notification API can throw in some browsers/contexts */
       }
     }
-  }
+  }, [chime.play]);
 
   // Re-fire the alert every 30s for any order still pending acknowledgement
   // AND still in RECEIVED status.
@@ -108,7 +108,7 @@ export function OrdersBoard({
       }
     }, 30_000);
     return () => clearInterval(t);
-  }, [alerts, orders]);
+  }, [alerts, orders, fireAlert]);
 
   /**
    * Snapshot refresh — re-fetch the full order list and reconcile state.
@@ -147,7 +147,7 @@ export function OrdersBoard({
     } finally {
       if (!silent) setRefreshing(false);
     }
-  }, []);
+  }, [fireAlert]);
 
   // Periodic snapshot — every 15s. Safety net for any silent SSE failure.
   useEffect(() => {

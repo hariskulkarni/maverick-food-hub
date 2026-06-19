@@ -787,7 +787,11 @@ model Reservation {
   // reservation honours what was agreed at booking).
   depositAmount     Decimal           @default(0.00) @db.Decimal(10, 2)
   depositPaid       Boolean           @default(false)
-  depositPaymentRef String? // razorpay payment id / 'cod' / 'wallet'
+  depositPaymentRef String? // razorpay payment id / 'cod' / 'wallet' / 'none'
+  // Gateway order id for an online deposit awaiting capture. Set when the
+  // Razorpay deposit order is created; the confirm-deposit endpoint verifies a
+  // payment against it before marking the deposit paid.
+  depositProviderOrderId String?
   discountPct       Int               @default(10)
   customerNotes     String?
   cancelledBy       String?
@@ -2914,6 +2918,10 @@ model RiderPreferences {
   preferredZones String[]  @default([])
   breakMode      Boolean   @default(false)
   breakUntil     DateTime?
+  // Self-service profile fields (rider Personal tab). Non-sensitive; nullable
+  // so they read as "unset" until the rider saves them.
+  emergencyPhone    String?
+  preferredLanguage String?  @default("en")
   updatedAt      DateTime  @updatedAt
 
   rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)

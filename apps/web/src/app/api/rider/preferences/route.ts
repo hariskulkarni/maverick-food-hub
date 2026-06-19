@@ -22,6 +22,8 @@ function serialize(p: {
   preferredZones: string[];
   breakMode: boolean;
   breakUntil: Date | null;
+  emergencyPhone: string | null;
+  preferredLanguage: string | null;
   updatedAt: Date;
 }) {
   return {
@@ -31,6 +33,8 @@ function serialize(p: {
     preferredZones: p.preferredZones,
     breakMode: p.breakMode,
     breakUntil: p.breakUntil ? p.breakUntil.toISOString() : null,
+    emergencyPhone: p.emergencyPhone ?? null,
+    preferredLanguage: p.preferredLanguage ?? 'en',
     updatedAt: p.updatedAt.toISOString(),
   };
 }
@@ -79,6 +83,8 @@ export async function PATCH(req: Request) {
     preferredZones?: string[];
     breakMode?: boolean;
     breakUntil?: Date | null;
+    emergencyPhone?: string | null;
+    preferredLanguage?: string;
   } = {};
 
   if (b.autoAccept !== undefined) {
@@ -141,6 +147,26 @@ export async function PATCH(req: Request) {
       }
       data.breakUntil = until;
     }
+  }
+
+  if (b.emergencyPhone !== undefined) {
+    if (b.emergencyPhone === null || b.emergencyPhone === '') {
+      data.emergencyPhone = null;
+    } else {
+      const ep = String(b.emergencyPhone).trim();
+      if (!/^\+?[\d\s().-]{6,20}$/.test(ep)) {
+        return Response.json({ error: 'Invalid emergency phone number.' }, { status: 400 });
+      }
+      data.emergencyPhone = ep;
+    }
+  }
+
+  if (b.preferredLanguage !== undefined) {
+    const lang = String(b.preferredLanguage);
+    if (!['en', 'hi', 'kn', 'te'].includes(lang)) {
+      return Response.json({ error: 'Unsupported language.' }, { status: 400 });
+    }
+    data.preferredLanguage = lang;
   }
 
   const prefs = await prisma.riderPreferences.upsert({

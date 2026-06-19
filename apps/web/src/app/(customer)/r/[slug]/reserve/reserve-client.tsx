@@ -40,7 +40,18 @@ interface CreatedReservation {
   depositAmount: number;
   discountPct: number;
   tableName: string | null;
+  depositPaid: boolean;
 }
+
+interface DepositOrder {
+  providerName: string;
+  providerOrderId: string;
+  amount: number;
+  currency: string;
+  publicKey: string | null;
+}
+
+type RazorpayCtor = new (options: Record<string, unknown>) => { open: () => void };
 
 export interface ReserveClientProps {
   slug: string;
@@ -115,6 +126,101 @@ export function ReserveClient(props: ReserveClientProps) {
     }
   }
 
+  // Map a serialized reservation into the success-screen shape.
+  function showSuccess(r: {
+    code: string; reservedAt: string; partySize: number; durationMin: number;
+    depositAmount: number; discountPct: number; tableName: string | null; depositPaid: boolean;
+  }) {
+    setSuccess({
+      code: r.code,
+      reservedAt: r.reservedAt,
+      partySize: r.partySize,
+      durationMin: r.durationMin,
+      depositAmount: r.depositAmount,
+      discountPct: r.discountPct,
+      tableName: r.tableName,
+      depositPaid: r.depositPaid,
+    });
+  }
+
+  // Verify-and-confirm the online deposit on the server.
+  async function confirmDepositCall(reservationId: string, payload: Record<string, unknown>) {
+    const res = await fetch(`/api/r/${slug}/reservations/${reservationId}/confirm-deposit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Could not confirm your deposit.');
+    return data.reservation as CreatedReservation;
+  }
+
+  // Lazily inject the Razorpay checkout script.
+  function loadRazorpay(): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined') return resolve(false);
+      if ((window as unknown as { Razorpay?: RazorpayCtor }).Razorpay) return resolve(true);
+      const el = document.createElement('script');
+      el.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      el.onload = () => resolve(true);
+      el.onerror = () => resolve(false);
+      document.body.appendChild(el);
+    });
+  }
+
+  // Handle an online deposit returned by the booking POST.
+  async function payDeposit(reservationId: string, deposit: DepositOrder) {
+    // Mock provider (dev / no gateway creds): confirm straight through.
+    if (deposit.providerName === 'mock' || !deposit.publicKey) {
+      try {
+        showSuccess(await confirmDepositCall(reservationId, {}));
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setBooking(false);
+      }
+      return;
+    }
+    // Real Razorpay checkout.
+    const ready = await loadRazorpay();
+    const RZ = (window as unknown as { Razorpay?: RazorpayCtor }).Razorpay;
+    if (!ready || !RZ) {
+      setError('Could not load the payment gateway. Please try again.');
+      setBooking(false);
+      return;
+    }
+    const rzp = new RZ({
+      key: deposit.publicKey,
+      order_id: deposit.providerOrderId,
+      amount: Math.round(deposit.amount * 100),
+      currency: deposit.currency,
+      name: restaurantName,
+      description: 'Table reservation deposit',
+      handler: async (resp: { razorpay_payment_id: string; razorpay_signature: string }) => {
+        try {
+          showSuccess(
+            await confirmDepositCall(reservationId, {
+              providerPaymentId: resp.razorpay_payment_id,
+              signature: resp.razorpay_signature,
+            })
+          );
+        } catch (e) {
+          setError((e as Error).message);
+        } finally {
+          setBooking(false);
+        }
+      },
+      modal: {
+        ondismiss: () => {
+          setError('Payment was cancelled. Your table is held briefly — try again to confirm.');
+          setBooking(false);
+        },
+      },
+      theme: { color: '#0a0a0a' },
+    });
+    rzp.open();
+  }
+
   async function confirmBooking() {
     setError(null);
     const iso = reservedAtIso();
@@ -137,21 +243,20 @@ export function ReserveClient(props: ReserveClientProps) {
         setError(data.error || 'Could not complete your booking.');
         // A 409 usually means the table was just taken — refresh availability.
         if (res.status === 409) await checkAvailability();
+        setBooking(false);
         return;
       }
-      const r = data.reservation;
-      setSuccess({
-        code: r.code,
-        reservedAt: r.reservedAt,
-        partySize: r.partySize,
-        durationMin: r.durationMin,
-        depositAmount: r.depositAmount,
-        discountPct: r.discountPct,
-        tableName: r.tableName,
-      });
+      // Online deposit → run gateway checkout, then confirm. payDeposit owns
+      // the booking-spinner reset for this branch (the checkout is async UI).
+      if (data.deposit) {
+        await payDeposit(data.reservation.id, data.deposit as DepositOrder);
+        return;
+      }
+      // COD / zero-deposit → already confirmed server-side.
+      showSuccess(data.reservation);
+      setBooking(false);
     } catch {
       setError('Could not reach the server. Please try again.');
-    } finally {
       setBooking(false);
     }
   }
@@ -183,15 +288,20 @@ export function ReserveClient(props: ReserveClientProps) {
             <Detail label="Held for" value={`${success.durationMin} min`} />
           </dl>
 
-          <div className="rounded-xl border border-dashed border-warning/40 bg-warning/5 p-4 space-y-1.5">
-            <div className="flex items-center gap-2 text-sm font-medium text-warning">
-              <Wallet className="size-4" /> {money(success.depositAmount)} deposit collected
+          {success.depositAmount > 0 && (
+            <div className="rounded-xl border border-dashed border-warning/40 bg-warning/5 p-4 space-y-1.5">
+              <div className="flex items-center gap-2 text-sm font-medium text-warning">
+                <Wallet className="size-4" />{' '}
+                {success.depositPaid
+                  ? `${money(success.depositAmount)} deposit paid`
+                  : `${money(success.depositAmount)} deposit due on arrival`}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Your deposit is redeemable on your dine-in bill — it&apos;s applied automatically when you
+                order at the table. You&apos;ll also get <strong>{success.discountPct}% off your dine-in bill</strong>.
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Your deposit is redeemable on your dine-in bill — it&apos;s applied automatically when you
-              order at the table. You&apos;ll also get <strong>{success.discountPct}% off your dine-in bill</strong>.
-            </p>
-          </div>
+          )}
 
           <div className="grid gap-2 md:grid-cols-2">
             <Button asChild variant="outline" className="w-full">

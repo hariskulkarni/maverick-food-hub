@@ -82,8 +82,7 @@ if (SMS_IS_REAL && OTP_DEMO_MODE) {
 // Loud, repeated reminder when demo mode is live in production (mock SMS). This
 // is acceptable ONLY for a pre-launch demo with no real users.
 if (IS_PROD && OTP_DEMO_MODE) {
-  // eslint-disable-next-line no-console
-  console.warn(
+  log.warn(
     '[otp] DEMO MODE ACTIVE — OTP codes are surfaced in API responses/logs (no real SMS gateway). ' +
       'Configure NOTIFIER_SMS + set OTP_DEMO_MODE=false before launch.'
   );
@@ -98,8 +97,7 @@ if (IS_PROD && OTP_DEMO_MODE) {
     : RATE_LIMITS_DISABLED
       ? 'DISABLED (OTP_RATE_LIMITS_DISABLED=true — staging escape hatch)'
       : `phone ${MAX_OTP_PER_HOUR_PHONE}/hr ${MAX_OTP_PER_DAY_PHONE}/day · ip ${MAX_OTP_PER_HOUR_IP}/hr · platform ${SMS_DAILY_BUDGET}/day`;
-  // eslint-disable-next-line no-console
-  console.info(`[otp] rate-limit policy: ${policy}`);
+  log.info(`[otp] rate-limit policy: ${policy}`);
 }
 
 function genCode(): string {

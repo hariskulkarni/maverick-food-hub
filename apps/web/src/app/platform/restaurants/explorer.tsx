@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/card';
@@ -262,7 +262,7 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
   const [identInit, setIdentInit] = useState({ name: '', tagline: '', cuisine: '', slug: '' });
   const [savingIdent, setSavingIdent] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     const r = await fetch(`/api/platform/restaurants/${id}`, { cache: 'no-store' });
     if (r.ok) {
@@ -280,8 +280,8 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
       setIdentInit(seed);
     }
     setLoading(false);
-  }
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
   useEffect(() => {
     fetch('/api/platform/restaurants/groups', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))

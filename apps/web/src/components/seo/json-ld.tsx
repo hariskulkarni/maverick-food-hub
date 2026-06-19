@@ -7,11 +7,18 @@
  * surrounding page markup.
  */
 export function JsonLd({ data }: { data: Record<string, unknown> | Record<string, unknown>[] }) {
+  // JSON.stringify does NOT escape `<`, so a field containing `</script>` (e.g.
+  // a user-supplied restaurant name or review) would break out of the script
+  // tag → stored XSS. Escape `<` plus the U+2028/U+2029 line separators that
+  // are valid in JSON but not in JS string literals.
+  const json = JSON.stringify(data)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
   return (
     <script
       type="application/ld+json"
-      // JSON.stringify output is safe to inline; <script> is not HTML-parsed.
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+      dangerouslySetInnerHTML={{ __html: json }}
     />
   );
 }

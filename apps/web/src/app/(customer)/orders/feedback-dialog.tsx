@@ -94,7 +94,17 @@ export function FeedbackDialog({ order, existing, readOnly, open, onOpenChange, 
     setTags(existing?.issueTags ?? []);
     setImageUrl(existing?.imageUrl ?? null);
     setShareWithRider(existing?.shareCommentWithRider ?? false);
-  }, [existing?.id, open]);
+  }, [
+    existing?.id,
+    existing?.foodRating,
+    existing?.deliveryRating,
+    existing?.overallRating,
+    existing?.comment,
+    existing?.issueTags,
+    existing?.imageUrl,
+    existing?.shareCommentWithRider,
+    open,
+  ]);
 
   const hasAnyInput =
     foodRating != null || deliveryRating != null || overallRating != null || tags.length > 0;

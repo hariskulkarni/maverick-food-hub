@@ -5,6 +5,7 @@ import { prisma } from '@/server/db';
 import { transitionOrder } from '@/server/orders';
 import { applyIncentivesForDelivery } from '@/server/rider-payments';
 import { normalizeOtp } from '@/lib/utils';
+import { log } from '@/server/log';
 
 /**
  * Hand-over verification — the rider taps "Confirm delivery" with the code the
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // through on '' === ''. This protects the (very rare) case where an order
   // was created before deliveryOtp generation existed.
   if (!expected) {
-    console.warn('[deliver] missing expected OTP on order', { orderId: a.order.id, assignmentId: a.id });
+    log.warn({ orderId: a.order.id, assignmentId: a.id }, '[deliver] missing expected OTP on order');
     return Response.json(
       { ok: false, reason: 'missing-expected', message: 'No delivery code is set for this order. Contact support.' },
       { status: 400 }
@@ -59,12 +60,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Length / shape failure — gives a clearer message in the app.
   if (submitted.length < 4) {
-    console.info('[deliver] short OTP submitted', {
-      orderId: a.order.id,
-      riderId: profile.id,
-      submittedLen: submitted.length,
-      rawLen: String(payload.otp ?? '').length,
-    });
+    log.info(
+      {
+        orderId: a.order.id,
+        riderId: profile.id,
+        submittedLen: submitted.length,
+        rawLen: String(payload.otp ?? '').length,
+      },
+      '[deliver] short OTP submitted'
+    );
     return Response.json(
       { ok: false, reason: 'too-short', message: 'Enter at least 4 digits.' },
       { status: 400 }
@@ -77,13 +81,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // much larger than `submittedLen`, the keyboard injected non-digit chars
     // and normalisation saved the day; if both lengths match `expected.length`
     // and they still differ, the rider genuinely typed the wrong number.
-    console.info('[deliver] OTP mismatch', {
-      orderId: a.order.id,
-      riderId: profile.id,
-      submittedLen: submitted.length,
-      expectedLen: expected.length,
-      rawLen: String(payload.otp ?? '').length,
-    });
+    log.info(
+      {
+        orderId: a.order.id,
+        riderId: profile.id,
+        submittedLen: submitted.length,
+        expectedLen: expected.length,
+        rawLen: String(payload.otp ?? '').length,
+      },
+      '[deliver] OTP mismatch'
+    );
     return Response.json(
       { ok: false, reason: 'mismatch', message: 'That code is incorrect. Ask the customer to read it again.' },
       { status: 400 }

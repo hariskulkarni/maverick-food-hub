@@ -16,6 +16,7 @@
  */
 
 import { EventEmitter } from 'node:events';
+import { log } from './log';
 
 class Bus extends EventEmitter {}
 
@@ -84,16 +85,16 @@ export function publish(channel: string, event: RealtimeEvent): void {
   // (closed laptop, nginx blocking, etc.) — the polling fallback should
   // pick it up on the next poll, but it's the first thing to check when
   // sync seems broken.
-  // eslint-disable-next-line no-console
-  console.log(JSON.stringify({
-    at: new Date().toISOString(),
-    msg: 'bus.publish',
-    channel,
-    kind: event.kind,
-    listenerCount,
-    orderId: 'orderId' in event ? event.orderId : undefined,
-    riderId: 'riderId' in event ? event.riderId : undefined,
-  }));
+  log.info(
+    {
+      channel,
+      kind: event.kind,
+      listenerCount,
+      orderId: 'orderId' in event ? event.orderId : undefined,
+      riderId: 'riderId' in event ? event.riderId : undefined,
+    },
+    'bus.publish'
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

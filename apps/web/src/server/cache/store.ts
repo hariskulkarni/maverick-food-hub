@@ -182,6 +182,14 @@ export class MemoryStore implements Store {
  * inlined as a string because ioredis's `defineCommand` registration would
  * fire before the connection is ready and we'd lose the convenience.
  */
+const INCR_EXPIRE_LUA = `
+local n = redis.call('incr', KEYS[1])
+if n == 1 then
+  redis.call('pexpire', KEYS[1], ARGV[1])
+end
+return n
+`;
+
 const CAD_LUA = `
 if redis.call('get', KEYS[1]) == ARGV[1] then
   return redis.call('del', KEYS[1])
@@ -243,18 +251,16 @@ export class RedisStore implements Store {
   async incr(key: string, ttlMs?: number): Promise<number> {
     return this.safe(
       async () => {
-        // INCR + EXPIRE in a single pipeline so the window TTL is set
-        // atomically on the FIRST hit only. We always call expire — Redis
-        // refreshes the TTL each call, which is what the rate-limit fixed-
-        // window semantics actually want.
+        // INCR, then set the window TTL ONLY when the counter is first created
+        // (INCR returns 1). Done in a Lua script so it is atomic and matches
+        // MemoryStore's fixed-window semantics: the TTL is anchored to the
+        // first hit and is NOT refreshed on later hits. Refreshing it on every
+        // hit (the old pipeline did) pushed the expiry forward under sustained
+        // traffic, so a client that crossed the limit never reset and was
+        // effectively locked out — and behaviour silently differed from dev.
         if (ttlMs && ttlMs > 0) {
-          const pipeline = this.client.multi();
-          pipeline.incr(key);
-          pipeline.pexpire(key, ttlMs);
-          const res = await pipeline.exec();
-          const incrResult = res?.[0];
-          if (incrResult && incrResult[0] === null) return Number(incrResult[1]) || 1;
-          return 1;
+          const n = await this.client.eval(INCR_EXPIRE_LUA, 1, key, ttlMs);
+          return Number(n) || 1;
         }
         return Number(await this.client.incr(key));
       },

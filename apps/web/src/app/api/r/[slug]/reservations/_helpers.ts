@@ -38,6 +38,7 @@ export async function resolveBranchForSlug(slug: string) {
 
   return {
     branchId: branch.id,
+    restaurantId: restaurant.id,
     dineInEnabled: restaurant.dineInEnabled,
     reservationDeposit: Number(restaurant.reservationDeposit),
     reservationDiscountPct: restaurant.reservationDiscountPct,

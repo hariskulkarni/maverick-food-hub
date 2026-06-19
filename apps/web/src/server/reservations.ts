@@ -179,16 +179,51 @@ export async function createReservation(input: CreateReservationInput) {
   });
 }
 
-/** Mark the deposit paid + move PENDING → CONFIRMED. */
-export async function confirmReservation(id: string, depositPaymentRef: string) {
+/**
+ * Confirm a reservation (PENDING → CONFIRMED) and record the deposit ref.
+ *
+ * `paid` controls the depositPaid flag:
+ *   - true  (default) — money has actually changed hands (online capture, or an
+ *     admin manually confirming). depositPaid = true.
+ *   - false — the table is held but the deposit is NOT yet collected (cash on
+ *     arrival, or a zero-deposit booking). depositPaid stays false so reporting
+ *     and the dine-in deposit credit never over-credit an uncollected deposit.
+ */
+export async function confirmReservation(
+  id: string,
+  depositPaymentRef: string,
+  opts: { paid?: boolean } = {}
+) {
+  const paid = opts.paid ?? true;
   const r = await prisma.reservation.findUniqueOrThrow({ where: { id } });
   if (r.status !== ReservationStatus.PENDING && r.status !== ReservationStatus.CONFIRMED) {
     throw new Error(`Reservation cannot be confirmed from status ${r.status}`);
   }
   return prisma.reservation.update({
     where: { id },
-    data: { status: ReservationStatus.CONFIRMED, depositPaid: true, depositPaymentRef },
+    data: { status: ReservationStatus.CONFIRMED, depositPaid: paid, depositPaymentRef },
   });
+}
+
+/**
+ * Record the gateway order id for an online deposit awaiting capture. Stored on
+ * the still-PENDING reservation so the confirm-deposit endpoint can verify a
+ * Razorpay payment against the exact order it created.
+ */
+export async function attachDepositOrder(id: string, providerOrderId: string) {
+  return prisma.reservation.update({
+    where: { id },
+    data: { depositProviderOrderId: providerOrderId },
+  });
+}
+
+/** Fetch the stored gateway order id for a reservation's pending deposit. */
+export async function getDepositOrderId(id: string): Promise<string | null> {
+  const r = await prisma.reservation.findUnique({
+    where: { id },
+    select: { depositProviderOrderId: true },
+  });
+  return r?.depositProviderOrderId ?? null;
 }
 
 export async function cancelReservation(id: string, by: string, reason?: string) {
