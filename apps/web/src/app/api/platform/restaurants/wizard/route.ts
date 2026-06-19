@@ -16,7 +16,6 @@ import { z } from 'zod';
 import argon2 from 'argon2';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { log } from '@/server/log';
@@ -159,9 +158,26 @@ function isJsonError(status: number, code: string, message: string, extra?: Reco
 // ── POST ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  await requireSuperAdmin();
+  // Auth guard. We check inline (rather than the throwing requireSuperAdmin
+  // helper) so an unauthenticated / non-super / superseded session yields a
+  // clean 401/403 the client can act on — a thrown Response surfaces to the
+  // browser as a confusing HTTP 500.
   const session = await auth();
-  const actorId = session?.user?.id;
+  if (!session?.user) {
+    return isJsonError(
+      401,
+      'UNAUTHENTICATED',
+      'Your session has expired or you signed in on another device/tab (a newer login signs the previous one out). Please sign in again with the super-admin account and retry — your wizard entries are saved.'
+    );
+  }
+  if (session.user.role !== Role.SUPER_ADMIN) {
+    return isJsonError(
+      403,
+      'FORBIDDEN',
+      'Only a super-admin can launch a restaurant. Your current session is not a super-admin account.'
+    );
+  }
+  const actorId = session.user.id;
 
   let body: ParsedBody;
   try {

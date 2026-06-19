@@ -450,6 +450,16 @@ export function WizardClient({ brands, unownedAdmins, defaults }: { brands: Bran
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
+        // Auth failure (expired / superseded session, or not super-admin):
+        // show the server's message and bounce to login. The draft is in
+        // sessionStorage, so the wizard rehydrates when they return.
+        if (res.status === 401 || res.status === 403) {
+          toast.error(j.message || 'Your session expired — please sign in again.');
+          setTimeout(() => {
+            window.location.href = `/login?mode=admin&next=${encodeURIComponent('/platform/restaurants/new')}`;
+          }, 1800);
+          return;
+        }
         throw new Error(j.message || j.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
