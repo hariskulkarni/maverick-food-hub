@@ -40,6 +40,87 @@ export interface HeroCarouselSlide {
   subtext?: string;
   ctaLabel?: string;
   ctaHref?: string;
+  // ── Video slides ──────────────────────────────────────────────────────────
+  mediaType?: 'image' | 'video';
+  /** Direct .mp4/.webm URL, or a YouTube/Vimeo link (auto-embedded). */
+  videoSrc?: string;
+  poster?: string;
+  videoAutoplay?: boolean;
+  videoLoop?: boolean;
+  videoMuted?: boolean;
+}
+
+// ── Video helpers (kept local so this component stays self-contained) ─────────
+type HeroVideoKind = 'file' | 'youtube' | 'vimeo' | 'none';
+function heroVideoInfo(raw: string): { kind: HeroVideoKind; id?: string; embedBase?: string; fileUrl?: string; mime?: string } {
+  const v = (raw || '').trim();
+  if (!v) return { kind: 'none' };
+  const yt = v.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+  if (yt) return { kind: 'youtube', id: yt[1], embedBase: `https://www.youtube.com/embed/${yt[1]}` };
+  const vm = v.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (vm) return { kind: 'vimeo', id: vm[1], embedBase: `https://player.vimeo.com/video/${vm[1]}` };
+  const clean = v.split('?')[0].toLowerCase();
+  const ext = clean.slice(clean.lastIndexOf('.') + 1);
+  const mime = ext === 'webm' ? 'video/webm' : (ext === 'ogg' || ext === 'ogv') ? 'video/ogg' : ext === 'mov' ? 'video/quicktime' : 'video/mp4';
+  return { kind: 'file', fileUrl: v, mime };
+}
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const on = () => setReduced(mq.matches);
+    on();
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
+  return reduced;
+}
+
+/** Video layer for a hero slide: <video> for direct files, <iframe> for
+ *  YouTube/Vimeo, poster/image fallback when autoplay is suppressed. */
+function HeroSlideVideo({ s, active, mediaCls, alt }: { s: HeroCarouselSlide; active: boolean; mediaCls: string; alt: string }) {
+  const reduced = useReducedMotion();
+  const ref = useRef<HTMLVideoElement | null>(null);
+  const poster = s.poster || s.src || undefined;
+  const autoplay = (s.videoAutoplay ?? true) && !reduced && active;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.muted = s.videoMuted ?? true;
+    if (autoplay) { el.play?.().catch(() => {}); } else { el.pause?.(); }
+  }, [autoplay, s.videoMuted]);
+
+  const info = heroVideoInfo(s.videoSrc || '');
+  const posterImg = poster ? (
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img src={poster} alt={alt} className={`absolute inset-0 h-full w-full ${mediaCls}`} />
+  ) : <div className="absolute inset-0 bg-muted" />;
+
+  if (info.kind === 'youtube' || info.kind === 'vimeo') {
+    if (!autoplay) return posterImg;
+    const embed = info.kind === 'youtube'
+      ? `${info.embedBase}?autoplay=1&mute=1&loop=1&controls=0&playsinline=1&modestbranding=1&rel=0&showinfo=0&playlist=${info.id}`
+      : `${info.embedBase}?background=1&autoplay=1&muted=1&loop=1`;
+    return <iframe src={embed} title={alt} className="pointer-events-none absolute inset-0 h-full w-full" style={{ border: 0 }} allow="autoplay; encrypted-media; picture-in-picture" loading={active ? 'eager' : 'lazy'} />;
+  }
+  if (info.kind === 'none') return posterImg;
+  return (
+    <video
+      ref={ref}
+      className={`absolute inset-0 h-full w-full ${mediaCls}`}
+      poster={poster}
+      autoPlay={autoplay}
+      loop={s.videoLoop ?? true}
+      muted={s.videoMuted ?? true}
+      playsInline
+      controls={false}
+      preload={active ? 'auto' : 'metadata'}
+      aria-label={alt}
+    >
+      <source src={info.fileUrl} type={info.mime} />
+    </video>
+  );
 }
 
 export function StorefrontHeroCarousel({
@@ -144,7 +225,11 @@ export function StorefrontHeroCarousel({
                 aria-label={`${i + 1} of ${count}`}
                 aria-hidden={!active}
               >
-                <ImageWithFallback src={s.src} alt={`${alt} — ${s.headline ?? `promotion ${i + 1}`}`} fill priority={i === 0} sizes="100vw" className={`${HERO_FIT_CLASS[imageFit]} ${HERO_POSITION_CLASS[imagePosition]}`} />
+                {s.mediaType === 'video' && s.videoSrc ? (
+                  <HeroSlideVideo s={s} active={active} mediaCls={`${HERO_FIT_CLASS[imageFit]} ${HERO_POSITION_CLASS[imagePosition]}`} alt={`${alt} — ${s.headline ?? `promotion ${i + 1}`}`} />
+                ) : (
+                  <ImageWithFallback src={s.src} alt={`${alt} — ${s.headline ?? `promotion ${i + 1}`}`} fill priority={i === 0} sizes="100vw" className={`${HERO_FIT_CLASS[imageFit]} ${HERO_POSITION_CLASS[imagePosition]}`} />
+                )}
                 {hasCaption && (
                   <>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent" />

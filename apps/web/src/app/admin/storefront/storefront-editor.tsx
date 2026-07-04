@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { reportApiError } from '@/lib/api-error';
+import { ImageUploader } from '@/components/image-uploader';
 import { Image as ImageIcon, Images, Plus, Trash2, ArrowUp, ArrowDown, Save, ExternalLink, Eye, EyeOff, ChevronDown, ChevronRight, Star, Loader2, Type, Megaphone, BookOpen, Blocks, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import type { StorefrontConfig, HeroSlide, HeroTransition, MenuLayout, FontPair, ButtonRadius, CardStyle, ContentBlock, BlockType, BlockPosition, Align, LogoFit, LogoShape, HeroWidth, HeroHeight } from '@/server/storefront-cms';
 import {
@@ -197,20 +198,41 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
                 <div key={i} className="rounded-lg border p-3 space-y-2 bg-muted/20">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-muted-foreground">Slide {i + 1}</span>
+                    <div className="inline-flex rounded-md border p-0.5 text-[11px] font-medium">
+                      {(['image', 'video'] as const).map((k) => (
+                        <button key={k} type="button" onClick={() => setSlide(i, { mediaType: k })}
+                          className={`rounded px-2 py-0.5 capitalize ${(s.mediaType ?? 'image') === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
+                          {k}
+                        </button>
+                      ))}
+                    </div>
                     <div className="ml-auto flex gap-1">
                       <IconBtn onClick={() => moveSlide(i, -1)} disabled={i === 0}><ArrowUp className="size-3.5" /></IconBtn>
                       <IconBtn onClick={() => moveSlide(i, 1)} disabled={i === cfg.hero.slides.length - 1}><ArrowDown className="size-3.5" /></IconBtn>
                       <IconBtn onClick={() => removeSlide(i)} danger><Trash2 className="size-3.5" /></IconBtn>
                     </div>
                   </div>
-                  <Input placeholder="Image URL (e.g. /banners/slide1.jpg or https://…)" value={s.src} onChange={(e) => setSlide(i, { src: e.target.value })} className="h-9" />
+                  {(s.mediaType ?? 'image') === 'video' ? (
+                    <div className="space-y-2">
+                      <ImageUploader kind="video" value={s.videoSrc} onChange={(u) => setSlide(i, { videoSrc: u || '' })} folder="banners" aspect="wide" label="Hero video (MP4/WebM · ≤ 50 MB)" />
+                      <Input placeholder="…or paste video URL (mp4/webm, YouTube, or Vimeo)" value={s.videoSrc ?? ''} onChange={(e) => setSlide(i, { videoSrc: e.target.value })} className="h-9" />
+                      <ImageUploader value={s.poster} onChange={(u) => setSlide(i, { poster: u || '' })} folder="banners" aspect="wide" label="Poster image (shown before the video plays)" />
+                      <div className="flex flex-wrap items-center gap-4 rounded-md border bg-background px-3 py-2 text-xs">
+                        <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={s.videoAutoplay ?? true} onChange={(e) => setSlide(i, { videoAutoplay: e.target.checked })} /> Autoplay</label>
+                        <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={s.videoLoop ?? true} onChange={(e) => setSlide(i, { videoLoop: e.target.checked })} /> Loop</label>
+                        <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={s.videoMuted ?? true} onChange={(e) => setSlide(i, { videoMuted: e.target.checked })} /> Muted</label>
+                      </div>
+                    </div>
+                  ) : (
+                    <Input placeholder="Image URL (e.g. /banners/slide1.jpg or https://…)" value={s.src} onChange={(e) => setSlide(i, { src: e.target.value })} className="h-9" />
+                  )}
                   <div className="grid grid-cols-2 gap-2">
                     <Input placeholder="Headline (optional)" value={s.headline ?? ''} onChange={(e) => setSlide(i, { headline: e.target.value })} className="h-9" />
                     <Input placeholder="Subtext (optional)" value={s.subtext ?? ''} onChange={(e) => setSlide(i, { subtext: e.target.value })} className="h-9" />
                     <Input placeholder="Button label (optional)" value={s.ctaLabel ?? ''} onChange={(e) => setSlide(i, { ctaLabel: e.target.value })} className="h-9" />
                     <Input placeholder="Button link (optional)" value={s.ctaHref ?? ''} onChange={(e) => setSlide(i, { ctaHref: e.target.value })} className="h-9" />
                   </div>
-                  {s.src && (
+                  {(s.mediaType ?? 'image') !== 'video' && s.src && (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={s.src} alt={`Slide ${i + 1}`} className="h-24 w-full object-cover rounded-md border" onError={(e) => ((e.currentTarget.style.display = 'none'))} />
                   )}

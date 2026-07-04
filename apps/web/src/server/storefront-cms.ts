@@ -107,6 +107,16 @@ export interface HeroSlide {
   subtext?: string;
   ctaLabel?: string;
   ctaHref?: string;
+  // ── Video slides (optional; default is a still image) ─────────────────────
+  /** 'image' (default) or 'video'. */
+  mediaType?: 'image' | 'video';
+  /** Direct .mp4/.webm URL (uploaded or CDN), or a YouTube/Vimeo link. */
+  videoSrc?: string;
+  /** Poster image shown before the video plays; falls back to `src`. */
+  poster?: string;
+  videoAutoplay?: boolean;
+  videoLoop?: boolean;
+  videoMuted?: boolean;
 }
 
 export interface SocialLinks {
@@ -539,13 +549,22 @@ function parseSlide(s: unknown): HeroSlide | null {
   if (!s || typeof s !== 'object') return null;
   const o = s as Record<string, unknown>;
   const src = url(o.src);
-  if (!src) return null;
+  const mediaType: 'image' | 'video' = o.mediaType === 'video' ? 'video' : 'image';
+  const videoSrc = url(o.videoSrc);
+  // A slide needs SOME media: an image `src`, or (video slides) a videoSrc.
+  if (!src && !(mediaType === 'video' && videoSrc)) return null;
   return {
     src,
     headline: str(o.headline, 120) || undefined,
     subtext: str(o.subtext, 240) || undefined,
     ctaLabel: str(o.ctaLabel, 40) || undefined,
     ctaHref: url(o.ctaHref) || undefined,
+    mediaType,
+    videoSrc: videoSrc || undefined,
+    poster: url(o.poster) || undefined,
+    videoAutoplay: typeof o.videoAutoplay === 'boolean' ? o.videoAutoplay : undefined,
+    videoLoop: typeof o.videoLoop === 'boolean' ? o.videoLoop : undefined,
+    videoMuted: typeof o.videoMuted === 'boolean' ? o.videoMuted : undefined,
   };
 }
 
