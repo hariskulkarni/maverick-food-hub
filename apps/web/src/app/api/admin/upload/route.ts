@@ -90,7 +90,7 @@ function manualParseMultipart(buf: Buffer, boundary: string): FormData {
       const name = nameM ? nameM[1] : '';
       if (name) {
         if (fileM) {
-          const file = new File([body], fileM[1] || 'upload.bin', {
+          const file = new File([new Uint8Array(body)], fileM[1] || 'upload.bin', {
             type: typeM ? typeM[1].trim() : 'application/octet-stream',
           });
           fd.append(name, file);
