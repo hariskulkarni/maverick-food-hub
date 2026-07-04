@@ -148,7 +148,30 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
         </div>
 
         {cfg.hero.type === 'cover' && (
-          <p className="text-xs text-muted-foreground">Uses your restaurant cover image{coverImageUrl ? '' : ' (none set — add one under Settings → Branding)'}.</p>
+          <div className="space-y-2">
+            <div className="inline-flex rounded-md border p-0.5 text-[11px] font-medium">
+              {(['image', 'video'] as const).map((k) => (
+                <button key={k} type="button" onClick={() => setHero({ coverMediaType: k })}
+                  className={`rounded px-2 py-0.5 capitalize ${(cfg.hero.coverMediaType ?? 'image') === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
+                  {k}
+                </button>
+              ))}
+            </div>
+            {(cfg.hero.coverMediaType ?? 'image') === 'video' ? (
+              <div className="space-y-2">
+                <ImageUploader kind="video" value={cfg.hero.coverVideoSrc} onChange={(u) => setHero({ coverVideoSrc: u || '' })} folder="banners" aspect="wide" label="Cover video (MP4/WebM · ≤ 50 MB)" />
+                <Input placeholder="…or paste video URL (mp4/webm, YouTube, or Vimeo)" value={cfg.hero.coverVideoSrc ?? ''} onChange={(e) => setHero({ coverVideoSrc: e.target.value })} className="h-9" />
+                <ImageUploader value={cfg.hero.coverPoster} onChange={(u) => setHero({ coverPoster: u || '' })} folder="banners" aspect="wide" label="Poster image (shown before the video plays)" />
+                <div className="flex flex-wrap items-center gap-4 rounded-md border bg-background px-3 py-2 text-xs">
+                  <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={cfg.hero.coverVideoAutoplay ?? true} onChange={(e) => setHero({ coverVideoAutoplay: e.target.checked })} /> Autoplay</label>
+                  <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={cfg.hero.coverVideoLoop ?? true} onChange={(e) => setHero({ coverVideoLoop: e.target.checked })} /> Loop</label>
+                  <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={cfg.hero.coverVideoMuted ?? true} onChange={(e) => setHero({ coverVideoMuted: e.target.checked })} /> Muted</label>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Uses your restaurant cover image{coverImageUrl ? '' : ' (none set — add one under Settings → Branding)'}.</p>
+            )}
+          </div>
         )}
 
         {/* SIZE — applies to BOTH cover and carousel hero, so it sits OUTSIDE

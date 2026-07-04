@@ -44,7 +44,7 @@ export interface RestaurantPageData {
   themeVars: React.CSSProperties;
 
   // Hero
-  heroSlides: Array<{ src: string; headline?: string; subtext?: string; ctaLabel?: string; ctaHref?: string }>;
+  heroSlides: Array<{ src: string; headline?: string; subtext?: string; ctaLabel?: string; ctaHref?: string; mediaType?: 'image' | 'video'; videoSrc?: string; poster?: string; videoAutoplay?: boolean; videoLoop?: boolean; videoMuted?: boolean }>;
   heroImage: string;
 
   // Brand ribbon
@@ -207,7 +207,17 @@ export async function loadRestaurantPageData(slug: string): Promise<RestaurantPa
   const heroSlides =
     cms.hero.type === 'carousel' && cms.hero.slides.length > 0
       ? cms.hero.slides
-      : (bannersForSlug(slug) ?? []).map((src) => ({ src }));
+      : cms.hero.type === 'cover' && cms.hero.coverMediaType === 'video' && cms.hero.coverVideoSrc
+        ? [{
+            src: cms.hero.coverPoster || heroImage,
+            mediaType: 'video' as const,
+            videoSrc: cms.hero.coverVideoSrc,
+            poster: cms.hero.coverPoster || heroImage,
+            videoAutoplay: cms.hero.coverVideoAutoplay ?? true,
+            videoLoop: cms.hero.coverVideoLoop ?? true,
+            videoMuted: cms.hero.coverVideoMuted ?? true,
+          }]
+        : (bannersForSlug(slug) ?? []).map((src) => ({ src }));
   const dishCount = categories.reduce((s, c) => s + c.menuItems.length, 0);
 
   // Floating categories FAB entries — projected from the same `categories`

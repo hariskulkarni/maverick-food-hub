@@ -170,6 +170,16 @@ export interface StorefrontConfig {
     /** How the hero IMAGE sits inside the box (object-fit) + its focal point. */
     imageFit: HeroFit;
     imagePosition: HeroPosition;
+    // ── Cover-mode video (single hero video; no carousel) ─────────────────────
+    /** 'image' (default) uses the restaurant cover image; 'video' plays a clip. */
+    coverMediaType?: 'image' | 'video';
+    /** Direct .mp4/.webm URL (uploaded or CDN), or a YouTube/Vimeo link. */
+    coverVideoSrc?: string;
+    /** Poster image shown before the cover video plays; falls back to cover image. */
+    coverPoster?: string;
+    coverVideoAutoplay?: boolean;
+    coverVideoLoop?: boolean;
+    coverVideoMuted?: boolean;
   };
   branding: {
     tagline: string;        // '' ⇒ fall back to Restaurant.tagline
@@ -457,6 +467,12 @@ export function defaultStorefrontConfig(): StorefrontConfig {
       height: 'wide',
       imageFit: 'cover',
       imagePosition: 'center',
+      coverMediaType: 'image',
+      coverVideoSrc: '',
+      coverPoster: '',
+      coverVideoAutoplay: true,
+      coverVideoLoop: true,
+      coverVideoMuted: true,
     },
     branding: {
       tagline: '',
@@ -669,6 +685,12 @@ export function parseStorefrontConfig(raw: unknown): StorefrontConfig {
       height: oneOf<HeroHeight>(hero.height, HERO_HEIGHTS, d.hero.height),
       imageFit: oneOf<HeroFit>(hero.imageFit, HERO_FITS, d.hero.imageFit),
       imagePosition: oneOf<HeroPosition>(hero.imagePosition, HERO_POSITIONS, d.hero.imagePosition),
+      coverMediaType: hero.coverMediaType === 'video' ? 'video' : 'image',
+      coverVideoSrc: url(hero.coverVideoSrc) || undefined,
+      coverPoster: url(hero.coverPoster) || undefined,
+      coverVideoAutoplay: typeof hero.coverVideoAutoplay === 'boolean' ? hero.coverVideoAutoplay : undefined,
+      coverVideoLoop: typeof hero.coverVideoLoop === 'boolean' ? hero.coverVideoLoop : undefined,
+      coverVideoMuted: typeof hero.coverVideoMuted === 'boolean' ? hero.coverVideoMuted : undefined,
     },
     branding: {
       tagline: str(branding.tagline, 160),
