@@ -92,11 +92,11 @@ export function WhatsOnYourMind({
           md+: responsive wrap grid. */}
       <div className="-mx-4 overflow-x-auto no-scrollbar px-4 md:mx-0 md:overflow-visible md:px-0">
         <div className="grid grid-flow-col grid-rows-2 gap-3 md:grid-flow-row md:grid-rows-none md:grid-cols-6 lg:grid-cols-8 md:gap-4">
-          {tiles.map((c) => {
+          {tiles.map((c, i) => {
             const cascade = buildTileImageCascade(c);
             return (
             <Link
-              key={c.slug}
+              key={`${c.slug}-${i}`}
               href={`/category/${c.slug}`}
               className="group flex shrink-0 flex-col items-center gap-2 tap-press"
               aria-label={`Browse ${c.label}`}

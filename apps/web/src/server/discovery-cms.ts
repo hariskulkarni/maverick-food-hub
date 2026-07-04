@@ -469,8 +469,13 @@ function curatedTileImage(slug: string, label: string): string {
 function parseTile(t: unknown): CategoryTile | null {
   if (!t || typeof t !== 'object') return null;
   const o = t as Record<string, unknown>;
-  const slug = str(o.slug, 64).trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
   const label = str(o.label, 60).trim();
+  let slug = str(o.slug, 64).trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '');
+  // Auto-derive the slug from the label when the admin left it blank, so a
+  // tile that has a label but no explicit slug is NOT silently dropped on save.
+  if (!slug && label) {
+    slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+  }
   if (!slug || !label) return null;
   // Two-step image resolution:
   //   (a) If the admin saved an explicit URL, use it — UNLESS it's a
