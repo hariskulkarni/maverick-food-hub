@@ -43,6 +43,7 @@ function jsonError(status: number, error: string, code: string): Response {
  * binary-safe parser that reads the raw bytes and splits on the boundary. This
  * makes video uploads reliable without changing the client.
  */
+let lastUploadDiag = '';
 async function readMultipart(req: NextRequest): Promise<FormData> {
   const ct = req.headers.get('content-type') || '';
   const buf = Buffer.from(await req.arrayBuffer());
@@ -63,8 +64,11 @@ async function readMultipart(req: NextRequest): Promise<FormData> {
   }
   const m = ct.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
   if (!m) throw new Error(`missing multipart boundary (bytes=${buf.length}, ct=${ct.slice(0, 60)})`);
-  const fd = manualParseMultipart(buf, (m[1] || m[2]).trim());
-  log.info({ bytes: buf.length, path: 'manual', nativeInfo, manualKeys: [...fd.keys()].join(',') }, 'upload parsed (manual)');
+  const boundary = (m[1] || m[2]).trim();
+  const head = buf.subarray(0, 140).toString('latin1').replace(/[^\x20-\x7e]/g, '.');
+  lastUploadDiag = `ctBoundary="${boundary}" native=${nativeInfo} bodyHead="${head}"`;
+  const fd = manualParseMultipart(buf, boundary);
+  log.info({ bytes: buf.length, path: 'manual', nativeInfo, manualKeys: [...fd.keys()].join(','), boundary, head }, 'upload parsed (manual)');
   return fd;
 }
 
@@ -149,7 +153,7 @@ export async function POST(req: NextRequest) {
   if (!(file instanceof Blob)) {
     const parsedFields = [...form.keys()].join(',') || '(none)';
     const cl = req.headers.get('content-length') ?? '?';
-    return jsonError(400, `No file in upload. Parsed fields: [${parsedFields}]; content-length=${cl}.`, 'upload/missing_file');
+    return jsonError(400, `No file in upload. fields=[${parsedFields}] cl=${cl} | ${lastUploadDiag}`.slice(0, 400), 'upload/missing_file');
   }
   if (file.size === 0) {
     return jsonError(400, 'The uploaded file is empty.', 'upload/empty_file');

@@ -133,6 +133,9 @@ export const config = {
   // Matcher covers the gated prefixes. Static assets and `/_next` are
   // excluded so they never hit the auth lookup.
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|manifest.json|manifest.webmanifest|sw.js|service-worker.js|robots.txt|sitemap.xml).*)'
+    // NOTE: `api` is excluded so Next doesn't buffer (and 10MB-truncate) large
+    // request bodies through middleware — critical for video uploads. API routes
+    // do their own auth; the demo gate already exempts /api.
+    '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|manifest.webmanifest|sw.js|service-worker.js|robots.txt|sitemap.xml).*)'
   ]
 };
