@@ -190,6 +190,7 @@ export function ImageUploader({
               {kind === 'video' ? (
                 <video
                   src={displayUrl}
+                  suppressHydrationWarning
                   className="absolute inset-0 h-full w-full object-cover"
                   muted
                   loop

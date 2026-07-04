@@ -108,6 +108,7 @@ function HeroSlideVideo({ s, active, mediaCls, alt }: { s: HeroCarouselSlide; ac
   return (
     <video
       ref={ref}
+      suppressHydrationWarning
       className={`absolute inset-0 h-full w-full ${mediaCls}`}
       poster={poster}
       autoPlay={autoplay}

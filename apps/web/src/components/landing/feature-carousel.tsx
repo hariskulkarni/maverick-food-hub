@@ -174,6 +174,7 @@ function SlideMedia({ s, isActive, objectFit, objectPosition, kenBurns, onError 
   return (
     <video
       ref={videoRef}
+      suppressHydrationWarning
       className={'absolute inset-0 h-full w-full ' + (kenBurns ? 'animate-kenburns' : '')}
       style={{ objectFit: objectFit as any, objectPosition }}
       poster={poster}
