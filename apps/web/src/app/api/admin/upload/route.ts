@@ -44,16 +44,21 @@ function jsonError(status: number, error: string, code: string): Response {
  * makes video uploads reliable without changing the client.
  */
 async function readMultipart(req: NextRequest): Promise<FormData> {
+  const ct = req.headers.get('content-type') || '';
+  const ab = await req.arrayBuffer();
+  // Try the native parser on the fully-buffered body. Some Next/undici builds
+  // either throw OR succeed-but-return-no-file on larger multipart uploads
+  // (observed with video). So we only trust the native result when it actually
+  // contains the file field; otherwise we fall back to the manual parser.
   try {
-    return await req.clone().formData();
+    const native = await new Response(ab, { headers: { 'content-type': ct } }).formData();
+    if (native.get('file') instanceof Blob) return native;
   } catch {
-    const ct = req.headers.get('content-type') || '';
-    const m = ct.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
-    if (!m) throw new Error('missing multipart boundary');
-    const boundary = (m[1] || m[2]).trim();
-    const buf = Buffer.from(await req.arrayBuffer());
-    return manualParseMultipart(buf, boundary);
+    /* fall through to the manual parser */
   }
+  const m = ct.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+  if (!m) throw new Error('missing multipart boundary');
+  return manualParseMultipart(Buffer.from(ab), (m[1] || m[2]).trim());
 }
 
 function manualParseMultipart(buf: Buffer, boundary: string): FormData {
