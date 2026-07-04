@@ -33,6 +33,77 @@ function jsonError(status: number, error: string, code: string): Response {
   });
 }
 
+/**
+ * Read a multipart/form-data body resiliently.
+ *
+ * Next/undici's built-in `request.formData()` intermittently throws
+ * "TypeError: Failed to parse body as FormData" on larger multipart uploads
+ * (notably video files) even when the body is intact. We try the native parser
+ * first (fast path — covers images), and on failure fall back to a manual,
+ * binary-safe parser that reads the raw bytes and splits on the boundary. This
+ * makes video uploads reliable without changing the client.
+ */
+async function readMultipart(req: NextRequest): Promise<FormData> {
+  try {
+    return await req.clone().formData();
+  } catch {
+    const ct = req.headers.get('content-type') || '';
+    const m = ct.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+    if (!m) throw new Error('missing multipart boundary');
+    const boundary = (m[1] || m[2]).trim();
+    const buf = Buffer.from(await req.arrayBuffer());
+    return manualParseMultipart(buf, boundary);
+  }
+}
+
+function manualParseMultipart(buf: Buffer, boundary: string): FormData {
+  const fd = new FormData();
+  const delim = Buffer.from(`--${boundary}`);
+  const CRLF = Buffer.from('\r\n');
+  const HDR_END = Buffer.from('\r\n\r\n');
+
+  let pos = buf.indexOf(delim);
+  if (pos < 0) throw new Error('multipart boundary not found in body');
+  pos += delim.length;
+
+  while (pos < buf.length) {
+    // "--" immediately after a boundary marks the end of the payload.
+    if (buf[pos] === 0x2d && buf[pos + 1] === 0x2d) break;
+    // Skip the CRLF that follows the boundary line.
+    if (buf[pos] === 0x0d && buf[pos + 1] === 0x0a) pos += 2;
+
+    const next = buf.indexOf(delim, pos);
+    if (next < 0) break;
+
+    // Part bytes run up to the CRLF that precedes the next boundary.
+    let end = next;
+    if (end >= 2 && buf[end - 2] === 0x0d && buf[end - 1] === 0x0a) end -= 2;
+    const part = buf.subarray(pos, end);
+
+    const sep = part.indexOf(HDR_END);
+    if (sep >= 0) {
+      const headers = part.subarray(0, sep).toString('utf8');
+      const body = part.subarray(sep + HDR_END.length);
+      const nameM = headers.match(/name="([^"]*)"/i);
+      const fileM = headers.match(/filename="([^"]*)"/i);
+      const typeM = headers.match(/content-type:\s*([^\r\n]+)/i);
+      const name = nameM ? nameM[1] : '';
+      if (name) {
+        if (fileM) {
+          const file = new File([body], fileM[1] || 'upload.bin', {
+            type: typeM ? typeM[1].trim() : 'application/octet-stream',
+          });
+          fd.append(name, file);
+        } else {
+          fd.append(name, body.toString('utf8'));
+        }
+      }
+    }
+    pos = next + delim.length;
+  }
+  return fd;
+}
+
 export async function POST(req: NextRequest) {
   // Auth gate — returns a typed 401/403 JSON response when the caller can't
   // hit this endpoint. The check distinguishes "not signed in" (the client
@@ -54,10 +125,11 @@ export async function POST(req: NextRequest) {
 
   let form: FormData;
   try {
-    form = await req.formData();
+    form = await readMultipart(req);
   } catch (e) {
+    const detail = (e as Error)?.message || String(e);
     log.error({ err: e }, 'upload: invalid multipart body');
-    return jsonError(400, 'Upload payload was not a valid multipart form.', 'upload/bad_body');
+    return jsonError(400, `Upload could not be read: ${detail.slice(0, 160)}`, 'upload/bad_body');
   }
 
   const file = form.get('file');
