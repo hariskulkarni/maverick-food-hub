@@ -83,14 +83,14 @@ function assertDeletable(p: string) {
 
 /** Recursive on-disk size in bytes. Skips symlinks; missing path ⇒ 0. */
 async function dirSize(dir: string): Promise<number> {
-  let total = 0;
-  let entries: Awaited<ReturnType<typeof fs.readdir>>;
-  try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch {
-    // Not a dir or doesn't exist — try a single-file stat, else 0.
+  // readdir(withFileTypes) → Dirent[]; on failure fall back to a single-file
+  // stat (or 0). Using .catch keeps `entries` precisely typed (no fragile
+  // ReturnType annotation, which resolves to the Buffer overload).
+  const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => null);
+  if (!entries) {
     try { const st = await fs.lstat(dir); return st.isFile() ? st.size : 0; } catch { return 0; }
   }
+  let total = 0;
   for (const e of entries) {
     const full = path.join(dir, e.name);
     try {
