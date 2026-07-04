@@ -45,20 +45,27 @@ function jsonError(status: number, error: string, code: string): Response {
  */
 async function readMultipart(req: NextRequest): Promise<FormData> {
   const ct = req.headers.get('content-type') || '';
-  const ab = await req.arrayBuffer();
-  // Try the native parser on the fully-buffered body. Some Next/undici builds
-  // either throw OR succeed-but-return-no-file on larger multipart uploads
-  // (observed with video). So we only trust the native result when it actually
-  // contains the file field; otherwise we fall back to the manual parser.
+  const buf = Buffer.from(await req.arrayBuffer());
+  let nativeInfo = 'skipped';
+  // Try the native parser on a COPY of the buffered body (so `buf` is never
+  // touched). Some Next/undici builds either throw OR succeed-but-return-no-file
+  // on larger multipart uploads (video), so we only trust it when it actually
+  // contains the file; otherwise we fall back to the manual parser on `buf`.
   try {
-    const native = await new Response(ab, { headers: { 'content-type': ct } }).formData();
-    if (native.get('file') instanceof Blob) return native;
-  } catch {
-    /* fall through to the manual parser */
+    const native = await new Response(new Uint8Array(buf), { headers: { 'content-type': ct } }).formData();
+    nativeInfo = `keys=[${[...native.keys()].join(',')}]`;
+    if (native.get('file') instanceof Blob) {
+      log.info({ bytes: buf.length, path: 'native', nativeInfo }, 'upload parsed');
+      return native;
+    }
+  } catch (e) {
+    nativeInfo = 'threw:' + ((e as Error)?.message || String(e)).slice(0, 80);
   }
   const m = ct.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
-  if (!m) throw new Error('missing multipart boundary');
-  return manualParseMultipart(Buffer.from(ab), (m[1] || m[2]).trim());
+  if (!m) throw new Error(`missing multipart boundary (bytes=${buf.length}, ct=${ct.slice(0, 60)})`);
+  const fd = manualParseMultipart(buf, (m[1] || m[2]).trim());
+  log.info({ bytes: buf.length, path: 'manual', nativeInfo, manualKeys: [...fd.keys()].join(',') }, 'upload parsed (manual)');
+  return fd;
 }
 
 function manualParseMultipart(buf: Buffer, boundary: string): FormData {
@@ -140,7 +147,9 @@ export async function POST(req: NextRequest) {
   const file = form.get('file');
   const folder = (form.get('folder') as string | null) ?? 'misc';
   if (!(file instanceof Blob)) {
-    return jsonError(400, 'No file attached to the upload.', 'upload/missing_file');
+    const parsedFields = [...form.keys()].join(',') || '(none)';
+    const cl = req.headers.get('content-length') ?? '?';
+    return jsonError(400, `No file in upload. Parsed fields: [${parsedFields}]; content-length=${cl}.`, 'upload/missing_file');
   }
   if (file.size === 0) {
     return jsonError(400, 'The uploaded file is empty.', 'upload/empty_file');
