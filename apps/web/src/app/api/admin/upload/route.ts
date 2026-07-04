@@ -21,8 +21,10 @@ import { requireAnyAdminApi } from '@/server/api-auth';
 import { log } from '@/server/log';
 
 export const runtime = 'nodejs';
-const MAX_BYTES = 8 * 1024 * 1024; // 8 MB
-const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;   // 8 MB
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;  // 50 MB — hero/carousel video slides
+const ALLOWED_IMAGE = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
+const ALLOWED_VIDEO = new Set(['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime']);
 
 function jsonError(status: number, error: string, code: string): Response {
   return new Response(JSON.stringify({ error, code }), {
@@ -66,20 +68,24 @@ export async function POST(req: NextRequest) {
   if (file.size === 0) {
     return jsonError(400, 'The uploaded file is empty.', 'upload/empty_file');
   }
-  if (file.size > MAX_BYTES) {
+
+  const type = file.type || 'application/octet-stream';
+  const isVideo = ALLOWED_VIDEO.has(type);
+  const isImage = ALLOWED_IMAGE.has(type);
+  if (!isVideo && !isImage) {
     return jsonError(
-      413,
-      `File is too large — max ${MAX_BYTES / 1024 / 1024} MB.`,
-      'upload/too_large',
+      415,
+      `Unsupported file type "${type}". Upload an image (JPEG, PNG, WebP, GIF, AVIF) or a video (MP4, WebM, MOV, OGG).`,
+      'upload/bad_type',
     );
   }
 
-  const type = file.type || 'application/octet-stream';
-  if (!ALLOWED.has(type)) {
+  const maxBytes = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+  if (file.size > maxBytes) {
     return jsonError(
-      415,
-      `Unsupported file type "${type}". Please upload JPEG, PNG, WebP, GIF, or AVIF.`,
-      'upload/bad_type',
+      413,
+      `File is too large — max ${maxBytes / 1024 / 1024} MB for ${isVideo ? 'video' : 'image'}.`,
+      'upload/too_large',
     );
   }
 

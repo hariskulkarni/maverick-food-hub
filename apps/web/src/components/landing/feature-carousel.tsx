@@ -53,6 +53,15 @@ export interface CarouselSlideData {
   overlayPosition?: SlideOverlayPosition;
   /** 0-100 — gradient scrim opacity behind the overlay. */
   overlayDarkness?: number;
+  // ── Video slides ──────────────────────────────────────────────────────────
+  mediaType?: 'image' | 'video';
+  /** Direct .mp4/.webm URL, or a YouTube/Vimeo link (auto-embedded). */
+  videoSrc?: string;
+  /** Poster image; falls back to `src`. */
+  poster?: string;
+  videoAutoplay?: boolean;
+  videoLoop?: boolean;
+  videoMuted?: boolean;
 }
 
 const ASPECT_TO_CSS: Record<CarouselAspectRatio, string> = {
@@ -67,6 +76,120 @@ const OBJECT_FIT_CSS: Record<SlideObjectFit, string> = {
   fill:    'fill',
   none:    'none',
 };
+
+// ── Video helpers ────────────────────────────────────────────────────────────
+type VideoKind = 'file' | 'youtube' | 'vimeo' | 'none';
+function videoInfo(raw: string): { kind: VideoKind; id?: string; embedBase?: string; fileUrl?: string; mime?: string } {
+  const v = (raw || '').trim();
+  if (!v) return { kind: 'none' };
+  const yt = v.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+  if (yt) return { kind: 'youtube', id: yt[1], embedBase: `https://www.youtube.com/embed/${yt[1]}` };
+  const vm = v.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (vm) return { kind: 'vimeo', id: vm[1], embedBase: `https://player.vimeo.com/video/${vm[1]}` };
+  const clean = v.split('?')[0].toLowerCase();
+  const ext = clean.slice(clean.lastIndexOf('.') + 1);
+  const mime = ext === 'webm' ? 'video/webm' : (ext === 'ogg' || ext === 'ogv') ? 'video/ogg' : ext === 'mov' ? 'video/quicktime' : 'video/mp4';
+  return { kind: 'file', fileUrl: v, mime };
+}
+
+/** Respect the OS "reduce motion" setting — suppress video autoplay when set. */
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const on = () => setReduced(mq.matches);
+    on();
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
+  return reduced;
+}
+
+/**
+ * Crisp media layer of a slide: <img> for image slides, a muted-autoplay-loop
+ * <video> for uploaded/direct files, or a background <iframe> for YouTube /
+ * Vimeo. Falls back to the poster (or image) when autoplay is suppressed
+ * (reduced-motion) or the slide isn't the active one.
+ */
+function SlideMedia({ s, isActive, objectFit, objectPosition, kenBurns, onError }: {
+  s: CarouselSlideData;
+  isActive: boolean;
+  objectFit: string;
+  objectPosition: string;
+  kenBurns: boolean;
+  onError: () => void;
+}) {
+  const reduced = useReducedMotion();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const isVideo = s.mediaType === 'video' && !!s.videoSrc;
+  const poster = s.poster || s.src || undefined;
+  const autoplay = (s.videoAutoplay ?? true) && !reduced && isActive;
+
+  // React doesn't reliably reflect `muted` to the DOM property (which browsers
+  // require for autoplay). Force it via the ref + (re)start on activation.
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    el.muted = s.videoMuted ?? true;
+    if (autoplay) { el.play?.().catch(() => { /* autoplay blocked — poster stays */ }); }
+    else { el.pause?.(); }
+  }, [autoplay, s.videoMuted]);
+
+  const imgEl = (src: string) => (
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img
+      src={src}
+      alt={s.alt}
+      loading={isActive ? 'eager' : 'lazy'}
+      className={'absolute inset-0 h-full w-full ' + (kenBurns ? 'animate-kenburns' : '')}
+      style={{ objectFit: objectFit as any, objectPosition }}
+      onError={onError}
+    />
+  );
+
+  if (!isVideo) return imgEl(s.src);
+
+  const info = videoInfo(s.videoSrc as string);
+
+  if (info.kind === 'youtube' || info.kind === 'vimeo') {
+    // Not active / reduced-motion → show the poster still instead of the embed.
+    if (!autoplay) return poster ? imgEl(poster) : <div className="absolute inset-0" />;
+    const embed = info.kind === 'youtube'
+      ? `${info.embedBase}?autoplay=1&mute=1&loop=1&controls=0&playsinline=1&modestbranding=1&rel=0&showinfo=0&playlist=${info.id}`
+      : `${info.embedBase}?background=1&autoplay=1&muted=1&loop=1`;
+    return (
+      <iframe
+        src={embed}
+        title={s.alt || 'Hero video'}
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        style={{ border: 0 }}
+        allow="autoplay; encrypted-media; picture-in-picture"
+        loading={isActive ? 'eager' : 'lazy'}
+      />
+    );
+  }
+
+  // Direct file (mp4/webm/ogg/mov)
+  return (
+    <video
+      ref={videoRef}
+      className={'absolute inset-0 h-full w-full ' + (kenBurns ? 'animate-kenburns' : '')}
+      style={{ objectFit: objectFit as any, objectPosition }}
+      poster={poster}
+      autoPlay={autoplay}
+      loop={s.videoLoop ?? true}
+      muted={s.videoMuted ?? true}
+      playsInline
+      controls={false}
+      preload={isActive ? 'auto' : 'metadata'}
+      onError={onError}
+      aria-label={s.alt || 'Hero video'}
+    >
+      <source src={info.fileUrl} type={info.mime} />
+    </video>
+  );
+}
 
 export function FeatureCarousel({
   slides: slidesProp,
@@ -373,10 +496,10 @@ function SlideContent(props: {
     <div className={`relative w-full overflow-hidden bg-gradient-to-br ${s.fallback} ${useHeroSize ? 'h-full' : ''}`} style={aspectStyle}>
       {/* Blurred backdrop — gives wide screens a designed hero feel even when
           the banner image is centered with object-contain. */}
-      {!isFailed && (
+      {!isFailed && (s.poster || s.src) && (
         /* eslint-disable-next-line @next/next/no-img-element */
         <img
-          src={s.src}
+          src={s.poster || s.src}
           alt=""
           aria-hidden="true"
           loading="lazy"
@@ -392,16 +515,12 @@ function SlideContent(props: {
             <span className="display text-lg md:text-3xl font-extrabold text-white drop-shadow">{s.alt}</span>
           </div>
         ) : (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={s.src}
-            alt={s.alt}
-            loading={isActive ? 'eager' : 'lazy'}
-            className={
-              'absolute inset-0 h-full w-full ' +
-              (kenBurns ? 'animate-kenburns' : '')
-            }
-            style={{ objectFit: objectFit as any, objectPosition }}
+          <SlideMedia
+            s={s}
+            isActive={isActive}
+            objectFit={objectFit}
+            objectPosition={objectPosition}
+            kenBurns={kenBurns}
             onError={onError}
           />
         )}

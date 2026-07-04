@@ -18,6 +18,8 @@ interface Props {
   onChange: (url: string | null) => void;
   folder?: string;
   uploadUrl?: string;
+  /** 'image' (default) or 'video' — switches accepted types, size cap, preview. */
+  kind?: 'image' | 'video';
   aspect?: 'square' | 'video' | 'wide';
   label?: string;
   hint?: string;
@@ -39,6 +41,7 @@ export function ImageUploader({
   onChange,
   folder = 'uploads',
   uploadUrl = '/api/admin/upload',
+  kind = 'image',
   aspect = 'video',
   label,
   hint,
@@ -69,14 +72,15 @@ export function ImageUploader({
     setImgLoadFailed(false);
   }, [value, localPreview]);
 
+  const MAX_BYTES = kind === 'video' ? 50 * 1024 * 1024 : 8 * 1024 * 1024;
   async function upload(file: File) {
     setError(null);
-    if (!file.type.startsWith('image/')) {
-      setError('Only image files are supported.');
+    if (!file.type.startsWith(kind + '/')) {
+      setError(kind === 'video' ? 'Only video files are supported.' : 'Only image files are supported.');
       return;
     }
-    if (file.size > 8 * 1024 * 1024) {
-      setError('File too large — max 8 MB.');
+    if (file.size > MAX_BYTES) {
+      setError(`File too large — max ${MAX_BYTES / 1024 / 1024} MB.`);
       return;
     }
     // Instant preview
@@ -161,7 +165,7 @@ export function ImageUploader({
             <div className="absolute inset-0 grid place-items-center bg-destructive/5 p-3 text-destructive">
               <div className="text-center">
                 <AlertCircle className="size-5 mx-auto" />
-                <div className="mt-1 text-[11px] font-medium">Image failed to load</div>
+                <div className="mt-1 text-[11px] font-medium">{kind === 'video' ? 'Video failed to load' : 'Image failed to load'}</div>
                 <div className="mt-0.5 text-[10px] text-destructive/80 break-all line-clamp-2">{value || displayUrl}</div>
                 <div className="mt-1.5 inline-flex gap-1">
                   <button
@@ -183,13 +187,25 @@ export function ImageUploader({
             </div>
           ) : (
             <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={displayUrl}
-                alt=""
-                className="absolute inset-0 h-full w-full object-cover"
-                onError={() => setImgLoadFailed(true)}
-              />
+              {kind === 'video' ? (
+                <video
+                  src={displayUrl}
+                  className="absolute inset-0 h-full w-full object-cover"
+                  muted
+                  loop
+                  playsInline
+                  autoPlay
+                  onError={() => setImgLoadFailed(true)}
+                />
+              ) : (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={displayUrl}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                  onError={() => setImgLoadFailed(true)}
+                />
+              )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
@@ -216,8 +232,8 @@ export function ImageUploader({
               <div className="inline-grid size-10 place-items-center rounded-full bg-card mb-2 shadow-sm">
                 <ImageIcon className="size-5 text-muted-foreground" />
               </div>
-              <div className="text-sm font-medium">Drop an image or click to upload</div>
-              <div className="text-[11px] text-muted-foreground mt-0.5">JPG, PNG, WebP, GIF, AVIF · max 8 MB</div>
+              <div className="text-sm font-medium">{kind === 'video' ? 'Drop a video or click to upload' : 'Drop an image or click to upload'}</div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">{kind === 'video' ? 'MP4, WebM, MOV, OGG · max 50 MB' : 'JPG, PNG, WebP, GIF, AVIF · max 8 MB'}</div>
               {recommended && (
                 <div className="mt-1.5 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
                   Recommended: {recommended}
@@ -282,7 +298,7 @@ export function ImageUploader({
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept={kind === 'video' ? 'video/*' : 'image/*'}
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];

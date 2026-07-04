@@ -9,7 +9,7 @@ import {
 import { ImageUploader } from '@/components/image-uploader';
 import type {
   DiscoveryConfig, CarouselSlide, CategoryTile, FooterColumn, NearbySort, SlideCtaStyle,
-  SlideObjectFit, SlideOverlayPosition, CarouselTransition, CarouselAspectRatio,
+  SlideObjectFit, SlideOverlayPosition, CarouselTransition, CarouselAspectRatio, SlideMediaType,
 } from '@/server/discovery-cms';
 import type { HeroWidth, HeroHeight } from '@/server/storefront-cms';
 import {
@@ -183,6 +183,23 @@ function Area({ value, onChange, placeholder, rows = 3, max }: { value: string; 
   );
 }
 
+function MediaTypeTabs({ value, onChange }: { value: 'image' | 'video'; onChange: (v: 'image' | 'video') => void }) {
+  return (
+    <div className="inline-flex rounded-md border p-0.5 text-xs font-medium">
+      {(['image', 'video'] as const).map((k) => (
+        <button
+          key={k}
+          type="button"
+          onClick={() => onChange(k)}
+          className={`rounded px-2.5 py-1 capitalize transition-colors ${value === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          {k}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button
@@ -299,11 +316,33 @@ function CarouselTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: Patc
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-[200px_1fr]">
-              <ImageUploader value={s.src} onChange={(url) => update(i, { src: url || '' })} folder="banners" aspect="wide" label="Banner image (2:1)" recommended="2600×1300 px (2:1, landscape) · JPG/PNG/WebP" />
+              <div className="space-y-2">
+                <MediaTypeTabs value={(s.mediaType ?? 'image')} onChange={(mt) => update(i, { mediaType: mt })} />
+                {(s.mediaType ?? 'image') === 'video' ? (
+                  <>
+                    <ImageUploader kind="video" value={s.videoSrc} onChange={(url) => update(i, { videoSrc: url || '' })} folder="banners" aspect="wide" label="Hero video (MP4/WebM)" recommended="≤ 50 MB · 1920×1080 · short, muted loop" />
+                    <ImageUploader value={s.poster} onChange={(url) => update(i, { poster: url || '' })} folder="banners" aspect="wide" label="Poster image (shown before the video plays)" recommended="2600×1300 px (2:1)" />
+                  </>
+                ) : (
+                  <ImageUploader value={s.src} onChange={(url) => update(i, { src: url || '' })} folder="banners" aspect="wide" label="Banner image (2:1)" recommended="2600×1300 px (2:1, landscape) · JPG/PNG/WebP" />
+                )}
+              </div>
               <div className="space-y-3">
-                <Field label="Alt text" hint="Describes the image for accessibility + SEO."><Text value={s.alt} onChange={(v) => update(i, { alt: v })} max={240} placeholder="Wok & Sizzler — wok-tossed happiness…" /></Field>
-                <Field label="Image click link (optional)" hint="Where the WHOLE banner goes when tapped, e.g. /r/wok-sizzler"><Text value={s.href} onChange={(v) => update(i, { href: v })} placeholder="/r/some-restaurant" /></Field>
-                <Field label="Fallback gradient" hint="Tailwind from/via/to classes shown while the image loads or if it's missing."><Text value={s.fallback} onChange={(v) => update(i, { fallback: v })} placeholder="from-[#ff5a2c] via-[#ff3b30] to-[#e0286f]" /></Field>
+                {(s.mediaType ?? 'image') === 'video' && (
+                  <>
+                    <Field label="…or paste a video URL" hint="Direct .mp4/.webm link, or a YouTube / Vimeo URL (auto-embedded as a muted, looping background).">
+                      <Text value={s.videoSrc} onChange={(v) => update(i, { videoSrc: v })} placeholder="https://cdn…/hero.mp4  ·  https://youtu.be/…" />
+                    </Field>
+                    <div className="flex flex-wrap items-center gap-4 rounded-md border bg-muted/30 px-3 py-2">
+                      <Toggle checked={s.videoAutoplay ?? true} onChange={(v) => update(i, { videoAutoplay: v })} label="Autoplay" />
+                      <Toggle checked={s.videoLoop ?? true} onChange={(v) => update(i, { videoLoop: v })} label="Loop" />
+                      <Toggle checked={s.videoMuted ?? true} onChange={(v) => update(i, { videoMuted: v })} label="Muted" />
+                    </div>
+                  </>
+                )}
+                <Field label="Alt text" hint="Describes the slide for accessibility + SEO."><Text value={s.alt} onChange={(v) => update(i, { alt: v })} max={240} placeholder="Wok & Sizzler — wok-tossed happiness…" /></Field>
+                <Field label={(s.mediaType ?? 'image') === 'video' ? 'Video click link (optional)' : 'Image click link (optional)'} hint="Where the WHOLE banner goes when tapped, e.g. /r/wok-sizzler"><Text value={s.href} onChange={(v) => update(i, { href: v })} placeholder="/r/some-restaurant" /></Field>
+                <Field label="Fallback gradient" hint="Tailwind from/via/to classes shown while the media loads or if it's missing."><Text value={s.fallback} onChange={(v) => update(i, { fallback: v })} placeholder="from-[#ff5a2c] via-[#ff3b30] to-[#e0286f]" /></Field>
               </div>
             </div>
 
@@ -429,6 +468,8 @@ function CarouselTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: Patc
           eyebrow: '', headline: '', subtext: '', ctaLabel: '', ctaHref: '', ctaStyle: 'primary' as SlideCtaStyle,
           objectFit: 'contain' as SlideObjectFit, focalPoint: 'center',
           overlayPosition: 'bottom-left' as SlideOverlayPosition, overlayDarkness: 60,
+          mediaType: 'image' as SlideMediaType, videoSrc: '', poster: '',
+          videoAutoplay: true, videoLoop: true, videoMuted: true,
         }] } }))}
         className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-3 py-2 text-sm hover:border-primary"
       >

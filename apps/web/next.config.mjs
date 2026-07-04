@@ -59,7 +59,10 @@ const nextConfig = {
       "img-src 'self' data: blob: https://images.unsplash.com https://*.unsplash.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://maps.googleapis.com https://*.googleusercontent.com" +
         (process.env.IMAGE_CDN_HOST ? ` https://${process.env.IMAGE_CDN_HOST}` : ''),
       "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com https://*.razorpay.com https://maps.googleapis.com https://nominatim.openstreetmap.org https://*.tile.openstreetmap.org",
-      "frame-src 'self' https://checkout.razorpay.com https://api.razorpay.com https://accounts.google.com",
+      "frame-src 'self' https://checkout.razorpay.com https://api.razorpay.com https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com",
+      // Hero/carousel videos: same-origin uploads (/uploads), blob previews,
+      // and pasted external direct-file URLs (CDN/S3) over https.
+      "media-src 'self' blob: data: https:",
       "worker-src 'self' blob:",
       // Only force https upgrades when the site actually serves over https.
       ...(httpsEnabled ? ['upgrade-insecure-requests'] : []),

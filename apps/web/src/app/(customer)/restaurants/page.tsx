@@ -323,6 +323,12 @@ export default async function RestaurantsListPage({
               focalPoint: s.focalPoint,
               overlayPosition: s.overlayPosition,
               overlayDarkness: s.overlayDarkness,
+              mediaType: s.mediaType,
+              videoSrc: s.videoSrc || undefined,
+              poster: s.poster || undefined,
+              videoAutoplay: s.videoAutoplay,
+              videoLoop: s.videoLoop,
+              videoMuted: s.videoMuted,
             }))}
           autoplayMs={cms.carousel.autoplayMs}
           transition={cms.carousel.transition}

@@ -77,6 +77,10 @@ export const SLIDE_CTA_STYLES = ['primary', 'secondary', 'outline'] as const;
 export type SlideObjectFit = 'contain' | 'cover' | 'fill' | 'none';
 export const SLIDE_OBJECT_FITS = ['contain', 'cover', 'fill', 'none'] as const;
 
+/** A hero/carousel slide can present a still image (default) or a video. */
+export type SlideMediaType = 'image' | 'video';
+export const SLIDE_MEDIA_TYPES = ['image', 'video'] as const;
+
 /** Where the overlay (eyebrow / headline / subtext / CTA) sits over the banner. */
 export type SlideOverlayPosition =
   | 'bottom-left' | 'bottom-center' | 'bottom-right'
@@ -151,6 +155,29 @@ export interface CarouselSlide {
    * black. Default 60.
    */
   overlayDarkness: number;
+
+  // ── Video slides (optional; default is a still image) ─────────────────────
+  /** Whether this slide renders an image (`src`) or a video (`videoSrc`). */
+  mediaType: SlideMediaType;
+  /**
+   * Video source when mediaType==='video'. Either a direct file URL
+   * (uploaded .mp4/.webm under /uploads, or a CDN/S3 link), OR a YouTube /
+   * Vimeo URL — those are auto-embedded as a muted, looping background.
+   * Ignored when mediaType==='image'.
+   */
+  videoSrc: string;
+  /**
+   * Poster image shown before the video loads / while it buffers / when
+   * autoplay is blocked or the viewer prefers reduced motion. Falls back to
+   * `src` when blank.
+   */
+  poster: string;
+  /** Autoplay (muted) on load. Default true. */
+  videoAutoplay: boolean;
+  /** Loop the video. Default true. */
+  videoLoop: boolean;
+  /** Mute the video (required for browsers to allow autoplay). Default true. */
+  videoMuted: boolean;
 }
 
 export interface CategoryTile {
@@ -305,6 +332,12 @@ export function defaultDiscoveryConfig(): DiscoveryConfig {
         focalPoint: 'center',
         overlayPosition: 'bottom-left' as SlideOverlayPosition,
         overlayDarkness: 60,
+        mediaType: 'image' as SlideMediaType,
+        videoSrc: '',
+        poster: '',
+        videoAutoplay: true,
+        videoLoop: true,
+        videoMuted: true,
       })),
     },
     topOffers: {
@@ -387,7 +420,10 @@ function parseSlide(s: unknown): CarouselSlide | null {
   if (!s || typeof s !== 'object') return null;
   const o = s as Record<string, unknown>;
   const src = url(o.src);
-  if (!src) return null;
+  const mediaType = oneOf<SlideMediaType>(o.mediaType, SLIDE_MEDIA_TYPES, 'image');
+  const videoSrc = url(o.videoSrc);
+  // A slide needs SOME media: an image `src`, or (for video slides) a videoSrc.
+  if (!src && !(mediaType === 'video' && videoSrc)) return null;
   return {
     src,
     alt: str(o.alt, 240),
@@ -404,6 +440,12 @@ function parseSlide(s: unknown): CarouselSlide | null {
     focalPoint: str(o.focalPoint, 40) || 'center',
     overlayPosition: oneOf<SlideOverlayPosition>(o.overlayPosition, SLIDE_OVERLAY_POSITIONS, 'bottom-left'),
     overlayDarkness: clampInt(o.overlayDarkness, 0, 100, 60),
+    mediaType,
+    videoSrc,
+    poster: url(o.poster),
+    videoAutoplay: bool(o.videoAutoplay, true),
+    videoLoop: bool(o.videoLoop, true),
+    videoMuted: bool(o.videoMuted, true),
   };
 }
 
