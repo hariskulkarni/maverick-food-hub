@@ -88,9 +88,10 @@ export function WhatsOnYourMind({
         <h2 id="woym-heading">{heading}</h2>
       </div>
 
-      {/* Mobile: horizontal scroll. md+: responsive wrap grid. */}
+      {/* Mobile: two-row horizontal scroll (fits ~16 tiles in two lines).
+          md+: responsive wrap grid. */}
       <div className="-mx-4 overflow-x-auto no-scrollbar px-4 md:mx-0 md:overflow-visible md:px-0">
-        <div className="flex gap-3 md:grid md:grid-cols-6 lg:grid-cols-7 md:gap-4">
+        <div className="grid grid-flow-col grid-rows-2 gap-3 md:grid-flow-row md:grid-rows-none md:grid-cols-6 lg:grid-cols-8 md:gap-4">
           {tiles.map((c) => {
             const cascade = buildTileImageCascade(c);
             return (
