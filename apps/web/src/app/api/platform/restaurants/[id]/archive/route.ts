@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
+import { revalidateRestaurantSurfaces } from '@/server/revalidate';
 
 /**
  * POST /api/platform/restaurants/[id]/archive — super-admin soft-delete.
@@ -19,5 +20,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     where: { id },
     data: { deletedAt: new Date(), status: 'SUSPENDED', slug: freedSlug },
   });
+  revalidateRestaurantSurfaces(cur.slug, r.slug);
   return Response.json({ ok: true, restaurant: { id: r.id, status: r.status } });
 }

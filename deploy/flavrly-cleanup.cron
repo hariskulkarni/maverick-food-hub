@@ -1,0 +1,23 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Flavrly — weekly safe disk cleanup (cache + logs ONLY; never data or images).
+#
+#  Runs scripts/safe-cleanup.sh every Sunday at 03:30 (server timezone, IST on
+#  this VPS) as root — so it clears the Next build cache + npm cache AND trims
+#  nginx logs, the systemd journal and the apt cache that an unprivileged run
+#  can't touch. All output is appended to /var/log/restaurant-manager/cleanup.log
+#  (which the script itself keeps in check).
+#
+#  INSTALL (on the VPS, after deploying the new code):
+#      sudo cp /opt/restaurant-manager/deploy/flavrly-cleanup.cron /etc/cron.d/flavrly-cleanup
+#      sudo chmod 644 /etc/cron.d/flavrly-cleanup
+#  cron picks up /etc/cron.d automatically — no restart needed.
+#
+#  VERIFY:   cat /etc/cron.d/flavrly-cleanup   &&   systemctl status cron --no-pager
+#  REMOVE:   sudo rm /etc/cron.d/flavrly-cleanup
+#
+#  cron.d line format:  m h dom mon dow  USER  command
+# ─────────────────────────────────────────────────────────────────────────────
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+30 3 * * 0 root /usr/bin/env bash /opt/restaurant-manager/scripts/safe-cleanup.sh >> /var/log/restaurant-manager/cleanup.log 2>&1

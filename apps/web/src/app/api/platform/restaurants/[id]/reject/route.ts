@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
+import { revalidateRestaurantSurfaces } from '@/server/revalidate';
 
 const Body = z.object({ reason: z.string().optional() }).optional();
 
@@ -13,5 +14,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     where: { id },
     data: { status: 'REJECTED', rejectedReason: body?.reason ?? null }
   });
+  revalidateRestaurantSurfaces(r.slug);
   return Response.json(r);
 }

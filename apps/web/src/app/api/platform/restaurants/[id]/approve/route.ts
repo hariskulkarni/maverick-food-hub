@@ -3,6 +3,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
+import { revalidateRestaurantSurfaces } from '@/server/revalidate';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireSuperAdmin();
@@ -22,5 +23,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     after: { status: r.status, approvedAt: r.approvedAt },
     ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
   });
+  revalidateRestaurantSurfaces(r.slug);
   return Response.json(r);
 }

@@ -26,6 +26,7 @@ import {
   isValidLatLng
 } from '@/server/restaurant-wizard';
 import { imageRef } from '@/server/zod-helpers';
+import { revalidateRestaurantSurfaces } from '@/server/revalidate';
 
 // ── Zod schema ──────────────────────────────────────────────────────────────
 
@@ -538,5 +539,6 @@ export async function POST(req: NextRequest) {
     log.error({ err, restaurantId: result.restaurantId }, 'auto-mint restaurant QR failed');
   }
 
+  revalidateRestaurantSurfaces(result.slug);
   return Response.json(result, { status: 201 });
 }

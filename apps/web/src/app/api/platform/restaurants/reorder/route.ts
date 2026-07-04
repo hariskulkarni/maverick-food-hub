@@ -21,6 +21,7 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { audit } from '@/server/audit';
+import { revalidateRestaurantSurfaces } from '@/server/revalidate';
 
 const Body = z.object({
   ids: z.array(z.string().min(1)).min(1).max(1000),
@@ -63,5 +64,6 @@ export async function POST(req: NextRequest) {
     userAgent: req.headers.get('user-agent') ?? undefined,
   });
 
+  revalidateRestaurantSurfaces();
   return Response.json({ ok: true, count: unique.length });
 }

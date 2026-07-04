@@ -6,6 +6,20 @@ const { auth } = NextAuth(authEdgeConfig);
 
 const DEMO_COOKIE = 'flavrly_demo_gate';
 
+// Authenticated app areas must NEVER be cached by the browser (bfcache),
+// nginx, or Cloudflare — otherwise a super-admin can be served a pre-mutation
+// snapshot (e.g. a restaurant still showing SUSPENDED) after it has changed.
+// Next's force-dynamic pages already emit no-store, but we set it explicitly
+// at the edge so it holds regardless of any CDN "Cache Everything" rule.
+const NO_STORE = 'private, no-store, max-age=0, must-revalidate';
+function noStore(res: NextResponse): NextResponse {
+  res.headers.set('Cache-Control', NO_STORE);
+  res.headers.set('CDN-Cache-Control', NO_STORE); // Cloudflare / edge caches
+  res.headers.set('Vary', 'Cookie');
+  return res;
+}
+
+
 // ─── Edge-safe HMAC-SHA256 verify for the demo gate cookie ─────────
 // We can't use node:crypto on the Edge runtime; Web Crypto works everywhere.
 async function verifyDemoCookie(token: string | undefined): Promise<boolean> {
@@ -110,7 +124,9 @@ export async function middleware(req: NextRequest) {
   if (!gate.roles.includes(role)) {
     return NextResponse.redirect(new URL('/', url));
   }
-  return NextResponse.next();
+  // Passed the role gate — serve it, but flag it uncacheable so no proxy or
+  // browser bfcache ever hands back a stale authenticated view.
+  return noStore(NextResponse.next());
 }
 
 export const config = {

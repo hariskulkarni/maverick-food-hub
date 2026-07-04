@@ -9,6 +9,7 @@ import { prisma } from '@/server/db';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { deploymentSummary } from '@/server/feature-flags';
+import { CleanupCard } from './cleanup-card';
 import {
   Activity, Database, AlertTriangle, HardDrive, Server,
   MessageSquare, Mail, CreditCard, CheckCircle2, XCircle, Clock
@@ -162,6 +163,9 @@ export default async function SystemHealthPage() {
           </dl>
         </CardContent>
       </Card>
+
+      {/* Maintenance — safe disk cleanup */}
+      <CleanupCard />
 
       {/* Integration health */}
       <Card>

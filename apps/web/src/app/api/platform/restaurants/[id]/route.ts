@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { audit } from '@/server/audit';
+import { revalidateRestaurantSurfaces } from '@/server/revalidate';
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await requireSuperAdmin();
@@ -141,6 +142,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     throw e;
   }
 
+  // Identity / commission changed — bust list, dashboard and BOTH storefront
+  // slugs (old + new, in case the slug itself changed).
+  revalidateRestaurantSurfaces(before.slug, typeof next.slug === 'string' ? next.slug : undefined);
+
   // Audit identity changes — these are sensitive (rebranding, URL change).
   const identityFields = ['name', 'tagline', 'cuisine', 'slug'] as const;
   const changedIdentity = identityFields.filter((k) => k in next);
@@ -175,6 +180,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   const force = new URL(req.url).searchParams.get('force') === '1';
 
+  const target = await prisma.restaurant.findUnique({ where: { id }, select: { slug: true } });
   const branches = await prisma.branch.findMany({ where: { restaurantId: id }, select: { id: true } });
   const branchIds = branches.map((b) => b.id);
 
@@ -193,5 +199,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return Response.json({ error: 'delete_failed', detail: (e as Error).message }, { status: 500 });
   }
 
+  revalidateRestaurantSurfaces(target?.slug);
   return Response.json({ ok: true });
 }

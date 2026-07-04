@@ -5,6 +5,7 @@ import { requireSuperAdmin } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
 import { validateParentAssignment } from './_helpers';
+import { revalidateRestaurantSurfaces } from '@/server/revalidate';
 
 const Body = z.object({
   /** Parent restaurant id to nest under, or null to detach. */
@@ -37,5 +38,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
   });
 
+  revalidateRestaurantSurfaces();
   return Response.json({ ok: true, parentId: after.parentId });
 }
