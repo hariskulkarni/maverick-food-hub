@@ -43,32 +43,26 @@ function jsonError(status: number, error: string, code: string): Response {
  * binary-safe parser that reads the raw bytes and splits on the boundary. This
  * makes video uploads reliable without changing the client.
  */
-let lastUploadDiag = '';
 async function readMultipart(req: NextRequest): Promise<FormData> {
   const ct = req.headers.get('content-type') || '';
   const buf = Buffer.from(await req.arrayBuffer());
-  let nativeInfo = 'skipped';
   // Try the native parser on a COPY of the buffered body (so `buf` is never
   // touched). Some Next/undici builds either throw OR succeed-but-return-no-file
   // on larger multipart uploads (video), so we only trust it when it actually
   // contains the file; otherwise we fall back to the manual parser on `buf`.
   try {
     const native = await new Response(new Uint8Array(buf), { headers: { 'content-type': ct } }).formData();
-    nativeInfo = `keys=[${[...native.keys()].join(',')}]`;
     if (native.get('file') instanceof Blob) {
-      log.info({ bytes: buf.length, path: 'native', nativeInfo }, 'upload parsed');
+      log.info({ bytes: buf.length, path: 'native' }, 'upload parsed');
       return native;
     }
-  } catch (e) {
-    nativeInfo = 'threw:' + ((e as Error)?.message || String(e)).slice(0, 80);
+  } catch {
+    /* fall through to the manual parser */
   }
   const m = ct.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
-  if (!m) throw new Error(`missing multipart boundary (bytes=${buf.length}, ct=${ct.slice(0, 60)})`);
-  const boundary = (m[1] || m[2]).trim();
-  const head = buf.subarray(0, 140).toString('latin1').replace(/[^\x20-\x7e]/g, '.');
-  lastUploadDiag = `ctBoundary="${boundary}" native=${nativeInfo} bodyHead="${head}"`;
-  const fd = manualParseMultipart(buf, boundary);
-  log.info({ bytes: buf.length, path: 'manual', nativeInfo, manualKeys: [...fd.keys()].join(','), boundary, head }, 'upload parsed (manual)');
+  if (!m) throw new Error('missing multipart boundary');
+  const fd = manualParseMultipart(buf, (m[1] || m[2]).trim());
+  log.info({ bytes: buf.length, path: 'manual' }, 'upload parsed (manual)');
   return fd;
 }
 
@@ -151,9 +145,7 @@ export async function POST(req: NextRequest) {
   const file = form.get('file');
   const folder = (form.get('folder') as string | null) ?? 'misc';
   if (!(file instanceof Blob)) {
-    const parsedFields = [...form.keys()].join(',') || '(none)';
-    const cl = req.headers.get('content-length') ?? '?';
-    return jsonError(400, `No file in upload. fields=[${parsedFields}] cl=${cl} | ${lastUploadDiag}`.slice(0, 400), 'upload/missing_file');
+    return jsonError(400, 'No file attached to the upload.', 'upload/missing_file');
   }
   if (file.size === 0) {
     return jsonError(400, 'The uploaded file is empty.', 'upload/empty_file');
