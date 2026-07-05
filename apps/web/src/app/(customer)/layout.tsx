@@ -8,6 +8,7 @@ import { InstallPrompt } from '@/components/pwa/install-prompt';
 import { getDiscoveryConfig } from '@/server/discovery-cms';
 import { SiteFooter } from '@/components/site-footer';
 import { DemoBanner } from '@/components/demo-banner';
+import { CookieConsent } from '@/components/cookie-consent';
 
 /**
  * Shared layout for the (customer) route group.
@@ -74,6 +75,9 @@ export default async function CustomerLayout({ children }: { children: React.Rea
             Content is super-admin editable (/platform/discovery-cms → Footer). */}
         {cms.footer.enabled && <SiteFooter footer={cms.footer} year={year} />}
       </div>
+
+      {/* DPDP consent capture — strictly-necessary cookies only until accepted. */}
+      <CookieConsent />
     </CartProvider>
   );
 }
