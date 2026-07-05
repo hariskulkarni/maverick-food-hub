@@ -8,6 +8,8 @@ const nextConfig = {
   // freshly built `.next` correctly.
   // Lint runs in CI / local dev — it should not gate a production build.
   // TypeScript errors still block the build (ignoreBuildErrors stays false).
+  // Don't advertise the framework (info-disclosure hardening).
+  poweredByHeader: false,
   eslint: { ignoreDuringBuilds: true },
   serverExternalPackages: ['twilio', 'nodemailer', 'pdfkit', 'argon2', 'razorpay', '@aws-sdk/client-s3'],
   experimental: {
@@ -72,6 +74,10 @@ const nextConfig = {
       { key: 'Content-Security-Policy', value: csp },
       { key: 'X-Frame-Options', value: 'DENY' },
       { key: 'X-Content-Type-Options', value: 'nosniff' },
+      // Isolate our browsing context from cross-origin windows, while still
+      // allowing our own popups (Razorpay checkout / Google OAuth) to keep their
+      // opener relationship.
+      { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
       { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self), payment=(self)' },
       // HSTS only when actually serving over HTTPS (meaningless/ignored over HTTP). 2 years + preload.
