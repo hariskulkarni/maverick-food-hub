@@ -3,7 +3,7 @@
  * rider name/phone. Super-admin only. Filter by ?status, ?from, ?to (date).
  */
 import { NextRequest } from 'next/server';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { prisma } from '@/server/db';
 import { serializeShift } from './_serializers';
 
@@ -11,7 +11,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  await requireCapability('riders:read');
   const sp = req.nextUrl.searchParams;
   const status = sp.get('status') || undefined;
   const from = sp.get('from');

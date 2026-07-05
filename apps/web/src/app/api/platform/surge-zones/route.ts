@@ -6,7 +6,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 
@@ -30,7 +30,7 @@ function serialize(z: any) {
 }
 
 export async function GET() {
-  await requireSuperAdmin();
+  await requireCapability('ops:read');
   const zones = await prisma.surgeZone.findMany({ orderBy: { createdAt: 'desc' } });
   return Response.json({ zones: zones.map(serialize) });
 }
@@ -48,7 +48,7 @@ const CreateBody = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  await requireSuperAdmin();
+  await requireCapability('ops:write');
   const session = await auth();
   const data = CreateBody.parse(await req.json());
 

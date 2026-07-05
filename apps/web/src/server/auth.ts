@@ -125,7 +125,9 @@ export const authConfig: NextAuthConfig = {
           recordLoginFailure(email, lockoutMinutes);
           return null;
         }
-        if (user.role !== Role.ADMIN && user.role !== Role.KITCHEN && user.role !== Role.SUPER_ADMIN) return null;
+        // Password login is for STAFF + PLATFORM-team roles only. Customers and
+        // riders authenticate via OTP (and the rider native app), never here.
+        if (user.role === Role.CUSTOMER || user.role === Role.RIDER) return null;
         // Suspended accounts cannot log in (a super-admin has blocked them).
         if (user.suspendedAt) {
           recordLoginFailure(email, lockoutMinutes);

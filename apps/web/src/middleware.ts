@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import NextAuth from 'next-auth';
 import { authEdgeConfig } from '@/server/auth.config';
+import { PLATFORM_ROLES, pageGateFor, can } from '@/server/permissions';
 
 const { auth } = NextAuth(authEdgeConfig);
 
@@ -168,7 +169,7 @@ async function verifyDemoCookie(token: string | undefined): Promise<boolean> {
 }
 
 const ROLE_GATES: { prefix: string; roles: string[] }[] = [
-  { prefix: '/platform', roles: ['SUPER_ADMIN'] },
+  { prefix: '/platform', roles: PLATFORM_ROLES as unknown as string[] },
   { prefix: '/admin', roles: ['ADMIN'] },
   { prefix: '/kitchen', roles: ['KITCHEN', 'ADMIN'] },
   { prefix: '/profile', roles: ['CUSTOMER', 'ADMIN', 'KITCHEN', 'RIDER', 'SUPER_ADMIN'] },
@@ -254,6 +255,18 @@ export async function middleware(req: NextRequest) {
   if (!gate.roles.includes(role)) {
     return NextResponse.redirect(new URL('/', url));
   }
+
+  // Within the /platform console, enforce the per-surface capability gate so a
+  // delegated platform role (Admin Assist / QA / Developer / Guest) only reaches
+  // the areas its role grants. SUPER_ADMIN holds every capability. Unmapped
+  // paths fall back to `platform:view`, which every platform role holds.
+  if (path.startsWith('/platform')) {
+    const needed = pageGateFor(path);
+    if (!can(role, needed)) {
+      return NextResponse.redirect(new URL('/platform', url));
+    }
+  }
+
   // Passed the role gate — serve it, but flag it uncacheable so no proxy or
   // browser bfcache ever hands back a stale authenticated view.
   return noStore(NextResponse.next());

@@ -7,7 +7,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { serializeModule } from './_serializers';
@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 const CATEGORIES = ['ONBOARDING', 'SAFETY', 'CUSTOMER_SERVICE', 'EARNINGS', 'APP_GUIDE'] as const;
 
 export async function GET() {
-  await requireSuperAdmin();
+  await requireCapability('cms:read');
 
   const [modules, completedGroups, totalGroups] = await Promise.all([
     prisma.trainingModule.findMany({ orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] }),
@@ -61,7 +61,7 @@ const CreateBody = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  await requireSuperAdmin();
+  await requireCapability('cms:write');
   const session = await auth();
   const data = CreateBody.parse(await req.json());
 

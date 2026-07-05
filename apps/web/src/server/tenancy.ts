@@ -24,6 +24,7 @@ import { cookies } from 'next/headers';
 import { auth } from './auth';
 import { prisma } from './db';
 import { Role } from '@prisma/client';
+import { can, type Capability } from './permissions';
 
 export const ACTIVE_RESTAURANT_COOKIE = 'active_restaurant';
 
@@ -352,5 +353,22 @@ export async function resolveGroupSharing(restaurantId: string): Promise<GroupSh
 export async function requireSuperAdmin() {
   const session = await auth();
   if (session?.user.role !== Role.SUPER_ADMIN) throw new Response('Forbidden', { status: 403 });
+  return session;
+}
+
+/**
+ * Require a session whose ROLE holds `capability` (see src/server/permissions.ts).
+ * SUPER_ADMIN holds every capability, so this is a strict superset-safe
+ * replacement for requireSuperAdmin() on surfaces we want to delegate to
+ * platform-team roles. Throws a 403 Response (caught by the App Router) when
+ * the capability is missing. Use in server components / server actions:
+ *
+ *   const session = await requireCapability('cms:read');
+ */
+export async function requireCapability(capability: Capability) {
+  const session = await auth();
+  if (!can(session?.user?.role, capability)) {
+    throw new Response('Forbidden', { status: 403 });
+  }
   return session;
 }

@@ -4,6 +4,7 @@ import { prisma } from '@/server/db';
 import { log } from '@/server/log';
 import { getDiscoveryConfig } from '@/server/discovery-cms';
 import { DiscoveryCmsEditor } from './discovery-cms-editor';
+import { can } from '@/server/permissions';
 
 export const metadata = { title: 'Platform · Discovery CMS' };
 export const dynamic = 'force-dynamic';
@@ -16,7 +17,7 @@ export const dynamic = 'force-dynamic';
  */
 export default async function DiscoveryCmsPage() {
   const session = await auth();
-  if (!session?.user || session.user.role !== 'SUPER_ADMIN') {
+  if (!session?.user || !can(session.user.role, 'cms:read')) {
     redirect('/login?next=/platform/discovery-cms&mode=admin');
   }
 

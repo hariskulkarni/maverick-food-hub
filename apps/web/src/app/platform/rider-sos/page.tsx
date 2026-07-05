@@ -1,4 +1,4 @@
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { prisma } from '@/server/db';
 import { Card, CardContent } from '@/components/ui/card';
 import { Siren, AlertOctagon, CheckCircle2, Ban } from 'lucide-react';
@@ -9,7 +9,7 @@ export const metadata = { title: 'Platform · Rider SOS' };
 export const dynamic = 'force-dynamic';
 
 export default async function PlatformRiderSosPage() {
-  await requireSuperAdmin();
+  await requireCapability('riders:read');
 
   const [alerts, activeCount, resolvedCount, cancelledCount] = await Promise.all([
     prisma.sosAlert.findMany({

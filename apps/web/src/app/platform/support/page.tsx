@@ -3,7 +3,7 @@
  * Stats strip + filter chips + table with detail drawer for actions.
  */
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { LifeBuoy } from 'lucide-react';
 import { SupportClient } from './support-client';
 
@@ -11,7 +11,7 @@ export const metadata = { title: 'Platform · Support' };
 export const dynamic = 'force-dynamic';
 
 export default async function PlatformSupportPage() {
-  await requireSuperAdmin();
+  await requireCapability('ops:read');
 
   const [tickets, counts] = await Promise.all([
     prisma.supportTicket.findMany({

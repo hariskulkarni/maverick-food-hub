@@ -6,7 +6,7 @@
  * "recent" list (full SUPER_ADMIN visibility — no redaction). Heavy
  * filtering lives in the client.
  */
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { visibleForRole, summariseRatings } from '@/server/feedback';
 import { prisma } from '@/server/db';
 import { FeedbackClient } from './feedback-client';
@@ -15,7 +15,7 @@ export const metadata = { title: 'Platform · Feedback' };
 export const dynamic = 'force-dynamic';
 
 export default async function PlatformFeedbackPage() {
-  await requireSuperAdmin();
+  await requireCapability('ops:read');
 
   const to = new Date();
   const from = new Date(to.getTime() - 30 * 86_400_000);

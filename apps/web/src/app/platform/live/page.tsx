@@ -1,5 +1,5 @@
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { LivePlatformClient } from '@/components/live-tracking/live-platform-client';
 import { Radio } from 'lucide-react';
 
@@ -7,7 +7,7 @@ export const metadata = { title: 'Platform · Live tracking' };
 export const dynamic = 'force-dynamic';
 
 export default async function PlatformLivePage() {
-  await requireSuperAdmin();
+  await requireCapability('ops:read');
 
   const [riders, branches] = await Promise.all([
     prisma.riderProfile.findMany({

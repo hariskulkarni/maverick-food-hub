@@ -10,14 +10,14 @@
  */
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { computeTier, type RiderTier } from './_tiers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(_req: NextRequest) {
-  await requireSuperAdmin();
+  await requireCapability('riders:read');
 
   const riders = await prisma.riderProfile.findMany({
     where: { approvedAt: { not: null } },

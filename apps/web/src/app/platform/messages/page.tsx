@@ -6,7 +6,7 @@
  * rider. The client component handles thread loading, sending, and ~4s
  * polling of the open thread.
  */
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { prisma } from '@/server/db';
 import { serializeConversation } from '@/server/rider-messaging';
 import { PlatformMessagesClient } from './messages-client';
@@ -15,7 +15,7 @@ export const metadata = { title: 'Platform · Messages' };
 export const dynamic = 'force-dynamic';
 
 export default async function PlatformMessagesPage() {
-  await requireSuperAdmin();
+  await requireCapability('ops:read');
 
   const [conversations, riders] = await Promise.all([
     prisma.riderConversation.findMany({

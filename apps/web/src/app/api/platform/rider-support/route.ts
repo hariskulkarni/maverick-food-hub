@@ -4,7 +4,7 @@
  * Pass ?ticket=<id> to fetch one ticket with its full message thread.
  */
 import { NextRequest } from 'next/server';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { prisma } from '@/server/db';
 import { serializeTicket } from './_serializers';
 
@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  await requireCapability('riders:read');
   const sp = req.nextUrl.searchParams;
   const status = sp.get('status') || undefined;
   const category = sp.get('category') || undefined;

@@ -12,12 +12,12 @@
  * has to branch on role.
  */
 import { NextRequest } from 'next/server';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { visibleForRole, summariseRatings } from '@/server/feedback';
 import { prisma } from '@/server/db';
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  await requireCapability('ops:read');
   const sp = req.nextUrl.searchParams;
   const restaurantId = sp.get('restaurantId') || undefined;
   const riderId = sp.get('riderId') || undefined;

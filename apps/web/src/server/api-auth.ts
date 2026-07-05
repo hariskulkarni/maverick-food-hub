@@ -34,6 +34,7 @@
  */
 import { auth } from '@/server/auth';
 import { Role } from '@prisma/client';
+import { can, type Capability } from './permissions';
 
 /** Stable error codes for the client to switch on. */
 export type ApiAuthError = 'auth/unauthenticated' | 'auth/forbidden';
@@ -86,6 +87,25 @@ export async function requireSuperAdminApi() {
   if (!session?.user) return unauthenticated();
   if (session.user.role !== Role.SUPER_ADMIN) {
     return forbidden('This action requires platform super-admin access.');
+  }
+  return session;
+}
+
+/**
+ * Require a session whose ROLE holds `capability` (see permissions.ts). The
+ * capability-aware sibling of requireSuperAdminApi — SUPER_ADMIN passes every
+ * check because it holds every capability. Returns the session on success, or
+ * a 401/403 Response the route MUST return directly:
+ *
+ *   const gate = await requireCapabilityApi('cms:write');
+ *   if (gate instanceof Response) return gate;
+ *   const session = gate;
+ */
+export async function requireCapabilityApi(capability: Capability) {
+  const session = await auth();
+  if (!session?.user) return unauthenticated();
+  if (!can((session.user as { role?: string }).role, capability)) {
+    return forbidden(`This action requires the "${capability}" capability.`);
   }
   return session;
 }

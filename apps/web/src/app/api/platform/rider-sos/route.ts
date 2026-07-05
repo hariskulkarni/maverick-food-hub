@@ -3,7 +3,7 @@
  * Super-admin only. ACTIVE alerts surfaced first; filter by ?status.
  */
 import { NextRequest } from 'next/server';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { prisma } from '@/server/db';
 import { serializeSos } from './_serializers';
 
@@ -11,7 +11,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  await requireCapability('riders:read');
   const status = req.nextUrl.searchParams.get('status') || undefined;
 
   const where: any = {};

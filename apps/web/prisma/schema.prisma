@@ -23,6 +23,11 @@ enum Role {
   KITCHEN
   RIDER
   SUPER_ADMIN // platform owner — sees every restaurant
+  // ---- Platform-team IAM roles (managed by SUPER_ADMIN via /platform/iam) ----
+  ADMIN_ASSIST // ops + riders + build; confidential ops need SUPER_ADMIN approval
+  DEVELOPER // full CMS access (discovery + storefront content), no ops/finance/IAM
+  QA // read-everything + test/preview surfaces built via the CMS
+  GUEST // read-only across the platform console
 }
 
 enum RestaurantStatus {

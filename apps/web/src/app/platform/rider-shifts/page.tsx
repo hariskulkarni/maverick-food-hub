@@ -1,4 +1,4 @@
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { prisma } from '@/server/db';
 import { Card, CardContent } from '@/components/ui/card';
 import { CalendarClock, CalendarCheck, CalendarX, Clock } from 'lucide-react';
@@ -9,7 +9,7 @@ export const metadata = { title: 'Platform · Rider Shifts' };
 export const dynamic = 'force-dynamic';
 
 export default async function PlatformRiderShiftsPage() {
-  await requireSuperAdmin();
+  await requireCapability('riders:read');
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

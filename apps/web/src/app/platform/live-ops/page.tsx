@@ -8,7 +8,7 @@
  */
 import { Card, CardContent } from '@/components/ui/card';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { LiveOpsClient } from './live-ops-client';
 import { AlertTriangle, Flame, AlertOctagon, Activity, CheckCircle2 } from 'lucide-react';
 import { money } from '@/lib/utils';
@@ -17,7 +17,7 @@ export const metadata = { title: 'Platform · Live ops' };
 export const dynamic = 'force-dynamic';
 
 export default async function PlatformLiveOpsPage() {
-  await requireSuperAdmin();
+  await requireCapability('ops:read');
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
 

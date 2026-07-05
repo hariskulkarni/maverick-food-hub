@@ -1,4 +1,4 @@
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { prisma } from '@/server/db';
 import { Card, CardContent } from '@/components/ui/card';
 import { GraduationCap, BookOpen, ShieldCheck, CheckCircle2 } from 'lucide-react';
@@ -9,7 +9,7 @@ export const metadata = { title: 'Platform · Training Modules' };
 export const dynamic = 'force-dynamic';
 
 export default async function PlatformTrainingModulesPage() {
-  await requireSuperAdmin();
+  await requireCapability('cms:read');
 
   const [modules, completedGroups, totalGroups] = await Promise.all([
     prisma.trainingModule.findMany({ orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] }),

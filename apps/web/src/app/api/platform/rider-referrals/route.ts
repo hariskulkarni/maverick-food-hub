@@ -5,13 +5,13 @@
  */
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  await requireCapability('riders:read');
   const status = new URL(req.url).searchParams.get('status') || undefined;
 
   const where: any = {};

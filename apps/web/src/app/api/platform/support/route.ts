@@ -4,13 +4,13 @@
  */
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireCapability } from '@/server/tenancy';
 import { Prisma, TicketStatus, TicketPriority, TicketType } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  await requireCapability('ops:read');
   const url = new URL(req.url);
   const status = url.searchParams.get('status') as TicketStatus | null;
   const priority = url.searchParams.get('priority') as TicketPriority | null;
