@@ -72,6 +72,11 @@ else
 fi
 
 echo "==> [4/5] npm run build (runs prisma generate + next build)"
+# Always start from a clean .next. A build that fails midway (e.g. at the
+# type-check step) can leave a partial/corrupt .next that makes `next start`
+# crash-loop and serve 503s. Removing it first guarantees a clean, bootable
+# build every deploy.
+rm -rf .next
 npm run build
 
 echo "==> [5/5] pm2 restart $PM2_APP"

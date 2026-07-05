@@ -72,6 +72,29 @@ jobs:
           ulimit -n 8192 || true
           npm run build
 
+  security:
+    name: Security scans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full git history so gitleaks can scan past commits
+
+      - name: Secret scan (gitleaks)
+        run: |
+          VER=8.18.4
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" -o gitleaks.tgz
+          tar -xzf gitleaks.tgz gitleaks
+          # Scans the working tree AND git history; fails the job if any secret is found.
+          ./gitleaks detect --source . --redact --no-banner --exit-code 1
+
+      - name: Dependency audit (apps/web)
+        working-directory: apps/web
+        # Reports High/Critical advisories. Non-blocking for now so a transitive
+        # advisory can't stop deploys — tighten to blocking once the tree is clean.
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
   rider-native:
     name: Rider app (apps/rider-native)
     runs-on: ubuntu-latest

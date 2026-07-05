@@ -1,0 +1,20 @@
+# gitleaks config — extends the default ruleset, with a small allowlist for
+# known NON-secrets (test fixtures, doc examples, UI placeholders) so CI stays
+# green on the clean repo. Real secrets in real files still fail the scan.
+title = "Flavrly gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures, documentation examples and UI placeholders."
+regexes = [
+  '''rzp_live_(abc1234|xxxxxxxx)''',
+  '''sk_live_abcdefghij1234''',
+  '''ci-placeholder-secret-not-used-in-production''',
+]
+paths = [
+  '''.*__tests__/.*''',
+  '''.*\.example$''',
+  '''.*integrations/providers\.ts$''',
+]
