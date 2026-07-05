@@ -173,7 +173,20 @@ function SlideMedia({ s, isActive, objectFit, objectPosition, kenBurns, onError 
   // Direct file (mp4/webm/ogg/mov)
   return (
     <video
-      ref={videoRef}
+      ref={(el) => {
+        videoRef.current = el;
+        if (el) {
+          // Safari only allows muted inline autoplay when the `muted` ATTRIBUTE
+          // is present in the DOM — React's `muted` prop sets the property, not
+          // the attribute, so we force it here (plus playsinline for iOS).
+          const m = s.videoMuted ?? true;
+          el.muted = m;
+          el.defaultMuted = m;
+          if (m) el.setAttribute('muted', ''); else el.removeAttribute('muted');
+          el.setAttribute('playsinline', '');
+          el.setAttribute('webkit-playsinline', 'true');
+        }
+      }}
       suppressHydrationWarning
       className={'absolute inset-0 h-full w-full ' + (kenBurns ? 'animate-kenburns' : '')}
       style={{ objectFit: objectFit as any, objectPosition }}
@@ -184,6 +197,8 @@ function SlideMedia({ s, isActive, objectFit, objectPosition, kenBurns, onError 
       playsInline
       controls={false}
       preload={isActive ? 'auto' : 'metadata'}
+      onLoadedData={(e) => { if (autoplay) e.currentTarget.play?.().catch(() => {}); }}
+      onCanPlay={(e) => { if (autoplay) e.currentTarget.play?.().catch(() => {}); }}
       onError={onError}
       aria-label={s.alt || 'Hero video'}
     >

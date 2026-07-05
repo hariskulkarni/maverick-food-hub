@@ -107,7 +107,19 @@ function HeroSlideVideo({ s, active, mediaCls, alt }: { s: HeroCarouselSlide; ac
   if (info.kind === 'none') return posterImg;
   return (
     <video
-      ref={ref}
+      ref={(el) => {
+        ref.current = el;
+        if (el) {
+          // Safari requires the `muted` ATTRIBUTE (not just the property) for
+          // muted inline autoplay. React only sets the property, so force it.
+          const m = s.videoMuted ?? true;
+          el.muted = m;
+          el.defaultMuted = m;
+          if (m) el.setAttribute('muted', ''); else el.removeAttribute('muted');
+          el.setAttribute('playsinline', '');
+          el.setAttribute('webkit-playsinline', 'true');
+        }
+      }}
       suppressHydrationWarning
       className={`absolute inset-0 h-full w-full ${mediaCls}`}
       poster={poster}
@@ -117,6 +129,8 @@ function HeroSlideVideo({ s, active, mediaCls, alt }: { s: HeroCarouselSlide; ac
       playsInline
       controls={false}
       preload={active ? 'auto' : 'metadata'}
+      onLoadedData={(e) => { if (autoplay) e.currentTarget.play?.().catch(() => {}); }}
+      onCanPlay={(e) => { if (autoplay) e.currentTarget.play?.().catch(() => {}); }}
       aria-label={alt}
     >
       <source src={info.fileUrl} type={info.mime} />
