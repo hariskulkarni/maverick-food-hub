@@ -19,6 +19,7 @@ import { NextRequest } from 'next/server';
 import { storage } from '@/server/storage';
 import { requireAnyAdminApi } from '@/server/api-auth';
 import { log } from '@/server/log';
+import { rateLimit } from '@/server/http/rate-limit';
 
 export const runtime = 'nodejs';
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;   // 8 MB
@@ -132,6 +133,11 @@ export async function POST(req: NextRequest) {
     return gate;
   }
   const session = gate;
+
+  // This route is excluded from the middleware limiter (large bodies), so
+  // rate-limit it here instead.
+  const rl = await rateLimit(req, { name: 'admin-upload', limit: 40, windowMs: 60_000, key: session.user.id });
+  if (!rl.ok) return rl.response;
 
   let form: FormData;
   try {

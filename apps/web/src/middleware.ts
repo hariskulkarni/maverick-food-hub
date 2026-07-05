@@ -4,6 +4,99 @@ import { authEdgeConfig } from '@/server/auth.config';
 
 const { auth } = NextAuth(authEdgeConfig);
 
+// ─────────────────────────── API rate limiting ───────────────────────────────
+// In-memory fixed-window limiter. This deployment is a single long-lived
+// `next start` process (pm2 fork), so module-level Maps persist across requests
+// and are shared by every /api call. Covers ALL /api routes from one place:
+//   • per-IP limit (flood / scraping / DoS protection)
+//   • per-user limit (authenticated abuse) via the JWT session (no DB hit)
+//   • a STRICT tier + exponential backoff for auth paths (brute force)
+// Fail-open by design: any error here lets the request through — a limiter
+// glitch must never take the whole API offline.
+type RlBucket = { count: number; resetAt: number };
+const RL_BUCKETS = new Map<string, RlBucket>();
+const RL_AUTH_PENALTY = new Map<string, { until: number; strikes: number }>();
+let RL_LAST_SWEEP = 0;
+
+// Paths that must NOT be rate-limited: SSE stream, health probes, the demo gate,
+// and any payment webhook (external, signature-verified, must not be dropped).
+const RL_EXEMPT_PREFIX = ['/api/events', '/api/ready', '/api/system/health', '/api/demo-gate',
+  '/api/auth/session', '/api/auth/csrf', '/api/auth/providers', '/api/auth/_log', '/api/auth/error'];
+
+function rlHit(key: string, windowMs: number, now: number): number {
+  const b = RL_BUCKETS.get(key);
+  if (!b || b.resetAt <= now) { RL_BUCKETS.set(key, { count: 1, resetAt: now + windowMs }); return 1; }
+  b.count += 1;
+  return b.count;
+}
+function rlSweep(now: number): void {
+  if (now - RL_LAST_SWEEP < 60_000) return;
+  RL_LAST_SWEEP = now;
+  for (const [k, b] of RL_BUCKETS) if (b.resetAt <= now) RL_BUCKETS.delete(k);
+  for (const [k, pen] of RL_AUTH_PENALTY) if (pen.until <= now) RL_AUTH_PENALTY.delete(k);
+}
+function rlClientIp(req: NextRequest): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || req.headers.get('x-real-ip')?.trim()
+    || 'unknown';
+}
+function rlTooMany(retryAfterSec: number): NextResponse {
+  return new NextResponse(
+    JSON.stringify({ error: 'Too many requests. Please slow down and try again shortly.' }),
+    { status: 429, headers: { 'content-type': 'application/json', 'Retry-After': String(retryAfterSec), 'Cache-Control': 'no-store' } },
+  );
+}
+function rlIsAuthPath(p: string): boolean {
+  return p.includes('/auth/') || /(login|signin|otp|verify|password|2fa)/i.test(p);
+}
+
+async function apiRateLimit(req: NextRequest, path: string): Promise<NextResponse | null> {
+  try {
+    if (RL_EXEMPT_PREFIX.some((e) => path.startsWith(e)) || path.includes('/webhook')) return null;
+    const now = Date.now();
+    rlSweep(now);
+    const ip = rlClientIp(req);
+    const windowMs = 60_000;
+    const authTier = rlIsAuthPath(path);
+
+    // Exponential-backoff lockout window (auth paths only).
+    if (authTier) {
+      const pen = RL_AUTH_PENALTY.get(ip);
+      if (pen && pen.until > now) return rlTooMany(Math.ceil((pen.until - now) / 1000));
+    }
+
+    // Per-IP window. Auth paths get a strict cap; on breach we escalate a
+    // doubling cooldown (2s, 4s, 8s … capped at 15 min) to defeat brute force.
+    const ipLimit = authTier ? 20 : 600;
+    const ipCount = rlHit(`${authTier ? 'a' : 'g'}:ip:${ip}`, windowMs, now);
+    if (ipCount > ipLimit) {
+      if (authTier) {
+        const pen = RL_AUTH_PENALTY.get(ip) ?? { until: 0, strikes: 0 };
+        pen.strikes = Math.min(pen.strikes + 1, 12);
+        const cooldownMs = Math.min(15 * 60_000, 1000 * Math.pow(2, pen.strikes));
+        pen.until = now + cooldownMs;
+        RL_AUTH_PENALTY.set(ip, pen);
+        return rlTooMany(Math.ceil(cooldownMs / 1000));
+      }
+      return rlTooMany(Math.ceil(windowMs / 1000));
+    }
+
+    // Per-user window (authenticated, non-auth calls). JWT session → no DB hit.
+    if (!authTier) {
+      const session = await auth();
+      const uid = session?.user?.id;
+      if (uid) {
+        const userCount = rlHit(`u:${uid}`, windowMs, now);
+        if (userCount > 600) return rlTooMany(Math.ceil(windowMs / 1000));
+      }
+    }
+    return null;
+  } catch {
+    return null; // fail-open
+  }
+}
+
+
 const DEMO_COOKIE = 'flavrly_demo_gate';
 
 // Authenticated app areas must NEVER be cached by the browser (bfcache),
@@ -100,8 +193,15 @@ export async function middleware(req: NextRequest) {
   }
 
   // Allow auth callback / login early — nothing role-specific applies here.
-  if (path.startsWith('/api/auth') || path === '/login' || path.startsWith('/login/')) {
+  if (path === '/login' || path.startsWith('/login/')) {
     return NextResponse.next();
+  }
+
+  // Rate-limit every other /api route (IP + user + auth backoff). Pages fall
+  // through to the role gates below.
+  if (path.startsWith('/api/')) {
+    const limited = await apiRateLimit(req, path);
+    return limited ?? NextResponse.next();
   }
 
   const gate = ROLE_GATES.find((g) => path.startsWith(g.prefix));
@@ -136,6 +236,6 @@ export const config = {
     // NOTE: `api` is excluded so Next doesn't buffer (and 10MB-truncate) large
     // request bodies through middleware — critical for video uploads. API routes
     // do their own auth; the demo gate already exempts /api.
-    '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|manifest.webmanifest|sw.js|service-worker.js|robots.txt|sitemap.xml).*)'
+    '/((?!api/admin/upload|api/admin/menu/import|api/events|_next/static|_next/image|favicon.ico|manifest.json|manifest.webmanifest|sw.js|service-worker.js|robots.txt|sitemap.xml).*)'
   ]
 };

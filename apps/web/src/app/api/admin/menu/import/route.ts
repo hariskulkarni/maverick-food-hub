@@ -13,6 +13,7 @@
 import { NextRequest } from 'next/server';
 import { parseMenuFile, diffMenuImport } from '@/server/menu-io';
 import { resolveBranchScope } from './_helpers';
+import { rateLimit } from '@/server/http/rate-limit';
 
 // Upload size guard. xlsx files balloon fast once a sheet has formatting; a
 // 10 MB cap is generous for menu data (hundreds of items) but stops anyone
@@ -28,6 +29,10 @@ export async function POST(req: NextRequest) {
     throw e;
   }
   if ('error' in scope) return scope.error;
+
+  // Excluded from the middleware limiter (large body) — rate-limit here.
+  const rl = await rateLimit(req, { name: 'menu-import', limit: 20, windowMs: 60_000 });
+  if (!rl.ok) return rl.response;
 
   let form: FormData;
   try {

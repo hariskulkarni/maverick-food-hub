@@ -21,6 +21,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const form = await req.formData();
   const file = form.get('photo');
   if (!(file instanceof Blob)) return new Response('Missing photo', { status: 400 });
+  if (file instanceof Blob && file.size > 8 * 1024 * 1024) return new Response('File too large (max 8 MB)', { status: 413 });
   const ab = await file.arrayBuffer();
   const buf = Buffer.from(ab);
   const name = (file as File).name ?? 'delivery.jpg';
