@@ -367,7 +367,10 @@ export async function requireSuperAdmin() {
  */
 export async function requireCapability(capability: Capability) {
   const session = await auth();
-  if (!can(session?.user?.role, capability)) {
+  // Narrow `session` (and session.user) to non-null on the happy path, exactly
+  // like requireSuperAdmin — so callers can use `session.user.*` without a
+  // possibly-null type error.
+  if (!session?.user || !can(session.user.role, capability)) {
     throw new Response('Forbidden', { status: 403 });
   }
   return session;
