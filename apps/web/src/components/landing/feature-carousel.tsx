@@ -234,6 +234,8 @@ export function FeatureCarousel({
    * picker.
    */
   aspectRatio?: CarouselAspectRatio;
+  /** Nav-arrow background opacity as a percentage (0-80). CMS-controlled. */
+  arrowOpacity?: number;
   /**
    * Hero-size width preset (full-bleed, container, card, narrow…). Controls
    * how wide the carousel renders on the page. Shared with the storefront
