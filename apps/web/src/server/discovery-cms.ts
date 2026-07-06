@@ -25,7 +25,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { prisma } from '@/server/db';
 import { DISCOVERY_BANNERS } from '@/lib/discovery-banners';
-import { DISCOVERY_CATEGORIES } from '@/lib/discovery-categories';
+import { DISCOVERY_CATEGORIES, getDiscoveryCategory, type DiscoveryCategory } from '@/lib/discovery-categories';
 import { wrap, invalidateTag, keys } from '@/server/cache';
 // Reuse the per-restaurant hero-size types so the discovery carousel and the
 // storefront hero share the SAME 7 width × 8 height presets. The class maps
@@ -259,6 +259,13 @@ export interface DiscoveryConfig {
     heading: string;
     tiles: CategoryTile[];
   };
+  /**
+   * Retired "What's on your mind" tile slugs → their new slug. Populated
+   * automatically when an admin renames a tile's slug, so old /category/<slug>
+   * links (bookmarks, shared URLs, search index) 301 to the new page instead
+   * of 404ing. See saveDiscoveryConfig + categoryRedirectFor.
+   */
+  categoryRedirects: { from: string; to: string }[];
   restaurantsNearby: {
     enabled: boolean;
     eyebrow: string;         // small uppercase label
@@ -358,6 +365,7 @@ export function defaultDiscoveryConfig(): DiscoveryConfig {
         enabled: true,
       })),
     },
+    categoryRedirects: [],
     restaurantsNearby: {
       enabled: true,
       eyebrow: 'Restaurants near you',
@@ -574,6 +582,10 @@ export function parseDiscoveryConfig(raw: unknown): DiscoveryConfig {
       heading: str(woym.heading, 80) || d.whatsOnYourMind.heading,
       tiles,
     },
+    categoryRedirects: (Array.isArray((r as any).categoryRedirects) ? (r as any).categoryRedirects : [])
+      .map((x: any) => ({ from: slugStr(x?.from), to: slugStr(x?.to) }))
+      .filter((x: { from: string; to: string }) => x.from && x.to && x.from !== x.to)
+      .slice(0, 200),
     restaurantsNearby: {
       enabled: bool(nearby.enabled, d.restaurantsNearby.enabled),
       eyebrow: str(nearby.eyebrow, 80) || d.restaurantsNearby.eyebrow,
@@ -597,6 +609,43 @@ export function parseDiscoveryConfig(raw: unknown): DiscoveryConfig {
       legalLeft: str(footer.legalLeft, 200),
       legalRight: str(footer.legalRight, 200) || d.footer.legalRight,
     },
+  };
+}
+
+/** Normalize any string to a URL slug (lowercase, hyphenated). */
+function slugStr(v: unknown): string {
+  return String(v ?? '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+}
+
+/** Dish-matching keywords derived from a free-text tile label. */
+function deriveMatch(label: string): string[] {
+  const base = label.toLowerCase().trim();
+  const words = base.split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
+  return Array.from(new Set([base, ...words])).filter(Boolean);
+}
+
+/** Permanent-redirect target for a retired category slug, or null. */
+export function categoryRedirectFor(config: DiscoveryConfig, slug: string): string | null {
+  const hit = (config.categoryRedirects ?? []).find((r) => r.from === slug);
+  return hit ? hit.to : null;
+}
+
+/**
+ * Resolve /category/<slug> to a curated category, or — when the slug is a
+ * custom CMS tile not in the curated taxonomy — a category synthesised from the
+ * tile (its label drives dish matching). Returns null when nothing matches.
+ */
+export function resolveDiscoveryCategory(config: DiscoveryConfig, slug: string): DiscoveryCategory | null {
+  const curated = getDiscoveryCategory(slug);
+  if (curated) return curated;
+  const tile = config.whatsOnYourMind.tiles.find((t) => t.slug === slug && t.enabled !== false);
+  if (!tile) return null;
+  return {
+    slug: tile.slug,
+    label: tile.label,
+    tagline: `Discover ${tile.label} near you.`,
+    image: tile.image,
+    match: deriveMatch(tile.label),
   };
 }
 
@@ -629,6 +678,33 @@ export async function getDiscoveryConfig(): Promise<DiscoveryConfig> {
 /** Validate + persist the discovery config. Returns the parsed (clean) config. */
 export async function saveDiscoveryConfig(raw: unknown, updatedBy?: string): Promise<DiscoveryConfig> {
   const clean = parseDiscoveryConfig(raw);
+
+  // ── Auto-record slug redirects for renamed tiles ──────────────────────────
+  // Compare the previous tiles to the incoming ones. When a tile keeps its
+  // LABEL but changes its SLUG, the old /category/<slug> is retired — record a
+  // redirect so existing links forward to the new slug instead of 404ing.
+  const prev = await getDiscoveryConfig();
+  const redirects = new Map<string, string>();
+  for (const r of clean.categoryRedirects) redirects.set(r.from, r.to); // caller-supplied (if any)
+  for (const oldTile of prev.whatsOnYourMind.tiles) {
+    const match = clean.whatsOnYourMind.tiles.find(
+      (t) => t.label.trim().toLowerCase() === oldTile.label.trim().toLowerCase(),
+    );
+    if (match && match.slug !== oldTile.slug) redirects.set(oldTile.slug, match.slug);
+  }
+  for (const r of prev.categoryRedirects ?? []) if (!redirects.has(r.from)) redirects.set(r.from, r.to);
+
+  const liveSlugs = new Set(clean.whatsOnYourMind.tiles.map((t) => t.slug));
+  const finalRedirects: { from: string; to: string }[] = [];
+  for (let [from, to] of redirects) {
+    let hops = 0;
+    while (redirects.has(to) && hops < 5) { to = redirects.get(to)!; hops += 1; } // collapse chains
+    if (from === to) continue;
+    if (liveSlugs.has(from)) continue; // a live tile now owns this slug → no redirect
+    finalRedirects.push({ from, to });
+  }
+  clean.categoryRedirects = finalRedirects.slice(0, 200);
+
   await (prisma as any).siteContent.upsert({
     where: { key: DISCOVERY_CONTENT_KEY },
     create: { key: DISCOVERY_CONTENT_KEY, data: clean as any, updatedBy: updatedBy ?? null },

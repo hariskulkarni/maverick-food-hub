@@ -82,7 +82,10 @@ function useReducedMotion(): boolean {
 function HeroSlideVideo({ s, active, mediaCls, alt }: { s: HeroCarouselSlide; active: boolean; mediaCls: string; alt: string }) {
   const reduced = useReducedMotion();
   const ref = useRef<HTMLVideoElement | null>(null);
-  const poster = s.poster || s.src || undefined;
+  const stillPoster = s.poster || s.src || undefined;
+  // Never use a mismatched image as the <video> poster — that flashed a wrong
+  // frame before the video decoded. Explicit poster only; else black backdrop.
+  const videoPoster = s.poster || undefined;
   const autoplay = (s.videoAutoplay ?? true) && !reduced && active;
   useEffect(() => {
     const el = ref.current;
@@ -92,10 +95,10 @@ function HeroSlideVideo({ s, active, mediaCls, alt }: { s: HeroCarouselSlide; ac
   }, [autoplay, s.videoMuted]);
 
   const info = heroVideoInfo(s.videoSrc || '');
-  const posterImg = poster ? (
+  const posterImg = stillPoster ? (
     /* eslint-disable-next-line @next/next/no-img-element */
-    <img src={poster} alt={alt} className={`absolute inset-0 h-full w-full ${mediaCls}`} />
-  ) : <div className="absolute inset-0 bg-muted" />;
+    <img src={stillPoster} alt={alt} className={`absolute inset-0 h-full w-full ${mediaCls}`} />
+  ) : <div className="absolute inset-0 bg-black" />;
 
   if (info.kind === 'youtube' || info.kind === 'vimeo') {
     if (!autoplay) return posterImg;
@@ -122,7 +125,8 @@ function HeroSlideVideo({ s, active, mediaCls, alt }: { s: HeroCarouselSlide; ac
       }}
       suppressHydrationWarning
       className={`absolute inset-0 h-full w-full ${mediaCls}`}
-      poster={poster}
+      style={{ backgroundColor: '#000' }}
+      poster={videoPoster}
       autoPlay={autoplay}
       loop={s.videoLoop ?? true}
       muted={s.videoMuted ?? true}
@@ -274,6 +278,18 @@ export function StorefrontHeroCarousel({
           />
         </div>
 
+        {count > 1 && (
+          <>
+            <button type="button" onClick={() => go(index - 1)} aria-label="Previous slide"
+              className="absolute left-2 md:left-3 top-1/2 z-20 -translate-y-1/2 grid size-9 md:size-10 place-items-center rounded-full bg-black/35 text-white backdrop-blur-sm transition hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+              <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+            </button>
+            <button type="button" onClick={() => go(index + 1)} aria-label="Next slide"
+              className="absolute right-2 md:right-3 top-1/2 z-20 -translate-y-1/2 grid size-9 md:size-10 place-items-center rounded-full bg-black/35 text-white backdrop-blur-sm transition hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+              <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+          </>
+        )}
         {count > 1 && (
           <div className="absolute inset-x-0 bottom-3 z-10 flex items-center justify-center gap-1.5">
             {slides.map((_, i) => (

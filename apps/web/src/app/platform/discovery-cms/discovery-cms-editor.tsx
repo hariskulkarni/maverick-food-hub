@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   Images, Sparkles, Grid3x3, Store, PanelBottom, Search,
@@ -51,6 +51,9 @@ export function DiscoveryCmsEditor({
   restaurants: RestaurantOpt[];
 }) {
   const [cfg, setCfg] = useState<DiscoveryConfig>(initial);
+  // Snapshot of the last-persisted tiles, used to detect slug renames on save
+  // (so we can warn that the old /category URL will be retired + redirected).
+  const savedTiles = useRef(initial.whatsOnYourMind.tiles);
   const [tab, setTab] = useState<TabKey>('carousel');
   const [saving, setSaving] = useState(false);
 
@@ -59,6 +62,25 @@ export function DiscoveryCmsEditor({
     setCfg((c) => ({ ...c, [section]: { ...c[section], ...value } }));
 
   async function save() {
+    // Warn when a tile's slug changed — the old category page is retired and
+    // visitors are auto-redirected to the new slug.
+    const norm = (x: string) => x.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+    const renames: { from: string; to: string }[] = [];
+    for (const oldT of savedTiles.current) {
+      const cur = cfg.whatsOnYourMind.tiles.find((t) => t.label.trim().toLowerCase() === oldT.label.trim().toLowerCase());
+      if (cur && norm(oldT.slug) && norm(cur.slug) !== norm(oldT.slug)) {
+        renames.push({ from: norm(oldT.slug), to: norm(cur.slug) });
+      }
+    }
+    if (renames.length > 0) {
+      const lines = renames.map((r) => `  \u2022 /category/${r.from}  \u2192  /category/${r.to}`).join('\n');
+      const ok = window.confirm(
+        `You changed ${renames.length === 1 ? 'a category slug' : `${renames.length} category slugs`}.\n\n` +
+        `The old page${renames.length === 1 ? '' : 's'} will be retired and visitors auto-redirected to the new one:\n\n` +
+        `${lines}\n\nApply these changes?`,
+      );
+      if (!ok) return;
+    }
     setSaving(true);
     try {
       const r = await fetch('/api/platform/discovery-cms', {
@@ -89,6 +111,7 @@ export function DiscoveryCmsEditor({
       }
       const data = await r.json();
       if (data.config) setCfg(data.config);
+      savedTiles.current = data.config?.whatsOnYourMind?.tiles ?? cfg.whatsOnYourMind.tiles;
       toast.success('Discovery page updated — live now.');
     } catch (e: any) {
       toast.error('Save failed', { description: String(e?.message || e).slice(0, 200) });

@@ -1,10 +1,11 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { ChevronLeft, MapPin, Navigation, Clock, Star, Percent, Gift, Tag, Leaf, Drumstick, UtensilsCrossed } from 'lucide-react';
 import { ImageWithFallback } from '@/components/image-with-fallback';
 import { FOOD_FALLBACK } from '@/lib/food-images';
-import { getDiscoveryCategory, type DiscoveryCategory } from '@/lib/discovery-categories';
+import { type DiscoveryCategory } from '@/lib/discovery-categories';
+import { getDiscoveryConfig, resolveDiscoveryCategory, categoryRedirectFor } from '@/server/discovery-cms';
 import { readDeliveryLocation } from '@/server/discovery';
 import { getDiscoveryRadiusKm } from '@/server/platform-settings';
 import {
@@ -24,7 +25,8 @@ type Search = Promise<{ dish?: string; veg?: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { slug } = await params;
-  const cat = getDiscoveryCategory(slug);
+  const config = await getDiscoveryConfig();
+  const cat = resolveDiscoveryCategory(config, slug);
   if (!cat) return { title: 'Category' };
   return {
     title: `${cat.label} near you`,
@@ -51,7 +53,11 @@ function offerValue(o: CategoryOffer): string {
 export default async function CategoryPage({ params, searchParams }: { params: Params; searchParams: Search }) {
   const { slug } = await params;
   const sp = (await searchParams) ?? {};
-  const category = getDiscoveryCategory(slug);
+  const config = await getDiscoveryConfig();
+  // Retired slug? 301 to its new home so old links/bookmarks keep working.
+  const redirectTo = categoryRedirectFor(config, slug);
+  if (redirectTo) permanentRedirect(`/category/${redirectTo}`);
+  const category = resolveDiscoveryCategory(config, slug);
   if (!category) notFound();
 
   const veg: VegFilter = sp.veg === 'veg' ? 'veg' : sp.veg === 'nonveg' ? 'nonveg' : null;

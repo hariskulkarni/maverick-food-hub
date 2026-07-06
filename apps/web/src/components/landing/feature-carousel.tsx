@@ -123,7 +123,13 @@ function SlideMedia({ s, isActive, objectFit, objectPosition, kenBurns, onError 
   const reduced = useReducedMotion();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const isVideo = s.mediaType === 'video' && !!s.videoSrc;
-  const poster = s.poster || s.src || undefined;
+  // The still image shown for inactive slides / reduced-motion / non-autoplay.
+  const stillPoster = s.poster || s.src || undefined;
+  // The <video> poster must NEVER fall back to s.src (a different image) — that
+  // is what caused the hero to flash a wrong image for a frame before the video
+  // decoded. Only an explicit poster is used; otherwise the video shows its own
+  // first frame over a black backdrop.
+  const videoPoster = s.poster || undefined;
   const autoplay = (s.videoAutoplay ?? true) && !reduced && isActive;
 
   // React doesn't reliably reflect `muted` to the DOM property (which browsers
@@ -154,7 +160,7 @@ function SlideMedia({ s, isActive, objectFit, objectPosition, kenBurns, onError 
 
   if (info.kind === 'youtube' || info.kind === 'vimeo') {
     // Not active / reduced-motion → show the poster still instead of the embed.
-    if (!autoplay) return poster ? imgEl(poster) : <div className="absolute inset-0" />;
+    if (!autoplay) return stillPoster ? imgEl(stillPoster) : <div className="absolute inset-0 bg-black" />;
     const embed = info.kind === 'youtube'
       ? `${info.embedBase}?autoplay=1&mute=1&loop=1&controls=0&playsinline=1&modestbranding=1&rel=0&showinfo=0&playlist=${info.id}`
       : `${info.embedBase}?background=1&autoplay=1&muted=1&loop=1`;
@@ -189,8 +195,8 @@ function SlideMedia({ s, isActive, objectFit, objectPosition, kenBurns, onError 
       }}
       suppressHydrationWarning
       className={'absolute inset-0 h-full w-full ' + (kenBurns ? 'animate-kenburns' : '')}
-      style={{ objectFit: objectFit as any, objectPosition }}
-      poster={poster}
+      style={{ objectFit: objectFit as any, objectPosition, backgroundColor: '#000' }}
+      poster={videoPoster}
       autoPlay={autoplay}
       loop={s.videoLoop ?? true}
       muted={s.videoMuted ?? true}
@@ -341,6 +347,28 @@ export function FeatureCarousel({
               setPaused={setPaused}
               useHeroSize={useHeroSize}
             />
+          )}
+
+          {/* Prev / next navigation arrows. */}
+          {count > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={() => go(index - 1)}
+                aria-label="Previous slide"
+                className="absolute left-2 md:left-3 top-1/2 z-30 -translate-y-1/2 grid size-9 md:size-10 place-items-center rounded-full bg-black/35 text-white backdrop-blur-sm transition hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => go(index + 1)}
+                aria-label="Next slide"
+                className="absolute right-2 md:right-3 top-1/2 z-30 -translate-y-1/2 grid size-9 md:size-10 place-items-center rounded-full bg-black/35 text-white backdrop-blur-sm transition hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+              </button>
+            </>
           )}
 
           {/* Pagination dots — shared across both modes. */}

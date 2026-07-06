@@ -281,9 +281,30 @@ export async function applyMenuImport(branchId: string, rows: MenuRow[]): Promis
   await prisma.$transaction(async (tx) => {
     // Resolve/create categories up front (cache by lower name).
     const catCache = new Map<string, string>(); // nameLower → categoryId
-    const existingCats = await tx.category.findMany({ where: { branchId }, select: { id: true, name: true, sortOrder: true } });
+    const existingCats = await tx.category.findMany({ where: { branchId }, select: { id: true, name: true, slug: true, sortOrder: true } });
     let maxCatSort = existingCats.reduce((m, c) => Math.max(m, c.sortOrder), 0);
     for (const c of existingCats) catCache.set(c.name.toLowerCase(), c.id);
+
+    // MenuItem + Category both carry a `@@unique([branchId, slug])`. Two rows
+    // whose names slugify to the same value (duplicates, the same dish across
+    // Veg/Non-Veg, or a clash with a pre-existing item) would violate it and
+    // abort the WHOLE import ("failed mid-way"). Seed the slugs already in use
+    // and mint a unique one (base, base-2, base-3, …) for every new record.
+    const usedItemSlugs = new Set<string>(
+      (await tx.menuItem.findMany({ where: { branchId }, select: { slug: true } })).map((i) => i.slug),
+    );
+    const usedCatSlugs = new Set<string>(existingCats.map((c) => c.slug));
+    const uniqueSlug = (name: string, used: Set<string>): string => {
+      const base = slugify(name);
+      let candidate = base;
+      let n = 1;
+      while (used.has(candidate)) {
+        n += 1;
+        candidate = `${base}-${n}`;
+      }
+      used.add(candidate);
+      return candidate;
+    };
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -294,7 +315,7 @@ export async function applyMenuImport(branchId: string, rows: MenuRow[]): Promis
       let categoryId = catCache.get(row.category.toLowerCase());
       if (!categoryId) {
         const created = await tx.category.create({
-          data: { branchId, name: row.category, slug: slugify(row.category), sortOrder: ++maxCatSort },
+          data: { branchId, name: row.category, slug: uniqueSlug(row.category, usedCatSlugs), sortOrder: ++maxCatSort },
         });
         categoryId = created.id;
         catCache.set(row.category.toLowerCase(), categoryId);
@@ -320,7 +341,7 @@ export async function applyMenuImport(branchId: string, rows: MenuRow[]): Promis
         result.updated++;
       } else {
         await tx.menuItem.create({
-          data: { ...data, branchId, categoryId, slug: slugify(row.name) },
+          data: { ...data, branchId, categoryId, slug: uniqueSlug(row.name, usedItemSlugs) },
         });
         result.created++;
       }

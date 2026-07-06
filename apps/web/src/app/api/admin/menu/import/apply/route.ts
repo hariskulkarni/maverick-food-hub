@@ -9,6 +9,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { applyMenuImport, type MenuRow } from '@/server/menu-io';
 import { resolveBranchScope } from '../_helpers';
+import { log } from '@/server/log';
 
 const RowSchema = z.object({
   category: z.string(),
@@ -47,8 +48,9 @@ export async function POST(req: NextRequest) {
     return Response.json(summary);
   } catch (e) {
     // applyMenuImport runs in a transaction — anything that bubbles out is a
-    // DB-level failure (constraint, timeout). Don't leak the raw message, but
-    // give the operator a usable hint.
+    // DB-level failure (constraint, timeout). Log the real cause for triage,
+    // but don't leak raw DB internals to the client.
+    log.error({ err: e, branchId: scope.branchId, rows: parsed.rows.length }, 'menu import apply failed');
     return Response.json(
       { error: 'Saving the import failed mid-way. The menu is unchanged. Check the rows and retry.', reason: 'apply_failed' },
       { status: 500 }

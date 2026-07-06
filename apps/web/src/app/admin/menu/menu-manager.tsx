@@ -440,7 +440,7 @@ function ItemDialog({ item, categories, onClose }: { item: any; categories: any[
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Price (₹)" type="number" value={String(data.price)} onChange={(v) => setData({ ...data, price: Number(v) })} required />
-                <Field label="Prep time (min)" type="number" value={String(data.prepTimeMin)} onChange={(v) => setData({ ...data, prepTimeMin: Number(v) })} />
+                <Field label="Prep time (min)" type="number" step={1} min={1} max={180} inputMode="numeric" value={String(data.prepTimeMin)} onChange={(v) => setData({ ...data, prepTimeMin: v === '' ? 0 : Math.min(180, Math.max(1, Math.round(Number(v) || 0))) })} />
               </div>
               <div>
                 <Label>Category</Label>
