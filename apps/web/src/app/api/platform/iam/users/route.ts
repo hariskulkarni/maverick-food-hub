@@ -49,7 +49,6 @@ export async function GET() {
       suspendedAt: true,
       suspendedReason: true,
       createdAt: true,
-      lastSeenAt: false,
     },
   });
 

@@ -48,9 +48,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const target = await prisma.user.findUnique({
     where: { id },
-    select: { id: true, role: true, suspendedAt: true, email: true },
+    select: { id: true, role: true, suspendedAt: true, email: true, deletedAt: true },
   });
-  if (!target || (target as { deletedAt?: Date | null }).deletedAt) {
+  if (!target || target.deletedAt) {
     return Response.json({ error: 'not_found' }, { status: 404 });
   }
   // Refuse to manage anyone who isn't already a platform-team member — this
