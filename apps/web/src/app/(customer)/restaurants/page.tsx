@@ -333,6 +333,7 @@ export default async function RestaurantsListPage({
           autoplayMs={cms.carousel.autoplayMs}
           transition={cms.carousel.transition}
           transitionMs={cms.carousel.transitionMs}
+          arrowOpacity={cms.carousel.arrowOpacity}
           aspectRatio={cms.carousel.aspectRatio}
           // New CMS-controlled width + height presets (7 widths × 8 heights),
           // shared with the per-restaurant storefront hero. When admins haven't

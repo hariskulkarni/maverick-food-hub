@@ -219,6 +219,7 @@ export function FeatureCarousel({
   transition = 'slide',
   transitionMs = 700,
   aspectRatio = '2:1',
+  arrowOpacity = 22,
   width,
   height,
 }: {
@@ -303,6 +304,12 @@ export function FeatureCarousel({
     ? HERO_WIDTH_INNER_CLASS[width]
     : 'rounded-b-[1.75rem] md:rounded-3xl shadow-lg shadow-primary/10';
 
+  // Nav-arrow translucency (CMS-controlled). Base + a slightly stronger hover.
+  const arrowStyle = {
+    ['--abg' as any]: `rgba(0,0,0,${Math.max(0, Math.min(0.9, arrowOpacity / 100))})`,
+    ['--abgh' as any]: `rgba(0,0,0,${Math.max(0.06, Math.min(0.95, arrowOpacity / 100 + 0.18))})`,
+  } as React.CSSProperties;
+
   return (
     <section
       className="reveal md:pt-6"
@@ -356,7 +363,8 @@ export function FeatureCarousel({
                 type="button"
                 onClick={() => go(index - 1)}
                 aria-label="Previous slide"
-                className="absolute left-2 md:left-3 top-1/2 z-30 -translate-y-1/2 grid size-9 md:size-10 place-items-center rounded-full bg-black/35 text-white backdrop-blur-sm transition hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                style={arrowStyle}
+                className="absolute left-2 md:left-3 top-1/2 z-30 -translate-y-1/2 grid size-9 md:size-10 place-items-center rounded-full bg-[var(--abg)] text-white backdrop-blur-sm transition hover:bg-[var(--abgh)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
               >
                 <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
               </button>
@@ -364,7 +372,8 @@ export function FeatureCarousel({
                 type="button"
                 onClick={() => go(index + 1)}
                 aria-label="Next slide"
-                className="absolute right-2 md:right-3 top-1/2 z-30 -translate-y-1/2 grid size-9 md:size-10 place-items-center rounded-full bg-black/35 text-white backdrop-blur-sm transition hover:bg-black/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                style={arrowStyle}
+                className="absolute right-2 md:right-3 top-1/2 z-30 -translate-y-1/2 grid size-9 md:size-10 place-items-center rounded-full bg-[var(--abg)] text-white backdrop-blur-sm transition hover:bg-[var(--abgh)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
               >
                 <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
               </button>

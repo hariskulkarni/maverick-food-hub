@@ -224,6 +224,8 @@ export interface DiscoveryConfig {
     transition: CarouselTransition;
     /** Transition duration in ms (200-2000). */
     transitionMs: number;
+    /** Nav-arrow background opacity as a percentage (0 = invisible, 80 = solid-ish). */
+    arrowOpacity: number;
     /**
      * Legacy banner-shape field (2:1 | 21:9 | 16:9 | 1:1). Preserved on the
      * type for back-compat reads / writes. The renderer prefers `height` (the
@@ -313,6 +315,7 @@ export function defaultDiscoveryConfig(): DiscoveryConfig {
       autoplayMs: 5000,
       transition: 'slide' as CarouselTransition,
       transitionMs: 700,
+      arrowOpacity: 22,
       aspectRatio: '2:1' as CarouselAspectRatio,
       // The historical /restaurants carousel rendered full-bleed on phones
       // and inside md:container on desktop. The closest preset that preserves
@@ -563,6 +566,7 @@ export function parseDiscoveryConfig(raw: unknown): DiscoveryConfig {
       autoplayMs: clampInt(carousel.autoplayMs, 0, 30000, d.carousel.autoplayMs),
       transition: oneOf<CarouselTransition>(carousel.transition, CAROUSEL_TRANSITIONS, d.carousel.transition),
       transitionMs: clampInt(carousel.transitionMs, 200, 2000, d.carousel.transitionMs),
+      arrowOpacity: clampInt(carousel.arrowOpacity, 0, 80, d.carousel.arrowOpacity),
       aspectRatio: oneOf<CarouselAspectRatio>(carousel.aspectRatio, CAROUSEL_ASPECT_RATIOS, d.carousel.aspectRatio),
       // New width/height presets (see HeroWidth / HeroHeight). Both fall back
       // to defaults when missing so legacy configs render the same as before.

@@ -274,6 +274,19 @@ function CarouselTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: Patc
             className="h-9 w-32 rounded-md border border-input bg-background px-3 text-sm"
           />
         </Field>
+        <Field label={`Arrow transparency (${cfg.carousel.arrowOpacity}%)`} hint="Lower = more see-through nav arrows.">
+          <div className="flex items-center gap-2">
+            <input
+              type="range" min={0} max={80} step={2}
+              value={cfg.carousel.arrowOpacity}
+              onChange={(e) => patch('carousel', { arrowOpacity: Number(e.target.value) })}
+              className="w-40 accent-primary"
+            />
+            <span className="grid size-8 place-items-center rounded-full text-white" style={{ backgroundColor: `rgba(0,0,0,${cfg.carousel.arrowOpacity / 100})` }}>
+              <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+            </span>
+          </div>
+        </Field>
       </div>
 
       {/* ── Carousel-level presentation: transition + duration + aspect ratio ──
