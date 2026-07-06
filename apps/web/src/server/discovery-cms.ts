@@ -183,13 +183,24 @@ export interface CarouselSlide {
 export interface CategoryTile {
   /** URL slug → /category/<slug>. */
   slug: string;
-  /** Tile label. */
+  /** Tile label (also the default category-page header name). */
   label: string;
-  /** Image URL. */
+  /** Grid tile image URL. */
   image: string;
   /** Accessible alt text ('' ⇒ falls back to label). */
   alt: string;
   enabled: boolean;
+  // ── Category-page overrides (all optional; blank ⇒ inherit) ──────────────
+  /** Header name (h1) on /category/<slug>. Blank ⇒ falls back to `label`. */
+  title: string;
+  /** Hero subtitle. Blank ⇒ curated tagline (or a generated one). */
+  tagline: string;
+  /** Hero background image (separate from the grid `image`). Blank ⇒ grid image / curated. */
+  heroImage: string;
+  /** SEO <title>. Blank ⇒ "<label> near you". */
+  metaTitle: string;
+  /** SEO meta description. Blank ⇒ generated from tagline. */
+  metaDescription: string;
 }
 
 export interface FooterLink {
@@ -366,6 +377,11 @@ export function defaultDiscoveryConfig(): DiscoveryConfig {
         image: c.image,
         alt: c.label,
         enabled: true,
+        title: '',
+        tagline: '',
+        heroImage: '',
+        metaTitle: '',
+        metaDescription: '',
       })),
     },
     categoryRedirects: [],
@@ -503,12 +519,19 @@ function parseTile(t: unknown): CategoryTile | null {
   const usableImage = explicitImage && localFileExists(explicitImage)
     ? explicitImage
     : '';
+  const explicitHero = url(o.heroImage);
+  const usableHero = explicitHero && localFileExists(explicitHero) ? explicitHero : '';
   return {
     slug,
     label,
     image: usableImage || curatedTileImage(slug, label),
     alt: str(o.alt, 160),
     enabled: bool(o.enabled, true),
+    title: str(o.title, 80).trim(),
+    tagline: str(o.tagline, 200).trim(),
+    heroImage: usableHero,
+    metaTitle: str(o.metaTitle, 120).trim(),
+    metaDescription: str(o.metaDescription, 300).trim(),
   };
 }
 
@@ -640,17 +663,29 @@ export function categoryRedirectFor(config: DiscoveryConfig, slug: string): stri
  * tile (its label drives dish matching). Returns null when nothing matches.
  */
 export function resolveDiscoveryCategory(config: DiscoveryConfig, slug: string): DiscoveryCategory | null {
-  const curated = getDiscoveryCategory(slug);
-  if (curated) return curated;
   const tile = config.whatsOnYourMind.tiles.find((t) => t.slug === slug && t.enabled !== false);
-  if (!tile) return null;
-  return {
-    slug: tile.slug,
-    label: tile.label,
-    tagline: `Discover ${tile.label} near you.`,
-    image: tile.image,
-    match: deriveMatch(tile.label),
+  const curated = getDiscoveryCategory(slug);
+  if (!curated && !tile) return null;
+  const base: DiscoveryCategory = curated ?? {
+    slug: tile!.slug,
+    label: tile!.label,
+    tagline: `Discover ${tile!.label} near you.`,
+    image: tile!.image,
+    match: deriveMatch(tile!.label),
   };
+  if (!tile) return base;
+  // Apply the admin's per-category overrides on top of the base.
+  return {
+    ...base,
+    label: (tile.title || '').trim() || base.label,
+    tagline: (tile.tagline || '').trim() || base.tagline,
+    image: (tile.heroImage || '').trim() || base.image,
+  };
+}
+
+/** The CMS tile backing a category slug (for SEO overrides), or null. */
+export function categoryTileFor(config: DiscoveryConfig, slug: string): CategoryTile | null {
+  return config.whatsOnYourMind.tiles.find((t) => t.slug === slug && t.enabled !== false) ?? null;
 }
 
 /**

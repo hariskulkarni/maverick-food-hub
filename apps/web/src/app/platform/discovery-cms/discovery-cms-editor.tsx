@@ -676,13 +676,30 @@ function WoymTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: PatchFn;
                 <Field label="Alt text"><Text value={t.alt} onChange={(v) => update(i, { alt: v })} max={160} /></Field>
               </div>
             </div>
+
+            <details className="mt-3 rounded-md border bg-muted/20 p-2">
+              <summary className="cursor-pointer select-none text-xs font-semibold text-muted-foreground">
+                Category page (header &amp; SEO)
+              </summary>
+              <div className="mt-3 space-y-3">
+                <div className="grid gap-3 grid-cols-[128px_1fr]">
+                  <ImageUploader value={t.heroImage} onChange={(url) => update(i, { heroImage: url || '' })} folder="discovery" aspect="wide" label="Header image" recommended="2600×1300 (2:1) · blank = tile image" />
+                  <div className="space-y-2">
+                    <Field label="Header name" hint="Blank = tile label."><Text value={t.title} onChange={(v) => update(i, { title: v })} max={80} placeholder={t.label} /></Field>
+                    <Field label="Tagline" hint="Hero subtitle under the header."><Text value={t.tagline} onChange={(v) => update(i, { tagline: v })} max={200} /></Field>
+                  </div>
+                </div>
+                <Field label="SEO title" hint="Browser/search title. Blank = '<name> near you'."><Text value={t.metaTitle} onChange={(v) => update(i, { metaTitle: v })} max={120} /></Field>
+                <Field label="SEO description"><Text value={t.metaDescription} onChange={(v) => update(i, { metaDescription: v })} max={300} /></Field>
+              </div>
+            </details>
           </div>
         ))}
       </div>
 
       <button
         type="button"
-        onClick={() => setCfg((c) => ({ ...c, whatsOnYourMind: { ...c.whatsOnYourMind, tiles: [...c.whatsOnYourMind.tiles, { slug: '', label: '', image: '', alt: '', enabled: true }] } }))}
+        onClick={() => setCfg((c) => ({ ...c, whatsOnYourMind: { ...c.whatsOnYourMind, tiles: [...c.whatsOnYourMind.tiles, { slug: '', label: '', image: '', alt: '', enabled: true, title: '', tagline: '', heroImage: '', metaTitle: '', metaDescription: '' }] } }))}
         className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-3 py-2 text-sm hover:border-primary"
       >
         <Plus className="size-4" /> Add tile

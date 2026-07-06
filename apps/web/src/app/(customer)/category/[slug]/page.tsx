@@ -5,7 +5,7 @@ import { ChevronLeft, MapPin, Navigation, Clock, Star, Percent, Gift, Tag, Leaf,
 import { ImageWithFallback } from '@/components/image-with-fallback';
 import { FOOD_FALLBACK } from '@/lib/food-images';
 import { type DiscoveryCategory } from '@/lib/discovery-categories';
-import { getDiscoveryConfig, resolveDiscoveryCategory, categoryRedirectFor } from '@/server/discovery-cms';
+import { getDiscoveryConfig, resolveDiscoveryCategory, categoryRedirectFor, categoryTileFor } from '@/server/discovery-cms';
 import { readDeliveryLocation } from '@/server/discovery';
 import { getDiscoveryRadiusKm } from '@/server/platform-settings';
 import {
@@ -28,9 +28,10 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const config = await getDiscoveryConfig();
   const cat = resolveDiscoveryCategory(config, slug);
   if (!cat) return { title: 'Category' };
+  const tile = categoryTileFor(config, slug);
   return {
-    title: `${cat.label} near you`,
-    description: `${cat.tagline} Order ${cat.label} from the best kitchens on Flavrly.`
+    title: (tile?.metaTitle || '').trim() || `${cat.label} near you`,
+    description: (tile?.metaDescription || '').trim() || `${cat.tagline} Order ${cat.label} from the best kitchens on Flavrly.`
   };
 }
 
