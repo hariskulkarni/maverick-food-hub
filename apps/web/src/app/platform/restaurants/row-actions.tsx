@@ -13,6 +13,12 @@ export function RestaurantRowActions({ id, status }: { id: string; status: strin
       body: body ? JSON.stringify(body) : undefined
     });
     if (!r.ok) return toast.error('Failed: ' + (await r.text()));
+    if (r.status === 202) {
+      const d = await r.json().catch(() => ({} as any));
+      toast.info('Sent for approval', { description: d.summary ?? 'A super-admin must approve this action.' });
+      router.refresh();
+      return;
+    }
     toast.success('Done');
     router.refresh();
   }

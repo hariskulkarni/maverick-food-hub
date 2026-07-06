@@ -312,6 +312,11 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
     if (!window.confirm(`Archive \"${name}\"?\n\nIt will be hidden from customers and its name freed for reuse. No data is deleted \u2014 you can Restore it from this panel later.`)) return;
     const res = await fetch(`/api/platform/restaurants/${id}/archive`, { method: 'POST' });
     if (!res.ok) return toast.error('Archive failed: ' + (await res.text()));
+    if (res.status === 202) {
+      const d = await res.json().catch(() => ({} as any));
+      toast.info('Sent for approval', { description: d.summary ?? 'A super-admin must approve this archive.' });
+      onChanged(); return;
+    }
     toast.success('Restaurant archived'); load(); onChanged();
   }
   async function restoreRestaurant() {

@@ -1,12 +1,11 @@
 import { NextRequest } from 'next/server';
-import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
-import { revalidateRestaurantSurfaces } from '@/server/revalidate';
+import { confidentialAction } from '@/server/approvals';
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+/**
+ * POST — suspend a restaurant. CONFIDENTIAL: a super-admin runs it directly; an
+ * Admin Assist's request is queued for approval (202). See src/server/approvals.ts.
+ */
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const r = await prisma.restaurant.update({ where: { id }, data: { status: 'SUSPENDED' } });
-  revalidateRestaurantSurfaces(r.slug);
-  return Response.json(r);
+  return confidentialAction(req, 'restaurant.suspend', { restaurantId: id });
 }

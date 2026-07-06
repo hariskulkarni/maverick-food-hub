@@ -270,6 +270,8 @@ model User {
   favoriteItems         FavoriteItem[]
   reservations          Reservation[]        @relation("CustomerReservations")
   sessions              UserSession[]
+  approvalsRequested    ApprovalRequest[]    @relation("ApprovalRequester")
+  approvalsReviewed     ApprovalRequest[]    @relation("ApprovalReviewer")
 
   @@index([role])
   @@index([phone])
@@ -3187,4 +3189,40 @@ model SiteContent {
   data      Json
   updatedAt DateTime @updatedAt
   updatedBy String?
+}
+
+
+/// Maker-checker approvals. When an ADMIN_ASSIST triggers a CONFIDENTIAL action
+/// (see CONFIDENTIAL_CAPABILITIES in src/server/permissions.ts) it is recorded
+/// here as PENDING instead of executing; a SUPER_ADMIN approves (which runs the
+/// registered executor) or rejects it. See src/server/approvals.ts.
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model ApprovalRequest {
+  id             String         @id @default(cuid())
+  action         String // registry key, e.g. "restaurant.suspend"
+  capability     String // the confidential capability it needs
+  status         ApprovalStatus @default(PENDING)
+  summary        String // human-readable description of the request
+  resourceType   String?
+  resourceId     String?
+  payload        Json // params replayed by the executor on approval
+  requestedById  String
+  reviewedById   String?
+  reviewedAt     DateTime?
+  reviewNote     String?
+  executedAt     DateTime?
+  executionError String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  requestedBy User  @relation("ApprovalRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+  reviewedBy  User? @relation("ApprovalReviewer", fields: [reviewedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([requestedById])
 }

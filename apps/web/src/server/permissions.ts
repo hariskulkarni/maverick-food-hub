@@ -39,7 +39,8 @@ export type Capability =
   | 'finance:write' // payouts / settlements / COD  (CONFIDENTIAL)
   | 'restaurants:read'
   | 'restaurants:write' // suspend / archive / delete restaurants  (CONFIDENTIAL)
-  | 'qa:test'; // exercise preview / test surfaces built via the CMS
+  | 'qa:test' // exercise preview / test surfaces built via the CMS
+  | 'approvals:review'; // approve/reject confidential requests (SUPER_ADMIN)
 
 /** Every capability that exists — handy for SUPER_ADMIN and for tests. */
 export const ALL_CAPABILITIES: readonly Capability[] = [
@@ -57,6 +58,7 @@ export const ALL_CAPABILITIES: readonly Capability[] = [
   'restaurants:read',
   'restaurants:write',
   'qa:test',
+  'approvals:review',
 ] as const;
 
 /**
@@ -166,6 +168,19 @@ export function isConfidential(capability: Capability): boolean {
   return CONFIDENTIAL_CAPABILITIES.has(capability);
 }
 
+/** Roles that may REQUEST a confidential action (routed for SUPER_ADMIN approval). */
+export const APPROVAL_REQUESTER_ROLES: readonly Role[] = ['ADMIN_ASSIST'] as unknown as Role[];
+
+/**
+ * True when `role` cannot perform `capability` directly but is allowed to
+ * submit it as an approval request (maker-checker). Today: ADMIN_ASSIST on any
+ * confidential capability.
+ */
+export function canRequestApproval(role: Role | string | null | undefined, capability: Capability): boolean {
+  if (!role || can(role, capability)) return false;
+  return isConfidential(capability) && (APPROVAL_REQUESTER_ROLES as unknown as string[]).includes(role);
+}
+
 /**
  * Page-level capability gates for the middleware. Longest-prefix wins; any
  * /platform path not matched here falls back to `platform:view` (i.e. every
@@ -252,4 +267,5 @@ export const CAPABILITY_LABEL: Record<Capability, string> = {
   'restaurants:read': 'View restaurants',
   'restaurants:write': 'Suspend / archive / delete restaurants',
   'qa:test': 'Exercise test / preview surfaces',
+  'approvals:review': 'Approve/reject confidential requests',
 };

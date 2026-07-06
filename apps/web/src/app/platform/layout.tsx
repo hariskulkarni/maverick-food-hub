@@ -5,7 +5,7 @@ import type { Role } from '@prisma/client';
 import {
   Building2, ListOrdered, Users, Bike, BarChart3, Radio, Coins,
   AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet,
-  History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, ShieldCheck,
+  History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, ShieldCheck, ClipboardCheck,
   Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones,
   GraduationCap, MessagesSquare, Banknote, LayoutTemplate,
 } from 'lucide-react';
@@ -37,6 +37,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/platform/payouts',       icon: <ListOrdered className={I} />,     label: 'Payout rules' },
       { href: '/platform/cod',           icon: <Coins className={I} />,           label: 'COD' },
       { href: '/platform/iam',           icon: <ShieldCheck className={I} />,     label: 'IAM & roles' },
+      { href: '/platform/approvals',     icon: <ClipboardCheck className={I} />,  label: 'Approvals' },
       { href: '/platform/users',         icon: <Users className={I} />,           label: 'All users' },
       { href: '/platform/support',       icon: <LifeBuoy className={I} />,        label: 'Support' },
       { href: '/platform/qr',            icon: <QrCode className={I} />,          label: 'QR codes' },

@@ -61,12 +61,29 @@ bash scripts/deploy.sh --migrate
 This pushes, SSHes to the VPS, runs `prisma db push` (applies the enum values),
 `rm -rf .next`, rebuilds (regenerates the Prisma client), and restarts pm2.
 
+## Approvals (maker-checker) — Stage 3
+
+When an **Admin Assist** triggers a **confidential** action, it is recorded as a
+`PENDING` `ApprovalRequest` instead of running; a **Super Admin** approves (which
+executes it) or rejects it at `/platform/approvals`. A Super Admin performing the
+same action runs it directly — the route calls `confidentialAction()` and the
+branch is chosen by capability, so both paths run the *same* executor (no drift).
+
+- Engine + executor registry: `src/server/approvals.ts` (`APPROVAL_ACTIONS`,
+  `confidentialAction`, `approveRequest`, `rejectRequest`).
+- Wired confidential actions: **restaurant suspend** and **restaurant archive**
+  (`restaurants:write`). New actions plug in by adding a registry entry + calling
+  `confidentialAction(req, '<action>', payload)` from the route.
+- Capability `approvals:review` (Super Admin only) gates approve/reject.
+- Requesters see their own requests + status; reviewers see the full queue.
+- Tested in `__tests__/server/approvals.test.ts` (branch, execute, double-approve
+  guard, reject) + approval cases in `permissions.test.ts`.
+
+Every step is audited: `approval.request`, `approval.approve`, `approval.reject`.
+
 ## Roadmap
 
-- **Stage 3 — Approval workflow.** Admin Assist's confidential actions
-  (`iam:manage`, `finance:write`, `restaurants:write`) become pending
-  `ApprovalRequest`s that a Super Admin approves/rejects before they execute.
-  The confidential set is already declared in `permissions.ts`
-  (`CONFIDENTIAL_CAPABILITIES`) so the matrix and the workflow never drift.
 - Broaden capability guards to the remaining Super-Admin-only surfaces as they're
   delegated (each is a one-line `requireCapability(...)` swap).
+- Register more confidential actions (payout publish, settlement export, IAM
+  changes) in `APPROVAL_ACTIONS` so Admin Assist can request them too.

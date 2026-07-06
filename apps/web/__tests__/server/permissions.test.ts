@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   can,
   canAny,
+  canRequestApproval,
   capabilitiesFor,
   isPlatformRole,
   isConfidential,
@@ -133,5 +134,25 @@ describe('platform page gates (longest-prefix routing)', () => {
     // ADMIN_ASSIST can open riders + ops, not IAM
     expect(can('ADMIN_ASSIST', pageGateFor('/platform/rider-shifts'))).toBe(true);
     expect(can('ADMIN_ASSIST', pageGateFor('/platform/iam'))).toBe(false);
+  });
+});
+
+describe('confidential approvals (maker-checker)', () => {
+  it('only SUPER_ADMIN can review approvals', () => {
+    expect(can('SUPER_ADMIN', 'approvals:review')).toBe(true);
+    for (const r of ['ADMIN_ASSIST', 'DEVELOPER', 'QA', 'GUEST'] as Role[]) {
+      expect(can(r, 'approvals:review')).toBe(false);
+    }
+  });
+  it('ADMIN_ASSIST may REQUEST confidential caps it cannot perform', () => {
+    expect(canRequestApproval('ADMIN_ASSIST', 'finance:write')).toBe(true);
+    expect(canRequestApproval('ADMIN_ASSIST', 'restaurants:write')).toBe(true);
+    expect(canRequestApproval('ADMIN_ASSIST', 'iam:manage')).toBe(true);
+  });
+  it('nobody requests a non-confidential cap, and holders never "request"', () => {
+    expect(canRequestApproval('ADMIN_ASSIST', 'ops:write')).toBe(false);
+    expect(canRequestApproval('SUPER_ADMIN', 'restaurants:write')).toBe(false);
+    expect(canRequestApproval('GUEST', 'restaurants:write')).toBe(false);
+    expect(canRequestApproval('DEVELOPER', 'finance:write')).toBe(false);
   });
 });
