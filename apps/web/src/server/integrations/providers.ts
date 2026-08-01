@@ -19,6 +19,7 @@ import { verifyBrevoSmtp } from '../notifications/smtp-brevo';
 
 export type ProviderKey =
   | 'RAZORPAY'
+  | 'PHONEPE'
   | 'TWOFACTOR'
   | 'TWILIO_SMS'
   | 'TWILIO_WHATSAPP'
@@ -92,6 +93,88 @@ const Razorpay: ProviderDef = {
     } catch (e: any) {
       const msg = e?.error?.description || e?.message || String(e);
       return { ok: false, error: msg };
+    }
+  }
+};
+
+// ─── PhonePe (India PG — Standard Checkout V2) ──────────────────────────────
+const PhonePe: ProviderDef = {
+  key: 'PHONEPE',
+  title: 'PhonePe payments',
+  vendor: 'PhonePe',
+  description:
+    'India-first gateway: UPI intent, UPI QR, UPI collect, RuPay credit-on-UPI, cards and netbanking. ' +
+    'Settlement to your registered bank. When connected, this restaurant’s online orders route through PhonePe ' +
+    'instead of Razorpay.',
+  docsUrl: 'https://business.phonepe.com/developer-settings',
+  fields: [
+    {
+      key: 'clientId',
+      label: 'Client ID',
+      type: 'text',
+      required: true,
+      placeholder: 'SU2XXXXXXXXXXXXXXXXX',
+      hint: 'PhonePe Business Dashboard → Developer Settings → API Keys. These are V2 (OAuth) credentials — the old Merchant ID + Salt Key pair will not work.'
+    },
+    { key: 'clientSecret', label: 'Client secret', type: 'password', required: true, secret: true },
+    {
+      key: 'clientVersion',
+      label: 'Client version',
+      type: 'text',
+      required: true,
+      placeholder: '1',
+      hint: 'Issued alongside the client ID. Usually "1" for UAT and a higher integer in production.'
+    },
+    {
+      key: 'env',
+      label: 'Environment',
+      type: 'text',
+      placeholder: 'SANDBOX',
+      hint: 'SANDBOX for UAT testing, PRODUCTION once PhonePe has approved go-live. Defaults to SANDBOX.'
+    },
+    {
+      key: 'webhookUsername',
+      label: 'Webhook username',
+      type: 'text',
+      hint:
+        'In PhonePe Dashboard → Developer Settings → Webhooks, add this URL: ' +
+        `${WEBHOOK_BASE}/api/payments/phonepe/webhook  —  choose auth type SHA, invent a username/password pair, ` +
+        'subscribe to checkout.order.completed, checkout.order.failed, pg.refund.accepted, pg.refund.completed, ' +
+        'pg.refund.failed, then paste the same pair here so we can authenticate deliveries.'
+    },
+    { key: 'webhookPassword', label: 'Webhook password', type: 'password', secret: true }
+  ],
+  buildSummary: (c) => ({
+    clientId: c.clientId,
+    clientVersion: c.clientVersion || '1',
+    env: (c.env || 'SANDBOX').toUpperCase(),
+    clientSecret: maskSecret(c.clientSecret),
+    webhookUsername: c.webhookUsername || '(not set)',
+    webhookPassword: c.webhookPassword ? maskSecret(c.webhookPassword) : '(not set)'
+  }),
+  async test(c) {
+    // Read-only round-trip: fetch an OAuth token. It exercises client id,
+    // version, secret and the environment routing without creating an order or
+    // moving any money.
+    try {
+      const { getAccessToken, __resetPhonePeTokenCache } = await import('../payments/phonepe-api');
+      const { phonePeConfigFromStored } = await import('../payments/phonepe');
+      const cfg = phonePeConfigFromStored(c);
+      if (!cfg) return { ok: false, error: 'Client ID and client secret are both required.' };
+      // Don't let a previously cached token mask bad credentials being tested.
+      __resetPhonePeTokenCache();
+      await getAccessToken(cfg, true);
+      const missingWebhook = !c.webhookUsername || !c.webhookPassword;
+      return {
+        ok: true,
+        detail:
+          `Authenticated against PhonePe ${cfg.env}.` +
+          (missingWebhook
+            ? ' Note: no webhook username/password set — payments will still confirm via status polling, but confirmation will be slower.'
+            : ' Webhook credentials stored.')
+      };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || String(e) };
     }
   }
 };
@@ -343,6 +426,7 @@ const BrevoSmtp: ProviderDef = {
 
 export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
   RAZORPAY: Razorpay,
+  PHONEPE: PhonePe,
   TWOFACTOR: TwoFactor,
   TWILIO_SMS: TwilioSMS,
   TWILIO_WHATSAPP: TwilioWhatsApp,
@@ -356,6 +440,7 @@ export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
 };
 
 export const PROVIDER_LIST: ProviderDef[] = [
+  PhonePe,
   Razorpay,
   TwoFactor, Msg91, Fast2Sms, TextLocal, TwilioSMS,
   TwilioWhatsApp,
