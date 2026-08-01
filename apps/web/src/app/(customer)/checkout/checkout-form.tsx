@@ -12,6 +12,7 @@ import { useCart } from '../cart-context';
 import { money } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Wallet, Sparkles, Bike, ShoppingBag, MapPin, CalendarClock, Gift } from 'lucide-react';
+import { openPhonePeCheckout } from '@/lib/phonepe-checkout';
 
 interface Addr { id: string; label: string; line1: string; line2?: string | null; city: string; postalCode: string; isDefault?: boolean; }
 
@@ -20,6 +21,19 @@ interface Addr { id: string; label: string; line1: string; line2?: string | null
 // (Table reservations + deposit collection still live in the separate
 // /r/[slug]/reserve flow.)
 type FulfillmentType = 'DELIVERY' | 'PICKUP';
+
+/**
+ * The online rail this restaurant is on, resolved server-side. `null` means no
+ * gateway credentials are configured, which in dev falls through to the mock
+ * provider — the online option still renders so local checkout stays testable.
+ */
+type Gateway = 'RAZORPAY' | 'PHONEPE' | null;
+
+/** What the online option is called, per gateway. */
+const GATEWAY_LABEL: Record<'RAZORPAY' | 'PHONEPE', { title: string; subtitle: string }> = {
+  PHONEPE: { title: 'Pay online (UPI / Card / Netbanking)', subtitle: 'Secured by PhonePe' },
+  RAZORPAY: { title: 'Pay online (UPI / Card / Wallet)', subtitle: 'Secured by Razorpay' }
+};
 
 interface FulfillmentCtx {
   restaurantSlug: string;
@@ -31,12 +45,13 @@ interface FulfillmentCtx {
   reservationDiscountPct: number;
 }
 
-export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints, fulfillment }: {
+export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints, fulfillment, gateway = null }: {
   branchId: string;
   addresses: Addr[];
   walletBalance: number;
   loyaltyPoints: number;
   fulfillment: FulfillmentCtx;
+  gateway?: Gateway;
 }) {
   const { lines, clear } = useCart();
   const router = useRouter();
@@ -45,7 +60,11 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
   const [walletApply, setWalletApply] = useState(false);
   const [loyaltyApply, setLoyaltyApply] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'COD'>('RAZORPAY');
+  // The online choice submits the tenant's actual gateway as the PaymentMethod,
+  // so Order.paymentMethod records which rail was used. Defaults to RAZORPAY
+  // when nothing is configured (mock provider in dev).
+  const onlineMethod: 'RAZORPAY' | 'PHONEPE' = gateway ?? 'RAZORPAY';
+  const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'PHONEPE' | 'COD'>(onlineMethod);
   const [notes, setNotes] = useState('');
   const [pricing, setPricing] = useState<any>(null);
   const [busy, setBusy] = useState(false);
@@ -189,18 +208,48 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
       if (paymentMethod === 'COD') {
         if (data.fulfillmentType !== 'PICKUP') toast.success('Order placed! Track it now.');
         router.push(`/orders/${data.orderId}`);
-      } else {
-        // For mock provider we auto-confirm; for real Razorpay you'd open the checkout SDK here.
-        if (data.payment?.providerName === 'mock') {
-          // confirm immediately
-          await fetch(`/api/orders/${data.orderId}/confirm-mock-payment`, { method: 'POST' });
-          toast.success('Payment captured (mock)');
-          router.push(`/orders/${data.orderId}`);
-        } else {
-          // Real Razorpay SDK call would go here.
-          router.push(`/orders/${data.orderId}`);
-        }
+        return;
       }
+
+      // ── Online payment ────────────────────────────────────────────────────
+      const payment = data.payment;
+
+      // The order committed but the gateway was unreachable. Send the customer
+      // to tracking, where "Pay now" mints a fresh session — never lose an
+      // order to a transient gateway outage.
+      if (!payment) {
+        toast.error(data.paymentError || 'We couldn’t open the payment page. You can pay from your order page.');
+        router.push(`/orders/${data.orderId}`);
+        return;
+      }
+
+      if (payment.providerName === 'mock') {
+        await fetch(`/api/orders/${data.orderId}/confirm-mock-payment`, { method: 'POST' });
+        toast.success('Payment captured (mock)');
+        router.push(`/orders/${data.orderId}`);
+        return;
+      }
+
+      if (payment.providerName === 'phonepe' && payment.redirectUrl) {
+        // Iframe PayPage over this page, with an automatic full-redirect
+        // fallback. Either way PhonePe returns the browser to
+        // /api/payments/phonepe/return, which reconciles and forwards to the
+        // status page — so we only need to handle the iframe-closed case here.
+        const outcome = await openPhonePeCheckout({
+          tokenUrl: payment.redirectUrl,
+          scriptUrl: payment.checkoutScriptUrl
+        });
+        if (outcome === 'REDIRECTED') return; // navigating away
+        // CONCLUDED or USER_CANCEL: the browser never left, so route to the
+        // status page ourselves. It asks our server what actually happened —
+        // "concluded" is not a claim of success.
+        router.push(`/checkout/payment-status?orderId=${data.orderId}`);
+        return;
+      }
+
+      // Razorpay (and anything else that doesn't hand back a redirect URL):
+      // the browser SDK handoff is not implemented, so land on order tracking.
+      router.push(`/orders/${data.orderId}`);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -328,7 +377,13 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
           <CardContent className="p-5">
             <h3 className="font-semibold mb-3">Payment</h3>
             <div className="grid gap-2 sm:grid-cols-2">
-              <PaymentChoice value="RAZORPAY" current={paymentMethod} onChange={setPaymentMethod} title="Online (UPI / Card / Wallet)" subtitle="Razorpay, secure" />
+              <PaymentChoice
+                value={onlineMethod}
+                current={paymentMethod}
+                onChange={setPaymentMethod}
+                title={GATEWAY_LABEL[onlineMethod].title}
+                subtitle={GATEWAY_LABEL[onlineMethod].subtitle}
+              />
               <PaymentChoice value="COD" current={paymentMethod} onChange={setPaymentMethod} title="Cash on Delivery" subtitle="Pay the rider" />
             </div>
           </CardContent>
@@ -423,7 +478,9 @@ function FulfillmentChoice<T extends string>({ value, current, onChange, title, 
   );
 }
 
-function PaymentChoice({ value, current, onChange, title, subtitle }: { value: 'RAZORPAY' | 'COD'; current: string; onChange: (v: 'RAZORPAY' | 'COD') => void; title: string; subtitle: string }) {
+type PayMethod = 'RAZORPAY' | 'PHONEPE' | 'COD';
+
+function PaymentChoice({ value, current, onChange, title, subtitle }: { value: PayMethod; current: string; onChange: (v: PayMethod) => void; title: string; subtitle: string }) {
   const active = current === value;
   return (
     <button
