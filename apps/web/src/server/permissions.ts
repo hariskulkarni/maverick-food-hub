@@ -199,6 +199,8 @@ const RAW_PAGE_GATES: ReadonlyArray<{ prefix: string; capability: Capability }> 
   { prefix: '/platform/brands', capability: 'platform:admin' },
   { prefix: '/platform/kyc', capability: 'platform:admin' },
   { prefix: '/platform/qr', capability: 'platform:admin' },
+  // Tenant payment-gateway credentials — as confidential as finance data.
+  { prefix: '/platform/payment-gateways', capability: 'platform:admin' },
   // Finance (confidential) — SUPER_ADMIN only until Stage-3 approvals
   { prefix: '/platform/payouts', capability: 'finance:read' },
   { prefix: '/platform/settlements', capability: 'finance:read' },

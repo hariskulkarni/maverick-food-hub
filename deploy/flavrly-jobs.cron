@@ -1,0 +1,39 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Flavrly — scheduled platform jobs
+#
+#  Every job below authenticates with INTERNAL_CRON_SECRET from
+#  /opt/restaurant-manager/apps/web/.env. The secret is NOT written into this
+#  file; each line sources the .env at run time so rotating the secret needs no
+#  cron change.
+#
+#  INSTALL (on the VPS):
+#      sudo /opt/restaurant-manager/deploy/phonepe-setup.sh cron
+#    or manually:
+#      sudo install -m 0644 /opt/restaurant-manager/deploy/flavrly-jobs.cron \
+#                           /etc/cron.d/flavrly-jobs
+#  cron picks up /etc/cron.d automatically — no restart needed.
+#
+#  VERIFY:   cat /etc/cron.d/flavrly-jobs && systemctl status cron --no-pager
+#            tail -f /var/log/restaurant-manager/jobs.log
+#  REMOVE:   sudo rm /etc/cron.d/flavrly-jobs
+#
+#  Times are server-local (IST on this VPS).
+#  cron.d line format:  m h dom mon dow  USER  command
+# ─────────────────────────────────────────────────────────────────────────────
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# PhonePe reconciliation — the safety net for lost webhooks. NOT optional in
+# production: this is what closes out a payment whose callback never arrived.
+# Re-reads anything left pending between 90s and 24h old.
+*/5 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 60 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/phonepe-reconcile/run >> /var/log/restaurant-manager/jobs.log 2>&1
+
+# Rider shifts booked but never started → MISSED (route docs say every 15-30 min)
+*/20 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 60 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/rider-shift-missed/run >> /var/log/restaurant-manager/jobs.log 2>&1
+
+# Rider KYC documents past their expiry → EXPIRED (route docs say daily ~02:00)
+0 2 * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 120 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/kyc-expiry/run >> /var/log/restaurant-manager/jobs.log 2>&1
+
+# FSSAI licences expiring within 30 days → notify restaurant admins
+# (route docs say daily ~06:00; the sender debounces per branch ~every 3 days)
+0 6 * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 120 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/food-license-expiry/run >> /var/log/restaurant-manager/jobs.log 2>&1
