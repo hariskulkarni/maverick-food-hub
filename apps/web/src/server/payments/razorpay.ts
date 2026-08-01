@@ -44,6 +44,10 @@ export function razorpayProvider(cfg?: RazorpayConfig): PaymentProvider {
       return { ok: true, providerPaymentId: args.providerPaymentId };
     },
     async refund(args) {
+      // `providerPaymentId` is optional on the shared RefundArgs (PhonePe keys
+      // refunds by merchant order id instead), but Razorpay cannot refund
+      // without the gateway payment id.
+      if (!args.providerPaymentId) return { ok: false, error: 'Missing Razorpay payment id' };
       const client = await getClient();
       const r = await client.payments.refund(args.providerPaymentId, {
         amount: Math.round(args.amount * 100),

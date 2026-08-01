@@ -12,7 +12,7 @@ import { publish } from './realtime';
 import { notify } from './notifications';
 import { genDeliveryOtp, genOrderCode, STATUS_LABELS } from '@/lib/utils';
 import { pricing, type OfferReward } from './pricing';
-import { paymentProvider } from './payments';
+import { isOnlineMethod, startOnlinePayment } from './payments/online';
 import { isCategoryAvailableNow } from './category-availability';
 import { log } from './log';
 import { brand } from '@/lib/brand';
@@ -642,33 +642,30 @@ export async function placeOrder(input: PlaceOrderInput) {
     }).catch((e) => log.error({ err: (e as Error).message, orderId: order.id }, 'order.placed sms failed'));
   }
 
-  // Kick off payment if Razorpay. Amount is `finalTotal` — for dine-in this is
-  // after the reservation discount + deposit credit, so the customer pays the
-  // right reduced amount.
-  if (input.paymentMethod === PaymentMethod.RAZORPAY) {
-    const provider = await paymentProvider(branch.restaurantId);
-    const pOrder = await provider.createOrder({
-      orderId: order.id,
-      amount: finalTotal,
-      currency: 'INR',
-      customer: { name: customer?.name, phone: customer?.phone, email: customer?.email }
-    });
-    await prisma.payment.create({
-      data: {
-        orderId: order.id,
-        method: PaymentMethod.RAZORPAY,
-        status: PaymentStatus.PENDING,
-        amount: finalTotal as any,
-        currency: 'INR',
-        providerName: pOrder.providerName,
-        providerRef: pOrder.providerOrderId,
-        providerData: pOrder.raw as any
-      }
-    });
-    // Razorpay orders are auto-accepted (if the restaurant opts in) only AFTER
-    // payment is captured — that happens in the payment webhook/verify path,
-    // not here, because the order isn't paid yet.
-    return { order, payment: pOrder };
+  // Kick off the gateway checkout for online methods (Razorpay / PhonePe).
+  // Amount is `finalTotal` — for dine-in this is after the reservation discount
+  // + deposit credit, so the customer pays the right reduced amount.
+  if (isOnlineMethod(input.paymentMethod)) {
+    // The order is already committed, so a gateway outage must not lose it. We
+    // return the order with no payment session and a machine-readable reason;
+    // the client sends the customer to order tracking, where "Pay now"
+    // (POST /api/orders/[id]/pay) mints a fresh session.
+    try {
+      const session = await startOnlinePayment(order.id, {
+        method: input.paymentMethod,
+        amount: finalTotal
+      });
+      // Online orders are auto-accepted (if the restaurant opts in) only AFTER
+      // payment is captured — that happens in the webhook/reconcile path, not
+      // here, because the order isn't paid yet.
+      return { order, payment: session };
+    } catch (e) {
+      log.error(
+        { err: (e as Error).message, orderId: order.id, method: input.paymentMethod },
+        'order placed but gateway checkout could not be opened'
+      );
+      return { order, payment: null, paymentError: (e as Error).message };
+    }
   } else {
     await prisma.payment.create({
       data: {

@@ -20,7 +20,11 @@ import { transitionOrder } from './orders';
 import { log } from './log';
 import { getConfig } from './integrations';
 import { razorpayProvider } from './payments/razorpay';
+import { phonepeProvider, resolvePhonePeConfig } from './payments/phonepe';
+import { isWithinRefundWindow, REFUND_WINDOW_DAYS } from './payments/phonepe-events';
+import { toMerchantId } from './payments/phonepe-api';
 import { OrderStatus, RefundDestination } from '@prisma/client';
+import { nanoid } from 'nanoid';
 
 export type RefundDest = 'WALLET' | 'ORIGINAL_PAYMENT';
 
@@ -67,6 +71,13 @@ async function resolveRazorpayCreds(branchId?: string | null) {
   } catch {
     return null;
   }
+}
+
+/** The restaurant that owns a branch, or null. */
+async function restaurantIdForBranch(branchId?: string | null): Promise<string | null> {
+  if (!branchId) return null;
+  const branch = await prisma.branch.findUnique({ where: { id: branchId }, select: { restaurantId: true } });
+  return branch?.restaurantId ?? null;
 }
 
 /** Statuses from which a refund may be issued. */
@@ -151,7 +162,10 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
     // credentials are configured (dev/mock), it settles immediately so the flow
     // stays end-to-end usable.
     let gatewayRefundId: string | null = null;
+    let providerRefundKey: string | null = null;
+    let gatewayName: string | null = null;
     let settledNow = true;
+
     if (capturedPayment.providerName === 'razorpay' && capturedPayment.providerRef) {
       const creds = await resolveRazorpayCreds(order.branchId);
       if (creds) {
@@ -163,14 +177,51 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
             reason: input.reason ?? undefined
           });
           gatewayRefundId = gw.providerRefundId ?? null;
+          providerRefundKey = gatewayRefundId;
+          gatewayName = 'razorpay';
           settledNow = false; // confirmed asynchronously by the webhook
+        } catch (e) {
+          throw new RefundError(`Gateway refund failed: ${(e as Error).message}`, 502);
+        }
+      }
+    } else if (capturedPayment.providerName === 'phonepe' && capturedPayment.providerRef) {
+      // PhonePe hard-caps refunds at 3 months from the original transaction.
+      // Fail here with a clear message rather than eating a
+      // REFUND_FOR_TXN_OLDER_THAN_LIMIT round-trip.
+      if (!isWithinRefundWindow(capturedPayment.updatedAt ?? capturedPayment.createdAt)) {
+        throw new RefundError(
+          `PhonePe only accepts refunds within ${REFUND_WINDOW_DAYS} days of the payment. Refund to the customer's wallet instead.`
+        );
+      }
+      const cfg = await resolvePhonePeConfig(await restaurantIdForBranch(order.branchId));
+      if (cfg) {
+        // PhonePe keys refunds on a merchant-generated id, and treats a repeat
+        // of the same id as the same refund — so this doubles as our
+        // idempotency key. Minted before the call and stored on providerRef so
+        // a crash mid-flight is recoverable by the reconciler.
+        const merchantRefundId = toMerchantId(`rfnd-${nanoid(16)}`);
+        try {
+          const provider = phonepeProvider(cfg);
+          const gw = await provider.refund({
+            originalMerchantOrderId: capturedPayment.providerRef,
+            merchantRefundId,
+            amount,
+            reason: input.reason ?? undefined
+          });
+          if (!gw.ok) throw new Error(gw.error || 'PhonePe rejected the refund');
+          providerRefundKey = merchantRefundId;
+          gatewayRefundId = gw.gatewayRefundId ?? null;
+          gatewayName = 'phonepe';
+          // PhonePe refunds start PENDING and settle asynchronously; the
+          // pg.refund.completed webhook (or the sweeper) flips them.
+          settledNow = gw.status === 'COMPLETED';
         } catch (e) {
           throw new RefundError(`Gateway refund failed: ${(e as Error).message}`, 502);
         }
       }
     }
 
-    const providerRef = gatewayRefundId ?? `rfnd_${Math.random().toString(36).slice(2, 12)}`;
+    const providerRef = providerRefundKey ?? `rfnd_${Math.random().toString(36).slice(2, 12)}`;
     const refund = await prisma.$transaction(async (tx) => {
       const r = await tx.refund.create({
         data: {
@@ -181,8 +232,8 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
           destination: RefundDestination.ORIGINAL_PAYMENT,
           status: settledNow ? 'COMPLETED' : 'PENDING',
           providerRef,
-          providerData: gatewayRefundId
-            ? { provider: 'razorpay', gatewayRefundId, pending: true }
+          providerData: gatewayName
+            ? { provider: gatewayName, gatewayRefundId, merchantRefundId: providerRef, pending: !settledNow }
             : { provider: capturedPayment.providerName ?? 'mock', mock: true },
           createdById: input.actorId ?? null
         }
