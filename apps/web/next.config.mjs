@@ -54,14 +54,21 @@ const nextConfig = {
       "base-uri 'self'",
       "object-src 'none'",
       "frame-ancestors 'none'",
-      "form-action 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://*.razorpay.com https://maps.googleapis.com https://accounts.google.com",
+      // PhonePe's redirect flow POSTs the browser onward to mercury and to bank
+      // ACS pages; 'self' alone would block the hand-off.
+      "form-action 'self' https://mercury.phonepe.com https://mercury-stg.phonepe.com https://*.phonepe.com",
+      // mercury*.phonepe.com serves the PayPage checkout bundle (mercury-stg for
+      // UAT, mercury for production); api*.phonepe.com is the PG API host the
+      // bundle talks to.
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://*.razorpay.com https://mercury.phonepe.com https://mercury-stg.phonepe.com https://*.phonepe.com https://maps.googleapis.com https://accounts.google.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' data: https://fonts.gstatic.com",
       "img-src 'self' data: blob: https://images.unsplash.com https://*.unsplash.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://maps.googleapis.com https://*.googleusercontent.com" +
         (process.env.IMAGE_CDN_HOST ? ` https://${process.env.IMAGE_CDN_HOST}` : ''),
-      "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com https://*.razorpay.com https://maps.googleapis.com https://nominatim.openstreetmap.org https://*.tile.openstreetmap.org",
-      "frame-src 'self' https://checkout.razorpay.com https://api.razorpay.com https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com",
+      "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com https://*.razorpay.com https://api.phonepe.com https://api-preprod.phonepe.com https://mercury.phonepe.com https://mercury-stg.phonepe.com https://*.phonepe.com https://maps.googleapis.com https://nominatim.openstreetmap.org https://*.tile.openstreetmap.org",
+      // The PhonePe iframe PayPage renders inside a mercury-hosted frame; UPI
+      // intent hand-offs also need the upi:// scheme to survive form-action.
+      "frame-src 'self' https://checkout.razorpay.com https://api.razorpay.com https://mercury.phonepe.com https://mercury-stg.phonepe.com https://*.phonepe.com https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com",
       // Hero/carousel videos: same-origin uploads (/uploads), blob previews,
       // and pasted external direct-file URLs (CDN/S3) over https.
       "media-src 'self' blob: data: https:",
