@@ -95,6 +95,32 @@ export interface CodResponse {
   collections: CodCollection[];
 }
 
+/** Response from opening a digital COD collection. */
+export interface DigitalCollectionSession {
+  ok: boolean;
+  orderCode: string;
+  amount: number;
+  payment: {
+    paymentId: string;
+    providerName: string;
+    providerOrderId: string;
+    amount: number;
+    currency: string;
+    /** The PhonePe PayPage URL to open in a browser. */
+    redirectUrl?: string;
+    checkoutScriptUrl?: string;
+    env?: string;
+    expireAt?: number;
+  };
+}
+
+export interface DigitalCollectionStatus {
+  state: 'NONE' | 'PENDING' | 'COMPLETED' | 'FAILED';
+  paymentStatus?: string;
+  indeterminate?: boolean;
+  error?: string;
+}
+
 // ─── Endpoints ───────────────────────────────────────────────────────────────
 
 export const payments = {
@@ -116,4 +142,30 @@ export const payments = {
 
   /** This rider's COD collections + total cash in hand. */
   cod: () => apiRequest<CodResponse>('/api/rider/cod'),
+
+  /**
+   * Open a PhonePe payment page so a cash-on-delivery customer can pay
+   * digitally at the door instead. The returned `redirectUrl` is opened in an
+   * in-app browser; the rider hands over the phone (or shows the UPI QR).
+   *
+   * Nothing about the money is client-controlled — the backend always charges
+   * the order total, and confirms the outcome server-to-server against
+   * PhonePe's Order Status API. Once captured, the COD record is closed out
+   * with zero cash, so the amount stops counting against the rider's
+   * cash-in-hand.
+   */
+  startDigitalCollection: (assignmentId: string) =>
+    apiRequest<DigitalCollectionSession>(`/api/rider/assignments/${assignmentId}/collect-online`, {
+      method: 'POST',
+    }),
+
+  /**
+   * Poll until the digital collection settles. Each call re-asks PhonePe, so
+   * this also works when the payment webhook is delayed or lost.
+   *
+   * `indeterminate` means we could not reach PhonePe — keep polling rather than
+   * telling the rider it failed.
+   */
+  digitalCollectionStatus: (assignmentId: string) =>
+    apiRequest<DigitalCollectionStatus>(`/api/rider/assignments/${assignmentId}/collect-online`),
 };

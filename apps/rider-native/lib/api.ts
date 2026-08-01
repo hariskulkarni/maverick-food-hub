@@ -163,6 +163,13 @@ export interface AssignmentOrder {
   total: string; // Prisma Decimal → JSON string
   currency: string;
   customerNotes: string | null;
+  /**
+   * How the customer chose to pay. 'COD' means the rider is expected to collect
+   * at the door — and can offer digital collection instead (see
+   * `payments.startDigitalCollection`). 'PHONEPE' / 'RAZORPAY' / 'WALLET' are
+   * already settled online; the rider collects nothing.
+   */
+  paymentMethod: 'COD' | 'PHONEPE' | 'RAZORPAY' | 'WALLET';
   deliveryOtp: string | null; // customer's hand-over code, checked by /deliver
   placedAt: string;
   items: { id: string; quantity: number }[];
