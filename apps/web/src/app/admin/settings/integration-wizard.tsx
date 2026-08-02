@@ -196,24 +196,12 @@ export function IntegrationWizard(props: Props) {
               <div key={f.key} className="space-y-1.5">
                 <Label className="text-xs font-medium">{f.label}{f.required && <span className="text-destructive ml-0.5">*</span>}</Label>
                 {f.type === 'select' && f.options?.length ? (
-                  <Select
+                  <SelectField
+                    options={f.options}
                     value={values[f.key] || f.options[0].value}
-                    onValueChange={(v) => set(f.key, v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={f.placeholder} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {f.options.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>
-                          <span className="font-medium">{o.label}</span>
-                          {o.detail && (
-                            <span className="block text-[11px] text-muted-foreground">{o.detail}</span>
-                          )}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder={f.placeholder}
+                    onChange={(v) => set(f.key, v)}
+                  />
                 ) : (
                 <div className="relative">
                   <Input
@@ -349,5 +337,50 @@ function Stepper({ step, hasExisting }: { step: 1 | 2 | 3; hasExisting: boolean 
         );
       })}
     </div>
+  );
+}
+
+/**
+ * A labelled dropdown whose per-option explanation lives BELOW the control,
+ * never inside it.
+ *
+ * Radix renders the selected SelectItem's children inside the trigger, so any
+ * second line put on an option gets crammed into the trigger's fixed height —
+ * the title overflows above the border and the description is struck through
+ * by it. Options therefore stay single-line, and the selected option's `detail`
+ * is rendered as its own paragraph underneath.
+ */
+function SelectField({
+  options,
+  value,
+  placeholder,
+  onChange,
+}: {
+  options: FieldOption[];
+  value: string;
+  placeholder?: string;
+  onChange: (v: string) => void;
+}) {
+  const selected = options.find((o) => o.value === value) ?? options[0];
+  return (
+    <>
+      <Select value={selected?.value} onValueChange={onChange}>
+        <SelectTrigger>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {selected?.detail && (
+        <p className="rounded-md bg-muted/40 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
+          {selected.detail}
+        </p>
+      )}
+    </>
   );
 }
