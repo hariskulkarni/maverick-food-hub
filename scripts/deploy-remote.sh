@@ -76,8 +76,17 @@ echo "==> [4/5] npm run build (runs prisma generate + next build)"
 # type-check step) can leave a partial/corrupt .next that makes `next start`
 # crash-loop and serve 503s. Removing it first guarantees a clean, bootable
 # build every deploy.
-rm -rf .next
-npm run build
+#
+# Next 15 also intermittently fails the FINAL 404/500 page-copy step with a
+# transient rename ENOENT (".next/export/500.html" -> ".next/server/pages/...").
+# It is not caused by our code — an identical clean rebuild succeeds. So retry
+# the build once on failure, wiping .next between attempts.
+build_once() { rm -rf .next; npm run build; }
+if ! build_once; then
+  echo "    build failed — retrying once after a clean .next (transient Next.js page-copy race)"
+  sleep 2
+  build_once
+fi
 
 echo "==> [5/5] pm2 restart $PM2_APP"
 pm2 restart "$PM2_APP"
