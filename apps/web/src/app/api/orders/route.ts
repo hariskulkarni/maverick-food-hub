@@ -67,7 +67,11 @@ export async function POST(req: NextRequest) {
       fulfillmentType: result.order.fulfillmentType,
       pickupCode: result.order.pickupCode,
       scheduledFor: result.order.scheduledFor,
-      payment: result.payment
+      payment: result.payment,
+      // Set only when the order committed but the gateway checkout could not be
+      // opened. The client routes to order tracking, where the customer can
+      // retry via POST /api/orders/[id]/pay.
+      paymentError: 'paymentError' in result ? result.paymentError : undefined
     });
   } catch (err) {
     const message = (err as Error).message || 'Failed to place order';

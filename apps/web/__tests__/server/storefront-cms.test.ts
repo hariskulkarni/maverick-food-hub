@@ -65,7 +65,10 @@ describe('storefront-cms config', () => {
     const d = defaultStorefrontConfig();
     expect(effectiveHeroSlides(d, '/cover.jpg')).toEqual([{ src: '/cover.jpg' }]);
     const carousel = parseStorefrontConfig({ hero: { type: 'carousel', slides: [{ src: '/s1.jpg' }] } });
-    expect(effectiveHeroSlides(carousel, '/cover.jpg')).toEqual([{ src: '/s1.jpg' }]);
+    // The point here is that the carousel slide wins over the cover image.
+    // Parsed slides are normalised (mediaType, video fields...), so match on
+    // intent rather than pinning the whole shape.
+    expect(effectiveHeroSlides(carousel, '/cover.jpg')).toMatchObject([{ src: '/s1.jpg' }]);
   });
 
   // ─── WordPress-like expansion ───────────────────────────────────────────

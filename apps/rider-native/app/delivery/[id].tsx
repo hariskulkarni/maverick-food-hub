@@ -37,6 +37,7 @@ import { useAuth } from '../../lib/auth';
 import { useRiderLocation } from '../../lib/use-rider-location';
 import { DeliveryMap } from '../../components/delivery-map';
 import { SuccessCelebration } from '../../components/success-celebration';
+import { CollectOnlineCard } from '../../components/collect-online-card';
 import { haversineKm, estimateEtaMinutes } from '../../lib/geo';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 
@@ -497,6 +498,17 @@ export default function DeliveryScreen() {
               <Text style={styles.notesLabel}>CUSTOMER NOTE</Text>
               <Text style={styles.notesText}>{o.customerNotes}</Text>
             </View>
+          ) : null}
+
+          {/* At the door on a cash order: offer digital collection before the
+              hand-over, so the rider isn't left holding cash the customer would
+              rather pay by UPI. */}
+          {step === 'at_customer' && o.paymentMethod === 'COD' ? (
+            <CollectOnlineCard
+              assignmentId={assignment.id}
+              amount={Number(o.total)}
+              onCollected={load}
+            />
           ) : null}
 
           {/* Final step: OTP entry */}

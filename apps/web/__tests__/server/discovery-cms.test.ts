@@ -66,7 +66,9 @@ describe('discovery-cms config', () => {
       whatsOnYourMind: { tiles: [{ slug: 'Hot Pizza!', label: 'Pizza', image: '/x.jpg' }, { slug: 'no-label', label: '' }] },
     });
     expect(c.whatsOnYourMind.tiles).toHaveLength(1);
-    expect(c.whatsOnYourMind.tiles[0].slug).toBe('hot-pizza-');
+    // 'Hot Pizza!' -> non-alphanumerics become hyphens -> trailing hyphens
+    // stripped, so the slug is URL-clean ('/category/hot-pizza-' would not be).
+    expect(c.whatsOnYourMind.tiles[0].slug).toBe('hot-pizza');
   });
 
   it('validates the default sort and keeps pinned id lists', () => {

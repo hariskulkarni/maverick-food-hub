@@ -29,6 +29,7 @@
     "test:ci": "vitest run --reporter=dot",
     "pretest:ci": "prisma generate",
     "test:e2e": "playwright test",
+    "uat:phonepe": "tsx scripts/phonepe-uat.ts",
     "check:responsive": "node ../../scripts/check-responsive.mjs",
     "ci": "npm run typecheck && npm run lint && npm run check:responsive && npm run test:ci"
   },

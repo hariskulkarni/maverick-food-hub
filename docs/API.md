@@ -60,6 +60,26 @@ All endpoints return JSON unless noted. RBAC enforced in `middleware.ts` and per
 |---|---|---|
 | POST | `/api/payments/verify` | Razorpay client callback. Verifies HMAC signature. |
 | POST | `/api/payments/webhook` | Razorpay server webhook. Validates `x-razorpay-signature`. |
+| POST | `/api/payments/razorpay/webhook` | Razorpay webhook (per-tenant secret, idempotent). |
+| POST | `/api/orders/:id/pay` | Open a fresh gateway checkout for an unpaid order (retry / pay later). Customer-scoped. |
+
+### PhonePe (Standard Checkout V2)
+
+Full guide: [PHONEPE-INTEGRATION.md](./PHONEPE-INTEGRATION.md).
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/payments/phonepe/webhook` | Inbound webhook. Authenticates `Authorization: SHA256(username:password)` in constant time, dedupes on a synthesised event id, then **re-confirms against the Order Status API** before any state change — the header is replayable, so it is a trigger, not evidence. |
+| GET/POST | `/api/payments/phonepe/return` | Where PhonePe returns the customer's browser. Reconciles, then 303s to `/checkout/payment-status`. Accepts both verbs because PhonePe uses either depending on payment mode. |
+| GET | `/api/payments/phonepe/status?orderId=` | Authenticated status poll. Each call re-asks PhonePe, so it doubles as the customer-driven recovery path when a webhook is late. Rate limited 60/min. |
+| POST | `/api/rider/assignments/:id/collect-online` | Rider opens a PayPage to collect a COD order digitally at the door. Amount is always the order total, never client-supplied. |
+| GET | `/api/rider/assignments/:id/collect-online` | Poll that collection until it settles. |
+| POST | `/api/platform/jobs/phonepe-reconcile/run` | Reconciliation sweep — captures payments whose webhook was lost, settles stranded refunds, retires expired checkouts. `x-internal-secret` or SUPER_ADMIN. Schedule every 5 min. |
+
+All four confirmation paths (webhook, browser return, status poll, sweep) funnel
+into one idempotent writer, `reconcilePhonePePayment`. They may race; the
+outcome is identical. A captured payment is never rewritten, and an unreachable
+gateway is reported as indeterminate rather than failed.
 
 ## Health
 

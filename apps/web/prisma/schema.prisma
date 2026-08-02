@@ -91,6 +91,10 @@ enum CancellationReason {
 
 enum PaymentMethod {
   RAZORPAY
+  // PhonePe Standard Checkout V2 (India: UPI intent/collect/QR, cards, netbanking).
+  // Chosen per-restaurant via IntegrationCredential(PHONEPE); see
+  // src/server/payments/index.ts → resolveGatewayKey.
+  PHONEPE
   COD
   WALLET
 }
@@ -127,6 +131,9 @@ enum NotificationStatus {
 
 enum IntegrationProvider {
   RAZORPAY
+  // PhonePe PG V2 credentials (clientId / clientSecret / clientVersion / env)
+  // plus the webhook username+password pair configured on the PhonePe dashboard.
+  PHONEPE
   TWILIO_SMS
   TWILIO_WHATSAPP
   SMTP
