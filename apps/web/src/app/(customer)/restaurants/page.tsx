@@ -3,7 +3,8 @@ import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ChefHat, Clock, MapPin, Star, ArrowUpDown, Navigation, Sparkles, Percent, Tag, Gift } from 'lucide-react';
+import { ChefHat, Clock, MapPin, Star, ArrowUpDown, Navigation } from 'lucide-react';
+import { TopOffersCarousel } from '@/components/offers/top-offers-carousel';
 import { FOOD_FALLBACK } from '@/lib/food-images';
 import { ImageWithFallback } from '@/components/image-with-fallback';
 import { readDeliveryLocation } from '@/server/discovery';
@@ -55,22 +56,6 @@ function formatDistance(distanceM: number): string {
 }
 
 type TopOffer = { id: string; name: string; type: string; code: string | null; percentOff: number | null; flatOff: number | null };
-
-/** Short headline value for a "Top offers today" tile. */
-function offerValue(o: TopOffer): string {
-  if (o.percentOff && o.percentOff > 0) return `${o.percentOff}% OFF`;
-  if (o.flatOff && o.flatOff > 0) return `₹${o.flatOff} OFF`;
-  if (o.type === 'BUY_X_GET_Y') return 'Buy 1 Get 1';
-  if (o.type === 'FREE_ITEM_ABOVE') return 'Free item';
-  if (o.type === 'COMBO_DISCOUNT') return 'Combo deal';
-  return 'Special offer';
-}
-
-function offerIcon(o: TopOffer) {
-  if (o.percentOff && o.percentOff > 0) return Percent;
-  if (o.type === 'BUY_X_GET_Y' || o.type === 'FREE_ITEM_ABOVE' || o.type === 'COMBO_DISCOUNT') return Gift;
-  return Tag;
-}
 
 /**
  * Marketplace directory — location-gated discovery.
@@ -362,39 +347,11 @@ export default async function RestaurantsListPage({
 
       {/* ───────────────────────── Top offers today ───────────────────────── */}
       {cms.topOffers.enabled && topOffers.length > 0 && (
-        <section className="mb-6 reveal">
-          <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
-            <Sparkles className="size-3.5" /> {cms.topOffers.heading}
-          </div>
-          {cms.topOffers.subheading && (
-            <p className="-mt-2 mb-3 text-sm text-muted-foreground">{cms.topOffers.subheading}</p>
-          )}
-          <div className="-mx-4 md:mx-0 overflow-x-auto no-scrollbar">
-            <div className="flex gap-3 px-4 md:px-0">
-              {topOffers.map((o) => {
-                const Icon = offerIcon(o);
-                return (
-                  <div key={o.id} className="shrink-0 w-44 rounded-2xl border bg-card p-4 card-lift">
-                    <div className="grid size-9 place-items-center rounded-full bg-primary/10 text-primary">
-                      <Icon className="size-4" />
-                    </div>
-                    <div className="display mt-2 text-lg font-bold leading-none">{offerValue(o)}</div>
-                    <div className="mt-1 truncate text-xs font-medium text-foreground">{o.name}</div>
-                    {o.code ? (
-                      <div className="mt-2 inline-block rounded-md border border-dashed border-primary/40 px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-wider text-primary">
-                        {o.code}
-                      </div>
-                    ) : (
-                      <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
-                        <Sparkles className="size-3" /> Auto-applied
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
+        <TopOffersCarousel
+          heading={cms.topOffers.heading}
+          subheading={cms.topOffers.subheading}
+          offers={topOffers}
+        />
       )}
 
       {/* ─────── What's on your mind? — cross-restaurant food categories ─────── */}
