@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { User, ChefHat, ShieldCheck, Sparkles } from 'lucide-react';
 import { RoleTile } from '@/components/auth/role-tile';
 import { MarketingPanel } from '@/components/auth/marketing-panel';
+import { PortalMarketingPanel } from '@/components/auth/portal-marketing-panel';
 
 export type LoginRole = 'customer' | 'staff' | 'super';
 
@@ -96,6 +97,7 @@ export function LoginClient({
     return () => { cancelled = true; };
   }, [role, restaurants.length]);
 
+  const isPortal = surface === 'portal';
   const visibleRoles = ROLES.filter((r) => allowedRoles.includes(r.id));
   const activeSpec = ROLES.find((r) => r.id === role)!;
 
@@ -205,17 +207,25 @@ export function LoginClient({
       <div className="grid gap-6 md:grid-cols-[45fr_55fr] md:gap-10">
         {/* ── Left: marketing panel (mobile: compact hero strip) ── */}
         <div className="md:hidden">
-          <MarketingPanel
-            restaurantsLive={restaurantsLive}
-            cuisinesCount={cuisinesCount}
-            compact
-          />
+          {isPortal ? (
+            <PortalMarketingPanel compact />
+          ) : (
+            <MarketingPanel
+              restaurantsLive={restaurantsLive}
+              cuisinesCount={cuisinesCount}
+              compact
+            />
+          )}
         </div>
         <div className="hidden md:block">
-          <MarketingPanel
-            restaurantsLive={restaurantsLive}
-            cuisinesCount={cuisinesCount}
-          />
+          {isPortal ? (
+            <PortalMarketingPanel />
+          ) : (
+            <MarketingPanel
+              restaurantsLive={restaurantsLive}
+              cuisinesCount={cuisinesCount}
+            />
+          )}
         </div>
 
         {/* ── Right: role tiles + form ── */}
@@ -365,8 +375,9 @@ export function LoginClient({
               )}
 
               <p className="mt-5 border-t border-border/60 pt-5 text-xs text-muted-foreground">
-                Use phone OTP for customers, email + password for restaurant
-                staff and platform admins.
+                {isPortal
+                  ? 'Staff & platform operations portal. Customers order at flavrly.in.'
+                  : 'Use phone OTP to sign in. Staff & owners sign in at the operations portal.'}
               </p>
             </div>
           </div>

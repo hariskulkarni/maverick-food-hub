@@ -1,4 +1,7 @@
+import { headers } from 'next/headers';
 import { auth } from '@/server/auth';
+import { isPortalHost } from '@/server/hosts';
+import { PortalTopBar } from '@/components/portal-top-bar';
 import { CartProvider } from './cart-context';
 import { PlatformNav } from '@/components/landing/platform-nav';
 import { MobileBottomNav } from '@/components/mobile/bottom-nav';
@@ -30,6 +33,22 @@ export default async function CustomerLayout({ children }: { children: React.Rea
   const year = new Date().getFullYear();
   // Site-wide footer content is super-admin editable (/platform/discovery-cms → Footer).
   const cms = await getDiscoveryConfig();
+
+  // On the staff portal (portal.flavrly.in) the only (customer)-group page
+  // served is /login. Render a minimal portal chrome instead of the consumer
+  // marketing nav / footer / PWA prompts.
+  const isPortal = isPortalHost((await headers()).get('host'));
+  if (isPortal) {
+    return (
+      <div className="flex min-h-dvh flex-col max-w-[100vw] overflow-x-hidden">
+        <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
+          <PortalTopBar />
+        </header>
+        <main className="flex-1 w-full max-w-full overflow-x-hidden">{children}</main>
+        <CookieConsent />
+      </div>
+    );
+  }
 
   return (
     <CartProvider>
