@@ -132,6 +132,30 @@ export async function requireRestaurant() {
   return r;
 }
 
+/**
+ * The restaurant an admin surface should operate on, with a super-admin escape
+ * hatch.
+ *
+ * A SUPER_ADMIN has no RestaurantUser grants, so currentRestaurant() returns
+ * null for them and every tenant-scoped admin screen 404s. That is right for
+ * day-to-day operations — super admins live under /platform — but it also means
+ * they cannot open a tenant's payment-gateway panel to configure or debug it.
+ * Passing an explicit restaurantId lets them target any restaurant; for every
+ * other role the parameter is ignored entirely and normal membership scoping
+ * applies, so this cannot widen a tenant admin's reach.
+ */
+export async function requireManagedRestaurant(restaurantId?: string | null) {
+  if (restaurantId) {
+    const session = await auth();
+    if (session?.user?.role === Role.SUPER_ADMIN) {
+      const r = await prisma.restaurant.findUnique({ where: { id: restaurantId } });
+      if (!r) throw new Response('No such restaurant', { status: 404 });
+      return r;
+    }
+  }
+  return requireRestaurant();
+}
+
 export interface AccessibleRestaurant {
   id: string;
   name: string;

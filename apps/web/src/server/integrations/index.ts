@@ -51,6 +51,58 @@ export async function getConfig(restaurantId: string, provider: ProviderKey): Pr
   );
 }
 
+/**
+ * Longest parent chain we will walk. Restaurant groups are one level deep today
+ * (parent → children); the cap exists so a cycle introduced by a bad data fix
+ * degrades into "no credentials" rather than an infinite loop at checkout.
+ */
+const MAX_GROUP_DEPTH = 5;
+
+export interface InheritedConfig {
+  config: Record<string, string>;
+  /** The restaurant the credentials are actually stored on. */
+  ownerRestaurantId: string;
+  /** True when they came from an ancestor rather than this restaurant. */
+  inherited: boolean;
+}
+
+/**
+ * Credentials for a restaurant, falling back to its ancestors.
+ *
+ * A group connects a gateway once on the parent (e.g. Bowl & Barbeque) and every
+ * child outlet transacts on it — money settles to the parent's registered bank,
+ * and rotating a secret is one edit rather than one per outlet. A child that
+ * connects its own credentials still wins: the walk stops at the first CONNECTED
+ * row it finds, starting from the child itself.
+ *
+ * Only the id lookups are uncached (they are indexed primary-key reads); the
+ * credential decrypt itself still goes through the cached getConfig above.
+ */
+export async function getConfigInherited(
+  restaurantId: string,
+  provider: ProviderKey,
+): Promise<InheritedConfig | null> {
+  let currentId: string | null = restaurantId;
+  const seen = new Set<string>();
+
+  for (let depth = 0; currentId && depth < MAX_GROUP_DEPTH; depth++) {
+    if (seen.has(currentId)) break; // cycle guard
+    seen.add(currentId);
+
+    const config = await getConfig(currentId, provider);
+    if (config) {
+      return { config, ownerRestaurantId: currentId, inherited: currentId !== restaurantId };
+    }
+
+    const row: { parentId: string | null } | null = await prisma.restaurant.findUnique({
+      where: { id: currentId },
+      select: { parentId: true },
+    });
+    currentId = row?.parentId ?? null;
+  }
+  return null;
+}
+
 export async function listForRestaurant(restaurantId: string) {
   const rows = await prisma.integrationCredential.findMany({ where: { restaurantId } });
   return PROVIDER_LIST.map((def) => {

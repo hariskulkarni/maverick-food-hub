@@ -22,17 +22,26 @@ interface IntegrationRow {
   updatedAt: string | null;
 }
 
-export function IntegrationsSection() {
+/**
+ * `restaurantId` targets a specific tenant instead of the caller's active
+ * restaurant. The API honours it for SUPER_ADMIN only, so passing it from a
+ * tenant admin screen would change nothing — it exists for the platform-side
+ * payment-gateway panel. Omit it and behaviour is exactly as before.
+ */
+export function IntegrationsSection({ restaurantId }: { restaurantId?: string } = {}) {
   const [rows, setRows] = useState<IntegrationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState<IntegrationRow | null>(null);
 
+  const qs = restaurantId ? `?restaurantId=${encodeURIComponent(restaurantId)}` : '';
+
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await fetch('/api/admin/integrations', { cache: 'no-store' });
+    setRows([]);
+    const r = await fetch(`/api/admin/integrations${qs}`, { cache: 'no-store' });
     if (r.ok) setRows(await r.json());
     setLoading(false);
-  }, []);
+  }, [qs]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -81,6 +90,7 @@ export function IntegrationsSection() {
           fields={active.fields}
           initialSummary={active.summary}
           isConnected={active.status === 'CONNECTED'}
+          restaurantId={restaurantId}
           onSaved={load}
         />
       )}

@@ -735,7 +735,8 @@ export async function saveDiscoveryConfig(raw: unknown, updatedBy?: string): Pro
 
   const liveSlugs = new Set(clean.whatsOnYourMind.tiles.map((t) => t.slug));
   const finalRedirects: { from: string; to: string }[] = [];
-  for (let [from, to] of redirects) {
+  for (const [from, target] of redirects) {
+    let to = target;
     let hops = 0;
     while (redirects.has(to) && hops < 5) { to = redirects.get(to)!; hops += 1; } // collapse chains
     if (from === to) continue;

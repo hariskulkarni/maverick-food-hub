@@ -10,7 +10,17 @@ const api = vi.hoisted(() => ({
   getOrderStatus: vi.fn(),
   getRefundStatus: vi.fn(),
 }));
-const integrations = vi.hoisted(() => ({ getConfig: vi.fn() }));
+const integrations = vi.hoisted(() => {
+  const getConfig = vi.fn();
+  // getConfigInherited is the real entry point for the payment paths now. In
+  // these tests there is no restaurant hierarchy, so it degrades to "whatever
+  // getConfig returns for this id", wrapped in the InheritedConfig envelope.
+  const getConfigInherited = vi.fn(async (restaurantId: string, provider: string) => {
+    const config = await getConfig(restaurantId, provider);
+    return config ? { config, ownerRestaurantId: restaurantId, inherited: false } : null;
+  });
+  return { getConfig, getConfigInherited };
+});
 
 vi.mock('@/server/payments/phonepe-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/server/payments/phonepe-api')>();
@@ -46,7 +56,15 @@ beforeEach(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   for (const k of ENV_KEYS) delete process.env[k];
   vi.clearAllMocks();
+  integrations.getConfig.mockReset();
   integrations.getConfig.mockResolvedValue(null);
+  // Re-install the pass-through each time: individual tests replace it (e.g.
+  // to simulate the store throwing) and mockClear alone would leave that behind.
+  integrations.getConfigInherited.mockReset();
+  integrations.getConfigInherited.mockImplementation(async (restaurantId: string, provider: string) => {
+    const config = await integrations.getConfig(restaurantId, provider);
+    return config ? { config, ownerRestaurantId: restaurantId, inherited: false } : null;
+  });
 });
 afterEach(() => {
   for (const [k, v] of Object.entries(savedEnv)) {
@@ -113,6 +131,7 @@ describe('resolvePhonePeConfig', () => {
     process.env.PHONEPE_CLIENT_ID = 'ENV_ID';
     process.env.PHONEPE_CLIENT_SECRET = 'ENV_SECRET';
     integrations.getConfig.mockRejectedValue(new Error('redis down'));
+    integrations.getConfigInherited.mockRejectedValue(new Error('redis down'));
     expect((await resolvePhonePeConfig('rest_1'))!.clientId).toBe('ENV_ID');
   });
 
