@@ -231,6 +231,16 @@ export async function middleware(req: NextRequest) {
   // localhost / the raw IP so dev + direct-origin health checks are unaffected.
   const hostHeader = req.headers.get('host');
   const onPortalHost = isPortalHost(hostHeader);
+
+  // Redirect targets must be built from the real Host header: behind
+  // `next start`, req.nextUrl reports the socket address (127.0.0.1:3000), so
+  // new URL('/login', url) would bounce users to localhost. Use the forwarded
+  // proto + Host when a split host is in play; fall back to the request URL for
+  // dev / localhost / raw-IP.
+  const fwdProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
+  const selfBase: string | URL = hostSplitActive(hostHeader)
+    ? `${fwdProto || 'https'}://${hostHeader}`
+    : url;
   if (
     hostSplitActive(hostHeader) &&
     !path.startsWith('/api/') &&
@@ -287,7 +297,7 @@ export async function middleware(req: NextRequest) {
 
   const session = await auth();
   if (!session?.user || !session.user.role) {
-    const loginUrl = new URL('/login', url);
+    const loginUrl = new URL('/login', selfBase);
     loginUrl.searchParams.set('next', path);
     return NextResponse.redirect(loginUrl);
   }
@@ -298,7 +308,7 @@ export async function middleware(req: NextRequest) {
   // (A RIDER-role user hitting a gated page just fails this check — riders
   // now use the separate native Android app.)
   if (!gate.roles.includes(role)) {
-    return NextResponse.redirect(new URL('/', url));
+    return NextResponse.redirect(new URL('/', selfBase));
   }
 
   // Within the /platform console, enforce the per-surface capability gate so a
@@ -308,7 +318,7 @@ export async function middleware(req: NextRequest) {
   if (path.startsWith('/platform')) {
     const needed = pageGateFor(path);
     if (!can(role, needed)) {
-      return NextResponse.redirect(new URL('/platform', url));
+      return NextResponse.redirect(new URL('/platform', selfBase));
     }
   }
 
