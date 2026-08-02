@@ -27,6 +27,22 @@ export function isStaffTotpRole(role: Role | string | null | undefined): boolean
   return !!role && (STAFF_TOTP_ROLES as string[]).includes(String(role));
 }
 
+/**
+ * Break-glass accounts (env `BREAKGLASS_EMAILS`, comma-separated) are exempt
+ * from the Google Authenticator + IP-allowlist gates so they can always sign in
+ * with email + password in an emergency. Use sparingly — this is single-factor
+ * top-level access. Every break-glass login is audited.
+ */
+export function isBreakGlassEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const list = (process.env.BREAKGLASS_EMAILS || '')
+    .toLowerCase()
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+  return list.includes(email.toLowerCase().trim());
+}
+
 const enc = (secret: string): string => encryptJSON({ s: secret });
 const dec = (blob: string | null | undefined): string | null => {
   if (!blob) return null;

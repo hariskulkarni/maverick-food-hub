@@ -24,7 +24,7 @@ import {
 import { audit } from './audit';
 import { headers } from 'next/headers';
 import { startSession, isSessionActive, revokeSession } from './sessions';
-import { isStaffTotpRole, verifyUserTotp } from './user-totp';
+import { isStaffTotpRole, verifyUserTotp, isBreakGlassEmail } from './user-totp';
 
 declare module 'next-auth' {
   interface Session {
@@ -143,7 +143,12 @@ export const authConfig: NextAuthConfig = {
         }
 
         // Super-admin keeps the IP allowlist gate.
-        if (user.role === Role.SUPER_ADMIN && sec.allowlist && sec.allowlist.length > 0) {
+        // Break-glass accounts (env BREAKGLASS_EMAILS) skip the IP allowlist and
+        // 2FA gates so they can always sign in with email + password in an
+        // emergency. Single-factor top-level access — every such login is audited.
+        const isBreak = isBreakGlassEmail(user.email);
+
+        if (!isBreak && user.role === Role.SUPER_ADMIN && sec.allowlist && sec.allowlist.length > 0) {
           const fwd = req?.headers?.get?.('x-forwarded-for') ?? '';
           const ip = String(fwd || '').split(',')[0]!.trim();
           if (!ip || !ipMatchesAllowlist(ip, sec.allowlist)) {
@@ -156,7 +161,8 @@ export const authConfig: NextAuthConfig = {
         // Per-user Google Authenticator (2FA) for every staff role
         // (ADMIN / SUPER_ADMIN / KITCHEN). Must be enrolled AND present a valid
         // 6-digit code on every login. Enrollment: /api/auth/staff/precheck+enroll.
-        if (isStaffTotpRole(user.role)) {
+        // Break-glass accounts are exempt.
+        if (!isBreak && isStaffTotpRole(user.role)) {
           if (!user.totpEnabledAt) {
             recordLoginFailure(email, lockoutMinutes);
             await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'totp_not_enrolled' } }).catch(() => {});
@@ -167,6 +173,10 @@ export const authConfig: NextAuthConfig = {
             await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'totp_invalid' } }).catch(() => {});
             return null;
           }
+        }
+
+        if (isBreak) {
+          await audit('auth.login.breakglass', { actorId: user.id, actorRole: user.role, entityType: 'User', entityId: user.id, after: { email: user.email } }).catch(() => {});
         }
 
         recordLoginSuccess(email);
