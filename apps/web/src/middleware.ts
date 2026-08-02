@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import NextAuth from 'next-auth';
 import { authEdgeConfig } from '@/server/auth.config';
 import { PLATFORM_ROLES, pageGateFor, can } from '@/server/permissions';
+import { PUBLIC_HOST, PORTAL_HOST, isPortalHost, hostSplitActive, isStaffPath } from '@/server/hosts';
 
 const { auth } = NextAuth(authEdgeConfig);
 
@@ -126,6 +127,8 @@ async function apiRateLimit(req: NextRequest, path: string): Promise<NextRespons
 }
 
 
+const ASSET_RE = /\.(?:png|jpg|jpeg|webp|gif|svg|ico|avif|mp4|webm|woff2?|ttf|otf|css|js|map|json|txt|xml|wasm)$/i;
+
 const DEMO_COOKIE = 'flavrly_demo_gate';
 
 // Authenticated app areas must NEVER be cached by the browser (bfcache),
@@ -221,9 +224,51 @@ export async function middleware(req: NextRequest) {
     }
   }
 
+  // ─── Domain split: customer site (flavrly.in) vs staff portal ──────────
+  // One deployment, two hostnames. Enforce which surface serves which routes;
+  // cross-surface requests bounce to the correct host. Skipped for /api, the
+  // Next asset pipeline, the demo gate, and static files. Inactive on
+  // localhost / the raw IP so dev + direct-origin health checks are unaffected.
+  const hostHeader = req.headers.get('host');
+  const onPortalHost = isPortalHost(hostHeader);
+  if (
+    hostSplitActive(hostHeader) &&
+    !path.startsWith('/api/') &&
+    !path.startsWith('/_next') &&
+    !path.startsWith('/demo-gate') &&
+    !ASSET_RE.test(path)
+  ) {
+    const isLoginPath = path === '/login' || path.startsWith('/login/');
+    if (onPortalHost) {
+      // Portal root → the signed-in user's dashboard, else the staff login.
+      if (path === '/') {
+        const s = await auth();
+        const r = s?.user?.role ? String(s.user.role) : null;
+        const home =
+            r === 'SUPER_ADMIN' ? '/platform'
+          : r === 'ADMIN'       ? '/admin'
+          : r === 'KITCHEN'     ? '/kitchen'
+          : '/login';
+        return NextResponse.redirect(new URL(home, `https://${PORTAL_HOST}`));
+      }
+      // Portal serves ONLY staff areas + login. Anything else is a customer
+      // page → send it to the public site (same path).
+      if (!isStaffPath(path) && !isLoginPath) {
+        return NextResponse.redirect(new URL(path + url.search, `https://${PUBLIC_HOST}`));
+      }
+    } else {
+      // Public customer host: staff areas live on the portal → bounce there.
+      if (isStaffPath(path)) {
+        return NextResponse.redirect(new URL(path + url.search, `https://${PORTAL_HOST}`));
+      }
+    }
+  }
+
   // Allow auth callback / login early — nothing role-specific applies here.
   if (path === '/login' || path.startsWith('/login/')) {
-    return NextResponse.next();
+    const res = NextResponse.next();
+    if (onPortalHost) res.headers.set('X-Robots-Tag', 'noindex, nofollow');
+    return res;
   }
 
   // Rate-limit every other /api route (IP + user + auth backoff). Pages fall
@@ -268,8 +313,11 @@ export async function middleware(req: NextRequest) {
   }
 
   // Passed the role gate — serve it, but flag it uncacheable so no proxy or
-  // browser bfcache ever hands back a stale authenticated view.
-  return noStore(NextResponse.next());
+  // browser bfcache ever hands back a stale authenticated view. Portal (staff)
+  // pages are also marked noindex so they never reach search engines.
+  const gated = noStore(NextResponse.next());
+  if (onPortalHost) gated.headers.set('X-Robots-Tag', 'noindex, nofollow');
+  return gated;
 }
 
 export const config = {

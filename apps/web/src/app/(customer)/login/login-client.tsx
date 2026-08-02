@@ -48,15 +48,24 @@ const ROLES: RoleSpec[] = [
 export function LoginClient({
   next,
   initialRole = 'customer',
+  surface = 'all',
   restaurantsLive,
   cuisinesCount
 }: {
   next?: string;
   initialRole?: LoginRole;
+  surface?: 'customer' | 'portal' | 'all';
   restaurantsLive: number;
   cuisinesCount: number;
 }) {
-  const [role, setRole] = useState<LoginRole>(initialRole);
+  // Roles this surface is allowed to show. flavrly.in = customer only;
+  // portal.flavrly.in = staff + super; localhost/all = everything.
+  const allowedRoles: LoginRole[] =
+    surface === 'customer' ? ['customer']
+    : surface === 'portal' ? ['staff', 'super']
+    : ['customer', 'staff', 'super'];
+  const clampedInitial: LoginRole = allowedRoles.includes(initialRole) ? initialRole : allowedRoles[0];
+  const [role, setRole] = useState<LoginRole>(clampedInitial);
 
   // Phone OTP state
   const [phone, setPhone] = useState('');
@@ -87,6 +96,7 @@ export function LoginClient({
     return () => { cancelled = true; };
   }, [role, restaurants.length]);
 
+  const visibleRoles = ROLES.filter((r) => allowedRoles.includes(r.id));
   const activeSpec = ROLES.find((r) => r.id === role)!;
 
   function switchRole(next: LoginRole) {
@@ -211,24 +221,27 @@ export function LoginClient({
         {/* ── Right: role tiles + form ── */}
         <div className="flex flex-col">
           <div className="rounded-3xl border border-border/60 bg-card p-6 shadow-sm md:p-8">
-            {/* Role tiles */}
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                I&apos;m signing in as
+            {/* Role tiles — only for roles this surface allows. Hidden when a
+                surface exposes a single role (e.g. customer site). */}
+            {visibleRoles.length > 1 && (
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  I&apos;m signing in as
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {visibleRoles.map((r) => (
+                    <RoleTile
+                      key={r.id}
+                      Icon={r.Icon}
+                      label={r.label}
+                      tagline={r.tagline}
+                      active={r.id === role}
+                      onClick={() => switchRole(r.id)}
+                    />
+                  ))}
+                </div>
               </div>
-              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {ROLES.map((r) => (
-                  <RoleTile
-                    key={r.id}
-                    Icon={r.Icon}
-                    label={r.label}
-                    tagline={r.tagline}
-                    active={r.id === role}
-                    onClick={() => switchRole(r.id)}
-                  />
-                ))}
-              </div>
-            </div>
+            )}
 
             {/* Form */}
             <div className="mt-8">
