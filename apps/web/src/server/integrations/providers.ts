@@ -11,6 +11,7 @@
 import { maskSecret } from '../crypto';
 import { brand } from '@/lib/brand';
 import { checkMsg91Balance, sendMsg91 } from '../notifications/msg91';
+import { verifyMetaWhatsApp } from '../notifications/meta-whatsapp';
 import { checkFast2SmsBalance, sendFast2Sms } from '../notifications/fast2sms';
 import { checkTextlocalBalance, sendTextlocal } from '../notifications/textlocal';
 import { checkTwoFactorBalance } from '../notifications/twofactor';
@@ -23,6 +24,7 @@ export type ProviderKey =
   | 'TWOFACTOR'
   | 'TWILIO_SMS'
   | 'TWILIO_WHATSAPP'
+  | 'META_WHATSAPP'
   | 'SMTP'
   | 'S3'
   | 'MSG91'
@@ -274,6 +276,32 @@ const TwilioWhatsApp: ProviderDef = {
   }
 };
 
+// ─── Meta WhatsApp Cloud API ─────────────────────────────────────────────────
+const MetaWhatsApp: ProviderDef = {
+  key: 'META_WHATSAPP',
+  title: 'WhatsApp via Meta Cloud API',
+  vendor: 'Meta',
+  description: 'Send WhatsApp OTP + order updates through the official WhatsApp Business Cloud API. OTP needs an approved Authentication-category template.',
+  docsUrl: 'https://developers.facebook.com/docs/whatsapp/cloud-api',
+  fields: [
+    { key: 'phoneNumberId', label: 'Phone number ID', type: 'text',     required: true, placeholder: '1234567890', hint: 'Meta app → WhatsApp → API setup.' },
+    { key: 'accessToken',   label: 'Access token',     type: 'password', required: true, secret: true, hint: 'Permanent system-user token with whatsapp_business_messaging.' },
+    { key: 'templateName',  label: 'OTP template name', type: 'text',    placeholder: 'otp_verification', hint: 'Approved Authentication-category template. Leave blank for plain text (testing only).' },
+    { key: 'templateLang',  label: 'Template language', type: 'text',    placeholder: 'en_US', hint: 'Language code of the template. Default en_US.' },
+    { key: 'apiVersion',    label: 'Graph API version', type: 'text',    placeholder: 'v21.0', hint: 'Optional. Default v21.0.' },
+    { key: 'copyCodeButton', label: 'Copy-code button', type: 'select',  hint: 'Authentication templates include a copy-code button parameter.', options: [
+      { value: 'true',  label: 'Yes (Authentication template)' },
+      { value: 'false', label: 'No (body-only template)' }
+    ] }
+  ],
+  buildSummary: (c) => ({ phoneNumberId: c.phoneNumberId, templateName: c.templateName || '(plain text)', accessToken: maskSecret(c.accessToken) }),
+  async test(c) {
+    const res = await verifyMetaWhatsApp({ phoneNumberId: c.phoneNumberId, accessToken: c.accessToken, apiVersion: c.apiVersion });
+    if (res.ok) return { ok: true, detail: `Verified ${res.displayName ?? 'sender'} (${res.number ?? c.phoneNumberId}).` };
+    return { ok: false, error: res.error };
+  }
+};
+
 // ─── SMTP ───────────────────────────────────────────────────────────────────
 const SMTP: ProviderDef = {
   key: 'SMTP',
@@ -454,6 +482,7 @@ export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
   TWOFACTOR: TwoFactor,
   TWILIO_SMS: TwilioSMS,
   TWILIO_WHATSAPP: TwilioWhatsApp,
+  META_WHATSAPP: MetaWhatsApp,
   SMTP,
   S3,
   MSG91: Msg91,
@@ -468,6 +497,7 @@ export const PROVIDER_LIST: ProviderDef[] = [
   Razorpay,
   TwoFactor, Msg91, Fast2Sms, TextLocal, TwilioSMS,
   TwilioWhatsApp,
+  MetaWhatsApp,
   ZohoSmtp, BrevoSmtp, SMTP,
   S3
 ];

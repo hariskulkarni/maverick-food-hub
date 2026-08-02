@@ -136,6 +136,10 @@ enum IntegrationProvider {
   PHONEPE
   TWILIO_SMS
   TWILIO_WHATSAPP
+  // Meta WhatsApp Cloud API (canonical WhatsApp Business API) for WhatsApp OTP
+  // + order updates. Probed per-restaurant by the notification layer before
+  // TWILIO_WHATSAPP.
+  META_WHATSAPP
   SMTP
   S3
   // Synthetic provider holding super-admin platform security blob (TOTP + IP allowlist + lockout).

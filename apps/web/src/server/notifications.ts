@@ -14,6 +14,7 @@ import { prisma } from './db';
 import { log } from './log';
 import { getConfig } from './integrations';
 import { sendMsg91 } from './notifications/msg91';
+import { sendMetaWhatsApp } from './notifications/meta-whatsapp';
 import { sendFast2Sms } from './notifications/fast2sms';
 import { sendTwoFactor } from './notifications/twofactor';
 import { sendTextlocal } from './notifications/textlocal';
@@ -140,6 +141,19 @@ async function sendOnChannel(channel: Channel, args: SendArgs): Promise<SendResu
       if (twilio?.accountSid && twilio?.authToken && twilio?.fromNumber) return sendTwilioSms(twilio as any, args);
     }
     if (channel === 'WHATSAPP') {
+      // WhatsApp priority: Meta Cloud API (canonical WhatsApp Business API) →
+      // Twilio WhatsApp.
+      const meta = await safeGetConfig(args.restaurantId, 'META_WHATSAPP');
+      if (meta?.phoneNumberId && meta?.accessToken) {
+        return sendMetaWhatsApp({
+          phoneNumberId: meta.phoneNumberId,
+          accessToken: meta.accessToken,
+          templateName: meta.templateName,
+          templateLang: meta.templateLang,
+          apiVersion: meta.apiVersion,
+          copyCodeButton: meta.copyCodeButton,
+        }, args);
+      }
       const cfg = await safeGetConfig(args.restaurantId, 'TWILIO_WHATSAPP');
       if (cfg?.accountSid && cfg?.authToken && cfg?.whatsappFrom) return sendTwilioWhatsApp(cfg as any, args);
     }
@@ -193,8 +207,21 @@ async function sendOnChannel(channel: Channel, args: SendArgs): Promise<SendResu
       return sendTwilioSms({ accountSid: process.env.TWILIO_ACCOUNT_SID!, authToken: process.env.TWILIO_AUTH_TOKEN!, fromNumber: process.env.TWILIO_FROM! }, args);
     }
   }
-  if (channel === 'WHATSAPP' && process.env.NOTIFIER_WHATSAPP === 'twilio_whatsapp' && process.env.TWILIO_ACCOUNT_SID) {
-    return sendTwilioWhatsApp({ accountSid: process.env.TWILIO_ACCOUNT_SID!, authToken: process.env.TWILIO_AUTH_TOKEN!, whatsappFrom: process.env.TWILIO_WHATSAPP_FROM! }, args);
+  if (channel === 'WHATSAPP') {
+    const wa = (process.env.NOTIFIER_WHATSAPP || '').toLowerCase();
+    if ((wa === 'meta' || wa === 'meta_whatsapp' || wa === 'whatsapp_cloud') && process.env.META_WHATSAPP_ACCESS_TOKEN) {
+      return sendMetaWhatsApp({
+        phoneNumberId: process.env.META_WHATSAPP_PHONE_NUMBER_ID!,
+        accessToken: process.env.META_WHATSAPP_ACCESS_TOKEN!,
+        templateName: process.env.META_WHATSAPP_TEMPLATE_NAME,
+        templateLang: process.env.META_WHATSAPP_TEMPLATE_LANG,
+        apiVersion: process.env.META_WHATSAPP_API_VERSION,
+        copyCodeButton: process.env.META_WHATSAPP_COPY_CODE_BUTTON,
+      }, args);
+    }
+    if (wa === 'twilio_whatsapp' && process.env.TWILIO_ACCOUNT_SID) {
+      return sendTwilioWhatsApp({ accountSid: process.env.TWILIO_ACCOUNT_SID!, authToken: process.env.TWILIO_AUTH_TOKEN!, whatsappFrom: process.env.TWILIO_WHATSAPP_FROM! }, args);
+    }
   }
   if (channel === 'EMAIL') {
     const provider = process.env.NOTIFIER_EMAIL || process.env.EMAIL_PROVIDER;

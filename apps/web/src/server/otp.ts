@@ -56,6 +56,16 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 const SMS_PROVIDER = (process.env.NOTIFIER_SMS ?? 'mock').toLowerCase().trim();
 const SMS_IS_REAL = SMS_PROVIDER !== '' && SMS_PROVIDER !== 'mock';
 
+// Real WhatsApp provider configured? (Meta Cloud API or Twilio WhatsApp.)
+const WHATSAPP_PROVIDER = (process.env.NOTIFIER_WHATSAPP ?? 'mock').toLowerCase().trim();
+const WHATSAPP_IS_REAL = WHATSAPP_PROVIDER !== '' && WHATSAPP_PROVIDER !== 'mock';
+// Any real delivery channel means surfacing codes would leak real users' OTPs.
+const DELIVERY_IS_REAL = SMS_IS_REAL || WHATSAPP_IS_REAL;
+
+// OTP delivery channel(s). Default 'sms' preserves prior behaviour. Options:
+//   sms | whatsapp | whatsapp_then_sms | sms_then_whatsapp | both
+const OTP_CHANNEL = (process.env.OTP_CHANNEL ?? 'sms').toLowerCase().trim();
+
 // Demo mode: deliberately surface OTP codes (in the API response + server log)
 // so you can run a live demo before buying an SMS gateway. Opt-in via
 // OTP_DEMO_MODE=true; the legacy OTP_DEBUG_LOG=true is honoured as an alias so
@@ -71,11 +81,12 @@ const OTP_DEMO_MODE =
 // switch to production is therefore: set NOTIFIER_SMS=<provider> (+ creds) and
 // set OTP_DEMO_MODE=false (remove OTP_DEBUG_LOG) — codes stop surfacing
 // automatically; no code change needed.
-if (SMS_IS_REAL && OTP_DEMO_MODE) {
+if (DELIVERY_IS_REAL && OTP_DEMO_MODE) {
+  const which = SMS_IS_REAL ? `NOTIFIER_SMS=${SMS_PROVIDER}` : `NOTIFIER_WHATSAPP=${WHATSAPP_PROVIDER}`;
   throw new Error(
-    `OTP demo mode is enabled (OTP_DEMO_MODE/OTP_DEBUG_LOG) while a real SMS provider ` +
-      `(NOTIFIER_SMS=${SMS_PROVIDER}) is configured. This would leak real users' OTP codes. ` +
-      `Set OTP_DEMO_MODE=false and remove OTP_DEBUG_LOG before going live with real SMS.`
+    `OTP demo mode is enabled (OTP_DEMO_MODE/OTP_DEBUG_LOG) while a real delivery provider ` +
+      `(${which}) is configured. This would leak real users' OTP codes. ` +
+      `Set OTP_DEMO_MODE=false and remove OTP_DEBUG_LOG before going live.`
   );
 }
 
@@ -102,6 +113,41 @@ if (IS_PROD && OTP_DEMO_MODE) {
 
 function genCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+/**
+ * Send the OTP over the configured channel(s). `meta.otpCode` lets the WhatsApp
+ * template adapter drop the code into an Authentication-template parameter. In
+ * demo/mock mode every channel resolves to the mock adapter (code still
+ * surfaced via devCode), so this is a no-op change for demos.
+ */
+async function deliverOtp(phone: string, code: string): Promise<void> {
+  const body = `Your verification code is ${code}. It expires in 5 minutes.`;
+  const meta = { otpCode: code };
+  const sms = () => notify.sms({ to: phone, body, template: 'otp.login', meta });
+  const wa = () => notify.whatsapp({ to: phone, body, template: 'otp.login', meta });
+  switch (OTP_CHANNEL) {
+    case 'whatsapp':
+      await wa();
+      return;
+    case 'both':
+      await Promise.allSettled([wa(), sms()]);
+      return;
+    case 'whatsapp_then_sms': {
+      const r = await wa();
+      if (!r.ok) await sms();
+      return;
+    }
+    case 'sms_then_whatsapp': {
+      const r = await sms();
+      if (!r.ok) await wa();
+      return;
+    }
+    case 'sms':
+    default:
+      await sms();
+      return;
+  }
 }
 
 /** Friendly "in X" rendering for the rate-limit message. Avoids confusion
@@ -256,11 +302,7 @@ export async function sendOtp(args: { phone: string; purpose?: string; ipAddress
     })
   ]);
 
-  await notify.sms({
-    to: args.phone,
-    body: `Your verification code is ${code}. It expires in 5 minutes.`,
-    template: 'otp.login'
-  });
+  await deliverOtp(args.phone, code);
 
   // Surface the code only when it's safe to do so:
   //   - Demo mode (OTP_DEMO_MODE/OTP_DEBUG_LOG) with a mock SMS provider — the

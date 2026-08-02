@@ -22,7 +22,7 @@ export function categoryFromProvider(provider: string | null | undefined): strin
   }
 
   // WhatsApp providers
-  if (p === 'twilio_whatsapp' || p === 'gupshup' || p === 'whatsapp-cloud' || p === 'whatsapp_cloud') {
+  if (p === 'twilio_whatsapp' || p === 'gupshup' || p === 'whatsapp-cloud' || p === 'whatsapp_cloud' || p === 'meta_whatsapp' || p === 'meta') {
     return 'WhatsApp provider';
   }
 
