@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { Plus, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { money } from '@/lib/utils';
 import { FOOD_FALLBACK } from '@/lib/food-images';
 import { useCart } from '../cart-context';
@@ -139,20 +138,17 @@ export function CrossSellStrip(props: CrossSellStripProps) {
     return [...known, ...unknown].map((k) => ({ kind: k, items: buckets.get(k)! }));
   }, [rows]);
 
-  if (loading) {
-    return (
-      <div className="mt-4">
-        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 mb-2">
-          <Sparkles className="size-3.5" /> Frequently ordered together
-        </div>
-        <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-1 px-1">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 w-36 shrink-0 rounded-xl" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // Deliberately render NOTHING while the first fetch is in flight.
+  //
+  // This used to render a skeleton under a hardcoded "Frequently ordered
+  // together" heading. Cross-sell is supplementary — plenty of items have no
+  // rules configured — so on those items the heading appeared for the length of
+  // the request and then vanished when the empty response arrived, which reads
+  // as a glitch. A placeholder is only honest when we know something is coming,
+  // and here we don't. Reserving no space also avoids the layout shift that the
+  // skeleton caused when it collapsed.
+  if (loading && rows === null) return null;
+
 
   if (!rows || rows.length === 0) return null;
 
