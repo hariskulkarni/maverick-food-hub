@@ -29,29 +29,47 @@ function offerIcon(o: TopOffer) {
 
 /**
  * "Top offers today" carousel for /restaurants. A swipeable, snap-scrolling
- * track of offer cards with desktop prev/next arrows (disabled at the ends) and
- * gentle autoplay that loops. Autoplay pauses on hover / focus / touch and is
- * suppressed under prefers-reduced-motion (WCAG). Cards match the original strip.
+ * track of offer cards. Every behaviour is super-admin controlled from the
+ * Discovery CMS → Top offers tab: autoplay on/off + interval, loop, desktop
+ * arrows, page dots, and pause-on-hover. Autoplay is always suppressed under
+ * prefers-reduced-motion (WCAG). Cards match the original strip.
  */
 export function TopOffersCarousel({
   heading,
   subheading,
   offers,
+  autoplay = true,
+  autoplayMs = 4500,
+  loop = true,
+  showArrows = true,
+  showDots = false,
+  pauseOnHover = true,
 }: {
   heading: string;
   subheading?: string | null;
   offers: TopOffer[];
+  autoplay?: boolean;
+  autoplayMs?: number;
+  loop?: boolean;
+  showArrows?: boolean;
+  showDots?: boolean;
+  pauseOnHover?: boolean;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const pausedRef = useRef(false);
   const [canPrev, setCanPrev] = useState(false);
   const [canNext, setCanNext] = useState(false);
+  const [pages, setPages] = useState(1);
+  const [activePage, setActivePage] = useState(0);
 
   const update = useCallback(() => {
     const el = trackRef.current;
     if (!el) return;
     setCanPrev(el.scrollLeft > 4);
     setCanNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    const p = Math.max(1, Math.ceil(el.scrollWidth / el.clientWidth));
+    setPages(p);
+    setActivePage(Math.min(p - 1, Math.round(el.scrollLeft / el.clientWidth)));
   }, []);
 
   useEffect(() => {
@@ -73,8 +91,14 @@ export function TopOffersCarousel({
     el.scrollBy({ left: dir * Math.round(el.clientWidth * 0.85), behavior: 'smooth' });
   }, []);
 
+  const goToPage = useCallback((i: number) => {
+    const el = trackRef.current;
+    if (!el) return;
+    el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
+  }, []);
+
   useEffect(() => {
-    if (offers.length <= 1) return;
+    if (!autoplay || offers.length <= 1 || autoplayMs < 1000) return;
     const reduce =
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -83,50 +107,54 @@ export function TopOffersCarousel({
       if (pausedRef.current) return;
       const el = trackRef.current;
       if (!el) return;
-      if (el.scrollLeft + el.clientWidth >= el.scrollWidth - 4) {
-        el.scrollTo({ left: 0, behavior: 'smooth' });
+      const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+      if (atEnd) {
+        if (loop) el.scrollTo({ left: 0, behavior: 'smooth' });
       } else {
         el.scrollBy({ left: Math.round(el.clientWidth * 0.85), behavior: 'smooth' });
       }
-    }, 4500);
+    }, autoplayMs);
     return () => clearInterval(id);
-  }, [offers.length]);
+  }, [autoplay, autoplayMs, loop, offers.length]);
+
+  const pauseHandlers = pauseOnHover
+    ? {
+        onMouseEnter: () => { pausedRef.current = true; },
+        onMouseLeave: () => { pausedRef.current = false; },
+        onFocusCapture: () => { pausedRef.current = true; },
+        onBlurCapture: () => { pausedRef.current = false; },
+        onTouchStart: () => { pausedRef.current = true; },
+      }
+    : {};
 
   return (
-    <section
-      className="mb-6 reveal"
-      aria-roledescription="carousel"
-      aria-label={heading}
-      onMouseEnter={() => { pausedRef.current = true; }}
-      onMouseLeave={() => { pausedRef.current = false; }}
-      onFocusCapture={() => { pausedRef.current = true; }}
-      onBlurCapture={() => { pausedRef.current = false; }}
-      onTouchStart={() => { pausedRef.current = true; }}
-    >
+    <section className="mb-6 reveal" aria-roledescription="carousel" aria-label={heading} {...pauseHandlers}>
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
           <Sparkles className="size-3.5" /> {heading}
         </div>
-        <div className="hidden items-center gap-1.5 md:flex">
-          <button
-            type="button"
-            aria-label="Previous offers"
-            disabled={!canPrev}
-            onClick={() => page(-1)}
-            className="grid size-8 place-items-center rounded-full border bg-card text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
-          >
-            <ChevronLeft className="size-4" />
-          </button>
-          <button
-            type="button"
-            aria-label="Next offers"
-            disabled={!canNext}
-            onClick={() => page(1)}
-            className="grid size-8 place-items-center rounded-full border bg-card text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
-          >
-            <ChevronRight className="size-4" />
-          </button>
-        </div>
+        {showArrows && (
+          <div className="hidden items-center gap-1.5 md:flex">
+            <button
+              type="button"
+              aria-label="Previous offers"
+              disabled={!canPrev}
+              onClick={() => page(-1)}
+              className="grid size-8 place-items-center rounded-full border bg-card text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              type="button"
+              aria-label="Next offers"
+              disabled={!canNext}
+              onClick={() => page(1)}
+              className="grid size-8 place-items-center rounded-full border bg-card text-foreground transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+        )}
       </div>
       {subheading && <p className="-mt-1 mb-3 text-sm text-muted-foreground">{subheading}</p>}
       <div
@@ -157,6 +185,20 @@ export function TopOffersCarousel({
           })}
         </div>
       </div>
+      {showDots && pages > 1 && (
+        <div className="mt-3 flex items-center justify-center gap-1.5">
+          {Array.from({ length: pages }).map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              aria-label={`Go to offers page ${i + 1}`}
+              aria-current={i === activePage}
+              onClick={() => goToPage(i)}
+              className={`h-1.5 rounded-full transition-all ${i === activePage ? 'w-5 bg-primary' : 'w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'}`}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

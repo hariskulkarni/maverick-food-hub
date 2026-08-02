@@ -562,6 +562,29 @@ function TopOffersTab({ cfg, patch, offers }: { cfg: DiscoveryConfig; patch: Pat
       </div>
       <Field label="Subheading (optional)"><Text value={cfg.topOffers.subheading} onChange={(v) => patch('topOffers', { subheading: v })} max={200} /></Field>
 
+      {/* Carousel behaviour — controls the /restaurants offers carousel. */}
+      <div className="rounded-lg border p-4 space-y-3">
+        <p className="text-sm font-medium">Carousel behaviour</p>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <Toggle checked={cfg.topOffers.autoplay} onChange={(v) => patch('topOffers', { autoplay: v })} label="Autoplay" />
+          <Toggle checked={cfg.topOffers.loop} onChange={(v) => patch('topOffers', { loop: v })} label="Loop" />
+          <Toggle checked={cfg.topOffers.showArrows} onChange={(v) => patch('topOffers', { showArrows: v })} label="Arrows (desktop)" />
+          <Toggle checked={cfg.topOffers.showDots} onChange={(v) => patch('topOffers', { showDots: v })} label="Dots" />
+          <Toggle checked={cfg.topOffers.pauseOnHover} onChange={(v) => patch('topOffers', { pauseOnHover: v })} label="Pause on hover" />
+        </div>
+        <Field label="Autoplay interval (seconds)">
+          <input
+            type="number"
+            min={2}
+            max={30}
+            value={Math.round(cfg.topOffers.autoplayMs / 1000)}
+            onChange={(e) => patch('topOffers', { autoplayMs: Math.min(30000, Math.max(2000, (Number(e.target.value) || 2) * 1000)) })}
+            disabled={!cfg.topOffers.autoplay}
+            className="h-9 w-28 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
+          />
+        </Field>
+      </div>
+
       <div>
         <p className="text-sm font-medium mb-1">Pinned offers</p>
         <p className="text-xs text-muted-foreground mb-2">

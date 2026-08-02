@@ -351,6 +351,12 @@ export default async function RestaurantsListPage({
           heading={cms.topOffers.heading}
           subheading={cms.topOffers.subheading}
           offers={topOffers}
+          autoplay={cms.topOffers.autoplay}
+          autoplayMs={cms.topOffers.autoplayMs}
+          loop={cms.topOffers.loop}
+          showArrows={cms.topOffers.showArrows}
+          showDots={cms.topOffers.showDots}
+          pauseOnHover={cms.topOffers.pauseOnHover}
         />
       )}
 

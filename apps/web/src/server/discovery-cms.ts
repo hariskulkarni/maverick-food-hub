@@ -266,6 +266,13 @@ export interface DiscoveryConfig {
     subheading: string;
     limit: number;           // how many tiles
     pinnedOfferIds: string[]; // shown first, in this order
+    // Carousel behaviour (super-admin editable in Discovery CMS → Top offers).
+    autoplay: boolean;       // auto-advance the carousel
+    autoplayMs: number;      // interval between advances (ms)
+    loop: boolean;           // wrap back to the start at the end
+    showArrows: boolean;     // desktop prev/next arrows
+    showDots: boolean;       // page indicator dots
+    pauseOnHover: boolean;   // pause autoplay on hover / focus / touch
   };
   whatsOnYourMind: {
     enabled: boolean;
@@ -367,6 +374,12 @@ export function defaultDiscoveryConfig(): DiscoveryConfig {
       subheading: '',
       limit: 10,
       pinnedOfferIds: [],
+      autoplay: true,
+      autoplayMs: 4500,
+      loop: true,
+      showArrows: true,
+      showDots: false,
+      pauseOnHover: true,
     },
     whatsOnYourMind: {
       enabled: true,
@@ -603,6 +616,12 @@ export function parseDiscoveryConfig(raw: unknown): DiscoveryConfig {
       subheading: str(topOffers.subheading, 200),
       limit: clampInt(topOffers.limit, 1, 30, d.topOffers.limit),
       pinnedOfferIds: idList(topOffers.pinnedOfferIds),
+      autoplay: bool(topOffers.autoplay, d.topOffers.autoplay),
+      autoplayMs: clampInt(topOffers.autoplayMs, 2000, 30000, d.topOffers.autoplayMs),
+      loop: bool(topOffers.loop, d.topOffers.loop),
+      showArrows: bool(topOffers.showArrows, d.topOffers.showArrows),
+      showDots: bool(topOffers.showDots, d.topOffers.showDots),
+      pauseOnHover: bool(topOffers.pauseOnHover, d.topOffers.pauseOnHover),
     },
     whatsOnYourMind: {
       enabled: bool(woym.enabled, d.whatsOnYourMind.enabled),
