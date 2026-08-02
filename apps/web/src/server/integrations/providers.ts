@@ -31,14 +31,23 @@ export type ProviderKey =
   | 'ZOHO_SMTP'
   | 'BREVO_SMTP';
 
+export interface FieldOption {
+  value: string;
+  label: string;
+  /** Shown under the label in the dropdown — use it to spell out consequences. */
+  detail?: string;
+}
+
 export interface FieldDef {
   key: string;
   label: string;
-  type: 'text' | 'password' | 'number' | 'email';
+  type: 'text' | 'password' | 'number' | 'email' | 'select';
   placeholder?: string;
   required?: boolean;
   hint?: string;
   secret?: boolean;
+  /** Required when type === 'select'. The first entry is the default. */
+  options?: FieldOption[];
 }
 
 export interface ProviderDef {
@@ -128,9 +137,24 @@ const PhonePe: ProviderDef = {
     {
       key: 'env',
       label: 'Environment',
-      type: 'text',
+      type: 'select',
+      required: true,
       placeholder: 'SANDBOX',
-      hint: 'SANDBOX for UAT testing, PRODUCTION once PhonePe has approved go-live. Defaults to SANDBOX.'
+      options: [
+        {
+          value: 'SANDBOX',
+          label: 'Sandbox — test mode',
+          detail: 'Test money only. Orders complete against PhonePe’s UAT rail; nothing is charged and nothing settles.'
+        },
+        {
+          value: 'PRODUCTION',
+          label: 'Production — live money',
+          detail: 'Real customers, real charges, real settlement. Only after PhonePe has approved go-live for this merchant.'
+        }
+      ],
+      hint:
+        'Switching to Production also requires PRODUCTION credentials — the sandbox client id and secret are rejected by the live hosts. ' +
+        'Test the connection after switching; it will fail immediately if the pair does not match the environment.'
     },
     {
       key: 'webhookUsername',

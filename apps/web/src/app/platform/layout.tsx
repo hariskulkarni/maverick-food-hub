@@ -26,6 +26,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/platform/analytics',     icon: <BarChart3 className={I} />,       label: 'Deep analytics' },
       { href: '/platform/restaurants',   icon: <Building2 className={I} />,       label: 'Restaurants' },
       { href: '/platform/brands',        icon: <Layers className={I} />,          label: 'Brands' },
+      { href: '/platform/payment-gateways', icon: <Banknote className={I} />,    label: 'Payment gateways' },
       { href: '/platform/discovery-cms', icon: <LayoutTemplate className={I} />,  label: 'Discovery CMS' },
       { href: '/platform/signup-bonus',  icon: <Gift className={I} />,            label: 'Signup Bonus' },
       { href: '/platform/orders',        icon: <ListOrdered className={I} />,     label: 'All orders' },

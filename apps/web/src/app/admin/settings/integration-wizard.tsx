@@ -5,20 +5,33 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
   CheckCircle2, AlertTriangle, ExternalLink, Loader2, Lock, ShieldCheck,
   Eye, EyeOff, ChevronRight, ChevronLeft
 } from 'lucide-react';
 
+/**
+ * Mirrors FieldDef in src/server/integrations/providers.ts. It is duplicated
+ * rather than imported because that module is server-only (it pulls in the
+ * crypto + prisma layers) and this is a Client Component. Keep the two in step.
+ */
+export interface FieldOption {
+  value: string;
+  label: string;
+  detail?: string;
+}
+
 export interface FieldDef {
   key: string;
   label: string;
-  type: 'text' | 'password' | 'number' | 'email';
+  type: 'text' | 'password' | 'number' | 'email' | 'select';
   placeholder?: string;
   required?: boolean;
   hint?: string;
   secret?: boolean;
+  options?: FieldOption[];
 }
 
 interface Props {
@@ -32,16 +45,22 @@ interface Props {
   fields: FieldDef[];
   initialSummary: Record<string, any> | null;
   isConnected: boolean;
+  /** Super-admin only: target another tenant. Ignored by the API otherwise. */
+  restaurantId?: string;
   onSaved: () => void;
 }
 
 type TestResult = { ok: boolean; detail?: string; error?: string };
 
 export function IntegrationWizard(props: Props) {
-  const { open, onClose, provider, title, vendor, description, docsUrl, fields, initialSummary, isConnected } = props;
+  const { open, onClose, provider, title, vendor, description, docsUrl, fields, initialSummary, isConnected, restaurantId } = props;
+  const qs = restaurantId ? `?restaurantId=${encodeURIComponent(restaurantId)}` : '';
   const [step, setStep] = useState<1 | 2 | 3>(isConnected ? 2 : 1);
   const [values, setValues] = useState<Record<string, string>>(() =>
-    fields.reduce<Record<string, string>>((acc, f) => ({ ...acc, [f.key]: '' }), {})
+    fields.reduce<Record<string, string>>(
+      (acc, f) => ({ ...acc, [f.key]: f.type === 'select' ? f.options?.[0]?.value ?? '' : '' }),
+      {},
+    )
   );
   const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
   const [testing, setTesting] = useState(false);
@@ -50,7 +69,12 @@ export function IntegrationWizard(props: Props) {
 
   function reset() {
     setStep(isConnected ? 2 : 1);
-    setValues(fields.reduce<Record<string, string>>((acc, f) => ({ ...acc, [f.key]: '' }), {}));
+    setValues(
+      fields.reduce<Record<string, string>>(
+        (acc, f) => ({ ...acc, [f.key]: f.type === 'select' ? f.options?.[0]?.value ?? '' : '' }),
+        {},
+      ),
+    );
     setShowSecret({});
     setTesting(false); setSaving(false); setTestResult(null);
   }
@@ -68,7 +92,7 @@ export function IntegrationWizard(props: Props) {
     setTesting(true);
     setTestResult(null);
     try {
-      const r = await fetch(`/api/admin/integrations/${provider}/test`, {
+      const r = await fetch(`/api/admin/integrations/${provider}/test${qs}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config: values })
@@ -88,7 +112,7 @@ export function IntegrationWizard(props: Props) {
   async function saveAndEnable() {
     setSaving(true);
     try {
-      const r = await fetch(`/api/admin/integrations/${provider}`, {
+      const r = await fetch(`/api/admin/integrations/${provider}${qs}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config: values })
@@ -108,7 +132,7 @@ export function IntegrationWizard(props: Props) {
 
   async function disconnect() {
     if (!confirm(`Disconnect ${title}? The system will fall back to mock mode.`)) return;
-    const r = await fetch(`/api/admin/integrations/${provider}`, { method: 'DELETE' });
+    const r = await fetch(`/api/admin/integrations/${provider}${qs}`, { method: 'DELETE' });
     if (!r.ok) return toast.error('Disconnect failed');
     toast.success(`${title} disconnected.`);
     props.onSaved();
@@ -171,6 +195,26 @@ export function IntegrationWizard(props: Props) {
             {fields.map((f) => (
               <div key={f.key} className="space-y-1.5">
                 <Label className="text-xs font-medium">{f.label}{f.required && <span className="text-destructive ml-0.5">*</span>}</Label>
+                {f.type === 'select' && f.options?.length ? (
+                  <Select
+                    value={values[f.key] || f.options[0].value}
+                    onValueChange={(v) => set(f.key, v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={f.placeholder} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {f.options.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          <span className="font-medium">{o.label}</span>
+                          {o.detail && (
+                            <span className="block text-[11px] text-muted-foreground">{o.detail}</span>
+                          )}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
                 <div className="relative">
                   <Input
                     type={f.type === 'password' && !showSecret[f.key] ? 'password' : (f.type === 'number' ? 'number' : 'text')}
@@ -192,6 +236,7 @@ export function IntegrationWizard(props: Props) {
                     </button>
                   )}
                 </div>
+                )}
                 {f.hint && <p className="text-[11px] text-muted-foreground">{f.hint}</p>}
               </div>
             ))}

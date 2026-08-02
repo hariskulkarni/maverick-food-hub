@@ -33,7 +33,7 @@ import {
   PhonePeError,
 } from './phonepe-api';
 import { paymentStatusFromPhonePe, phonePeErrorMessage, toPhonePeState } from './phonepe-events';
-import { getConfig } from '../integrations';
+import { getConfigInherited } from '../integrations';
 import { brand } from '@/lib/brand';
 
 export const PHONEPE_PROVIDER_NAME = 'phonepe';
@@ -75,15 +75,23 @@ export function phonePeConfigFromStored(c: Record<string, string> | null | undef
 }
 
 /**
- * PhonePe credentials for a restaurant: tenant-stored first, platform env as
- * fallback. Mirrors the precedence the Razorpay path already uses, so a tenant
- * that has not onboarded its own merchant account still transacts through the
- * platform account when one is configured.
+ * PhonePe credentials for a restaurant.
+ *
+ * Precedence:
+ *   1. the restaurant's own stored credentials
+ *   2. an ancestor's, for a child outlet in a group (see getConfigInherited) —
+ *      one merchant account for the whole brand, settling to the parent's bank
+ *   3. the platform env pair
+ *
+ * Mirrors the precedence the Razorpay path already uses, so a tenant that has
+ * not onboarded its own merchant account still transacts through the platform
+ * account when one is configured.
  */
 export async function resolvePhonePeConfig(restaurantId?: string | null): Promise<PhonePeConfig | null> {
   if (restaurantId) {
     try {
-      const stored = phonePeConfigFromStored(await getConfig(restaurantId, 'PHONEPE'));
+      const found = await getConfigInherited(restaurantId, 'PHONEPE');
+      const stored = phonePeConfigFromStored(found?.config ?? null);
       if (stored) return stored;
     } catch {
       // Fall through to env — a decrypt/DB hiccup must not take checkout down.

@@ -18,7 +18,7 @@ import { prisma } from './db';
 import { audit } from './audit';
 import { transitionOrder } from './orders';
 import { log } from './log';
-import { getConfig } from './integrations';
+import { getConfigInherited } from './integrations';
 import { razorpayProvider } from './payments/razorpay';
 import { phonepeProvider, resolvePhonePeConfig } from './payments/phonepe';
 import { isWithinRefundWindow, REFUND_WINDOW_DAYS } from './payments/phonepe-events';
@@ -63,7 +63,7 @@ async function resolveRazorpayCreds(branchId?: string | null) {
   try {
     const branch = await prisma.branch.findUnique({ where: { id: branchId }, select: { restaurantId: true } });
     if (!branch) return null;
-    const cfg = await getConfig(branch.restaurantId, 'RAZORPAY');
+    const cfg = (await getConfigInherited(branch.restaurantId, 'RAZORPAY'))?.config;
     if (cfg?.keyId && cfg?.keySecret) {
       return { keyId: cfg.keyId, keySecret: cfg.keySecret, webhookSecret: cfg.webhookSecret };
     }

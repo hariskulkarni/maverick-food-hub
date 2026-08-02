@@ -31,7 +31,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
 import { log } from '@/server/log';
-import { getConfig } from '@/server/integrations';
+import { getConfigInherited } from '@/server/integrations';
 import {
   normalizePhonePeEvent,
   phonePeEventId,
@@ -87,7 +87,9 @@ async function resolveWebhookCreds(
 
   if (restaurantId) {
     try {
-      const cfg = await getConfig(restaurantId, 'PHONEPE');
+      // Inherited: a child outlet transacting on the parent brand's merchant
+      // account is authenticated by the parent's webhook pair.
+      const cfg = (await getConfigInherited(restaurantId, 'PHONEPE'))?.config;
       if (cfg?.webhookUsername && cfg?.webhookPassword) {
         return { username: cfg.webhookUsername, password: cfg.webhookPassword, restaurantId };
       }

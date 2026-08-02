@@ -16,7 +16,7 @@
 import { mockProvider } from './mock';
 import { razorpayProvider } from './razorpay';
 import { phonepeProvider, resolvePhonePeConfig, PHONEPE_PROVIDER_NAME } from './phonepe';
-import { getConfig } from '../integrations';
+import { getConfigInherited } from '../integrations';
 
 /** Gateways that take money online (as opposed to COD/wallet settlement). */
 export type GatewayKey = 'RAZORPAY' | 'PHONEPE';
@@ -134,14 +134,16 @@ export interface PaymentProvider {
  */
 export async function resolveGatewayKey(restaurantId?: string | null): Promise<GatewayKey | null> {
   if (restaurantId) {
+    // Inherited lookups so a child outlet in a restaurant group routes through
+    // the parent brand's gateway without being connected individually.
     try {
-      const pp = await getConfig(restaurantId, 'PHONEPE');
+      const pp = (await getConfigInherited(restaurantId, 'PHONEPE'))?.config;
       if (pp?.clientId && pp?.clientSecret) return 'PHONEPE';
     } catch {
       /* fall through */
     }
     try {
-      const rp = await getConfig(restaurantId, 'RAZORPAY');
+      const rp = (await getConfigInherited(restaurantId, 'RAZORPAY'))?.config;
       if (rp?.keyId && rp?.keySecret) return 'RAZORPAY';
     } catch {
       /* fall through */
@@ -171,7 +173,7 @@ export async function paymentProvider(restaurantId?: string | null): Promise<Pay
 
   if (key === 'RAZORPAY') {
     if (restaurantId) {
-      const cfg = await getConfig(restaurantId, 'RAZORPAY');
+      const cfg = (await getConfigInherited(restaurantId, 'RAZORPAY'))?.config;
       if (cfg?.keyId && cfg?.keySecret) {
         return razorpayProvider({ keyId: cfg.keyId, keySecret: cfg.keySecret, webhookSecret: cfg.webhookSecret });
       }

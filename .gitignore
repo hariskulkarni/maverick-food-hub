@@ -146,3 +146,6 @@ deploy/*.keystore
 # ── Client billing / invoices (never commit — contains client PII) ────────
 Invoice-*.pdf
 /invoices/
+
+# Scratch folder used when a mount forbids unlink; never commit it.
+_to_delete/
