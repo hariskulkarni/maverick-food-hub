@@ -78,6 +78,11 @@ export function LoginClient({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
+  // Staff 2FA (Google Authenticator) two-step flow.
+  const [staffPhase, setStaffPhase] = useState<'creds' | 'code'>('creds');
+  const [totpCode, setTotpCode] = useState('');
+  const [enroll, setEnroll] = useState<{ qr: string; secret: string; otpauth: string } | null>(null);
+
   // Restaurant picker (staff only): pick which restaurant you're signing in to.
   // Populated from the public top-level-restaurants endpoint. Optional — it just
   // pre-selects the active restaurant after login so you land in the right place.
@@ -107,6 +112,9 @@ export function LoginClient({
     setOtpSent(false);
     setDevCode(null);
     setCode('');
+    setStaffPhase('creds');
+    setEnroll(null);
+    setTotpCode('');
   }
 
   async function sendOtp() {
@@ -172,34 +180,59 @@ export function LoginClient({
     await routeByRole('/restaurants');
   }
 
-  async function loginEmail() {
+  // Staff step 1: validate password, then discover whether this account needs
+  // to enrol Google Authenticator (first login) or just enter a code.
+  async function staffContinue() {
     setBusy(true);
-    const r = await signIn('email-password', { email, password, redirect: false });
-    if (r?.error) { setBusy(false); return toast.error('Invalid credentials'); }
-    // If a restaurant was chosen, set it as the active one now that we're
-    // authenticated. The endpoint validates membership and ignores a restaurant
-    // the user can't access, so a wrong pick just falls back to their default —
-    // it never blocks login.
-    if (role === 'staff' && selectedRestaurantId) {
-      const resp = await fetch('/api/admin/active-restaurant', {
+    try {
+      const r = await fetch('/api/auth/staff/precheck', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ restaurantId: selectedRestaurantId })
-      }).catch(() => null);
-      // Be honest when the credentials don't manage the picked restaurant —
-      // otherwise we'd silently drop the user on a different restaurant and they'd
-      // think the dropdown is broken.
-      if (resp && !resp.ok) {
-        const picked = restaurants.find((x) => x.id === selectedRestaurantId);
-        toast.error(
-          `This account doesn't manage ${picked?.name ?? 'that restaurant'}. Use that restaurant's owner login, or link it under a parent you own.`
-        );
-        setBusy(false);
-        return; // stay on the login page so they can use the right account
+        body: JSON.stringify({ email, password }),
+      });
+      const d = await r.json();
+      if (!d?.ok) { toast.error('Invalid credentials'); return; }
+      setEnroll(d.status === 'enroll' ? { qr: d.qr, secret: d.secret, otpauth: d.otpauth } : null);
+      setTotpCode('');
+      setStaffPhase('code');
+    } catch {
+      toast.error('Could not reach the server. Please try again.');
+    } finally { setBusy(false); }
+  }
+
+  // Staff step 2: (first time) confirm enrollment, then sign in with the code.
+  async function staffSignIn() {
+    if (!/^\d{6}$/.test(totpCode.trim())) return toast.error('Enter the 6-digit code from Google Authenticator.');
+    setBusy(true);
+    try {
+      if (enroll) {
+        const er = await fetch('/api/auth/staff/enroll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, code: totpCode.trim() }),
+        });
+        const ed = await er.json();
+        if (!ed?.ok) { toast.error("That code didn't match — enter the current 6-digit code."); return; }
       }
-    }
-    setBusy(false);
-    await routeByRole(role === 'super' ? '/platform' : '/admin');
+      const r = await signIn('email-password', { email, password, totp: totpCode.trim(), redirect: false });
+      if (r?.error) { toast.error('Sign-in failed. Check your code and try again.'); return; }
+      // Set the active restaurant for staff, same as before.
+      if (role === 'staff' && selectedRestaurantId) {
+        const resp = await fetch('/api/admin/active-restaurant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ restaurantId: selectedRestaurantId }),
+        }).catch(() => null);
+        if (resp && !resp.ok) {
+          const picked = restaurants.find((x) => x.id === selectedRestaurantId);
+          toast.error(`This account doesn't manage ${picked?.name ?? 'that restaurant'}. Use that restaurant's owner login, or link it under a parent you own.`);
+          return;
+        }
+      }
+      await routeByRole(role === 'super' ? '/platform' : '/admin');
+    } catch {
+      toast.error('Could not reach the server. Please try again.');
+    } finally { setBusy(false); }
   }
 
   return (
@@ -317,59 +350,91 @@ export function LoginClient({
                   </form>
                 )
               ) : (
-                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); loginEmail(); }}>
-                  {role === 'staff' && (
-                    <div>
-                      <Label htmlFor="restaurant">Restaurant</Label>
-                      <select
-                        id="restaurant"
-                        value={selectedRestaurantId}
-                        onChange={(e) => setSelectedRestaurantId(e.target.value)}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (staffPhase === 'creds') staffContinue(); else staffSignIn(); }}>
+                  {staffPhase === 'creds' ? (
+                    <>
+                      {role === 'staff' && (
+                        <div>
+                          <Label htmlFor="restaurant">Restaurant</Label>
+                          <select
+                            id="restaurant"
+                            value={selectedRestaurantId}
+                            onChange={(e) => setSelectedRestaurantId(e.target.value)}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <option value="">
+                              {restaurants.length === 0 ? 'Loading restaurants…' : 'Select your restaurant'}
+                            </option>
+                            {restaurants.map((r) => (
+                              <option key={r.id} value={r.id}>{r.name}</option>
+                            ))}
+                          </select>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Pick the restaurant you manage, then continue with your staff credentials.
+                          </p>
+                        </div>
+                      )}
+                      <div>
+                        <Label htmlFor="email">Email</Label>
+                        <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
+                      </div>
+                      <div>
+                        <Label htmlFor="password">Password</Label>
+                        <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+                      </div>
+                      <Button className="w-full gap-2" size="lg" disabled={busy} type="submit">
+                        <ShieldCheck className="size-4" />
+                        {busy ? 'Checking…' : 'Continue'}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">Protected by Google Authenticator (2FA). You&apos;ll enter a code next.</p>
+                    </>
+                  ) : (
+                    <>
+                      {enroll ? (
+                        <div className="rounded-xl border bg-muted/30 p-4 space-y-3 text-center">
+                          <div className="text-sm font-semibold">Set up Google Authenticator</div>
+                          <p className="text-xs text-muted-foreground">
+                            Scan this with Google Authenticator (or any TOTP app), then enter the 6-digit code it shows.
+                          </p>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={enroll.qr} alt="Google Authenticator setup QR code" className="mx-auto size-40 rounded-lg border bg-white p-1" />
+                          <p className="text-[11px] text-muted-foreground">
+                            Can&apos;t scan? Enter this key manually:
+                            <br />
+                            <span className="font-mono text-xs tracking-wider text-foreground break-all">{enroll.secret}</span>
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Open Google Authenticator and enter the current 6-digit code for your Flavrly account.
+                        </p>
+                      )}
+                      <div>
+                        <Label htmlFor="totp">Authenticator code</Label>
+                        <Input
+                          id="totp"
+                          value={totpCode}
+                          onChange={(e) => setTotpCode(e.target.value)}
+                          inputMode="numeric"
+                          pattern="[0-9]{6}"
+                          maxLength={6}
+                          autoComplete="one-time-code"
+                          placeholder="123456"
+                          required
+                        />
+                      </div>
+                      <Button className="w-full gap-2" size="lg" disabled={busy} type="submit">
+                        <ShieldCheck className="size-4" />
+                        {busy ? (enroll ? 'Enabling…' : 'Verifying…') : enroll ? 'Verify & enable' : 'Verify & sign in'}
+                      </Button>
+                      <button
+                        type="button"
+                        className="w-full text-sm text-muted-foreground hover:text-foreground"
+                        onClick={() => { setStaffPhase('creds'); setEnroll(null); setTotpCode(''); }}
                       >
-                        <option value="">
-                          {restaurants.length === 0 ? 'Loading restaurants…' : 'Select your restaurant'}
-                        </option>
-                        {restaurants.map((r) => (
-                          <option key={r.id} value={r.id}>{r.name}</option>
-                        ))}
-                      </select>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Pick the restaurant you manage, then sign in with your staff credentials.
-                      </p>
-                    </div>
-                  )}
-                  <div>
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      autoComplete="email"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="password">Password</Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      autoComplete="current-password"
-                      required
-                    />
-                  </div>
-                  <Button className="w-full gap-2" size="lg" disabled={busy} type="submit">
-                    <Sparkles className="size-4" />
-                    {busy ? 'Signing in…' : 'Sign in'}
-                  </Button>
-                  {role === 'staff' && (
-                    <p className="text-xs text-muted-foreground">Demo · admin@restaurant.local / Admin@12345</p>
-                  )}
-                  {role === 'super' && (
-                    <p className="text-xs text-muted-foreground">Restricted to platform operators.</p>
+                        ← back
+                      </button>
+                    </>
                   )}
                 </form>
               )}

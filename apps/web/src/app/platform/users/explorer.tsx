@@ -207,6 +207,13 @@ function UserDrawer({ id, onClose }: { id: string; onClose: () => void }) {
         />
       </DrawerSection>
 
+      {/* Two-factor (Google Authenticator) — staff only. Super-admin reset. */}
+      {(u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' || u.role === 'KITCHEN') && (
+        <DrawerSection title="Two-factor (Google Authenticator)">
+          <TotpResetControl userId={u.id} />
+        </DrawerSection>
+      )}
+
       {/* Customer metrics — only meaningful for customers */}
       {u.role === 'CUSTOMER' && (
         <>
@@ -301,6 +308,40 @@ function UserDrawer({ id, onClose }: { id: string; onClose: () => void }) {
         </DrawerSection>
       )}
     </DetailDrawer>
+  );
+}
+
+function TotpResetControl({ userId }: { userId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  async function reset() {
+    if (!window.confirm('Reset this staff member\'s Google Authenticator? They will set it up again on their next login.')) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/platform/users/${userId}/reset-totp`, { method: 'POST' });
+      if (r.ok) {
+        setDone(true);
+        toast.success('2FA reset — they will re-enroll Google Authenticator on next login.');
+      } else {
+        const d = await r.json().catch(() => ({}));
+        toast.error(d.error || 'Could not reset 2FA.');
+      }
+    } catch {
+      toast.error('Could not reach the server. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="p-4 space-y-2 text-sm">
+      <p className="text-xs text-muted-foreground">
+        If this staff member lost their authenticator device, reset it here. On their next login they&apos;ll
+        scan a fresh QR to set up Google Authenticator again.
+      </p>
+      <Button size="sm" variant="outline" disabled={busy || done} onClick={reset}>
+        {done ? '2FA reset \u2713' : busy ? 'Resetting\u2026' : 'Reset Google Authenticator'}
+      </Button>
+    </div>
   );
 }
 

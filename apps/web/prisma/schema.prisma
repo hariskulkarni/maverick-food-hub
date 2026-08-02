@@ -247,6 +247,12 @@ model User {
   phone            String?   @unique
   email            String?   @unique
   passwordHash     String? // only set for ADMIN/KITCHEN
+  // Per-user Google Authenticator (TOTP) 2FA for staff (ADMIN/SUPER_ADMIN/KITCHEN).
+  // Secrets are AES-256-GCM encrypted at rest (see server/user-totp.ts). Customers
+  // and riders never use TOTP — they authenticate via phone OTP.
+  totpSecret        String?   // active, verified secret (encrypted blob)
+  totpPendingSecret String?   // secret awaiting first-time confirmation (encrypted)
+  totpEnabledAt     DateTime? // set when enrollment is confirmed; null = not enrolled
   avatarUrl        String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
