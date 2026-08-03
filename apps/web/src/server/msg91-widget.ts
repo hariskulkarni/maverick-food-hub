@@ -47,25 +47,40 @@ function identifierFromToken(token: string): string | null {
  * Verify a widget access-token. Returns the verified phone (from the token) on
  * success. `claimedPhone` is only used as a fallback if the token carries no
  * decodable identifier, and even then only after MSG91 confirms the token.
+ *
+ * MSG91's verifyAccessToken expects the AuthKey in the request HEADER; some SDK
+ * builds also read it from the body. We send both to be robust, and log the
+ * exact response (status + type + message, never the token/authkey) so a failed
+ * verify is diagnosable from the server logs.
  */
 export async function verifyWidgetAccessToken(
   token: string,
   claimedPhone?: string | null
 ): Promise<{ ok: boolean; phone: string | null }> {
   const authkey = process.env.MSG91_AUTHKEY;
-  if (!authkey || !token) return { ok: false, phone: null };
+  if (!authkey || !token) {
+    console.warn(`[msg91-widget] verify skipped: authkey=${authkey ? 'set' : 'MISSING'} tokenLen=${token ? token.length : 0}`);
+    return { ok: false, phone: null };
+  }
   try {
     const res = await fetch(VERIFY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', authkey },
       body: JSON.stringify({ authkey, 'access-token': token }),
     });
-    const data = (await res.json().catch(() => null)) as { type?: string; message?: string } | null;
+    const rawText = await res.text().catch(() => '');
+    let data: { type?: string; message?: string } | null = null;
+    try { data = rawText ? (JSON.parse(rawText) as { type?: string; message?: string }) : null; } catch { data = null; }
     const ok = res.ok && data?.type === 'success';
+    console.warn(
+      `[msg91-widget] verify status=${res.status} ok=${ok} type=${data?.type ?? 'n/a'} ` +
+      `msg=${String(data?.message ?? rawText).slice(0, 160)} tokenLen=${token.length}`,
+    );
     if (!ok) return { ok: false, phone: null };
     const phone = normalizePhone(identifierFromToken(token)) ?? normalizePhone(claimedPhone);
     return { ok: true, phone };
-  } catch {
+  } catch (e) {
+    console.warn(`[msg91-widget] verify error: ${(e as Error)?.message || String(e)}`);
     return { ok: false, phone: null };
   }
 }
