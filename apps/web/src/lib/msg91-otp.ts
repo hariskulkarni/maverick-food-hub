@@ -26,12 +26,23 @@ function win(): any {
 
 let loading: Promise<void> | null = null;
 
-/** Inject the SDK once and init the widget in headless mode. */
+/**
+ * Inject the SDK once and init the widget in headless mode. `initSendOTP`
+ * exposes window.sendOtp / verifyOtp / retryOtp ASYNCHRONOUSLY, so we poll for
+ * them before resolving. On failure we clear the cache so a later attempt can
+ * retry cleanly.
+ */
 export function loadMsg91Widget(): Promise<void> {
   if (!msg91Enabled) return Promise.reject(new Error('OTP widget is not configured.'));
   if (typeof window === 'undefined') return Promise.reject(new Error('No browser context.'));
   if (loading) return loading;
   loading = new Promise<void>((resolve, reject) => {
+    const fail = (msg: string) => { loading = null; reject(new Error(msg)); };
+    const waitForMethods = (tries = 0) => {
+      if (typeof win().sendOtp === 'function' && typeof win().verifyOtp === 'function') return resolve();
+      if (tries > 100) return fail('The OTP widget did not finish loading. Please retry.');
+      setTimeout(() => waitForMethods(tries + 1), 50);
+    };
     const init = () => {
       try {
         win().initSendOTP({
@@ -41,16 +52,16 @@ export function loadMsg91Widget(): Promise<void> {
           success: () => {},
           failure: () => {},
         });
-        resolve();
+        waitForMethods();
       } catch (e) {
-        reject(e as Error);
+        fail((e as Error)?.message || 'Could not initialise the OTP widget.');
       }
     };
     if (win().initSendOTP) return init();
     const existing = document.getElementById('msg91-otp-provider') as HTMLScriptElement | null;
     if (existing) {
       existing.addEventListener('load', init);
-      existing.addEventListener('error', () => reject(new Error('Could not load the OTP widget.')));
+      existing.addEventListener('error', () => fail('Could not load the OTP widget.'));
       return;
     }
     const s = document.createElement('script');
@@ -58,7 +69,7 @@ export function loadMsg91Widget(): Promise<void> {
     s.src = 'https://verify.msg91.com/otp-provider.js';
     s.async = true;
     s.onload = init;
-    s.onerror = () => reject(new Error('Could not load the OTP widget.'));
+    s.onerror = () => fail('Could not load the OTP widget.');
     document.body.appendChild(s);
   });
   return loading;
@@ -67,6 +78,7 @@ export function loadMsg91Widget(): Promise<void> {
 /** Send an OTP to `identifier` (digits incl. country code). */
 export function sendWidgetOtp(identifier: string): Promise<void> {
   return new Promise((resolve, reject) => {
+    if (typeof win().sendOtp !== 'function') return reject(new Error('OTP widget not ready. Please retry.'));
     win().sendOtp(
       identifier,
       () => resolve(),
@@ -79,6 +91,7 @@ export function sendWidgetOtp(identifier: string): Promise<void> {
 /** Verify the entered code; resolves with the JWT access-token. */
 export function verifyWidgetOtp(code: string): Promise<string> {
   return new Promise((resolve, reject) => {
+    if (typeof win().verifyOtp !== 'function') return reject(new Error('OTP widget not ready. Please retry.'));
     win().verifyOtp(
       code,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
