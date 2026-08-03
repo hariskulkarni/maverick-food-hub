@@ -25,6 +25,7 @@ import { audit } from './audit';
 import { headers } from 'next/headers';
 import { startSession, isSessionActive, revokeSession } from './sessions';
 import { isStaffTotpRole, verifyUserTotp, isBreakGlassEmail } from './user-totp';
+import { verifyWidgetAccessToken } from './msg91-widget';
 
 declare module 'next-auth' {
   interface Session {
@@ -93,6 +94,43 @@ export const authConfig: NextAuthConfig = {
             const { grantSignupBonus } = await import('./signup-bonus');
             await grantSignupBonus(user.id, { phone });
           } catch {}
+        }
+        return { id: user.id, name: user.name ?? null, email: user.email ?? null };
+      }
+    }),
+    // MSG91 OTP Widget — multi-channel (SMS/WhatsApp/Voice/Email) customer OTP.
+    // The browser widget verifies the code and returns a signed access-token;
+    // we confirm it with MSG91 and derive the phone from the token itself.
+    // Enabled only when the widget env is configured (else the built-in phone
+    // OTP flow above is used). Same customer provisioning + signup bonus.
+    Credentials({
+      id: 'msg91-widget',
+      name: 'MSG91 Widget OTP',
+      credentials: {
+        accessToken: { label: 'Access Token', type: 'text' },
+        phone: { label: 'Phone', type: 'tel' }
+      },
+      async authorize(creds) {
+        const token = String(creds?.accessToken ?? '').trim();
+        const claimed = String(creds?.phone ?? '').trim();
+        if (!token) return null;
+        const { ok, phone } = await verifyWidgetAccessToken(token, claimed);
+        if (!ok || !phone) return null;
+        const existing = await prisma.user.findUnique({ where: { phone } });
+        if (existing?.suspendedAt) {
+          await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: 'suspended', provider: 'msg91-widget' } }).catch(() => {});
+          return null;
+        }
+        if (!existing && !allowCustomerSelfSignup()) {
+          await audit('auth.login.unregistered', { entityType: 'User', after: { phone, provider: 'msg91-widget' } }).catch(() => {});
+          return null;
+        }
+        const user = existing ?? await prisma.user.create({ data: { phone, role: Role.CUSTOMER } });
+        if (!existing) {
+          try {
+            const { grantSignupBonus } = await import('./signup-bonus');
+            await grantSignupBonus(user.id, { phone });
+          } catch { /* bonus best-effort */ }
         }
         return { id: user.id, name: user.name ?? null, email: user.email ?? null };
       }

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { msg91Enabled, loadMsg91Widget, sendWidgetOtp, verifyWidgetOtp, toMsg91Identifier } from '@/lib/msg91-otp';
 import { User, ChefHat, ShieldCheck, Sparkles } from 'lucide-react';
 import { RoleTile } from '@/components/auth/role-tile';
 import { MarketingPanel } from '@/components/auth/marketing-panel';
@@ -121,6 +122,14 @@ export function LoginClient({
     if (!/^\+?\d{10,15}$/.test(phone)) return toast.error('Enter a valid phone number with country code (e.g. +9198…)');
     setBusy(true);
     try {
+      if (msg91Enabled) {
+        // MSG91 widget owns send + verify (multi-channel).
+        await loadMsg91Widget();
+        await sendWidgetOtp(toMsg91Identifier(phone));
+        setOtpSent(true);
+        toast.success('OTP sent');
+        return;
+      }
       const r = await fetch('/api/auth/otp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error || 'Failed');
@@ -171,13 +180,24 @@ export function LoginClient({
 
   async function verifyOtp() {
     setBusy(true);
-    const r = await signIn('phone-otp', { phone, code, purpose: 'login', redirect: false });
-    setBusy(false);
-    if (r?.error) return toast.error('Invalid or expired code');
-    // Customers land on the restaurant picker (/restaurants) so they immediately
-    // choose a restaurant, then see its menu. routeByRole returns /restaurants
-    // for the CUSTOMER role; this fallback covers the rare case /api/me is slow.
-    await routeByRole('/restaurants');
+    try {
+      if (msg91Enabled) {
+        // Verify the code in the widget, then hand the signed token to the server.
+        const accessToken = await verifyWidgetOtp(code);
+        const r = await signIn('msg91-widget', { accessToken, phone, redirect: false });
+        if (r?.error) { toast.error('Sign-in failed. Please try again.'); return; }
+        await routeByRole('/restaurants');
+        return;
+      }
+      const r = await signIn('phone-otp', { phone, code, purpose: 'login', redirect: false });
+      if (r?.error) { toast.error('Invalid or expired code'); return; }
+      // Customers land on the restaurant picker (/restaurants) so they immediately
+      // choose a restaurant, then see its menu. routeByRole returns /restaurants
+      // for the CUSTOMER role; this fallback covers the rare case /api/me is slow.
+      await routeByRole('/restaurants');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally { setBusy(false); }
   }
 
   // Staff step 1: validate password, then discover whether this account needs
