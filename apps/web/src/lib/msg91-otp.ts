@@ -24,6 +24,42 @@ function win(): any {
   return window as any;
 }
 
+/**
+ * Pull the signed access-token out of whatever shape MSG91 hands back on a
+ * successful verify. Documented as `data.message`, but shapes vary by SDK
+ * build, so we check the common keys.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractToken(data: any): string {
+  if (!data) return '';
+  if (typeof data === 'string') return data;
+  return String(data.message || data['access-token'] || data.accessToken || data.token || '');
+}
+
+// MSG91's headless SDK frequently delivers the verify result to the GLOBAL
+// success/failure handlers registered in initSendOTP rather than the per-call
+// callback, so we bridge those through this pending resolver.
+type PendingVerify = { resolve: (token: string) => void; reject: (err: Error) => void };
+let pendingVerify: PendingVerify | null = null;
+
+function resolveVerify(data: unknown) {
+  const p = pendingVerify;
+  if (!p) return;
+  const token = extractToken(data);
+  pendingVerify = null;
+  if (token) p.resolve(token);
+  else p.reject(new Error('The OTP widget did not return an access token.'));
+}
+
+function rejectVerify(err: unknown) {
+  const p = pendingVerify;
+  if (!p) return;
+  pendingVerify = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const msg = (err as any)?.message || (typeof err === 'string' ? err : '') || 'That code is invalid or expired.';
+  p.reject(new Error(String(msg)));
+}
+
 let loading: Promise<void> | null = null;
 
 /**
@@ -49,8 +85,9 @@ export function loadMsg91Widget(): Promise<void> {
           widgetId: WIDGET_ID,
           tokenAuth: WIDGET_TOKEN,
           exposeMethods: true,
-          success: () => {},
-          failure: () => {},
+          // Global handlers: MSG91's headless SDK routes the verify result here.
+          success: (data: unknown) => resolveVerify(data),
+          failure: (err: unknown) => rejectVerify(err),
         });
         waitForMethods();
       } catch (e) {
@@ -75,28 +112,61 @@ export function loadMsg91Widget(): Promise<void> {
   return loading;
 }
 
-/** Send an OTP to `identifier` (digits incl. country code). */
+/**
+ * Send an OTP to `identifier` (digits incl. country code). MSG91's headless
+ * SDK dispatches the SMS synchronously but often does NOT fire the per-call
+ * success callback, which would leave our UI stuck on the phone step. So we
+ * resolve optimistically after a short grace period (advancing to the code
+ * step), while still rejecting fast if the SDK reports an explicit failure or
+ * throws synchronously.
+ */
 export function sendWidgetOtp(identifier: string): Promise<void> {
   return new Promise((resolve, reject) => {
     if (typeof win().sendOtp !== 'function') return reject(new Error('OTP widget not ready. Please retry.'));
-    win().sendOtp(
-      identifier,
-      () => resolve(),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (e: any) => reject(new Error(String(e?.message || e || 'Could not send the code.'))),
-    );
+    let settled = false;
+    const ok = () => { if (!settled) { settled = true; resolve(); } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bad = (e: any) => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(String(e?.message || e || 'Could not send the code.')));
+    };
+    try {
+      const r = win().sendOtp(identifier, ok, bad);
+      if (r && typeof r.then === 'function') r.then(ok).catch(bad);
+    } catch (e) {
+      return bad(e);
+    }
+    // Grace period: if neither callback fired, assume the SMS went out.
+    setTimeout(ok, 2000);
   });
 }
 
-/** Verify the entered code; resolves with the JWT access-token. */
+/**
+ * Verify the entered code; resolves with the JWT access-token. Accepts the
+ * token from either the per-call callback OR the global success handler
+ * (whichever the SDK build uses).
+ */
 export function verifyWidgetOtp(code: string): Promise<string> {
   return new Promise((resolve, reject) => {
     if (typeof win().verifyOtp !== 'function') return reject(new Error('OTP widget not ready. Please retry.'));
-    win().verifyOtp(
-      code,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (data: any) => resolve(String(data?.message || '')),
-      () => reject(new Error('That code is invalid or expired.')),
-    );
+    pendingVerify = { resolve, reject };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ok = (data: any) => resolveVerify(data);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bad = (e: any) => rejectVerify(e);
+    try {
+      const r = win().verifyOtp(code, ok, bad);
+      if (r && typeof r.then === 'function') r.then(ok).catch(bad);
+    } catch (e) {
+      return rejectVerify(e);
+    }
+    // Safety timeout so the button never hangs forever.
+    setTimeout(() => {
+      if (pendingVerify) {
+        pendingVerify = null;
+        reject(new Error('Verification timed out. Please try again.'));
+      }
+    }, 20000);
   });
 }
