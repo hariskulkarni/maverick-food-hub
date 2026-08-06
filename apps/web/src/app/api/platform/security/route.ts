@@ -9,6 +9,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { getPlatformSecurity, setPlatformSecurity } from '@/server/2fa';
+import { getOtpMode, setOtpMode } from '@/server/otp';
 import { audit } from '@/server/audit';
 import { parseOrJsonError } from '@/server/zod-helpers';
 
@@ -19,13 +20,15 @@ export async function GET() {
     totpEnabled: Boolean(sec.totpSecret),
     totpPending: Boolean(sec.totpPending),
     allowlist: sec.allowlist ?? [],
-    lockoutMinutes: sec.lockoutMinutes ?? 15
+    lockoutMinutes: sec.lockoutMinutes ?? 15,
+    otpMode: await getOtpMode()
   });
 }
 
 const PatchBody = z.object({
   allowlist: z.array(z.string()).optional(),
-  lockoutMinutes: z.number().int().min(1).max(1440).optional()
+  lockoutMinutes: z.number().int().min(1).max(1440).optional(),
+  otpMode: z.enum(['demo', 'production']).optional()
 });
 
 export async function PATCH(req: NextRequest) {
@@ -38,6 +41,7 @@ export async function PATCH(req: NextRequest) {
     allowlist: body.allowlist?.map((s) => s.trim()).filter(Boolean),
     lockoutMinutes: body.lockoutMinutes
   });
+  if (body.otpMode) await setOtpMode(body.otpMode);
   await audit('platform.security.update', {
     actorId: session.user.id,
     actorRole: session.user.role,

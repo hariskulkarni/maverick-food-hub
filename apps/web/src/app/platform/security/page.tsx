@@ -2,6 +2,7 @@ import { Shield } from 'lucide-react';
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { getPlatformSecurity } from '@/server/2fa';
+import { getOtpMode } from '@/server/otp';
 import {
   getDiscoveryRadiusKm,
   MIN_DISCOVERY_RADIUS_KM,
@@ -12,6 +13,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SecurityClient } from './security-client';
 import { DiscoveryRadiusClient } from './discovery-radius-client';
+import { OtpModeClient } from './otp-mode-client';
 
 export const metadata = { title: 'Platform · Security' };
 export const dynamic = 'force-dynamic';
@@ -20,6 +22,7 @@ export default async function PlatformSecurityPage() {
   await requireSuperAdmin();
   const sec = await getPlatformSecurity();
   const discoveryRadiusKm = await getDiscoveryRadiusKm();
+  const otpMode = await getOtpMode();
   const recentFailures = await prisma.auditLog.findMany({
     where: { action: { in: ['auth.login.failed', 'auth.login.locked'] } },
     orderBy: { createdAt: 'desc' },
@@ -53,6 +56,8 @@ export default async function PlatformSecurityPage() {
           default: DEFAULT_DISCOVERY_RADIUS_KM
         }}
       />
+
+      <OtpModeClient initial={{ mode: otpMode }} />
 
       <section>
         <h3 className="font-semibold mb-3">Recent failed logins</h3>
