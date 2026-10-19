@@ -20,4 +20,6 @@ paths = [
   # Non-secret char-set constants (token / temp-password generators)
   '''.*server/rider-safety\.ts$''',
   '''.*server/restaurant-wizard\.ts$''',
+  # SDD design/plan docs — illustrative fake API-key examples, never real secrets
+  '''.*docs/superpowers/.*''',
 ]

@@ -157,6 +157,10 @@ enum IntegrationProvider {
   TEXTLOCAL
   ZOHO_SMTP
   BREVO_SMTP
+  // Google Business Profile OAuth (refresh token + accountId + locationId).
+  GOOGLE_BUSINESS
+  // LLM key for Google-review auto-reply (provider=anthropic|openai|nvidia + apiKey + model).
+  LLM_REVIEWS
 }
 
 enum IntegrationStatus {
@@ -510,6 +514,9 @@ model Restaurant {
   riderApplications RiderApplication[]
   dedicatedRiders   RiderProfile[]          @relation("DedicatedRiders")
   integrations      IntegrationCredential[]
+  googleReviews       GoogleReview[]
+  reviewReplies       ReviewReply[]
+  reviewAutoReplyCfg  ReviewAutoReplyConfig?
   qrCodes           QrCode[]
   favoritedBy       FavoriteRestaurant[]
   offers            Offer[]
@@ -3242,4 +3249,63 @@ model ApprovalRequest {
 
   @@index([status, createdAt])
   @@index([requestedById])
+}
+
+enum ReviewReplyState {
+  DRAFT
+  PENDING_APPROVAL
+  POSTED
+  FAILED
+  SKIPPED
+}
+
+enum ReviewReplySource {
+  AUTO
+  MANUAL
+  ADMIN_EDITED
+}
+
+model GoogleReview {
+  id              String   @id @default(cuid())
+  restaurantId    String
+  googleReviewId  String   @unique
+  reviewerName    String?
+  rating          Int
+  comment         String?
+  reviewCreatedAt DateTime
+  syncedAt        DateTime @default(now())
+  reply           ReviewReply?
+  restaurant      Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  @@index([restaurantId, reviewCreatedAt])
+  @@index([restaurantId, rating])
+}
+
+model ReviewReply {
+  id           String   @id @default(cuid())
+  reviewId     String   @unique
+  restaurantId String
+  state        ReviewReplyState  @default(DRAFT)
+  text         String
+  source       ReviewReplySource
+  llmProvider  String?
+  llmModel     String?
+  postedAt     DateTime?
+  error        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  review       GoogleReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  @@index([restaurantId, state])
+}
+
+model ReviewAutoReplyConfig {
+  id                String   @id @default(cuid())
+  restaurantId      String   @unique
+  enabled           Boolean  @default(false)
+  autoPostMinRating Int      @default(4)
+  draftMaxRating    Int      @default(3)
+  tonePrompt        String?
+  enabledAt         DateTime?
+  updatedAt         DateTime @updatedAt
+  restaurant        Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 }
