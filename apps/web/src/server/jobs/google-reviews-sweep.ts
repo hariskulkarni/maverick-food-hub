@@ -50,8 +50,8 @@ export async function runGoogleReviewsSweep() {
           if (await hasReply(id)) continue; // already replied / drafted / recorded
           const action = decideReplyAction(r.rating, cfg);
           if (action === 'SKIP') continue;
-          // forward-only: never auto-reply to reviews that predate enabling
-          if (cfg?.enabledAt && r.reviewCreatedAt < cfg.enabledAt) continue;
+          // forward-only, fail-closed: no enabledAt, or review predates enabling -> never auto-reply
+          if (!cfg?.enabledAt || r.reviewCreatedAt < cfg.enabledAt) continue;
 
           let gen: Generated | undefined;
           let posted = false;

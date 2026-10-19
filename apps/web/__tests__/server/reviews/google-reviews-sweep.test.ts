@@ -163,4 +163,15 @@ describe('runGoogleReviewsSweep', () => {
     expect(g.postReply).toHaveBeenCalledWith('rest1', 'new', 'Thanks!');
     expect(r.autoPosted).toBe(1);
   });
+
+  it('fail-closed: enabled config with null enabledAt never auto-replies', async () => {
+    store.getAutoReplyConfig.mockResolvedValue({ enabled: true, autoPostMinRating: 4, draftMaxRating: 3, tonePrompt: null, enabledAt: null });
+    g.listReviews.mockResolvedValue([{ googleReviewId: 'rev14', reviewerName: 'P', rating: 5, comment: 'x', reviewCreatedAt: new Date() }]);
+    store.upsertReview.mockResolvedValue({ id: 'g11', isNew: true });
+    const r = await runGoogleReviewsSweep();
+    expect(llm.generateReviewReply).not.toHaveBeenCalled();
+    expect(g.postReply).not.toHaveBeenCalled();
+    expect(r.autoPosted).toBe(0);
+    expect(r.failed).toBe(0);
+  });
 });
