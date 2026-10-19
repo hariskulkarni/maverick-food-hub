@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { reqRestMock, exchangeMock, discoverMock, saveMock } = vi.hoisted(() => ({
-  reqRestMock: vi.fn(), exchangeMock: vi.fn(), discoverMock: vi.fn(), saveMock: vi.fn(),
+const { reqRestMock, exchangeMock, accountsMock, locsMock, saveMock } = vi.hoisted(() => ({
+  reqRestMock: vi.fn(), exchangeMock: vi.fn(), accountsMock: vi.fn(), locsMock: vi.fn(), saveMock: vi.fn(),
 }));
 vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: reqRestMock }));
 vi.mock('@/server/reviews/google-business', () => ({
   getOAuthUrl: (s: string) => `https://accounts.google.com/o/oauth2/v2/auth?state=${s}`,
   exchangeCode: exchangeMock,
-  discoverAccountAndLocation: discoverMock,
+  listAccounts: accountsMock,
+  listAllLocations: locsMock,
 }));
 vi.mock('@/server/integrations', () => ({ saveConfig: saveMock }));
 vi.mock('@/server/log', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
@@ -28,7 +29,8 @@ beforeEach(() => {
   process.env.GOOGLE_OAUTH_REDIRECT_URI = 'https://flavrly.in/api/admin/integrations/google-business/callback';
   reqRestMock.mockResolvedValue({ id: 'rest1' });
   exchangeMock.mockResolvedValue({ refreshToken: 'rt-1' });
-  discoverMock.mockResolvedValue({ accountId: 'accounts/1', locationId: 'locations/2' });
+  accountsMock.mockResolvedValue('accounts/1');
+  locsMock.mockResolvedValue([{ id: 'locations/2', title: 'Main' }]);
 });
 
 describe('connect', () => {
@@ -71,14 +73,30 @@ describe('callback', () => {
       { status: 'CONNECTED' },
     );
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toContain('/admin/settings?google=connected');
+    expect(res.headers.get('location')).toContain('/admin/settings?tab=reviews&google=connected');
   });
 
   it('flags needs_location when no location found, still saves', async () => {
-    discoverMock.mockResolvedValue({ accountId: 'accounts/1', locationId: '' });
+    locsMock.mockResolvedValue([]);
     const res = await callbackGET(cb(`code=abc&state=${signState('rest1')}`));
     expect(saveMock).toHaveBeenCalledWith('rest1', 'GOOGLE_BUSINESS',
       expect.objectContaining({ refreshToken: 'rt-1' }), { status: 'CONNECTED' });
+    expect(res.headers.get('location')).toContain('google=needs_location');
+  });
+
+  it('redirects to the picker when multiple locations, locationId empty', async () => {
+    locsMock.mockResolvedValue([{ id: 'locations/1', title: 'A' }, { id: 'locations/2', title: 'B' }]);
+    const res = await callbackGET(cb(`code=abc&state=${signState('rest1')}`));
+    expect(saveMock).toHaveBeenCalledWith('rest1', 'GOOGLE_BUSINESS',
+      expect.objectContaining({ locationId: '', locations: expect.stringContaining('locations/1') }), { status: 'CONNECTED' });
+    expect(res.headers.get('location')).toContain('tab=reviews&pickLocation=1');
+  });
+
+  it('still saves the token when discovery throws', async () => {
+    locsMock.mockRejectedValue(new Error('boom'));
+    const res = await callbackGET(cb(`code=abc&state=${signState('rest1')}`));
+    expect(saveMock).toHaveBeenCalledWith('rest1', 'GOOGLE_BUSINESS',
+      expect.objectContaining({ refreshToken: 'rt-1', locationId: '', locations: '[]' }), { status: 'CONNECTED' });
     expect(res.headers.get('location')).toContain('google=needs_location');
   });
 });

@@ -53,7 +53,7 @@ export function ReviewsSettings({ restaurantId }: { restaurantId?: string } = {}
           </p>
         </div>
       </header>
-      <GoogleCard part={cfg.google} />
+      <GoogleCard part={cfg.google} qs={qs} />
       <LlmCard part={cfg.llm} qs={qs} onSaved={load} />
       <AutoReplyCard initial={cfg.autoReply} qs={qs} />
     </div>
@@ -90,9 +90,37 @@ function CardHead({ icon, title, desc, right }: { icon: React.ReactNode; title: 
   );
 }
 
-function GoogleCard({ part }: { part: Part }) {
+function GoogleCard({ part, qs }: { part: Part; qs: string }) {
   const connected = part.status === 'CONNECTED';
-  const entries = Object.entries(part.summary ?? {}).slice(0, 4);
+  const locations: Array<{ id: string; title: string }> = Array.isArray(part.summary?.locations) ? part.summary!.locations : [];
+  const locationId: string = part.summary?.locationId ? String(part.summary.locationId) : '';
+  const chosen = locations.find((l) => l.id === locationId);
+  const [forcePick, setForcePick] = useState(false);
+  const [selected, setSelected] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('pickLocation') === '1') setForcePick(true);
+  }, []);
+  const needsPick = connected && locations.length > 1 && (!locationId || forcePick);
+
+  async function choose() {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      const r = await fetch(`/api/admin/integrations/google-business/select-location${qs}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ locationId: selected }),
+      });
+      if (!r.ok) throw new Error('failed');
+      const u = new URL(window.location.href);
+      u.searchParams.delete('pickLocation');
+      window.location.href = u.toString();
+    } catch {
+      toast.error('Could not save location. Try again.');
+      setSaving(false);
+    }
+  }
+
   return (
     <Card className="rounded-2xl">
       <CardContent className="p-4 sm:p-5 space-y-4">
@@ -104,17 +132,49 @@ function GoogleCard({ part }: { part: Part }) {
         />
         {connected ? (
           <>
-            {entries.length > 0 && (
-              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {entries.map(([k, v]) => (
-                  <div key={k} className="rounded-xl border bg-muted/30 px-3 py-2 min-w-0">
-                    <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{k}</dt>
-                    <dd className="text-xs font-medium truncate" title={String(v)}>{String(v)}</dd>
+            {needsPick ? (
+              <div className="space-y-2" role="radiogroup" aria-label="Choose your Google location">
+                <p className="text-sm font-medium">Which location is this restaurant?</p>
+                <p className="text-xs text-muted-foreground">Your Google account manages several locations. Pick the one whose reviews should sync here.</p>
+                <div className="grid gap-2">
+                  {locations.map((l) => (
+                    <label key={l.id}
+                      className={cn('flex min-h-[44px] cursor-pointer items-center gap-3 rounded-xl border bg-muted/30 px-3 py-2 text-sm transition-colors',
+                        selected === l.id && 'border-primary bg-primary/10')}>
+                      <input type="radio" name="google-location" className="size-4 accent-primary"
+                        checked={selected === l.id} onChange={() => setSelected(l.id)} />
+                      <span className="min-w-0 truncate font-medium" title={l.title}>{l.title}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button size="sm" className="min-h-[44px] w-full sm:w-auto" disabled={!selected || saving} onClick={choose}>
+                    <Check className="size-4" /> {saving ? 'Saving...' : 'Use this location'}
+                  </Button>
+                  {locationId && (
+                    <Button size="sm" variant="ghost" className="min-h-[44px] w-full sm:w-auto" onClick={() => setForcePick(false)}>Cancel</Button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <>
+                {chosen || locationId ? (
+                  <div className="rounded-xl border bg-muted/30 px-3 py-2 min-w-0">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Location</div>
+                    <div className="text-xs font-medium truncate" title={chosen?.title ?? locationId}>{chosen?.title ?? locationId}</div>
+                    {locations.length > 1 && (
+                      <button type="button" className="mt-1 min-h-[44px] text-xs font-medium text-primary hover:underline sm:min-h-0"
+                        onClick={() => { setSelected(locationId); setForcePick(true); }}>
+                        Change location
+                      </button>
+                    )}
                   </div>
-                ))}
-              </dl>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No location found on this Google account yet. Reconnect once a location is verified.</p>
+                )}
+                <p className="text-xs text-muted-foreground">Reviews sync from this location.</p>
+              </>
             )}
-            <p className="text-xs text-muted-foreground">Reviews sync from this location. To switch location, reconnect.</p>
             {/* Disconnect intentionally omitted: use Manage on the Google card in the integrations grid above. */}
           </>
         ) : (
