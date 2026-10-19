@@ -63,8 +63,9 @@ export async function verifyWidgetAccessToken(
       body: JSON.stringify({ authkey, 'access-token': token }),
     });
     const rawText = await res.text().catch(() => '');
-    let data: { type?: string; message?: string; mobile?: string; identifier?: string } | null = null;
-    try { data = rawText ? (JSON.parse(rawText) as typeof data) : null; } catch { data = null; }
+    type VerifyResp = { type?: string; message?: string; mobile?: string; identifier?: string };
+    let data: VerifyResp | null = null;
+    try { data = rawText ? (JSON.parse(rawText) as VerifyResp) : null; } catch { data = null; }
     const ok = res.ok && data?.type === 'success';
     console.warn(
       `[msg91-widget] verify status=${res.status} ok=${ok} type=${data?.type ?? 'n/a'} ` +
