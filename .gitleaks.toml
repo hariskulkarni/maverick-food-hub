@@ -17,4 +17,7 @@ paths = [
   '''.*__tests__/.*''',
   '''.*\.example$''',
   '''.*integrations/providers\.ts$''',
+  # Non-secret char-set constants (token / temp-password generators)
+  '''.*server/rider-safety\.ts$''',
+  '''.*server/restaurant-wizard\.ts$''',
 ]
