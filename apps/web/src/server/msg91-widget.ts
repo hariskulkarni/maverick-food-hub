@@ -28,25 +28,17 @@ export function normalizePhone(raw: string | null | undefined): string | null {
   return '+' + d;
 }
 
-/** Best-effort read of the verified identifier from the widget JWT payload. */
-function identifierFromToken(token: string): string | null {
-  try {
-    const part = token.split('.')[1];
-    if (!part) return null;
-    const json = Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
-    const p = JSON.parse(json) as Record<string, unknown>;
-    for (const k of ['identifier', 'mobile', 'phone', 'number', 'mobileNumber', 'sub']) {
-      const v = p[k];
-      if (typeof v === 'string' && /\d{6,}/.test(v)) return v;
-    }
-  } catch { /* not a decodable JWT */ }
-  return null;
-}
-
 /**
- * Verify a widget access-token. Returns the verified phone (from the token) on
- * success. `claimedPhone` is only used as a fallback if the token carries no
- * decodable identifier, and even then only after MSG91 confirms the token.
+ * Verify a widget access-token. Returns the phone taken ONLY from the
+ * MSG91-verified response.
+ *
+ * H23: previously the phone was read from the widget JWT payload (which is
+ * parsed, never signature-checked, so attacker-controlled) and fell back to the
+ * client-supplied `claimedPhone`. An attacker could complete the widget with
+ * their own number then call signIn('msg91-widget', { accessToken, phone:
+ * '<victim>' }) and be logged in as the victim. The phone now comes solely from
+ * MSG91's verify response; `claimedPhone` is at most a cross-check that must
+ * equal the verified phone, and we fail closed otherwise.
  *
  * MSG91's verifyAccessToken expects the AuthKey in the request HEADER; some SDK
  * builds also read it from the body. We send both to be robust, and log the
@@ -71,16 +63,30 @@ export async function verifyWidgetAccessToken(
       body: JSON.stringify({ authkey, 'access-token': token }),
     });
     const rawText = await res.text().catch(() => '');
-    let data: { type?: string; message?: string } | null = null;
-    try { data = rawText ? (JSON.parse(rawText) as { type?: string; message?: string }) : null; } catch { data = null; }
+    let data: { type?: string; message?: string; mobile?: string; identifier?: string } | null = null;
+    try { data = rawText ? (JSON.parse(rawText) as typeof data) : null; } catch { data = null; }
     const ok = res.ok && data?.type === 'success';
     console.warn(
       `[msg91-widget] verify status=${res.status} ok=${ok} type=${data?.type ?? 'n/a'} ` +
       `msg=${String(data?.message ?? rawText).slice(0, 160)} tokenLen=${token.length}`,
     );
     if (!ok) return { ok: false, phone: null };
-    const phone = normalizePhone(identifierFromToken(token)) ?? normalizePhone(claimedPhone);
-    return { ok: true, phone };
+    // H23: phone comes ONLY from MSG91's verified response. For verifyAccessToken
+    // the mobile is returned as `mobile`/`identifier`, or as `message` when that
+    // is itself a bare number. Never the token payload, never claimedPhone.
+    const msg = String(data?.message ?? '').trim();
+    const fromResponse = data?.mobile ?? data?.identifier ?? (/^\+?\d{6,}$/.test(msg) ? msg : null);
+    const verified = normalizePhone(fromResponse);
+    if (!verified) {
+      console.warn('[msg91-widget] verified token but no phone in response body — refusing');
+      return { ok: false, phone: null };
+    }
+    // If the client sent a phone, it must equal the verified one (mismatch = takeover attempt).
+    if (claimedPhone && normalizePhone(claimedPhone) !== verified) {
+      console.warn('[msg91-widget] claimedPhone does not match the verified phone — refusing');
+      return { ok: false, phone: null };
+    }
+    return { ok: true, phone: verified };
   } catch (e) {
     console.warn(`[msg91-widget] verify error: ${(e as Error)?.message || String(e)}`);
     return { ok: false, phone: null };
