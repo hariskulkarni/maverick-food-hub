@@ -53,6 +53,18 @@ describe('listReviews', () => {
 });
 
 describe('postReply', () => {
+  it('does not require accountId in config (PUTs using the review resource name)', async () => {
+    getConfigMock.mockResolvedValue({ refreshToken: 'rt', locationId: 'locations/2' });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'at', expires_in: 3600 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ comment: 'thanks' }), { status: 200 }));
+    await postReply('r1', 'accounts/1/locations/2/reviews/9', 'Thank you!');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const [url, init] = fetchSpy.mock.calls[1];
+    expect(String(url)).toContain('/accounts/1/locations/2/reviews/9/reply');
+    expect(init?.method).toBe('PUT');
+  });
+
   it('PUTs the reply to the review resource', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'at', expires_in: 3600 }), { status: 200 }))

@@ -78,14 +78,16 @@ async function accessToken(refreshToken: string): Promise<string> {
 
 const STAR: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 
-async function cfgOrThrow(restaurantId: string) {
+async function cfgOrThrow(restaurantId: string, { requireAccount = false } = {}) {
   const cfg = await getConfig(restaurantId, 'GOOGLE_BUSINESS' as any);
-  if (!cfg?.refreshToken || !cfg?.accountId || !cfg?.locationId) throw new Error('Google Business not connected');
-  return cfg as { refreshToken: string; accountId: string; locationId: string };
+  if (!cfg?.refreshToken || !cfg?.locationId || (requireAccount && !cfg?.accountId)) {
+    throw new Error('Google Business not connected');
+  }
+  return cfg as { refreshToken: string; accountId?: string; locationId: string };
 }
 
 export async function listReviews(restaurantId: string): Promise<NormalizedReview[]> {
-  const cfg = await cfgOrThrow(restaurantId);
+  const cfg = await cfgOrThrow(restaurantId, { requireAccount: true });
   const token = await accessToken(cfg.refreshToken);
   const res = await fetch(`${MBAPI}/${cfg.accountId}/${cfg.locationId}/reviews`, {
     headers: { authorization: `Bearer ${token}` },
