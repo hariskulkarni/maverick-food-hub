@@ -150,8 +150,12 @@ export async function placeOrder(input: PlaceOrderInput) {
       `Restaurant is closed. ${openStatus.label}. Pick a scheduled time to pre-order.`,
     );
   }
+  // H1: the address must belong to the ordering customer. Resolving by id alone
+  // let a customer place an order against another customer's addressId and read
+  // that address (street, pincode, lat/lng) back from their own order, and
+  // misrouted the delivery.
   const address = input.addressId
-    ? await prisma.address.findUnique({ where: { id: input.addressId } })
+    ? await prisma.address.findFirst({ where: { id: input.addressId, userId: input.customerId } })
     : null;
   if (input.addressId && !address) {
     throw new Error('Selected address could not be found');
@@ -192,14 +196,18 @@ export async function placeOrder(input: PlaceOrderInput) {
     if (it.menuItemId) {
       // Include the parent category + its availability rows so we can enforce
       // both the item-level and category-level windows in one round-trip.
-      const m = await prisma.menuItem.findUniqueOrThrow({
-        where: { id: it.menuItemId },
+      // H2: resolve the item WITHIN this order's branch. Resolving by id alone
+      // let a client order branch A with items from branch B — committed under A
+      // at B's prices, and B's kitchen never saw it.
+      const m = await prisma.menuItem.findFirst({
+        where: { id: it.menuItemId, branchId: input.branchId },
         include: {
           category: { include: { availabilities: true } },
           variants: { orderBy: { sortOrder: 'asc' } },
           modifierGroups: { orderBy: { sortOrder: 'asc' }, include: { options: { orderBy: { sortOrder: 'asc' } } } }
         }
       });
+      if (!m) throw new Error('Item not found for this branch');
       if (!m.isAvailable) throw new Error(`Item not available: ${m.name}`);
       // Category schedule guard: if the parent category is disabled or
       // currently off-hours, the item cannot be ordered — even if the item
@@ -268,10 +276,12 @@ export async function placeOrder(input: PlaceOrderInput) {
         modifiersSummary: selections.modifiersSummary
       });
     } else if (it.comboId) {
-      const c = await prisma.combo.findUniqueOrThrow({
-        where: { id: it.comboId },
+      // H2: resolve the combo WITHIN this order's branch (same cross-branch risk).
+      const c = await prisma.combo.findFirst({
+        where: { id: it.comboId, branchId: input.branchId },
         include: { items: { include: { menuItem: true } } }
       });
+      if (!c) throw new Error('Combo not found for this branch');
       if (!c.isAvailable) throw new Error(`Combo not available: ${c.name}`);
       // Combo is gated on every constituent menu item being available — if any
       // ingredient is 86'd the whole combo cannot be ordered.
