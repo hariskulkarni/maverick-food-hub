@@ -174,7 +174,7 @@ function LlmCard({ part, qs, onSaved }: { part: Part; qs: string; onSaved: () =>
         )}
         <div className="space-y-1.5">
           <Label id="llm-provider-label">Provider</Label>
-          <div role="radiogroup" aria-labelledby="llm-provider-label" className="grid grid-cols-1 min-[420px]:grid-cols-3 gap-2">
+          <div role="radiogroup" aria-labelledby="llm-provider-label" className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {PROVIDERS.map(({ id, label, hint, Logo }) => {
               const on = provider === id;
               return (
