@@ -39,10 +39,11 @@ export async function GET(req: NextRequest) {
       ...(channel ? { channel: channel as any } : {}),
       ...(status  ? { status:  status  as any } : {}),
       ...(q ? {
+        // H6: no substring search over `body` — it let an admin probe for live
+        // OTP codes. Search is limited to recipient and subject.
         OR: [
           { to:      { contains: q, mode: 'insensitive' } },
-          { subject: { contains: q, mode: 'insensitive' } },
-          { body:    { contains: q, mode: 'insensitive' } }
+          { subject: { contains: q, mode: 'insensitive' } }
         ]
       } : {})
     },
