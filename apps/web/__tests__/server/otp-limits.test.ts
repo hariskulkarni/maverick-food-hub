@@ -32,6 +32,13 @@ vi.mock('@/server/notifications', () => ({ notify: { sms: vi.fn().mockResolvedVa
 vi.mock('@/server/log', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 // argon2 hashing is slow and isn't what we're testing here
 vi.mock('argon2', () => ({ default: argon2Mock }));
+// getOtpMode() calls getPlatformSecurity(); without this mock it hits the real
+// 2fa cache layer, whose async refresh rejects in the test env and surfaces as
+// unhandled rejections that fail the CI unit-test run. Stub it (no DB).
+vi.mock('@/server/2fa', () => ({
+  getPlatformSecurity: vi.fn().mockResolvedValue({}),
+  setPlatformSecurity: vi.fn().mockResolvedValue(undefined)
+}));
 
 import { sendOtp, verifyOtp, OtpRateLimitedError } from '@/server/otp';
 
