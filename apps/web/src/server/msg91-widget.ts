@@ -57,7 +57,9 @@ export async function verifyWidgetAccessToken(
   token: string,
   claimedPhone?: string | null
 ): Promise<{ ok: boolean; phone: string | null }> {
-  const authkey = process.env.MSG91_AUTHKEY;
+  // H26: canonical credential is MSG91_AUTH_KEY; fall back to the legacy
+  // MSG91_AUTHKEY so an existing deploy on the old name keeps working.
+  const authkey = process.env.MSG91_AUTH_KEY ?? process.env.MSG91_AUTHKEY;
   if (!authkey || !token) {
     console.warn(`[msg91-widget] verify skipped: authkey=${authkey ? 'set' : 'MISSING'} tokenLen=${token ? token.length : 0}`);
     return { ok: false, phone: null };
