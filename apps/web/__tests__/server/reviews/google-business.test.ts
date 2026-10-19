@@ -26,7 +26,7 @@ describe('getOAuthUrl', () => {
 
 describe('listReviews', () => {
   it('maps STAR enum to int and returns normalized reviews', async () => {
-    vi.spyOn(globalThis, 'fetch')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'at', expires_in: 3600 }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ reviews: [{
         name: 'accounts/1/locations/2/reviews/9', reviewer: { displayName: 'Asha' },
@@ -37,6 +37,18 @@ describe('listReviews', () => {
       googleReviewId: 'accounts/1/locations/2/reviews/9', reviewerName: 'Asha',
       rating: 5, comment: 'Loved it', reviewCreatedAt: new Date('2026-10-18T10:00:00Z'),
     }]);
+    expect(String(fetchSpy.mock.calls[1][0])).toContain('/accounts/1/locations/2/reviews');
+  });
+
+  it('throws when accountId is missing from config', async () => {
+    getConfigMock.mockResolvedValue({ refreshToken: 'rt', locationId: 'locations/2' });
+    await expect(listReviews('r1')).rejects.toThrow('Google Business not connected');
+  });
+
+  it('throws when the refresh response has no access_token', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ expires_in: 3600 }), { status: 200 }));
+    await expect(listReviews('r1')).rejects.toThrow('google refresh: no access_token in response');
   });
 });
 

@@ -7,7 +7,7 @@
  * demand — never persisted in plaintext.
  *
  * Reviews + replies use the Google My Business v4 reviews surface:
- *   GET  https://mybusiness.googleapis.com/v4/{location}/reviews
+ *   GET  https://mybusiness.googleapis.com/v4/{account}/{location}/reviews
  *   PUT  https://mybusiness.googleapis.com/v4/{review}/reply   { comment }
  */
 import { getConfig } from '@/server/integrations';
@@ -71,21 +71,23 @@ async function accessToken(refreshToken: string): Promise<string> {
     }),
   });
   if (!res.ok) throw new Error(`google refresh ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return (await res.json()).access_token as string;
+  const data = await res.json();
+  if (!data.access_token) throw new Error('google refresh: no access_token in response');
+  return data.access_token as string;
 }
 
 const STAR: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 
 async function cfgOrThrow(restaurantId: string) {
   const cfg = await getConfig(restaurantId, 'GOOGLE_BUSINESS' as any);
-  if (!cfg?.refreshToken || !cfg?.locationId) throw new Error('Google Business not connected');
+  if (!cfg?.refreshToken || !cfg?.accountId || !cfg?.locationId) throw new Error('Google Business not connected');
   return cfg as { refreshToken: string; accountId: string; locationId: string };
 }
 
 export async function listReviews(restaurantId: string): Promise<NormalizedReview[]> {
   const cfg = await cfgOrThrow(restaurantId);
   const token = await accessToken(cfg.refreshToken);
-  const res = await fetch(`${MBAPI}/${cfg.locationId}/reviews`, {
+  const res = await fetch(`${MBAPI}/${cfg.accountId}/${cfg.locationId}/reviews`, {
     headers: { authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`google reviews ${res.status}: ${(await res.text()).slice(0, 200)}`);
