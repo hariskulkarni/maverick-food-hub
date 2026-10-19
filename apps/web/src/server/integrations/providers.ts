@@ -17,6 +17,7 @@ import { checkTextlocalBalance, sendTextlocal } from '../notifications/textlocal
 import { checkTwoFactorBalance } from '../notifications/twofactor';
 import { verifyZohoSmtp } from '../notifications/smtp-zoho';
 import { verifyBrevoSmtp } from '../notifications/smtp-brevo';
+import { testLlmKey, LLM_MODELS, type LlmProvider } from '@/server/reviews/llm';
 
 export type ProviderKey =
   | 'RAZORPAY'
@@ -31,7 +32,9 @@ export type ProviderKey =
   | 'FAST2SMS'
   | 'TEXTLOCAL'
   | 'ZOHO_SMTP'
-  | 'BREVO_SMTP';
+  | 'BREVO_SMTP'
+  | 'GOOGLE_BUSINESS'
+  | 'LLM_REVIEWS';
 
 export interface FieldOption {
   value: string;
@@ -476,6 +479,42 @@ const BrevoSmtp: ProviderDef = {
   }
 };
 
+// ─── LLM for review auto-reply ───────────────────────────────────────────────
+const LlmReviews: ProviderDef = {
+  key: 'LLM_REVIEWS',
+  title: 'AI review replies',
+  vendor: 'Anthropic / OpenAI / NVIDIA',
+  description: 'Paste an LLM key so Flavrly can draft and auto-post replies to your Google reviews.',
+  docsUrl: 'https://build.nvidia.com/',
+  fields: [
+    { key: 'provider', label: 'Provider', type: 'select', required: true, options: [
+      { value: 'nvidia', label: 'NVIDIA (free models)' },
+      { value: 'anthropic', label: 'Anthropic (Claude)' },
+      { value: 'openai', label: 'OpenAI' },
+    ] },
+    { key: 'apiKey', label: 'API key', type: 'password', required: true, secret: true,
+      hint: 'NVIDIA: nvapi-… from build.nvidia.com · Anthropic: sk-ant-… · OpenAI: sk-…' },
+    { key: 'model', label: 'Model', type: 'text', required: true, placeholder: 'meta/llama-3.1-70b-instruct',
+      hint: 'NVIDIA free e.g. meta/llama-3.1-70b-instruct · Anthropic claude-haiku-5-5 · OpenAI gpt-4o-mini' },
+  ],
+  buildSummary: (c) => ({ provider: c.provider, apiKey: maskSecret(c.apiKey), model: c.model }),
+  async test(c) {
+    return testLlmKey({ provider: c.provider as LlmProvider, apiKey: c.apiKey, model: c.model });
+  },
+};
+
+// ─── Google Business Profile (OAuth — custom panel, NOT in the wizard list) ──
+const GoogleBusiness: ProviderDef = {
+  key: 'GOOGLE_BUSINESS',
+  title: 'Google Business reviews',
+  vendor: 'Google',
+  description: 'Connect your Google Business Profile to read and reply to reviews.',
+  docsUrl: 'https://support.google.com/business/answer/3474122',
+  fields: [], // OAuth; no paste fields
+  buildSummary: (c) => ({ accountId: c.accountId ?? null, locationId: c.locationId ?? null }),
+  async test() { return { ok: true, detail: 'Connected via OAuth' }; },
+};
+
 export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
   RAZORPAY: Razorpay,
   PHONEPE: PhonePe,
@@ -489,7 +528,9 @@ export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
   FAST2SMS: Fast2Sms,
   TEXTLOCAL: TextLocal,
   ZOHO_SMTP: ZohoSmtp,
-  BREVO_SMTP: BrevoSmtp
+  BREVO_SMTP: BrevoSmtp,
+  LLM_REVIEWS: LlmReviews,
+  GOOGLE_BUSINESS: GoogleBusiness
 };
 
 export const PROVIDER_LIST: ProviderDef[] = [
@@ -504,5 +545,6 @@ export const PROVIDER_LIST: ProviderDef[] = [
   TwilioWhatsApp,
   MetaWhatsApp,
   ZohoSmtp, BrevoSmtp, SMTP,
-  S3
+  S3,
+  LlmReviews
 ];
