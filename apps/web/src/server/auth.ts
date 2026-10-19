@@ -27,6 +27,7 @@ import { clientIp } from './http/client-ip';
 import { startSession, isSessionActive, revokeSession } from './sessions';
 import { isStaffTotpRole, verifyUserTotp, isBreakGlassEmail } from './user-totp';
 import { verifyWidgetAccessToken } from './msg91-widget';
+import { phoneOtpRoleAllowed } from './phone-otp-policy';
 
 declare module 'next-auth' {
   interface Session {
@@ -78,6 +79,12 @@ export const authConfig: NextAuthConfig = {
           await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: 'suspended', provider: 'phone-otp' } }).catch(() => {});
           return null;
         }
+        // C11: refuse staff — phone-OTP must not grant an ADMIN/SUPER_ADMIN/KITCHEN
+        // session, bypassing password, TOTP and the IP allowlist.
+        if (existing && !phoneOtpRoleAllowed(existing.role)) {
+          await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: 'phone_otp_staff_blocked', role: existing.role, provider: 'phone-otp' } }).catch(() => {});
+          return null;
+        }
         if (!existing && !allowCustomerSelfSignup()) {
           // Locked-down mode: an unregistered phone cannot create an account by
           // logging in. (Even though the OTP was valid.) They must be onboarded
@@ -120,6 +127,11 @@ export const authConfig: NextAuthConfig = {
         const existing = await prisma.user.findUnique({ where: { phone } });
         if (existing?.suspendedAt) {
           await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: 'suspended', provider: 'msg91-widget' } }).catch(() => {});
+          return null;
+        }
+        // C11: same staff block as the built-in phone-OTP provider.
+        if (existing && !phoneOtpRoleAllowed(existing.role)) {
+          await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: 'phone_otp_staff_blocked', role: existing.role, provider: 'msg91-widget' } }).catch(() => {});
           return null;
         }
         if (!existing && !allowCustomerSelfSignup()) {
