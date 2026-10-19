@@ -665,5 +665,14 @@ export async function recordRedemption(
   await tx.offerRedemption.create({
     data: { offerId, orderId, userId, amountOff: amountOff as any, breakdown: breakdown ?? undefined, channel }
   });
-  await tx.offer.update({ where: { id: offerId }, data: { usedCount: { increment: 1 } } });
+  // H18: increment usedCount atomically with the limit check (the checkGates read
+  // happened outside this transaction). Only bump while still under the limit; if
+  // the offer is exhausted concurrently, abort so the usage cap holds.
+  const bumped = await tx.$executeRaw`
+    UPDATE "Offer" SET "usedCount" = "usedCount" + 1
+    WHERE "id" = ${offerId}
+      AND ("usageLimit" IS NULL OR "usedCount" < "usageLimit")`;
+  if (bumped === 0) {
+    throw new Error('This offer has reached its usage limit.');
+  }
 }

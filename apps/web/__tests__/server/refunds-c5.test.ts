@@ -46,7 +46,10 @@ beforeEach(() => {
   db.refund.create.mockResolvedValue({ id: 'rf1' });
   db.payment.update.mockResolvedValue({});
   db.$transaction.mockImplementation(async (fn: any) =>
-    fn({ refund: { create: db.refund.create }, payment: { update: db.payment.update } })
+    fn({
+      refund: { create: db.refund.create, aggregate: async () => ({ _sum: { amount: 0 } }) },
+      payment: { update: db.payment.update }
+    })
   );
 });
 afterEach(() => vi.unstubAllEnvs());

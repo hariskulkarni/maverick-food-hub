@@ -558,7 +558,18 @@ export async function placeOrder(input: PlaceOrderInput) {
       await tx.couponRedemption.create({
         data: { couponId: coupon.id, orderId: o.id, userId: input.customerId, amountOff: couponAmount as any }
       });
-      await tx.coupon.update({ where: { id: coupon.id }, data: { usedCount: { increment: 1 } } });
+      // H18: increment usedCount atomically with the limit check. The eligibility
+      // read at :312 happened outside this transaction, so N concurrent checkouts
+      // on a 1-use code could all pass it. This conditional UPDATE only succeeds
+      // while usedCount is still below the limit (or the limit is null); if it
+      // affects no row the code is exhausted and we abort the order.
+      const bumped = await tx.$executeRaw`
+        UPDATE "Coupon" SET "usedCount" = "usedCount" + 1
+        WHERE "id" = ${coupon.id}
+          AND ("usageLimit" IS NULL OR "usedCount" < "usageLimit")`;
+      if (bumped === 0) {
+        throw new Error('This coupon has reached its usage limit.');
+      }
     }
     // Offer-engine redemptions: one row per winning offer. Audit logs fire
     // after the txn commits (audit() is best-effort and must not roll us back).
@@ -760,10 +771,18 @@ export async function transitionOrder(
   let forceDeliveredRiderId: string | null = null;
 
   const updated = await prisma.$transaction(async (tx) => {
-    const u = await tx.order.update({
-      where: { id: orderId },
+    // H8: single-winner write. The status was validated from a read OUTSIDE the
+    // transaction; two concurrent → DELIVERED transitions would both pass that
+    // check and both credit loyalty. Guard the write on the status we validated
+    // and abort if another transition already moved the order (count === 0), so
+    // the loyalty/assignment side-effects below run at most once.
+    const guard = await tx.order.updateMany({
+      where: { id: orderId, status: order.status },
       data: { status: next, ...(stamp as any), cancelReason: next === 'CANCELLED' ? opts.note : undefined }
     });
+    if (guard.count === 0) {
+      throw new OrderTransitionError('Order was changed concurrently; please retry.');
+    }
     await tx.orderStatusEvent.create({ data: { orderId, status: next, actorId: opts.actorId, note: opts.note } });
     if (next === OrderStatus.DELIVERED) {
       // Earn loyalty: 5pt per ₹100 of subtotal
@@ -781,7 +800,7 @@ export async function transitionOrder(
         forceDeliveredRiderId = a.riderId;
       }
     }
-    return u;
+    return tx.order.findUniqueOrThrow({ where: { id: orderId } });
   });
 
   // Advance incentive progress for force-delivered orders. The rider's own
@@ -851,8 +870,9 @@ export async function transitionOrder(
       log.error({ err: (e as Error).message, orderId }, 'signup bonus restore failed')
     );
     // Restore freebie stock so the gift becomes available to another order.
+    // H9: idempotent — passes orderId so a cancel-then-refund restores once.
     if (order.freebieRuleId) {
-      await restoreFreebieStock(order.freebieRuleId).catch((e) =>
+      await restoreFreebieStock(orderId, order.freebieRuleId).catch((e) =>
         log.error({ err: (e as Error).message, orderId, ruleId: order.freebieRuleId }, 'freebie stock restore failed')
       );
     }

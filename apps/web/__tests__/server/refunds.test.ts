@@ -10,7 +10,7 @@ const db: any = vi.hoisted(() => ({
   wallet: { upsert: vi.fn() },
   walletTransaction: { create: vi.fn() },
   payment: { update: vi.fn() },
-  refund: { create: vi.fn() },
+  refund: { create: vi.fn(), aggregate: vi.fn() },
   $transaction: vi.fn()
 }));
 
@@ -37,12 +37,13 @@ function order(over: any = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  db.refund.aggregate.mockResolvedValue({ _sum: { amount: 0 } });
   db.$transaction.mockImplementation(async (fn: any) =>
     fn({
       wallet: { upsert: db.wallet.upsert },
       walletTransaction: { create: db.walletTransaction.create },
       payment: { update: db.payment.update },
-      refund: { create: db.refund.create }
+      refund: { create: db.refund.create, aggregate: db.refund.aggregate }
     })
   );
   db.wallet.upsert.mockResolvedValue({ id: 'w1' });
