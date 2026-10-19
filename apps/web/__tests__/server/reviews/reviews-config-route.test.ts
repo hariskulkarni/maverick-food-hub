@@ -39,6 +39,21 @@ describe('reviews config route', () => {
     expect(arg.update).toMatchObject({ enabled: true, autoPostMinRating: 4, draftMaxRating: 3, tonePrompt: 'warm' });
   });
 
+  it('POST stamps enabledAt when turning on from off/absent', async () => {
+    h.findUnique.mockResolvedValue(null);
+    await POST(post({ enabled: true, autoPostMinRating: 4, draftMaxRating: 3 }));
+    const arg = h.upsert.mock.calls[0][0];
+    expect(arg.update.enabledAt).toBeInstanceOf(Date);
+    expect(arg.create.enabledAt).toBeInstanceOf(Date);
+  });
+
+  it('POST preserves enabledAt when already enabled', async () => {
+    const prev = new Date('2025-01-01');
+    h.findUnique.mockResolvedValue({ enabled: true, enabledAt: prev });
+    await POST(post({ enabled: true, autoPostMinRating: 4, draftMaxRating: 3 }));
+    expect(h.upsert.mock.calls[0][0].update.enabledAt).toBe(prev);
+  });
+
   it('POST rejects draftMaxRating >= autoPostMinRating with 400', async () => {
     const res = await POST(post({ autoPostMinRating: 3, draftMaxRating: 3 }));
     expect(res.status).toBe(400);

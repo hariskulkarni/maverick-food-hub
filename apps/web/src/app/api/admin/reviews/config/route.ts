@@ -39,8 +39,14 @@ export async function POST(req: NextRequest) {
   if (!RATINGS.includes(autoPostMinRating) || !RATINGS.includes(draftMaxRating) || draftMaxRating >= autoPostMinRating) {
     return new Response('Bad thresholds', { status: 400 });
   }
+  // Forward-only auto-reply: stamp enabledAt only when turning on from off.
+  const current = await prisma.reviewAutoReplyConfig.findUnique({ where: { restaurantId: restaurant.id } });
+  const enabled = !!b.enabled;
+  const enabledAt =
+    enabled && (!current || !current.enabled || !current.enabledAt) ? new Date() : (current?.enabledAt ?? null);
   const data = {
-    enabled: !!b.enabled,
+    enabled,
+    enabledAt,
     autoPostMinRating,
     draftMaxRating,
     tonePrompt: typeof b.tonePrompt === 'string' && b.tonePrompt.trim() ? b.tonePrompt : null,

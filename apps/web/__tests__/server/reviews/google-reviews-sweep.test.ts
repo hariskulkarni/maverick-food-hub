@@ -27,7 +27,7 @@ beforeEach(() => {
   db.integrationCredential.findMany.mockResolvedValue([{ restaurantId: 'rest1' }]);
   g.listReviews.mockResolvedValue([]);
   store.hasReply.mockResolvedValue(false);
-  store.getAutoReplyConfig.mockResolvedValue({ enabled: true, autoPostMinRating: 4, draftMaxRating: 3, tonePrompt: null });
+  store.getAutoReplyConfig.mockResolvedValue({ enabled: true, autoPostMinRating: 4, draftMaxRating: 3, tonePrompt: null, enabledAt: new Date('2020-01-01') });
 });
 
 describe('runGoogleReviewsSweep', () => {
@@ -96,7 +96,7 @@ describe('runGoogleReviewsSweep', () => {
     db.integrationCredential.findMany.mockResolvedValue([{ restaurantId: 'rest1' }, { restaurantId: 'rest2' }]);
     g.listReviews.mockResolvedValue([{ googleReviewId: 'rev5c', reviewerName: 'E', rating: 5, comment: 'Ok', reviewCreatedAt: new Date() }]);
     store.getAutoReplyConfig.mockRejectedValueOnce(new Error('db down'));
-    store.getAutoReplyConfig.mockResolvedValueOnce({ enabled: true, autoPostMinRating: 4, draftMaxRating: 3, tonePrompt: null });
+    store.getAutoReplyConfig.mockResolvedValueOnce({ enabled: true, autoPostMinRating: 4, draftMaxRating: 3, tonePrompt: null, enabledAt: new Date('2020-01-01') });
     store.upsertReview.mockResolvedValue({ id: 'g6', isNew: true });
     llm.generateReviewReply.mockResolvedValue({ text: 'Thanks!', provider: 'nvidia', model: 'm' });
     const r = await runGoogleReviewsSweep();
@@ -148,5 +148,19 @@ describe('runGoogleReviewsSweep', () => {
     expect(g.postReply).toHaveBeenCalledWith('rest1', 'rev13', 'Thanks!');
     expect(r.autoPosted).toBe(1);
     expect(r.newReviews).toBe(0);
+  });
+
+  it('forward-only: a review older than enabledAt is not auto-replied; a newer one is', async () => {
+    store.getAutoReplyConfig.mockResolvedValue({ enabled: true, autoPostMinRating: 4, draftMaxRating: 3, tonePrompt: null, enabledAt: new Date('2025-06-01') });
+    g.listReviews.mockResolvedValue([
+      { googleReviewId: 'old', reviewerName: 'O', rating: 5, comment: 'old', reviewCreatedAt: new Date('2025-01-01') },
+      { googleReviewId: 'new', reviewerName: 'N', rating: 5, comment: 'new', reviewCreatedAt: new Date('2025-07-01') },
+    ]);
+    store.upsertReview.mockResolvedValueOnce({ id: 'o1', isNew: true }).mockResolvedValueOnce({ id: 'n1', isNew: true });
+    llm.generateReviewReply.mockResolvedValue({ text: 'Thanks!', provider: 'nvidia', model: 'm' });
+    const r = await runGoogleReviewsSweep();
+    expect(g.postReply).toHaveBeenCalledTimes(1);
+    expect(g.postReply).toHaveBeenCalledWith('rest1', 'new', 'Thanks!');
+    expect(r.autoPosted).toBe(1);
   });
 });
