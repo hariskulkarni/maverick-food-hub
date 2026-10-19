@@ -31,6 +31,7 @@ const CHANNEL_ICON: Record<Channel, any> = {
 
 const CHANNELS: Array<Channel | 'ALL'> = ['ALL', 'SMS', 'WHATSAPP', 'EMAIL', 'PUSH'];
 const STATUSES: Array<Status | 'ALL'>  = ['ALL', 'QUEUED', 'SENT', 'FAILED'];
+const PAGE_SIZE = 15;
 
 export function NotificationsTable() {
   const [rows, setRows] = useState<LogRow[]>([]);
@@ -39,9 +40,11 @@ export function NotificationsTable() {
   const [status, setStatus]   = useState<Status  | 'ALL'>('ALL');
   const [q, setQ] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [visible, setVisible] = useState(PAGE_SIZE);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setVisible(PAGE_SIZE);
     const params = new URLSearchParams();
     if (channel !== 'ALL') params.set('channel', channel);
     if (status  !== 'ALL') params.set('status',  status);
@@ -105,6 +108,7 @@ export function NotificationsTable() {
       </div>
 
       {/* Table */}
+      <div className="max-h-[480px] overflow-y-auto">
       <div className="divide-y">
         {loading && rows.length === 0 && (
           <div className="p-10 text-center text-sm text-muted-foreground">Loading…</div>
@@ -112,7 +116,7 @@ export function NotificationsTable() {
         {!loading && rows.length === 0 && (
           <div className="p-10 text-center text-sm text-muted-foreground">No notifications match these filters.</div>
         )}
-        {rows.map((r) => {
+        {rows.slice(0, visible).map((r) => {
           const Icon = CHANNEL_ICON[r.channel];
           const isOpen = expanded === r.id;
           return (
@@ -168,6 +172,14 @@ export function NotificationsTable() {
           );
         })}
       </div>
+      </div>
+      {rows.length > visible && (
+        <div className="p-3 border-t text-center">
+          <Button variant="outline" size="sm" onClick={() => setVisible((v) => v + PAGE_SIZE)}>
+            Show {Math.min(PAGE_SIZE, rows.length - visible)} more
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
