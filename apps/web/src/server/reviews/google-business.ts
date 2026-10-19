@@ -115,3 +115,36 @@ export async function postReply(restaurantId: string, googleReviewId: string, te
   if (!res.ok) throw new Error(`google reply ${res.status}: ${(await res.text()).slice(0, 200)}`);
   log.info({ restaurantId, googleReviewId }, 'reviews.google.replied');
 }
+
+const ACCOUNTS_URL = 'https://mybusinessaccountmanagement.googleapis.com/v1/accounts';
+const BIZINFO = 'https://mybusinessbusinessinformation.googleapis.com/v1';
+
+/** First account resource name (e.g. 'accounts/123'), or '' if none. */
+export async function listAccounts(refreshToken: string): Promise<string> {
+  const token = await accessToken(refreshToken);
+  const res = await fetch(ACCOUNTS_URL, { headers: { authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`google accounts ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const data = await res.json();
+  return String(data?.accounts?.[0]?.name ?? '');
+}
+
+/** First location resource name (e.g. 'locations/456') under `account`, or '' if none. */
+export async function listLocations(refreshToken: string, account: string): Promise<string> {
+  const token = await accessToken(refreshToken);
+  const res = await fetch(`${BIZINFO}/${account}/locations?readMask=name`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`google locations ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const data = await res.json();
+  return String(data?.locations?.[0]?.name ?? '');
+}
+
+/** Single-location happy path: first account, first location. Empty strings if not found. */
+export async function discoverAccountAndLocation(
+  refreshToken: string,
+): Promise<{ accountId: string; locationId: string }> {
+  const accountId = await listAccounts(refreshToken);
+  if (!accountId) return { accountId: '', locationId: '' };
+  const locationId = await listLocations(refreshToken, accountId);
+  return { accountId, locationId };
+}
