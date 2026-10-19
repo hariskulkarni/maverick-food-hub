@@ -5,7 +5,12 @@ const db: any = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
 }));
 const g = vi.hoisted(() => ({ listReviews: vi.fn(), postReply: vi.fn() }));
-const llm = vi.hoisted(() => ({ generateReviewReply: vi.fn() }));
+const llm = vi.hoisted(() => {
+  class LlmNotConfiguredError extends Error {
+    constructor() { super('No LLM key configured for this restaurant'); this.name = 'LlmNotConfiguredError'; }
+  }
+  return { generateReviewReply: vi.fn(), LlmNotConfiguredError };
+});
 const store = vi.hoisted(() => ({ upsertReview: vi.fn(), getAutoReplyConfig: vi.fn(), saveReply: vi.fn() }));
 
 vi.mock('@/server/db', () => ({ prisma: db }));
@@ -60,6 +65,16 @@ describe('runGoogleReviewsSweep', () => {
     const r = await runGoogleReviewsSweep();
     expect(store.saveReply).toHaveBeenCalledWith(expect.objectContaining({ state: 'FAILED' }));
     expect(r.failed).toBe(1);
+  });
+
+  it('skips (no FAILED row, not counted failed) when no LLM key is configured', async () => {
+    g.listReviews.mockResolvedValue([{ googleReviewId: 'rev11', reviewerName: 'G', rating: 5, comment: 'Good', reviewCreatedAt: new Date() }]);
+    store.upsertReview.mockResolvedValue({ id: 'g8', isNew: true });
+    llm.generateReviewReply.mockRejectedValue(new llm.LlmNotConfiguredError());
+    const r = await runGoogleReviewsSweep();
+    expect(store.saveReply).not.toHaveBeenCalled();
+    expect(g.postReply).not.toHaveBeenCalled();
+    expect(r.failed).toBe(0);
   });
 
   it('a listReviews failure for one restaurant does not stop the next restaurant', async () => {

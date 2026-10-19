@@ -4,13 +4,14 @@ import { NextRequest } from 'next/server';
 const h = vi.hoisted(() => ({
   requireManagedRestaurant: vi.fn(), getReviewScoped: vi.fn(), saveReply: vi.fn(),
   listForAdmin: vi.fn(), gen: vi.fn(), post: vi.fn(), cfg: vi.fn(),
+  LlmNotConfiguredError: class LlmNotConfiguredError extends Error {},
 }));
 vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: h.requireManagedRestaurant }));
 vi.mock('@/server/reviews/store', () => ({
   getReviewScoped: h.getReviewScoped, saveReply: h.saveReply,
   listReviewsForAdmin: h.listForAdmin, getAutoReplyConfig: h.cfg,
 }));
-vi.mock('@/server/reviews/llm', () => ({ generateReviewReply: h.gen }));
+vi.mock('@/server/reviews/llm', () => ({ generateReviewReply: h.gen, LlmNotConfiguredError: h.LlmNotConfiguredError }));
 vi.mock('@/server/reviews/google-business', () => ({ postReply: h.post }));
 
 import { GET } from '@/app/api/admin/reviews/route';
@@ -63,6 +64,25 @@ describe('admin reviews routes', () => {
     expect(h.saveReply).toHaveBeenCalledWith(expect.objectContaining({
       reviewId: 'rv1', restaurantId: 'rest1', text: 'draft', state: 'PENDING_APPROVAL', source: 'AUTO' }));
     expect(await res.json()).toEqual({ ok: true, text: 'draft' });
+  });
+
+  it('generate returns 400 (not 500) when no LLM key is configured', async () => {
+    h.getReviewScoped.mockResolvedValue({ id: 'rv1', rating: 4, comment: 'ok' });
+    h.cfg.mockResolvedValue(null);
+    h.gen.mockRejectedValue(new h.LlmNotConfiguredError());
+    const res = await generate(post(), ctx());
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'No LLM key configured' });
+    expect(h.saveReply).not.toHaveBeenCalled();
+  });
+
+  it('generate returns 502 with a generic message on other LLM errors', async () => {
+    h.getReviewScoped.mockResolvedValue({ id: 'rv1', rating: 4, comment: 'ok' });
+    h.cfg.mockResolvedValue(null);
+    h.gen.mockRejectedValue(new Error('secret upstream body'));
+    const res = await generate(post(), ctx());
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: 'LLM generation failed' });
   });
 
   it('approve posts the stored draft then saves POSTED/ADMIN_EDITED', async () => {

@@ -13,7 +13,7 @@
 import { prisma } from '@/server/db';
 import { log } from '@/server/log';
 import { listReviews, postReply } from '@/server/reviews/google-business';
-import { generateReviewReply } from '@/server/reviews/llm';
+import { generateReviewReply, LlmNotConfiguredError } from '@/server/reviews/llm';
 import { decideReplyAction } from '@/server/reviews/policy';
 import { upsertReview, getAutoReplyConfig, saveReply } from '@/server/reviews/store';
 
@@ -65,6 +65,11 @@ export async function runGoogleReviewsSweep() {
               result.drafted++;
             }
           } catch (e: any) {
+            // No LLM key configured: graceful SKIP (spec 6.4), not a failure.
+            if (e instanceof LlmNotConfiguredError) {
+              log.warn({ restaurantId, googleReviewId: r.googleReviewId }, 'reviews.sweep.no_llm_skip');
+              continue;
+            }
             const msg = String(e?.message || e);
             if (posted && gen) {
               // Google already has the reply. Record it as POSTED, never FAILED.
