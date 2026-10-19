@@ -113,6 +113,37 @@ export async function reconcilePhonePePayment(
 
   // ── Captured ─────────────────────────────────────────────────────────────
   if (mapped === 'CAPTURED') {
+    // C7: an order must never hold two captured payments. A customer who
+    // abandoned attempt 1 and paid attempt 2 can have both approved at the
+    // gateway (a late UPI collect on -1 plus a card on -2). Guard at the ORDER
+    // level, not just this payment row: if another payment on the same order is
+    // already CAPTURED, this is an over-collection that needs a refund — do NOT
+    // capture the second one, flag it and log at error level for an operator.
+    const alreadyCaptured = await prisma.payment.findFirst({
+      where: { orderId: payment.orderId, id: { not: payment.id }, status: PaymentStatus.CAPTURED },
+      select: { id: true },
+    });
+    if (alreadyCaptured) {
+      log.error(
+        { paymentId: payment.id, orderId: payment.orderId, otherPaymentId: alreadyCaptured.id, merchantOrderId },
+        'phonepe reconcile: order already has a captured payment — over-collection, refund required; NOT capturing the second payment',
+      );
+      await prisma.payment.updateMany({
+        where: { id: payment.id, status: { in: [PaymentStatus.PENDING, PaymentStatus.AUTHORIZED, PaymentStatus.FAILED] } },
+        data: {
+          errorMessage: 'Over-collection: the order was already paid by another payment; this capture needs a refund.',
+          providerData: {
+            ...(typeof payment.providerData === 'object' && payment.providerData ? (payment.providerData as object) : {}),
+            _overCollection: true,
+            _overCollectionOfPaymentId: alreadyCaptured.id,
+            _gatewayCapturedAt: new Date().toISOString(),
+            _transactionId: attempt?.transactionId ?? null,
+            _statusResponse: status.raw as object,
+          } as any,
+        },
+      });
+      return { ...base, status: payment.status, captured: false, indeterminate: true };
+    }
     // `providerRef` deliberately keeps the merchantOrderId rather than being
     // overwritten with the transaction id (as the Razorpay path does): PhonePe
     // refunds are addressed by the original merchantOrderId, so losing it here

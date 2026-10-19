@@ -95,6 +95,19 @@ export async function startOnlinePayment(
     throw new OnlinePaymentError('This order is already paid.', 409);
   }
 
+  // C7: mark any prior non-terminal online attempt as superseded before minting
+  // a new PayPage. This is informational — a late capture on an abandoned
+  // attempt is still caught by the reconciler's order-level over-collection
+  // guard — but it leaves an operator-visible marker and does not clobber the
+  // row's providerData (errorMessage is a plain column).
+  const stale = order.payments.filter((p) => isOnlineMethod(p.method) && p.status === PaymentStatus.PENDING);
+  if (stale.length > 0) {
+    await prisma.payment.updateMany({
+      where: { id: { in: stale.map((p) => p.id) }, status: PaymentStatus.PENDING },
+      data: { errorMessage: 'Superseded by a newer payment attempt on this order.' },
+    });
+  }
+
   const provider = await paymentProvider(order.branch.restaurantId);
   const method = opts.method ?? (order.paymentMethod as PaymentMethod);
 
