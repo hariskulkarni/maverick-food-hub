@@ -164,7 +164,11 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
     let gatewayRefundId: string | null = null;
     let providerRefundKey: string | null = null;
     let gatewayName: string | null = null;
-    let settledNow = true;
+    // C5: the failure path is the default. Only a confirmed gateway outcome may
+    // flip this true (PhonePe COMPLETED), and Razorpay stays false pending its
+    // webhook. Previously this started true, so a skipped gateway block wrote a
+    // COMPLETED refund with a fabricated reference and no money moved.
+    let settledNow = false;
 
     if (capturedPayment.providerName === 'razorpay' && capturedPayment.providerRef) {
       const creds = await resolveRazorpayCreds(order.branchId);
@@ -179,7 +183,7 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
           gatewayRefundId = gw.providerRefundId ?? null;
           providerRefundKey = gatewayRefundId;
           gatewayName = 'razorpay';
-          settledNow = false; // confirmed asynchronously by the webhook
+          // stays PENDING (settledNow=false) — confirmed asynchronously by the webhook
         } catch (e) {
           throw new RefundError(`Gateway refund failed: ${(e as Error).message}`, 502);
         }
@@ -219,6 +223,24 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
           throw new RefundError(`Gateway refund failed: ${(e as Error).message}`, 502);
         }
       }
+    }
+
+    // C5: never record a COMPLETED refund when no real gateway was reached. If no
+    // gateway block ran (unknown provider, or credentials that could not be
+    // resolved/decrypted), refuse in production rather than fabricating a
+    // COMPLETED mock refund. Dev and genuine mock payments keep immediate settle.
+    if (!gatewayName) {
+      const isMockPayment = !capturedPayment.providerName || capturedPayment.providerName === 'mock';
+      if (process.env.NODE_ENV === 'production' && process.env.DEMO_MODE !== 'true' && !isMockPayment) {
+        throw new RefundError(
+          `Cannot refund the ${capturedPayment.providerName} payment for order ${order.id}: ` +
+            `no gateway credentials could be resolved, so the refund was NOT recorded. ` +
+            `Configure the gateway credentials, or refund to the customer's wallet instead.`,
+          502
+        );
+      }
+      // Dev / mock: immediate settlement is fine.
+      settledNow = true;
     }
 
     const providerRef = providerRefundKey ?? `rfnd_${Math.random().toString(36).slice(2, 12)}`;
