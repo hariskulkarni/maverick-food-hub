@@ -26,7 +26,7 @@ describe('POST /api/admin/reviews/sync', () => {
     h.upsertReview.mockResolvedValueOnce({ isNew: true }).mockResolvedValueOnce({ isNew: false });
     const res = await POST(req());
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, synced: 2, created: 1 });
+    expect(await res.json()).toEqual({ ok: true, synced: 2, created: 1, failed: 0 });
     expect(h.listReviews).toHaveBeenCalledWith('rest1');
     expect(h.upsertReview).toHaveBeenCalledTimes(2);
     expect(h.upsertReview).toHaveBeenNthCalledWith(1, 'rest1', reviews[0]);
@@ -46,5 +46,13 @@ describe('POST /api/admin/reviews/sync', () => {
     const res = await POST(req());
     expect(res.status).toBe(502);
     expect(h.upsertReview).not.toHaveBeenCalled();
+  });
+
+  it('one failing row does not abort the sync', async () => {
+    h.listReviews.mockResolvedValue([{ googleReviewId: 'a' }, { googleReviewId: 'b' }]);
+    h.upsertReview.mockRejectedValueOnce(new Error('db')).mockResolvedValueOnce({ isNew: true });
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, synced: 1, created: 1, failed: 1 });
   });
 });

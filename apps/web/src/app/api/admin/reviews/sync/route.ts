@@ -17,9 +17,14 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Google sync failed' }, { status: 502 });
   }
   let created = 0;
+  let failed = 0;
   for (const r of reviews) {
-    const { isNew } = await upsertReview(restaurant.id, r);
-    if (isNew) created++;
+    try {
+      const { isNew } = await upsertReview(restaurant.id, r);
+      if (isNew) created++;
+    } catch {
+      failed++; // isolate a bad row; keep syncing the rest
+    }
   }
-  return Response.json({ ok: true, synced: reviews.length, created });
+  return Response.json({ ok: true, synced: reviews.length - failed, created, failed });
 }

@@ -3,7 +3,7 @@
  * INTERNAL_CRON_SECRET (see /api/platform/jobs/google-reviews/run).
  *
  * For each restaurant with a CONNECTED GOOGLE_BUSINESS integration: pull
- * reviews, upsert them, and for NEW ones apply the rating policy — 4-5* is
+ * reviews, upsert them, and for ones with no reply yet apply the rating policy — 4-5* is
  * auto-posted, 1-3* becomes a PENDING_APPROVAL draft. A per-review error is
  * parked as FAILED and never aborts the sweep. A per-restaurant error (list,
  * config or DB) is logged and skips only that restaurant. A reply that Google
@@ -15,7 +15,7 @@ import { log } from '@/server/log';
 import { listReviews, postReply } from '@/server/reviews/google-business';
 import { generateReviewReply, LlmNotConfiguredError } from '@/server/reviews/llm';
 import { decideReplyAction } from '@/server/reviews/policy';
-import { upsertReview, getAutoReplyConfig, saveReply } from '@/server/reviews/store';
+import { upsertReview, getAutoReplyConfig, saveReply, hasReply } from '@/server/reviews/store';
 
 const LOCK_KEY = 889_201_774; // arbitrary unique advisory-lock id for this sweep
 
@@ -46,8 +46,8 @@ export async function runGoogleReviewsSweep() {
         const cfg = await getAutoReplyConfig(restaurantId);
         for (const r of reviews) {
           const { id, isNew } = await upsertReview(restaurantId, r);
-          if (!isNew) continue;
-          result.newReviews++;
+          if (isNew) result.newReviews++;
+          if (await hasReply(id)) continue; // already replied / drafted / recorded
           const action = decideReplyAction(r.rating, cfg);
           if (action === 'SKIP') continue;
 

@@ -11,7 +11,7 @@ const llm = vi.hoisted(() => {
   }
   return { generateReviewReply: vi.fn(), LlmNotConfiguredError };
 });
-const store = vi.hoisted(() => ({ upsertReview: vi.fn(), getAutoReplyConfig: vi.fn(), saveReply: vi.fn() }));
+const store = vi.hoisted(() => ({ upsertReview: vi.fn(), getAutoReplyConfig: vi.fn(), saveReply: vi.fn(), hasReply: vi.fn() }));
 
 vi.mock('@/server/db', () => ({ prisma: db }));
 vi.mock('@/server/log', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
@@ -26,6 +26,7 @@ beforeEach(() => {
   db.$queryRaw.mockResolvedValue([{ locked: true }]);
   db.integrationCredential.findMany.mockResolvedValue([{ restaurantId: 'rest1' }]);
   g.listReviews.mockResolvedValue([]);
+  store.hasReply.mockResolvedValue(false);
   store.getAutoReplyConfig.mockResolvedValue({ enabled: true, autoPostMinRating: 4, draftMaxRating: 3, tonePrompt: null });
 });
 
@@ -117,11 +118,35 @@ describe('runGoogleReviewsSweep', () => {
     expect(r.autoPosted).toBe(1);
   });
 
-  it('does not re-reply to reviews that already existed', async () => {
+  it('does not re-reply to reviews that already have a reply row', async () => {
     g.listReviews.mockResolvedValue([{ googleReviewId: 'rev9', reviewerName: 'A', rating: 5, comment: 'Great', reviewCreatedAt: new Date() }]);
     store.upsertReview.mockResolvedValue({ id: 'g1', isNew: false });
+    store.hasReply.mockResolvedValue(true);
     const r = await runGoogleReviewsSweep();
     expect(llm.generateReviewReply).not.toHaveBeenCalled();
+    expect(g.postReply).not.toHaveBeenCalled();
     expect(r.autoPosted).toBe(0);
+    expect(r.newReviews).toBe(0);
+  });
+
+  it('counts newReviews for isNew sightings even when a reply already exists', async () => {
+    g.listReviews.mockResolvedValue([{ googleReviewId: 'rev12', reviewerName: 'A', rating: 5, comment: 'x', reviewCreatedAt: new Date() }]);
+    store.upsertReview.mockResolvedValue({ id: 'g9', isNew: true });
+    store.hasReply.mockResolvedValue(true);
+    const r = await runGoogleReviewsSweep();
+    expect(r.newReviews).toBe(1);
+    expect(llm.generateReviewReply).not.toHaveBeenCalled();
+  });
+
+  it('processes a previously-synced (isNew=false) review that has no reply yet', async () => {
+    g.listReviews.mockResolvedValue([{ googleReviewId: 'rev13', reviewerName: 'M', rating: 5, comment: 'Yum', reviewCreatedAt: new Date() }]);
+    store.upsertReview.mockResolvedValue({ id: 'g10', isNew: false });
+    store.hasReply.mockResolvedValue(false);
+    llm.generateReviewReply.mockResolvedValue({ text: 'Thanks!', provider: 'nvidia', model: 'm' });
+    const r = await runGoogleReviewsSweep();
+    expect(llm.generateReviewReply).toHaveBeenCalled();
+    expect(g.postReply).toHaveBeenCalledWith('rest1', 'rev13', 'Thanks!');
+    expect(r.autoPosted).toBe(1);
+    expect(r.newReviews).toBe(0);
   });
 });

@@ -19,6 +19,11 @@ export async function upsertReview(restaurantId: string, r: NormalizedReview): P
   return { id: row.id, isNew: !existing };
 }
 
+export async function hasReply(reviewId: string): Promise<boolean> {
+  const r = await prisma.reviewReply.findUnique({ where: { reviewId }, select: { id: true } });
+  return !!r;
+}
+
 export async function getAutoReplyConfig(restaurantId: string) {
   return prisma.reviewAutoReplyConfig.findUnique({ where: { restaurantId } });
 }
