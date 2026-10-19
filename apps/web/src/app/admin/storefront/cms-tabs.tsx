@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { cn } from '@/lib/utils';
 import { Paintbrush, UtensilsCrossed, BadgePercent, Plug } from 'lucide-react';
 
 /**
@@ -22,7 +23,10 @@ const TABS = [
 export function CmsTabs() {
   const pathname = usePathname();
   return (
-    <nav className="flex gap-1 overflow-x-auto border-b -mx-1 px-1 no-scrollbar">
+    <nav
+      aria-label="Storefront sections"
+      className="-mx-4 flex gap-1 overflow-x-auto border-b px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0"
+    >
       {TABS.map(({ href, label, icon: Icon, ...rest }) => {
         const exact = 'exact' in rest && rest.exact;
         const active = exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
@@ -30,11 +34,11 @@ export function CmsTabs() {
           <Link
             key={href}
             href={href}
-            className={`inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors ${
-              active
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-            }`}
+            aria-current={active ? 'page' : undefined}
+            className={cn(
+              'inline-flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-colors',
+              active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+            )}
           >
             <Icon className="size-4" />
             {label}
