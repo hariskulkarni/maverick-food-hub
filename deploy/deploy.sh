@@ -86,7 +86,9 @@ else
   NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
   echo "→ Reloading PM2 processes"
-  pm2 reload rm-web rm-worker --update-env
+  # C14.4: rm-worker removed — it ran a non-existent worker.ts and crash-looped,
+  # aborting this reload under set -e after migrations had already applied.
+  pm2 reload rm-web --update-env
 fi
 
 # ── health check ──────────────────────────────────────────────────────────

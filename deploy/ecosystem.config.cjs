@@ -4,12 +4,21 @@
  *   pm2 start deploy/ecosystem.config.cjs --env production
  *   pm2 save && pm2 startup systemd
  *
- * Two long-running processes:
+ * One long-running process:
  *   - rm-web    : Next.js (next start) on :3000
- *   - rm-worker : background worker (cron jobs, escalations, notification retries)
  *
- * Adjust `instances` on rm-web if you scale to a multi-core VPS — leave the
- * worker at 1 to avoid duplicated cron firings.
+ * C14.4: the former `rm-worker` process ran `tsx src/server/worker.ts`, a file
+ * that does not exist — it crash-looped and aborted every deploy after
+ * migrations (deploy.sh did `pm2 reload rm-web rm-worker` under set -e). The
+ * four background sweeps in apps/web/src/server/jobs/ are driven by their cron
+ * endpoints, so the worker process is removed rather than resurrected.
+ *
+ * NOTE (flag, not fixed here): ecosystem's old docstring claimed this worker
+ * handled escalations and notification retries. With no worker, those are not
+ * run in-process — see the HIGH finding "order escalations never fire". The
+ * escalation scan needs a cron entry or a real worker; tracked for Phase 3.
+ *
+ * Adjust `instances` on rm-web if you scale to a multi-core VPS.
  */
 module.exports = {
   apps: [
@@ -30,26 +39,6 @@ module.exports = {
       error_file: '/var/log/restaurant-manager/web.err.log',
       merge_logs: true,
       time: true
-    },
-    {
-      name: 'rm-worker',
-      cwd: '/opt/restaurant-manager/apps/web',
-      // Worker entry — uses tsx to run the compiled or source worker script.
-      // Replace with `node dist/worker.js` once you ship a built worker.
-      script: 'node_modules/.bin/tsx',
-      args: 'src/server/worker.ts',
-      instances: 1,
-      exec_mode: 'fork',
-      max_memory_restart: '400M',
-      kill_timeout: 8000,
-      env: { NODE_ENV: 'production', WORKER: 'true' },
-      env_production: { NODE_ENV: 'production', WORKER: 'true' },
-      out_file: '/var/log/restaurant-manager/worker.out.log',
-      error_file: '/var/log/restaurant-manager/worker.err.log',
-      merge_logs: true,
-      time: true,
-      autorestart: true,
-      restart_delay: 5000
     }
   ]
 };
