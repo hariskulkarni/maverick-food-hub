@@ -32,6 +32,16 @@ describe('POST /api/platform/jobs/google-reviews/run', () => {
     expect(h.sweep).not.toHaveBeenCalled();
   });
 
+  it('403 when INTERNAL_CRON_SECRET is unset and the header is empty', async () => {
+    delete process.env.INTERNAL_CRON_SECRET;
+    h.auth.mockResolvedValue(null);
+    const res = await POST(
+      new Request('http://x', { method: 'POST', headers: { 'x-internal-secret': '' } }) as any,
+    );
+    expect(res.status).toBe(403);
+    expect(h.sweep).not.toHaveBeenCalled();
+  });
+
   it('runs the sweep when x-internal-secret matches', async () => {
     const res = await POST(
       new Request('http://x', { method: 'POST', headers: { 'x-internal-secret': 's3cret' } }) as any,
