@@ -4,7 +4,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { IntegrationWizard, type FieldDef } from './integration-wizard';
-import { ReviewsSettings } from './reviews-settings';
 import { CheckCircle2, AlertTriangle, CircleSlash, Settings, RefreshCw, Info, ShieldCheck } from 'lucide-react';
 
 type Status = 'CONNECTED' | 'DISCONNECTED' | 'FAILED';
@@ -78,11 +77,6 @@ export function IntegrationsSection({ restaurantId }: { restaurantId?: string } 
           </div>
         </CardContent>
       </Card>
-
-      <section className="mt-6 space-y-3">
-        <h2 className="display text-lg">Google reviews</h2>
-        <ReviewsSettings restaurantId={restaurantId} />
-      </section>
 
       {active && (
         <IntegrationWizard
