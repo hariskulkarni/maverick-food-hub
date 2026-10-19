@@ -1,9 +1,13 @@
 /**
  * GET  /api/rider/payouts — withdrawable balance + payout history.
- * POST /api/rider/payouts — request an instant withdrawal.
+ * POST /api/rider/payouts — request a withdrawal.
  *
- * For the demo there's no real payment rail: a POST settles immediately via a
- * mock processor (status PAID, a MOCK-xxxxxx reference, processedAt = now).
+ * C6: there is no payment rail. A withdrawal is RECORDED as REQUESTED and is
+ * settled out-of-band — an admin marks it PAID (platform/payouts) after an
+ * actual bank/UPI transfer. The route must NOT self-report PAID with a fake
+ * reference: that told riders they had been paid when no money moved.
+ * computeAvailableBalance already holds every non-FAILED payout, so a REQUESTED
+ * row immediately reduces the withdrawable balance and blocks double-withdrawal.
  */
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
@@ -11,13 +15,6 @@ import { computeAvailableBalance } from '@/server/rider-payments';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-function mockReference(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let out = '';
-  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return `MOCK-${out}`;
-}
 
 export async function GET() {
   const session = await auth();
@@ -105,16 +102,15 @@ export async function POST(req: Request) {
     );
   }
 
-  const now = new Date();
   const payout = await prisma.riderPayout.create({
     data: {
       riderId: profile.id,
       amount,
       method,
       upiId,
-      status: 'PAID', // demo: mock processor settles instantly
-      reference: mockReference(),
-      processedAt: now,
+      // C6: recorded as a request; an admin settles it out-of-band and marks it
+      // PAID after a real transfer. No fabricated reference, no processedAt.
+      status: 'REQUESTED',
     },
     select: {
       id: true,
