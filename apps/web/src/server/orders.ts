@@ -306,7 +306,7 @@ export async function placeOrder(input: PlaceOrderInput) {
     }
   }
 
-  let coupon: { id: string; flatOff?: number | null; percentOff?: number | null; minOrderAmount?: number | null; maxDiscount?: number | null } | null = null;
+  let coupon: { id: string; flatOff?: number | null; percentOff?: number | null; minOrderAmount?: number | null; maxDiscount?: number | null; perUserLimit: number } | null = null;
   if (input.couponCode) {
     const found = await prisma.coupon.findUnique({ where: { code: input.couponCode } });
     if (found && found.isActive && (!found.validTo || found.validTo > new Date()) && (!found.usageLimit || found.usedCount < found.usageLimit)) {
@@ -315,7 +315,10 @@ export async function placeOrder(input: PlaceOrderInput) {
         flatOff: found.flatOff ? Number(found.flatOff) : null,
         percentOff: found.percentOff,
         minOrderAmount: found.minOrderAmount ? Number(found.minOrderAmount) : null,
-        maxDiscount: found.maxDiscount ? Number(found.maxDiscount) : null
+        maxDiscount: found.maxDiscount ? Number(found.maxDiscount) : null,
+        // H19: carry perUserLimit so the order path can enforce it (it was
+        // written by the admin UI and rendered as "N/user" but never checked).
+        perUserLimit: found.perUserLimit ?? 1
       };
     }
   }
@@ -555,6 +558,16 @@ export async function placeOrder(input: PlaceOrderInput) {
       // same order. Bounded at 0 since discount is capped at subtotal.
       const offersTotal = priced.offerBreakdown.reduce((s, o) => s + o.amountOff, 0);
       const couponAmount = Math.max(0, priced.discountAmount - offersTotal);
+      // H19: enforce Coupon.perUserLimit, which the order path never checked
+      // (CouponRedemption is unique only on orderId, so there is no DB backstop,
+      // letting one customer redeem a legacy coupon unlimited times). Lock the
+      // coupon row FOR UPDATE so concurrent checkouts by the same user serialize,
+      // then count this user's prior redemptions.
+      await tx.$executeRaw`SELECT "id" FROM "Coupon" WHERE "id" = ${coupon.id} FOR UPDATE`;
+      const priorForUser = await tx.couponRedemption.count({ where: { couponId: coupon.id, userId: input.customerId } });
+      if (priorForUser >= coupon.perUserLimit) {
+        throw new Error('You have already used this coupon the maximum number of times.');
+      }
       await tx.couponRedemption.create({
         data: { couponId: coupon.id, orderId: o.id, userId: input.customerId, amountOff: couponAmount as any }
       });
