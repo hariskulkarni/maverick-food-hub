@@ -5,8 +5,10 @@
  * For each restaurant with a CONNECTED GOOGLE_BUSINESS integration: pull
  * reviews, upsert them, and for NEW ones apply the rating policy — 4-5* is
  * auto-posted, 1-3* becomes a PENDING_APPROVAL draft. A per-review error is
- * parked as FAILED and never aborts the sweep. An advisory lock prevents two
- * overlapping sweeps from double-replying.
+ * parked as FAILED and never aborts the sweep. A per-restaurant error (list,
+ * config or DB) is logged and skips only that restaurant. A reply that Google
+ * already accepted is never recorded as FAILED, so it cannot be re-posted by
+ * hand. An advisory lock prevents two overlapping sweeps from double-replying.
  */
 import { prisma } from '@/server/db';
 import { log } from '@/server/log';
@@ -16,6 +18,8 @@ import { decideReplyAction } from '@/server/reviews/policy';
 import { upsertReview, getAutoReplyConfig, saveReply } from '@/server/reviews/store';
 
 const LOCK_KEY = 889_201_774; // arbitrary unique advisory-lock id for this sweep
+
+type Generated = Awaited<ReturnType<typeof generateReviewReply>>;
 
 export async function runGoogleReviewsSweep() {
   const result = { restaurantsScanned: 0, reviewsFound: 0, newReviews: 0, autoPosted: 0, drafted: 0, failed: 0 };
@@ -30,35 +34,62 @@ export async function runGoogleReviewsSweep() {
     });
     for (const { restaurantId } of connected) {
       result.restaurantsScanned++;
-      let reviews;
       try {
-        reviews = await listReviews(restaurantId);
-      } catch (e: any) {
-        log.error('reviews.sweep.list_failed', { restaurantId, error: String(e?.message || e) });
-        continue;
-      }
-      result.reviewsFound += reviews.length;
-      const cfg = await getAutoReplyConfig(restaurantId);
-      for (const r of reviews) {
-        const { id, isNew } = await upsertReview(restaurantId, r);
-        if (!isNew) continue;
-        result.newReviews++;
-        const action = decideReplyAction(r.rating, cfg);
-        if (action === 'SKIP') continue;
+        let reviews;
         try {
-          const gen = await generateReviewReply({ restaurantId, rating: r.rating, comment: r.comment, tone: cfg?.tonePrompt });
-          if (action === 'AUTO_POST') {
-            await postReply(restaurantId, r.googleReviewId, gen.text);
-            await saveReply({ reviewId: id, restaurantId, text: gen.text, state: 'POSTED', source: 'AUTO', llmProvider: gen.provider, llmModel: gen.model, postedAt: new Date() });
-            result.autoPosted++;
-          } else {
-            await saveReply({ reviewId: id, restaurantId, text: gen.text, state: 'PENDING_APPROVAL', source: 'AUTO', llmProvider: gen.provider, llmModel: gen.model });
-            result.drafted++;
-          }
+          reviews = await listReviews(restaurantId);
         } catch (e: any) {
-          await saveReply({ reviewId: id, restaurantId, text: '', state: 'FAILED', source: 'AUTO', error: String(e?.message || e).slice(0, 300) });
-          result.failed++;
+          log.error('reviews.sweep.list_failed', { restaurantId, error: String(e?.message || e) });
+          continue;
         }
+        result.reviewsFound += reviews.length;
+        const cfg = await getAutoReplyConfig(restaurantId);
+        for (const r of reviews) {
+          const { id, isNew } = await upsertReview(restaurantId, r);
+          if (!isNew) continue;
+          result.newReviews++;
+          const action = decideReplyAction(r.rating, cfg);
+          if (action === 'SKIP') continue;
+
+          let gen: Generated | undefined;
+          let posted = false;
+          try {
+            gen = await generateReviewReply({ restaurantId, rating: r.rating, comment: r.comment, tone: cfg?.tonePrompt });
+            if (action === 'AUTO_POST') {
+              await postReply(restaurantId, r.googleReviewId, gen.text);
+              posted = true;
+              await saveReply({ reviewId: id, restaurantId, text: gen.text, state: 'POSTED', source: 'AUTO', llmProvider: gen.provider, llmModel: gen.model, postedAt: new Date() });
+              result.autoPosted++;
+            } else {
+              await saveReply({ reviewId: id, restaurantId, text: gen.text, state: 'PENDING_APPROVAL', source: 'AUTO', llmProvider: gen.provider, llmModel: gen.model });
+              result.drafted++;
+            }
+          } catch (e: any) {
+            const msg = String(e?.message || e);
+            if (posted && gen) {
+              // Google already has the reply. Record it as POSTED, never FAILED.
+              try {
+                await saveReply({
+                  reviewId: id, restaurantId, text: gen.text, state: 'POSTED', source: 'AUTO',
+                  llmProvider: gen.provider, llmModel: gen.model, postedAt: new Date(),
+                  error: `post succeeded; delayed record: ${msg}`.slice(0, 300),
+                });
+                result.autoPosted++;
+              } catch (se: any) {
+                log.error('reviews.sweep.posted_unrecorded', { restaurantId, googleReviewId: r.googleReviewId, error: String(se?.message || se) });
+              }
+            } else {
+              try {
+                await saveReply({ reviewId: id, restaurantId, text: gen?.text ?? '', state: 'FAILED', source: 'AUTO', error: msg.slice(0, 300) });
+              } catch (se: any) {
+                log.error('reviews.sweep.fail_save', { restaurantId, googleReviewId: r.googleReviewId, error: String(se?.message || se) });
+              }
+              result.failed++;
+            }
+          }
+        }
+      } catch (e: any) {
+        log.error('reviews.sweep.restaurant_failed', { restaurantId, error: String(e?.message || e) });
       }
     }
   } finally {

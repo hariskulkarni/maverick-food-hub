@@ -62,6 +62,46 @@ describe('runGoogleReviewsSweep', () => {
     expect(r.failed).toBe(1);
   });
 
+  it('a listReviews failure for one restaurant does not stop the next restaurant', async () => {
+    db.integrationCredential.findMany.mockResolvedValue([{ restaurantId: 'rest1' }, { restaurantId: 'rest2' }]);
+    g.listReviews.mockImplementation(async (id: string) => {
+      if (id === 'rest1') throw new Error('google down');
+      return [{ googleReviewId: 'rev5b', reviewerName: 'D', rating: 5, comment: 'Nice', reviewCreatedAt: new Date() }];
+    });
+    store.upsertReview.mockResolvedValue({ id: 'g5', isNew: true });
+    llm.generateReviewReply.mockResolvedValue({ text: 'Thanks!', provider: 'nvidia', model: 'm' });
+    const r = await runGoogleReviewsSweep();
+    expect(r.restaurantsScanned).toBe(2);
+    expect(g.postReply).toHaveBeenCalledWith('rest2', 'rev5b', 'Thanks!');
+    expect(r.autoPosted).toBe(1);
+  });
+
+  it('a DB error for one restaurant (config lookup) does not stop the next restaurant', async () => {
+    db.integrationCredential.findMany.mockResolvedValue([{ restaurantId: 'rest1' }, { restaurantId: 'rest2' }]);
+    g.listReviews.mockResolvedValue([{ googleReviewId: 'rev5c', reviewerName: 'E', rating: 5, comment: 'Ok', reviewCreatedAt: new Date() }]);
+    store.getAutoReplyConfig.mockRejectedValueOnce(new Error('db down'));
+    store.getAutoReplyConfig.mockResolvedValueOnce({ enabled: true, autoPostMinRating: 4, draftMaxRating: 3, tonePrompt: null });
+    store.upsertReview.mockResolvedValue({ id: 'g6', isNew: true });
+    llm.generateReviewReply.mockResolvedValue({ text: 'Thanks!', provider: 'nvidia', model: 'm' });
+    const r = await runGoogleReviewsSweep();
+    expect(r.restaurantsScanned).toBe(2);
+    expect(g.postReply).toHaveBeenCalledTimes(1);
+    expect(g.postReply).toHaveBeenCalledWith('rest2', 'rev5c', 'Thanks!');
+  });
+
+  it('a post that succeeds but whose POSTED save throws is not recorded as FAILED', async () => {
+    g.listReviews.mockResolvedValue([{ googleReviewId: 'rev10', reviewerName: 'F', rating: 5, comment: 'Yum', reviewCreatedAt: new Date() }]);
+    store.upsertReview.mockResolvedValue({ id: 'g7', isNew: true });
+    llm.generateReviewReply.mockResolvedValue({ text: 'Thanks!', provider: 'nvidia', model: 'm' });
+    store.saveReply.mockRejectedValueOnce(new Error('db write failed'));
+    const r = await runGoogleReviewsSweep();
+    expect(g.postReply).toHaveBeenCalledWith('rest1', 'rev10', 'Thanks!');
+    expect(store.saveReply).not.toHaveBeenCalledWith(expect.objectContaining({ state: 'FAILED' }));
+    expect(store.saveReply).toHaveBeenLastCalledWith(expect.objectContaining({ state: 'POSTED', text: 'Thanks!' }));
+    expect(r.failed).toBe(0);
+    expect(r.autoPosted).toBe(1);
+  });
+
   it('does not re-reply to reviews that already existed', async () => {
     g.listReviews.mockResolvedValue([{ googleReviewId: 'rev9', reviewerName: 'A', rating: 5, comment: 'Great', reviewCreatedAt: new Date() }]);
     store.upsertReview.mockResolvedValue({ id: 'g1', isNew: false });
