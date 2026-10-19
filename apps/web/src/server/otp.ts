@@ -106,17 +106,43 @@ function genCode(): string {
 
 export type OtpMode = 'demo' | 'production';
 
+/** C9: whether a real SMS/WhatsApp delivery provider is configured. When true,
+ * demo mode (which surfaces OTP codes) must never be active regardless of what
+ * the DB otpMode says. */
+export function realOtpDeliveryConfigured(): boolean {
+  return DELIVERY_IS_REAL;
+}
+
 export async function getOtpMode(): Promise<OtpMode> {
+  let mode: OtpMode = OTP_DEMO_MODE ? 'demo' : 'production';
   try {
     const cfg = await getPlatformSecurity();
     const m = (cfg as Record<string, unknown>).otpMode;
-    if (m === 'demo' || m === 'production') return m;
-  } catch { /* fall through */ }
-  return OTP_DEMO_MODE ? 'demo' : 'production';
+    if (m === 'demo' || m === 'production') mode = m;
+  } catch { /* fall through to the env default */ }
+  // C9: the boot guard only inspects env, but getOtpMode resolves from the DB,
+  // which takes precedence and is flippable at runtime from /platform/security.
+  // Enforce the same invariant at the point of use: a real provider forbids
+  // demo, so live OTP codes can never be surfaced by toggling the DB value.
+  if (mode === 'demo' && DELIVERY_IS_REAL) {
+    log.error(
+      '[otp] ignoring otpMode=demo: a real SMS/WhatsApp provider is configured; ' +
+        'forcing production mode so live OTP codes are not surfaced.'
+    );
+    return 'production';
+  }
+  return mode;
 }
 
 export async function setOtpMode(mode: OtpMode): Promise<OtpMode> {
   const m: OtpMode = mode === 'production' ? 'production' : 'demo';
+  // C9: refuse to persist demo mode while a real provider is configured.
+  if (m === 'demo' && DELIVERY_IS_REAL) {
+    throw new Error(
+      'Cannot enable OTP demo mode while a real SMS/WhatsApp provider is configured — ' +
+        'it would surface live OTP codes in API responses and logs.'
+    );
+  }
   await setPlatformSecurity({ otpMode: m } as unknown as Parameters<typeof setPlatformSecurity>[0]);
   return m;
 }
