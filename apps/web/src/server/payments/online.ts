@@ -116,6 +116,25 @@ export async function startOnlinePayment(
   const attempt = order.payments.filter((p) => isOnlineMethod(p.method)).length + 1;
   const merchantOrderId = `${order.id}-${attempt}`;
 
+  // H13: create the local Payment row BEFORE calling the gateway. Previously the
+  // gateway order was minted first; if the row insert failed or the process died
+  // in between, the customer had a live PayPage they could pay with no record
+  // anywhere, and the webhook/sweeper had nothing to attach to. providerRef is
+  // seeded with merchantOrderId (locatable on a crash) and filled with the real
+  // gateway ref after createOrder succeeds; a gateway failure marks the row FAILED.
+  const payment = await prisma.payment.create({
+    data: {
+      orderId: order.id,
+      method: isOnlineMethod(method) ? method : PaymentMethod.RAZORPAY,
+      status: PaymentStatus.PENDING,
+      amount: amount as any,
+      currency: order.currency || 'INR',
+      providerName: provider.name,
+      providerRef: merchantOrderId,
+      providerData: { _merchantOrderId: merchantOrderId, _attempt: attempt } as any,
+    },
+  });
+
   let providerOrder: ProviderOrder;
   try {
     providerOrder = await provider.createOrder({
@@ -131,19 +150,18 @@ export async function startOnlinePayment(
     });
   } catch (e) {
     log.error({ err: (e as Error).message, orderId: order.id, provider: provider.name }, 'gateway createOrder failed');
+    await prisma.payment
+      .update({ where: { id: payment.id }, data: { status: PaymentStatus.FAILED, errorMessage: (e as Error).message } })
+      .catch(() => {});
     throw new OnlinePaymentError(
       `Could not start the payment: ${(e as Error).message}`,
       502,
     );
   }
 
-  const payment = await prisma.payment.create({
+  await prisma.payment.update({
+    where: { id: payment.id },
     data: {
-      orderId: order.id,
-      method: isOnlineMethod(method) ? method : PaymentMethod.RAZORPAY,
-      status: PaymentStatus.PENDING,
-      amount: amount as any,
-      currency: order.currency || 'INR',
       providerName: providerOrder.providerName,
       providerRef: providerOrder.providerOrderId,
       providerData: {

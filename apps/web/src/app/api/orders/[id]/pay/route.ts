@@ -38,6 +38,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!isOnlineMethod(order.paymentMethod)) {
     return Response.json({ error: 'This order is not an online payment.', reason: 'bad_method' }, { status: 400 });
   }
+  // H14: only an order still awaiting payment may open a checkout. Previously
+  // there was no status check, so a CANCELLED/REFUNDED/DELIVERED order could be
+  // paid. Allow-list the pre-fulfilment payable states (fails closed).
+  const PAYABLE = ['PAYMENT_PENDING', 'PAYMENT_FAILED'];
+  if (!PAYABLE.includes(order.status)) {
+    return Response.json({ error: 'This order can no longer be paid.', reason: 'not_payable' }, { status: 409 });
+  }
 
   try {
     const paySession = await startOnlinePayment(order.id);
