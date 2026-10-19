@@ -38,5 +38,5 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # (route docs say daily ~06:00; the sender debounces per branch ~every 3 days)
 0 6 * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 120 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/food-license-expiry/run >> /var/log/restaurant-manager/jobs.log 2>&1
 
-# Google reviews — sync new reviews and apply the auto-reply policy.
-*/10 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 90 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/google-reviews/run >> /var/log/restaurant-manager/jobs.log 2>&1
+# Google reviews — sync new reviews + apply auto-reply policy. Once daily (03:00 IST).
+0 3 * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 90 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/google-reviews/run >> /var/log/restaurant-manager/jobs.log 2>&1
