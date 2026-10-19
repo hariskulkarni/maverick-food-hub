@@ -139,6 +139,22 @@ export async function listLocations(refreshToken: string, account: string): Prom
   return String(data?.locations?.[0]?.name ?? '');
 }
 
+/** All locations under `account` as { id: full resource name, title }. */
+export async function listAllLocations(
+  refreshToken: string, account: string,
+): Promise<Array<{ id: string; title: string }>> {
+  const token = await accessToken(refreshToken);
+  const res = await fetch(`${BIZINFO}/${account}/locations?readMask=name,title&pageSize=100`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`google locations ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const data = await res.json();
+  const locs = Array.isArray(data?.locations) ? data.locations : [];
+  return locs
+    .filter((l: any) => l?.name)
+    .map((l: any) => ({ id: String(l.name), title: String(l.displayName ?? l.title ?? l.name) }));
+}
+
 /** Single-location happy path: first account, first location. Empty strings if not found. */
 export async function discoverAccountAndLocation(
   refreshToken: string,

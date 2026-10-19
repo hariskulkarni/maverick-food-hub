@@ -511,7 +511,18 @@ const GoogleBusiness: ProviderDef = {
   description: 'Connect your Google Business Profile to read and reply to reviews.',
   docsUrl: 'https://support.google.com/business/answer/3474122',
   fields: [], // OAuth; no paste fields
-  buildSummary: (c) => ({ accountId: c.accountId ?? null, locationId: c.locationId ?? null }),
+  buildSummary: (c) => {
+    let locations: Array<{ id: string; title: string }> = [];
+    try {
+      const parsed = JSON.parse(c.locations || '[]');
+      if (Array.isArray(parsed)) {
+        locations = parsed
+          .filter((l: any) => l && typeof l.id === 'string')
+          .map((l: any) => ({ id: l.id, title: String(l.title ?? l.id) }));
+      }
+    } catch { /* malformed -> empty */ }
+    return { accountId: c.accountId ?? null, locationId: c.locationId ?? null, locations };
+  },
   async test() { return { ok: true, detail: 'Connected via OAuth' }; },
 };
 
