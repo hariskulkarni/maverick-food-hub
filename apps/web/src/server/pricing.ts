@@ -129,15 +129,30 @@ export function pricing(inp: PricingInputs): PricingResult {
   const taxable = Math.max(0, subtotal - discount);
   const taxAmount = clampTwo((taxable * inp.taxRatePct) / 100);
 
-  const wallet = clampTwo(Math.max(0, inp.walletApplied ?? 0));
-  const loyalty = clampTwo(Math.max(0, inp.loyaltyApplied ?? 0));
+  // C4: cap each tender at what is still owed at the point it is applied, in
+  // the existing order (discount and tax already folded into the owed figure,
+  // then wallet → loyalty → signup bonus). Previously only `total` was clamped;
+  // `walletApplied`/`loyaltyApplied` were returned uncapped and debited verbatim
+  // by placeOrder, so a ₹100 order against a ₹500 wallet destroyed ₹400 of
+  // customer balance and left it unrecoverable (refunds cap at order.total).
+  const requestedWallet = clampTwo(Math.max(0, inp.walletApplied ?? 0));
+  // Loyalty redeems as whole points at 1pt = ₹1, so keep it an integer.
+  const requestedLoyalty = Math.max(0, Math.floor(inp.loyaltyApplied ?? 0));
+
+  const owedBeforeTenders = Math.max(0, subtotal + taxAmount + deliveryFee + packagingFee - discount);
+
+  const wallet = clampTwo(Math.min(requestedWallet, owedBeforeTenders));
+  const owedAfterWallet = Math.max(0, clampTwo(owedBeforeTenders - wallet));
+
+  const loyalty = Math.min(requestedLoyalty, Math.floor(owedAfterWallet));
+  const owedAfterLoyalty = Math.max(0, clampTwo(owedAfterWallet - loyalty));
+
   // Signup bonus is layered last so an aggressive total can't drag below 0.
   // The bonus engine already capped this to the per-order ceiling and the
   // grant's remaining balance, so we just clamp here defensively.
-  const remainingOwed = Math.max(0, subtotal + taxAmount + deliveryFee + packagingFee - discount - wallet - loyalty);
-  const signupBonus = clampTwo(Math.max(0, Math.min(remainingOwed, inp.signupBonusApplied ?? 0)));
+  const signupBonus = clampTwo(Math.max(0, Math.min(owedAfterLoyalty, inp.signupBonusApplied ?? 0)));
 
-  const total = clampTwo(Math.max(0, remainingOwed - signupBonus));
+  const total = clampTwo(Math.max(0, owedAfterLoyalty - signupBonus));
 
   return {
     subtotal,
