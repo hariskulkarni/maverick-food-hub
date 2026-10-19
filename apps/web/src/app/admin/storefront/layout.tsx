@@ -1,6 +1,7 @@
 import { requireRestaurant, accessibleRestaurants } from '@/server/tenancy';
 import { CmsRestaurantPicker } from './cms-restaurant-picker';
 import { CmsTabs } from './cms-tabs';
+import { LogoMark } from '@/components/brand/logo';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,12 +20,14 @@ export default async function StorefrontCmsLayout({ children }: { children: Reac
   return (
     <div>
       <div className="px-6 pt-6 space-y-4">
-        <header>
-          <h1 className="display text-3xl font-semibold">Storefront CMS</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Your restaurant control center — page design, menu, promotions, operations, team, insights and integrations.
-            Public page: <span className="font-mono">/r/{restaurant.slug}</span>.
-          </p>
+        <header className="flex items-center gap-3 sm:gap-4">
+          <LogoMark className="size-11 shrink-0 sm:size-12" />
+          <div className="min-w-0">
+            <h1 className="display text-gradient-brand text-2xl font-semibold sm:text-3xl">Storefront</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Design your public storefront, menu, promotions, and integrations.
+            </p>
+          </div>
         </header>
 
         {access.flat.length > 1 && (
