@@ -72,10 +72,9 @@ function GoogleCard({ part }: { part: Part }) {
         ) : (
           <p className="text-xs text-muted-foreground">Connect your Google Business Profile so Flavrly can pull reviews and post replies.</p>
         )}
-        <Button asChild size="sm" variant={connected ? 'outline' : 'default'}>
-          <a href="/api/admin/integrations/google-business/connect">
-            <ExternalLink className="size-3.5" /> {connected ? 'Reconnect Google' : 'Connect Google Business'}
-          </a>
+        <Button size="sm" variant={connected ? 'outline' : 'default'}
+          onClick={() => { window.location.href = '/api/admin/integrations/google-business/connect'; }}>
+          <ExternalLink className="size-3.5" /> {connected ? 'Reconnect Google' : 'Connect Google Business'}
         </Button>
       </CardContent>
     </Card>
