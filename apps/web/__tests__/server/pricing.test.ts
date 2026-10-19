@@ -133,6 +133,50 @@ describe('pricing — wallet / total clamping', () => {
       walletApplied: 9999
     });
     expect(r.total).toBe(0);
+    // C4: wallet must be capped at the amount actually owed, not returned
+    // verbatim and debited in full. base: subtotal 50 + tax 2.5 + delivery 40.
+    expect(r.walletApplied).toBe(92.5);
+  });
+
+  it('C4: caps walletApplied at the amount owed (no tax/delivery)', () => {
+    const r = pricing({
+      ...base,
+      taxRatePct: 0,
+      baseDeliveryFee: 0,
+      perKmDeliveryFee: 0,
+      lines: [{ unitPrice: 100, quantity: 1 }],
+      walletApplied: 500
+    });
+    expect(r.walletApplied).toBe(100);
+    expect(r.total).toBe(0);
+  });
+
+  it('C4: caps loyaltyApplied at the amount owed, as whole points', () => {
+    const r = pricing({
+      ...base,
+      taxRatePct: 0,
+      baseDeliveryFee: 0,
+      perKmDeliveryFee: 0,
+      lines: [{ unitPrice: 100, quantity: 1 }],
+      loyaltyApplied: 500
+    });
+    expect(r.loyaltyApplied).toBe(100);
+    expect(r.total).toBe(0);
+  });
+
+  it('C4: applies wallet then loyalty against the running balance', () => {
+    const r = pricing({
+      ...base,
+      taxRatePct: 0,
+      baseDeliveryFee: 0,
+      perKmDeliveryFee: 0,
+      lines: [{ unitPrice: 100, quantity: 1 }],
+      walletApplied: 60,
+      loyaltyApplied: 500
+    });
+    expect(r.walletApplied).toBe(60);
+    expect(r.loyaltyApplied).toBe(40); // only 40 still owed after wallet
+    expect(r.total).toBe(0);
   });
 });
 

@@ -102,17 +102,26 @@ export async function grantFreebieTx(
 
 /**
  * Restore one unit of stock to a freebie rule — used when an order that
- * received a freebie is cancelled, or when an admin removes the freebie from
- * an order before prep. Decrements totalGranted too so reporting stays honest.
- * Best-effort: a missing rule (deleted since) is a no-op.
+ * received a freebie is cancelled/refunded, or when an admin removes the freebie
+ * from an order before prep. Decrements totalGranted too so reporting stays
+ * honest.
+ *
+ * H9: idempotent. This fires on CANCELLED*, REFUNDED and PAYMENT_FAILED, so a
+ * cancel-then-refund used to call it twice — inflating stock and driving
+ * totalGranted negative. The order's own freebieRuleId is the idempotency guard:
+ * clear it atomically and only restore when we were the one that cleared it.
  */
-export async function restoreFreebieStock(ruleId: string): Promise<void> {
-  await prisma.freebieRule
-    .update({
-      where: { id: ruleId },
-      data: { stock: { increment: 1 }, totalGranted: { decrement: 1 } },
-    })
-    .catch(() => {
-      /* rule deleted — nothing to restore */
+export async function restoreFreebieStock(orderId: string, ruleId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const cleared = await tx.order.updateMany({
+      where: { id: orderId, freebieRuleId: ruleId },
+      data: { freebieRuleId: null },
     });
+    if (cleared.count === 0) return; // already restored (or never granted this rule)
+    await tx.freebieRule
+      .update({ where: { id: ruleId }, data: { stock: { increment: 1 }, totalGranted: { decrement: 1 } } })
+      .catch(() => {
+        /* rule deleted — the order link is already cleared, nothing to restore */
+      });
+  });
 }

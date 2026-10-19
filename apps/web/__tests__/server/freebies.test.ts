@@ -15,12 +15,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const findMany = vi.fn();
 const updateMany = vi.fn();
 const update = vi.fn();
+const orderUpdateMany = vi.fn();
 vi.mock('@/server/db', () => ({
   prisma: {
     freebieRule: {
       findMany: (...a: unknown[]) => findMany(...a),
       update: (...a: unknown[]) => update(...a),
     },
+    order: { updateMany: (...a: unknown[]) => orderUpdateMany(...a) },
+    $transaction: async (fn: any) =>
+      fn({
+        order: { updateMany: (...a: unknown[]) => orderUpdateMany(...a) },
+        freebieRule: { update: (...a: unknown[]) => update(...a) },
+      }),
   },
 }));
 
@@ -34,6 +41,7 @@ beforeEach(() => {
   findMany.mockReset();
   updateMany.mockReset();
   update.mockReset();
+  orderUpdateMany.mockReset();
 });
 
 describe('resolveQualifyingFreebie', () => {
@@ -105,20 +113,28 @@ describe('grantFreebieTx', () => {
   });
 });
 
-describe('restoreFreebieStock', () => {
-  it('increments stock + decrements totalGranted', async () => {
+describe('restoreFreebieStock (H9 — idempotent)', () => {
+  it('restores once while the order link is still set', async () => {
+    orderUpdateMany.mockResolvedValue({ count: 1 });
     update.mockResolvedValue({});
-    await restoreFreebieStock('r1');
+    await restoreFreebieStock('o1', 'r1');
+    expect(orderUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'o1', freebieRuleId: 'r1' }, data: { freebieRuleId: null } })
+    );
     expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'r1' },
-        data: { stock: { increment: 1 }, totalGranted: { decrement: 1 } },
-      })
+      expect.objectContaining({ where: { id: 'r1' }, data: { stock: { increment: 1 }, totalGranted: { decrement: 1 } } })
     );
   });
 
+  it('is a no-op when already restored (order link cleared, count 0)', async () => {
+    orderUpdateMany.mockResolvedValue({ count: 0 });
+    await restoreFreebieStock('o1', 'r1');
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('swallows errors when the rule no longer exists', async () => {
+    orderUpdateMany.mockResolvedValue({ count: 1 });
     update.mockRejectedValue(new Error('record not found'));
-    await expect(restoreFreebieStock('gone')).resolves.toBeUndefined();
+    await expect(restoreFreebieStock('o1', 'gone')).resolves.toBeUndefined();
   });
 });

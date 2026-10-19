@@ -6,8 +6,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db: any = vi.hoisted(() => ({
   order: { findUnique: vi.fn() },
-  payment: { create: vi.fn(), findMany: vi.fn() },
+  payment: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn(), count: vi.fn() },
   refund: { findMany: vi.fn() },
+  $queryRaw: vi.fn(),
 }));
 const payments = vi.hoisted(() => ({ paymentProvider: vi.fn() }));
 const reconcile = vi.hoisted(() => ({
@@ -55,6 +56,9 @@ function order(over: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   db.payment.create.mockImplementation(async ({ data }: any) => ({ id: 'pay_new', ...data }));
+  db.payment.update.mockResolvedValue({});
+  db.payment.count.mockResolvedValue(0);
+  db.$queryRaw.mockResolvedValue([{ locked: true }]); // H15 advisory lock acquired
   payments.paymentProvider.mockResolvedValue({ name: 'phonepe', createOrder: vi.fn().mockResolvedValue(providerOrder) });
 });
 
@@ -75,6 +79,8 @@ describe('startOnlinePayment', () => {
     db.order.findUnique.mockResolvedValue(order());
     const session = await startOnlinePayment('ord_1');
 
+    // H13: the PENDING row is created BEFORE the gateway call (seeded with the
+    // merchant order id), then UPDATED with the real provider refs + metadata.
     const created = db.payment.create.mock.calls[0][0].data;
     expect(created).toMatchObject({
       orderId: 'ord_1',
@@ -83,11 +89,12 @@ describe('startOnlinePayment', () => {
       providerName: 'phonepe',
       providerRef: 'ord_1-1',
     });
-    // The PayPage expiry is stored so the sweeper can tell a dead checkout from
-    // a slow one.
-    expect(created.providerData._expireAt).toBe(1900000000000);
     expect(created.providerData._attempt).toBe(1);
-    expect(created.providerData._gatewayOrderId).toBe('OMO1');
+    // The gateway refs + PayPage expiry land on the follow-up update.
+    const updated = db.payment.update.mock.calls[0][0].data;
+    expect(updated.providerRef).toBe('ord_1-1');
+    expect(updated.providerData._expireAt).toBe(1900000000000);
+    expect(updated.providerData._gatewayOrderId).toBe('OMO1');
 
     expect(session).toMatchObject({
       paymentId: 'pay_new',
@@ -140,14 +147,20 @@ describe('startOnlinePayment', () => {
     expect(db.payment.create.mock.calls[0][0].data.amount).toBe(250);
   });
 
-  it('surfaces a gateway failure as a 502 and writes no Payment row', async () => {
+  it('surfaces a gateway failure as a 502 and marks the pre-created row FAILED (H13)', async () => {
     db.order.findUnique.mockResolvedValue(order());
     payments.paymentProvider.mockResolvedValue({
       name: 'phonepe',
       createOrder: vi.fn().mockRejectedValue(new Error('PhonePe is down')),
     });
     await expect(startOnlinePayment('ord_1')).rejects.toMatchObject({ status: 502 });
-    expect(db.payment.create).not.toHaveBeenCalled();
+    // H13: the row is created BEFORE the gateway call (so money can never be
+    // captured against a gateway order with no local record) and then marked
+    // FAILED when the gateway call throws.
+    expect(db.payment.create).toHaveBeenCalled();
+    expect(db.payment.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED' }) })
+    );
   });
 
   it('passes order context through for metaInfo', async () => {

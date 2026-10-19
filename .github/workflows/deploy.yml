@@ -1,8 +1,18 @@
 name: Deploy to VPS
+# C14.1: deploy must never run on a push that failed CI. It triggers only after
+# the "CI" workflow (typecheck, lint, tests, gitleaks) completes successfully on
+# main, or on a manual dispatch.
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      migrate:
+        description: "Apply schema migration on the VPS (pass --migrate)"
+        type: boolean
+        default: false
 concurrency:
   group: deploy-production
   cancel-in-progress: true
@@ -10,6 +20,10 @@ jobs:
   deploy:
     name: Deploy production
     runs-on: ubuntu-latest
+    # Only deploy on a successful CI run, or an explicit manual dispatch.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     steps:
       - name: Configure SSH
         run: |
@@ -20,13 +34,18 @@ jobs:
       - name: Deploy over SSH (with retry)
         env:
           APP_DIR: ${{ vars.APP_DIR || '/opt/restaurant-manager' }}
+          # C14.2: schema changes are applied only on an explicit manual dispatch
+          # with migrate=true. On every other deploy, deploy-remote.sh detects a
+          # pending schema change and fails loudly rather than running new code
+          # against the old schema.
+          MIGRATE_FLAG: ${{ (github.event_name == 'workflow_dispatch' && inputs.migrate) && '--migrate' || '' }}
         run: |
           for attempt in 1 2 3; do
             echo "== deploy attempt $attempt =="
             if ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
                  -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=8 \
                  "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-                 "bash -lc 'cd ${APP_DIR} && git fetch origin main && git reset --hard origin/main && ./scripts/deploy-remote.sh'"; then
+                 "bash -lc 'cd ${APP_DIR} && git fetch origin main && git reset --hard origin/main && ./scripts/deploy-remote.sh ${MIGRATE_FLAG}'"; then
               echo "deploy ok on attempt $attempt"; exit 0
             fi
             echo "attempt $attempt failed; retrying in 15s"; sleep 15

@@ -23,8 +23,16 @@ export interface StorageDriver {
  *  gitignored public/uploads/ tree (matches the .gitignore rule and keeps the
  *  static-asset URL namespace single-rooted). Trims any duplicate `uploads/`
  *  prefix a caller may have already added. */
-function buildKey(name: string, folder: string | undefined): string {
-  const ext = path.extname(name) || '.bin';
+// H5: the stored extension used to come verbatim from the attacker-controlled
+// filename, so `evil.html` was written to disk and nginx (which serves /uploads
+// from disk by extension, bypassing the app's CSP/nosniff) returned it as
+// text/html → stored XSS on the app origin against staff. Whitelist the stored
+// extension to known-safe media types; anything else (.html, .svg, .php, …)
+// collapses to .bin so it can never be served as an executable/renderable doc.
+const SAFE_UPLOAD_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif', '.mp4', '.webm', '.mov']);
+export function buildKey(name: string, folder: string | undefined): string {
+  const raw = path.extname(name).toLowerCase();
+  const ext = SAFE_UPLOAD_EXT.has(raw) ? (raw === '.jpeg' ? '.jpg' : raw) : '.bin';
   const sub = (folder ?? 'misc').replace(/^uploads\/?/, '').replace(/^\/+|\/+$/g, '') || 'misc';
   return `uploads/${sub}/${Date.now()}-${nanoid(8)}${ext}`;
 }

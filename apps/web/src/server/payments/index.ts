@@ -181,6 +181,21 @@ export async function paymentProvider(restaurantId?: string | null): Promise<Pay
     if (process.env.RAZORPAY_KEY_ID) return razorpayProvider();
   }
 
+  // C1: never silently fall back to the auto-approving mock in production.
+  // Every unresolved path lands here — an unconfigured tenant, a rotated or
+  // undecryptable credential, a typo'd env key — and mockProvider.verifyPayment()
+  // returns { ok: true } for any input. A single missing env var would otherwise
+  // turn every production checkout into a free order, with no error or alert.
+  // Fail loud instead, unless this is an explicit dev/demo deployment.
+  if (process.env.NODE_ENV === 'production' && process.env.DEMO_MODE !== 'true') {
+    throw new Error(
+      `No payment gateway configured for restaurant ${restaurantId ?? '(platform/env)'}; ` +
+        `refusing to fall back to the mock payment provider in production. ` +
+        `Configure PhonePe or Razorpay credentials for this tenant, or set DEMO_MODE=true ` +
+        `if this is intentionally a demo deployment.`
+    );
+  }
+
   return mockProvider();
 }
 

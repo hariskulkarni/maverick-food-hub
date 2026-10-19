@@ -15,6 +15,7 @@ import { requireRestaurantAdminApi } from '@/server/api-auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { optionalString, parseOrJsonError } from '@/server/zod-helpers';
+import { clientIp } from '@/server/http/client-ip';
 
 export const dynamic = 'force-dynamic';
 
@@ -200,7 +201,7 @@ export async function POST(req: NextRequest) {
       entityType: 'Offer',
       entityId: created?.id ?? null,
       after: serialise(created),
-      ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+      ipAddress: clientIp(req.headers),
       userAgent: req.headers.get('user-agent') ?? undefined
     });
 

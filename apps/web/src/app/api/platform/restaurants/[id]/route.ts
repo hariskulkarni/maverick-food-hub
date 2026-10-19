@@ -184,9 +184,37 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const branches = await prisma.branch.findMany({ where: { restaurantId: id }, select: { id: true } });
   const branchIds = branches.map((b) => b.id);
 
-  if (!force && branchIds.length) {
+  if (branchIds.length) {
     const orderCount = await prisma.order.count({ where: { branchId: { in: branchIds } } });
-    if (orderCount > 0) return Response.json({ error: 'has_orders', orderCount }, { status: 409 });
+    if (orderCount > 0 && !force) {
+      return Response.json({ error: 'has_orders', orderCount }, { status: 409 });
+    }
+    // H31: even with ?force=1, refuse to hard-delete when financial records exist.
+    // Deleting orders cascade-deletes Payment/Refund/CodCollection while
+    // WalletTransaction/LoyaltyTransaction/SignupBonusLedger only SetNull — the
+    // opposing entries vanish and Wallet.balance can no longer be reconstructed
+    // from its own ledger. Reconcile/retain the money trail before deletion.
+    if (orderCount > 0 && force) {
+      const [payments, refunds, cod, walletTxns, loyaltyTxns, bonusLedger] = await Promise.all([
+        prisma.payment.count({ where: { order: { branchId: { in: branchIds } } } }),
+        prisma.refund.count({ where: { order: { branchId: { in: branchIds } } } }),
+        prisma.codCollection.count({ where: { order: { branchId: { in: branchIds } } } }),
+        prisma.walletTransaction.count({ where: { order: { branchId: { in: branchIds } } } }),
+        prisma.loyaltyTransaction.count({ where: { order: { branchId: { in: branchIds } } } }),
+        prisma.signupBonusLedger.count({ where: { order: { branchId: { in: branchIds } } } })
+      ]);
+      const financialRows = payments + refunds + cod + walletTxns + loyaltyTxns + bonusLedger;
+      if (financialRows > 0) {
+        return Response.json(
+          {
+            error: 'has_financial_history',
+            detail: 'This restaurant has payment/refund/wallet/loyalty/bonus records. Reconcile and retain those ledgers before deletion.',
+            counts: { payments, refunds, cod, walletTxns, loyaltyTxns, bonusLedger }
+          },
+          { status: 409 }
+        );
+      }
+    }
   }
 
   try {

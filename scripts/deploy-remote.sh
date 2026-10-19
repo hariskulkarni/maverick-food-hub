@@ -68,22 +68,42 @@ if [ "$MIGRATE" = true ]; then
   echo "==> [3/5] prisma db push (applying schema change)"
   npx prisma db push
 else
-  echo "==> [3/5] skipping schema migration (pass --migrate to apply)"
+  # C14.2: don't silently deploy new code against the old schema. Detect whether
+  # the committed Prisma schema would change the live DB and, if so, abort loudly
+  # instead of building. Re-run with --migrate (or the manual deploy dispatch
+  # with migrate=true) to apply it.
+  echo "==> [3/5] checking for pending schema changes"
+  if npx prisma migrate diff \
+        --from-schema-datasource prisma/schema.prisma \
+        --to-schema-datamodel prisma/schema.prisma \
+        --exit-code >/dev/null 2>&1; then
+    echo "    no schema drift — skipping migration"
+  else
+    diff_status=$?
+    if [ "$diff_status" = "2" ]; then
+      echo "ERROR: the committed Prisma schema differs from the live database, but --migrate was not passed."
+      echo "       Deploying now would run new code against the old schema. Re-deploy with --migrate"
+      echo "       (or the manual Deploy dispatch with migrate=true) to apply the schema change."
+      exit 1
+    fi
+    # Any other non-zero (e.g. diff tool error) is not a confirmed drift; warn and continue.
+    echo "    WARNING: could not determine schema drift (prisma migrate diff exit $diff_status); continuing without migration"
+  fi
 fi
 
 echo "==> [4/5] npm run build (runs prisma generate + next build)"
-# Always start from a clean .next. A build that fails midway (e.g. at the
-# type-check step) can leave a partial/corrupt .next that makes `next start`
-# crash-loop and serve 503s. Removing it first guarantees a clean, bootable
-# build every deploy.
+# C14.3: do NOT `rm -rf .next` before building. A failing build then leaves
+# nothing for `next start` to serve, taking prod fully down — and the retry
+# wiped it three times over. Clear only `.next/cache` (the safe reset that
+# scripts/fix-prod.sh already uses); a successful `next build` overwrites the
+# build output in place, so the previous bootable build survives a failed build.
 #
-# Next 15 also intermittently fails the FINAL 404/500 page-copy step with a
-# transient rename ENOENT (".next/export/500.html" -> ".next/server/pages/...").
-# It is not caused by our code — an identical clean rebuild succeeds. So retry
-# the build once on failure, wiping .next between attempts.
-build_once() { rm -rf .next; npm run build; }
+# Next 15 intermittently fails the FINAL 404/500 page-copy step with a transient
+# rename ENOENT. It is not caused by our code — an identical rebuild succeeds —
+# so retry the build once on failure, clearing only the cache between attempts.
+build_once() { rm -rf .next/cache; npm run build; }
 if ! build_once; then
-  echo "    build failed — retrying once after a clean .next (transient Next.js page-copy race)"
+  echo "    build failed — retrying once after clearing .next/cache (transient Next.js page-copy race)"
   sleep 2
   build_once
 fi

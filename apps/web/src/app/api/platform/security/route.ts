@@ -9,7 +9,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { getPlatformSecurity, setPlatformSecurity } from '@/server/2fa';
-import { getOtpMode, setOtpMode } from '@/server/otp';
+import { getOtpMode, setOtpMode, realOtpDeliveryConfigured } from '@/server/otp';
 import { audit } from '@/server/audit';
 import { parseOrJsonError } from '@/server/zod-helpers';
 
@@ -36,6 +36,14 @@ export async function PATCH(req: NextRequest) {
   const parsed = parseOrJsonError(PatchBody, await req.json());
   if (parsed instanceof Response) return parsed;
   const body = parsed;
+  // C9: refuse to switch OTP into demo mode while a real SMS/WhatsApp provider
+  // is configured — demo surfaces live OTP codes to any caller for any number.
+  if (body.otpMode === 'demo' && realOtpDeliveryConfigured()) {
+    return Response.json(
+      { error: 'Cannot enable OTP demo mode while a real SMS/WhatsApp provider is configured — it would surface live OTP codes.' },
+      { status: 400 }
+    );
+  }
   const before = await getPlatformSecurity();
   await setPlatformSecurity({
     allowlist: body.allowlist?.map((s) => s.trim()).filter(Boolean),

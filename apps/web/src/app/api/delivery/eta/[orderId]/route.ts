@@ -43,9 +43,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ord
   });
   if (!order) return new Response('Not found', { status: 404 });
 
-  // Light auth: customers may only check their own order. Other roles pass through.
+  // H3: require a session. Previously a null session skipped the CUSTOMER
+  // ownership check, so an unauthenticated caller holding an order id (resolvable
+  // from the public order code) got the live rider GPS-derived ETA.
   const session = await auth();
-  if (session?.user.role === 'CUSTOMER' && order.customerId !== session.user.id) {
+  if (!session?.user) return new Response('Unauthorized', { status: 401 });
+  if (session.user.role === 'CUSTOMER' && order.customerId !== session.user.id) {
     return new Response('Forbidden', { status: 403 });
   }
 

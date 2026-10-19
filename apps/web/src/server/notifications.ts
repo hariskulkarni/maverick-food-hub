@@ -271,15 +271,27 @@ async function dispatch(channel: Channel, args: SendArgs) {
     log.error({ err: (e as Error).message, channel, to: args.to, template: args.template }, 'notify dispatcher threw');
     result = { ok: false, error: (e as Error).message };
   }
+  // H6: never persist a live OTP code. The admin notifications view returns and
+  // can substring-search `body`, so journaling the raw "Your verification code is
+  // 123456" (and meta.otpCode) let a restaurant admin harvest live codes. Redact
+  // the code out of both the stored body and meta for OTP-template sends. The
+  // in-memory `args.body` used to actually deliver the SMS is untouched.
+  const isOtp = (args.template ?? '').startsWith('otp');
+  const storedBody = isOtp ? args.body.replace(/\d{4,8}/g, '••••') : args.body;
+  let storedMeta: unknown = args.meta;
+  if (isOtp && args.meta && typeof args.meta === 'object') {
+    const { otpCode: _drop, ...rest } = args.meta as Record<string, unknown>;
+    storedMeta = rest;
+  }
   await prisma.notificationLog.create({
     data: {
       userId: args.userId ?? null,
       channel,
       to: args.to,
       subject: args.subject,
-      body: args.body,
+      body: storedBody,
       template: args.template,
-      meta: args.meta as any,
+      meta: storedMeta as any,
       status: result.ok ? 'SENT' : 'FAILED',
       error: result.error,
       sentAt: result.ok ? new Date() : null

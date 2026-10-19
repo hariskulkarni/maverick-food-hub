@@ -494,7 +494,12 @@ export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
 
 export const PROVIDER_LIST: ProviderDef[] = [
   PhonePe,
-  Razorpay,
+  // H17: Razorpay is hidden from the admin integration wizard. Its customer
+  // browser handoff is not implemented (checkout-form.tsx just routes away
+  // without charging), so an admin enabling it created a rail no customer could
+  // complete. The PROVIDERS registry entry and razorpay.ts stay so any existing
+  // stored credential still resolves and can be removed. Re-add here once the
+  // browser handoff is built and QA'd against Razorpay test mode.
   TwoFactor, Msg91, Fast2Sms, TextLocal, TwilioSMS,
   TwilioWhatsApp,
   MetaWhatsApp,

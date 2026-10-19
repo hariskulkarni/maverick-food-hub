@@ -37,7 +37,15 @@ export interface SweepResult {
   ordersMarkedFailed: number;
   refundsScanned: number;
   refundsSettled: number;
+  /** H15: PENDING/AUTHORIZED phonepe payments older than MAX_AGE_MS that the
+   * sweep no longer reconciles — surfaced so monitoring can alert instead of
+   * silently stranding them. */
+  abandoned: number;
 }
+
+/** H15: a Postgres advisory-lock key so overlapping sweeps (cron overlap or a
+ * manual trigger landing on the cron) cannot double-process. */
+const SWEEP_LOCK_KEY = 4820154;
 
 /**
  * Only consider payments older than this. A payment created seconds ago is
@@ -75,7 +83,20 @@ export async function runPhonePeReconcileSweep(): Promise<SweepResult> {
     ordersMarkedFailed: 0,
     refundsScanned: 0,
     refundsSettled: 0,
+    abandoned: 0,
   };
+
+  // H15: overlap guard. Take a session advisory lock so two concurrent sweeps
+  // (a cron overlap, or a manual /run landing on the cron tick) can't both
+  // process the same rows. It auto-releases if the connection dies, so a crashed
+  // run can't wedge it, and it is honoured across PM2 instances (unlike an
+  // in-process flag).
+  const lockRows = await prisma.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${SWEEP_LOCK_KEY}) AS locked`;
+  if (!lockRows?.[0]?.locked) {
+    log.warn('phonepe reconcile sweep: another run holds the lock; skipping this tick');
+    return result;
+  }
+  try {
 
   // ── Payments ──────────────────────────────────────────────────────────────
   const pending = await prisma.payment.findMany({
@@ -147,8 +168,26 @@ export async function runPhonePeReconcileSweep(): Promise<SweepResult> {
     }
   }
 
-  if (result.paymentsScanned || result.refundsScanned) {
+  // H15: previously the payment query had a `gt: now - MAX_AGE_MS` lower bound
+  // that silently abandoned anything older than a day — a one-day cron outage
+  // stranded every payment pending during it, forever. Rather than re-query them
+  // blindly, count them and warn loudly so an operator/alert picks them up.
+  result.abandoned = await prisma.payment.count({
+    where: {
+      providerName: 'phonepe',
+      status: { in: [PaymentStatus.PENDING, PaymentStatus.AUTHORIZED] },
+      createdAt: { lt: new Date(now - MAX_AGE_MS) },
+    },
+  });
+  if (result.abandoned > 0) {
+    log.warn({ abandoned: result.abandoned }, 'phonepe reconcile sweep: payments older than MAX_AGE are still unresolved — operator attention needed');
+  }
+
+  if (result.paymentsScanned || result.refundsScanned || result.abandoned) {
     log.info(result as unknown as Record<string, unknown>, 'phonepe reconcile sweep complete');
   }
   return result;
+  } finally {
+    await prisma.$queryRaw`SELECT pg_advisory_unlock(${SWEEP_LOCK_KEY})`;
+  }
 }

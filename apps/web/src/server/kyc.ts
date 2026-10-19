@@ -247,10 +247,15 @@ export async function liveVerifyAndPersist(documentId: string, input: VerifyInpu
       verifierResponse: 'details' in outcome ? (outcome.details as any) : null,
       verifierExternalRef: 'externalRef' in outcome ? outcome.externalRef : null,
       verifiedAt: outcome.status === 'PASS' || outcome.status === 'FAIL' ? new Date() : null,
-      // PAN/DL auto-approve only when the verifier says PASS. Insurance/RC
-      // stay PENDING for human review because the photo of the certificate
-      // is what an admin actually inspects.
-      ...(outcome.status === 'PASS' && (input.type === 'PAN_CARD' || input.type === 'DRIVING_LICENSE')
+      // PAN/DL auto-approve only when a REAL verifier says PASS. Insurance/RC
+      // stay PENDING for human review because the photo of the certificate is
+      // what an admin actually inspects.
+      // C13: a mock PASS must NEVER auto-approve — the mock passes ~90% of
+      // format-valid documents at random. A mock PASS leaves the document
+      // PENDING for manual review.
+      ...(outcome.status === 'PASS' &&
+      outcome.provider !== 'mock' &&
+      (input.type === 'PAN_CARD' || input.type === 'DRIVING_LICENSE')
         ? { status: 'APPROVED', reviewedAt: new Date() }
         : {})
     }

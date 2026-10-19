@@ -27,6 +27,7 @@
  * Counters live in OtpAttempt; one row per phone+purpose, updated on each call.
  */
 import argon2 from 'argon2';
+import { randomInt } from 'node:crypto';
 import { prisma } from './db';
 import { notify } from './notifications';
 import { log } from './log';
@@ -101,29 +102,61 @@ if (IS_PROD && OTP_DEMO_MODE) {
   log.info(`[otp] rate-limit policy: ${policy}`);
 }
 function genCode(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  // H22: use a CSPRNG. Math.random() (V8 xorshift128+) is predictable from a run
+  // of outputs an attacker can mint for their own number. randomInt's upper bound
+  // is exclusive → the 100000–999999 six-digit space, unbiased.
+  return String(randomInt(100000, 1000000));
 }
 
 export type OtpMode = 'demo' | 'production';
 
+/** C9: whether a real SMS/WhatsApp delivery provider is configured. When true,
+ * demo mode (which surfaces OTP codes) must never be active regardless of what
+ * the DB otpMode says. */
+export function realOtpDeliveryConfigured(): boolean {
+  return DELIVERY_IS_REAL;
+}
+
 export async function getOtpMode(): Promise<OtpMode> {
+  let mode: OtpMode = OTP_DEMO_MODE ? 'demo' : 'production';
   try {
     const cfg = await getPlatformSecurity();
     const m = (cfg as Record<string, unknown>).otpMode;
-    if (m === 'demo' || m === 'production') return m;
-  } catch { /* fall through */ }
-  return OTP_DEMO_MODE ? 'demo' : 'production';
+    if (m === 'demo' || m === 'production') mode = m;
+  } catch { /* fall through to the env default */ }
+  // C9: the boot guard only inspects env, but getOtpMode resolves from the DB,
+  // which takes precedence and is flippable at runtime from /platform/security.
+  // Enforce the same invariant at the point of use: a real provider forbids
+  // demo, so live OTP codes can never be surfaced by toggling the DB value.
+  if (mode === 'demo' && DELIVERY_IS_REAL) {
+    log.error(
+      '[otp] ignoring otpMode=demo: a real SMS/WhatsApp provider is configured; ' +
+        'forcing production mode so live OTP codes are not surfaced.'
+    );
+    return 'production';
+  }
+  return mode;
 }
 
 export async function setOtpMode(mode: OtpMode): Promise<OtpMode> {
   const m: OtpMode = mode === 'production' ? 'production' : 'demo';
+  // C9: refuse to persist demo mode while a real provider is configured.
+  if (m === 'demo' && DELIVERY_IS_REAL) {
+    throw new Error(
+      'Cannot enable OTP demo mode while a real SMS/WhatsApp provider is configured — ' +
+        'it would surface live OTP codes in API responses and logs.'
+    );
+  }
   await setPlatformSecurity({ otpMode: m } as unknown as Parameters<typeof setPlatformSecurity>[0]);
   return m;
 }
 
 async function sendMsg91OtpDirect(phone: string, code: string): Promise<boolean> {
-  const authkey = process.env.MSG91_AUTHKEY;
-  if (!authkey) { log.error('[otp] MSG91_AUTHKEY missing; cannot send production OTP'); return false; }
+  // H26: canonical credential is MSG91_AUTH_KEY (the spelling in the deploy
+  // production example, both deploy docs, and the notifier). Fall back to the
+  // legacy MSG91_AUTHKEY so an existing deploy setting the old name keeps working.
+  const authkey = process.env.MSG91_AUTH_KEY ?? process.env.MSG91_AUTHKEY;
+  if (!authkey) { log.error('[otp] MSG91_AUTH_KEY missing; cannot send production OTP'); return false; }
   const mobile = phone.replace(/[^0-9]/g, '');
   const templateId = process.env.MSG91_TEMPLATE_ID;
   try {
@@ -151,34 +184,43 @@ async function sendMsg91OtpDirect(phone: string, code: string): Promise<boolean>
  * demo/mock mode every channel resolves to the mock adapter (code still
  * surfaced via devCode), so this is a no-op change for demos.
  */
-async function deliverOtp(phone: string, code: string, demo: boolean): Promise<void> {
-  if (demo) return;
-  if (await sendMsg91OtpDirect(phone, code)) return;
+async function deliverOtp(phone: string, code: string, demo: boolean): Promise<{ ok: boolean }> {
+  // H25: return the real delivery outcome instead of discarding it. The notifier
+  // falls through to a mock that reports ok:true when no provider key is set, so
+  // the caller (sendOtp) must decide — in production with a real provider a
+  // non-ok send is a hard failure, not a silent "sent".
+  if (demo) return { ok: true };
+  if (await sendMsg91OtpDirect(phone, code)) return { ok: true };
   const body = `Your verification code is ${code}. It expires in 5 minutes.`;
   const meta = { otpCode: code };
   const sms = () => notify.sms({ to: phone, body, template: 'otp.login', meta });
   const wa = () => notify.whatsapp({ to: phone, body, template: 'otp.login', meta });
   switch (OTP_CHANNEL) {
-    case 'whatsapp':
-      await wa();
-      return;
-    case 'both':
-      await Promise.allSettled([wa(), sms()]);
-      return;
+    case 'whatsapp': {
+      const r = await wa();
+      return { ok: Boolean(r?.ok) };
+    }
+    case 'both': {
+      const rs = await Promise.allSettled([wa(), sms()]);
+      return { ok: rs.some((x) => x.status === 'fulfilled' && Boolean(x.value?.ok)) };
+    }
     case 'whatsapp_then_sms': {
       const r = await wa();
-      if (!r.ok) await sms();
-      return;
+      if (r?.ok) return { ok: true };
+      const r2 = await sms();
+      return { ok: Boolean(r2?.ok) };
     }
     case 'sms_then_whatsapp': {
       const r = await sms();
-      if (!r.ok) await wa();
-      return;
+      if (r?.ok) return { ok: true };
+      const r2 = await wa();
+      return { ok: Boolean(r2?.ok) };
     }
     case 'sms':
-    default:
-      await sms();
-      return;
+    default: {
+      const r = await sms();
+      return { ok: Boolean(r?.ok) };
+    }
   }
 }
 /** Friendly "in X" rendering for the rate-limit message. Avoids confusion
@@ -205,14 +247,22 @@ function normalizePurposeEnum(raw: string | undefined): 'LOGIN' | 'PHONE_VERIFY'
 export class OtpRateLimitedError extends Error {
   constructor(public retryAfterSeconds: number, message: string) { super(message); }
 }
+/** H25: thrown when a real provider could not deliver the OTP in production, so
+ * the caller never reports a false "sent". */
+export class OtpDeliveryError extends Error {}
 /**
  * Request an OTP. Throws `OtpRateLimitedError` if any of the limits are tripped.
  * `ipAddress` is required in production paths so the per-IP throttle works.
  */
 export async function sendOtp(args: { phone: string; purpose?: string; ipAddress?: string }): Promise<{ ok: true; devCode?: string }> {
-  const purpose = (args.purpose ?? 'login');         // free-form string for OtpToken (back-compat)
-  const purposeEnum = normalizePurposeEnum(purpose);
-  const demo = (await getOtpMode()) === 'demo';  // enum value for OtpAttempt
+  const purposeEnum = normalizePurposeEnum(args.purpose);
+  // H20: canonicalize the purpose used for OtpToken storage AND every cooldown /
+  // count query. Previously the raw free-form string was used, so rotating it
+  // ('login','login1','LOGIN',…) minted a fresh counter bucket each time and
+  // bypassed the 45s cooldown and the per-phone hour/day caps. Lowercasing the
+  // enum keeps the stored format compatible with existing rows.
+  const purpose = purposeEnum.toLowerCase();
+  const demo = (await getOtpMode()) === 'demo';
   const now = new Date();
   const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
   const dayAgo  = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -316,12 +366,20 @@ export async function sendOtp(args: { phone: string; purpose?: string; ipAddress
       where: { id: tracker.id },
       data: {
         sentCount: { increment: 1 },
-        ipAddress: args.ipAddress ?? tracker.ipAddress,
-        attempts: 0
+        ipAddress: args.ipAddress ?? tracker.ipAddress
+        // H21: do NOT reset `attempts` here. It is the failed-verify counter that
+        // drives the 30-min lockout; resetting it on every send let an attacker
+        // fail 4×, request a fresh code, and never trip the lockout. It is reset
+        // only on a successful verify.
       }
     })
   ]);
-  await deliverOtp(args.phone, code, demo);
+  const delivery = await deliverOtp(args.phone, code, demo);
+  // H25: never report a false "sent". With a real provider in production, a
+  // failed delivery is a hard error rather than the mock-success fallback.
+  if (!demo && IS_PROD && DELIVERY_IS_REAL && !delivery.ok) {
+    throw new OtpDeliveryError('Could not send the verification code right now. Please try again.');
+  }
   // Surface the code only when it's safe to do so:
   //   - Demo mode (OTP_DEMO_MODE/OTP_DEBUG_LOG) with a mock SMS provider  the
   //     real-provider + demo combination is rejected at module load above, so
@@ -338,8 +396,9 @@ export async function sendOtp(args: { phone: string; purpose?: string; ipAddress
   return { ok: true };
 }
 export async function verifyOtp(args: { phone: string; code: string; purpose?: string }): Promise<boolean> {
-  const purpose = (args.purpose ?? 'login');
-  const purposeEnum = normalizePurposeEnum(purpose);
+  // H20: use the same canonical purpose the token was stored under.
+  const purposeEnum = normalizePurposeEnum(args.purpose);
+  const purpose = purposeEnum.toLowerCase();
   const trackerId = `${args.phone}:${purposeEnum}`;
   const tracker = await prisma.otpAttempt.findUnique({ where: { id: trackerId } });
   if (tracker?.lockedUntil && tracker.lockedUntil > new Date()) return false;

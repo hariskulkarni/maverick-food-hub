@@ -54,6 +54,11 @@ async function restaurantWebhookSecret(paymentId: string | null): Promise<string
 
 export async function POST(req: NextRequest) {
   const signature = req.headers.get('x-razorpay-signature') ?? '';
+  // H11: Razorpay sends the event id in the x-razorpay-event-id HEADER, not the
+  // body. Reading it from the body (event.id) always resolved null, so the
+  // dedupe lookup and the unique-constraint guard were both skipped and every
+  // redelivery reprocessed. Prefer the header; keep the body as a fallback.
+  const headerEventId = req.headers.get('x-razorpay-event-id');
   const raw = await req.text();
 
   // Parse first (without trusting) so we can locate the owning restaurant and
@@ -61,7 +66,7 @@ export async function POST(req: NextRequest) {
   let event: any;
   try { event = JSON.parse(raw); } catch { return new Response('Bad JSON', { status: 400 }); }
 
-  const providerEventId: string | null = event?.id ?? event?.event_id ?? null;
+  const providerEventId: string | null = headerEventId ?? event?.id ?? event?.event_id ?? null;
   const eventType: string = event?.event ?? 'unknown';
   const paymentEntity = event?.payload?.payment?.entity ?? null;
   const refundEntity = event?.payload?.refund?.entity ?? null;
@@ -149,9 +154,19 @@ export async function POST(req: NextRequest) {
             },
           },
         });
-        // A fully-settled refund on the source marks the payment REFUNDED.
+        // H12: only a refund that CUMULATIVELY covers the whole order marks the
+        // payment REFUNDED (terminal). A partial refund leaves it CAPTURED so the
+        // remaining balance can still be refunded. Mirrors reconcile.ts.
         if (refundStatus === 'COMPLETED' && payment) {
-          await prisma.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.REFUNDED } }).catch(() => {});
+          const [ord, completed] = await Promise.all([
+            prisma.order.findUnique({ where: { id: payment.orderId }, select: { total: true } }),
+            prisma.refund.findMany({ where: { orderId: payment.orderId, status: RefundStatus.COMPLETED }, select: { amount: true } }),
+          ]);
+          const refunded = completed.reduce((s, r) => s + Number(r.amount), 0);
+          const full = ord != null && refunded >= Number(ord.total) - 0.005;
+          if (full) {
+            await prisma.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.REFUNDED } }).catch(() => {});
+          }
         }
       } else {
         log.warn({ razorpayRefundId, paymentId }, 'refund webhook: no matching Refund row to update');

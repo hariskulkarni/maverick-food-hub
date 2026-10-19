@@ -65,10 +65,15 @@ export async function POST(req: NextRequest) {
   if (parsed instanceof Response) return parsed;
   const data = parsed;
 
-  // Make sure email isn't already a non-admin
+  // C8: this is a PUBLIC, unauthenticated route. If the email already belongs to
+  // any user — including an existing ADMIN — refuse. Previously an existing ADMIN
+  // fell through to the update branch below and had their password hash replaced
+  // by an unauthenticated caller (full account takeover). Adding a second
+  // restaurant for an existing admin is an authenticated operation handled by the
+  // platform wizard (src/app/api/platform/restaurants/wizard/route.ts), not here.
   const existing = await prisma.user.findUnique({ where: { email: data.ownerEmail } });
-  if (existing && existing.role !== Role.ADMIN) {
-    return new Response('That email is already in use by another role', { status: 409 });
+  if (existing) {
+    return new Response('That email is already in use', { status: 409 });
   }
 
   // Unique restaurant slug
@@ -80,9 +85,11 @@ export async function POST(req: NextRequest) {
 
   const passwordHash = await argon2.hash(data.ownerPassword);
 
-  const owner = existing
-    ? await prisma.user.update({ where: { id: existing.id }, data: { name: data.ownerName, passwordHash, role: Role.ADMIN } })
-    : await prisma.user.create({ data: { email: data.ownerEmail, name: data.ownerName, passwordHash, role: Role.ADMIN } });
+  // `existing` is guaranteed null here (the guard above 409s otherwise), so this
+  // only ever creates a brand-new owner — never mutates an existing account.
+  const owner = await prisma.user.create({
+    data: { email: data.ownerEmail, name: data.ownerName, passwordHash, role: Role.ADMIN }
+  });
 
   // Build hours: convert closed days to openMin=closeMin=0, default to 11–23 if none supplied.
   const hoursCreate = (data.hours ?? Array.from({ length: 7 }).map((_, i) => ({ dayOfWeek: i, openMin: 11 * 60, closeMin: 23 * 60, closed: false }))).map((h) => ({

@@ -150,8 +150,12 @@ export async function placeOrder(input: PlaceOrderInput) {
       `Restaurant is closed. ${openStatus.label}. Pick a scheduled time to pre-order.`,
     );
   }
+  // H1: the address must belong to the ordering customer. Resolving by id alone
+  // let a customer place an order against another customer's addressId and read
+  // that address (street, pincode, lat/lng) back from their own order, and
+  // misrouted the delivery.
   const address = input.addressId
-    ? await prisma.address.findUnique({ where: { id: input.addressId } })
+    ? await prisma.address.findFirst({ where: { id: input.addressId, userId: input.customerId } })
     : null;
   if (input.addressId && !address) {
     throw new Error('Selected address could not be found');
@@ -192,14 +196,18 @@ export async function placeOrder(input: PlaceOrderInput) {
     if (it.menuItemId) {
       // Include the parent category + its availability rows so we can enforce
       // both the item-level and category-level windows in one round-trip.
-      const m = await prisma.menuItem.findUniqueOrThrow({
-        where: { id: it.menuItemId },
+      // H2: resolve the item WITHIN this order's branch. Resolving by id alone
+      // let a client order branch A with items from branch B — committed under A
+      // at B's prices, and B's kitchen never saw it.
+      const m = await prisma.menuItem.findFirst({
+        where: { id: it.menuItemId, branchId: input.branchId },
         include: {
           category: { include: { availabilities: true } },
           variants: { orderBy: { sortOrder: 'asc' } },
           modifierGroups: { orderBy: { sortOrder: 'asc' }, include: { options: { orderBy: { sortOrder: 'asc' } } } }
         }
       });
+      if (!m) throw new Error('Item not found for this branch');
       if (!m.isAvailable) throw new Error(`Item not available: ${m.name}`);
       // Category schedule guard: if the parent category is disabled or
       // currently off-hours, the item cannot be ordered — even if the item
@@ -268,10 +276,12 @@ export async function placeOrder(input: PlaceOrderInput) {
         modifiersSummary: selections.modifiersSummary
       });
     } else if (it.comboId) {
-      const c = await prisma.combo.findUniqueOrThrow({
-        where: { id: it.comboId },
+      // H2: resolve the combo WITHIN this order's branch (same cross-branch risk).
+      const c = await prisma.combo.findFirst({
+        where: { id: it.comboId, branchId: input.branchId },
         include: { items: { include: { menuItem: true } } }
       });
+      if (!c) throw new Error('Combo not found for this branch');
       if (!c.isAvailable) throw new Error(`Combo not available: ${c.name}`);
       // Combo is gated on every constituent menu item being available — if any
       // ingredient is 86'd the whole combo cannot be ordered.
@@ -296,7 +306,7 @@ export async function placeOrder(input: PlaceOrderInput) {
     }
   }
 
-  let coupon: { id: string; flatOff?: number | null; percentOff?: number | null; minOrderAmount?: number | null; maxDiscount?: number | null } | null = null;
+  let coupon: { id: string; flatOff?: number | null; percentOff?: number | null; minOrderAmount?: number | null; maxDiscount?: number | null; perUserLimit: number } | null = null;
   if (input.couponCode) {
     const found = await prisma.coupon.findUnique({ where: { code: input.couponCode } });
     if (found && found.isActive && (!found.validTo || found.validTo > new Date()) && (!found.usageLimit || found.usedCount < found.usageLimit)) {
@@ -305,7 +315,10 @@ export async function placeOrder(input: PlaceOrderInput) {
         flatOff: found.flatOff ? Number(found.flatOff) : null,
         percentOff: found.percentOff,
         minOrderAmount: found.minOrderAmount ? Number(found.minOrderAmount) : null,
-        maxDiscount: found.maxDiscount ? Number(found.maxDiscount) : null
+        maxDiscount: found.maxDiscount ? Number(found.maxDiscount) : null,
+        // H19: carry perUserLimit so the order path can enforce it (it was
+        // written by the admin UI and rendered as "N/user" but never checked).
+        perUserLimit: found.perUserLimit ?? 1
       };
     }
   }
@@ -545,10 +558,31 @@ export async function placeOrder(input: PlaceOrderInput) {
       // same order. Bounded at 0 since discount is capped at subtotal.
       const offersTotal = priced.offerBreakdown.reduce((s, o) => s + o.amountOff, 0);
       const couponAmount = Math.max(0, priced.discountAmount - offersTotal);
+      // H19: enforce Coupon.perUserLimit, which the order path never checked
+      // (CouponRedemption is unique only on orderId, so there is no DB backstop,
+      // letting one customer redeem a legacy coupon unlimited times). Lock the
+      // coupon row FOR UPDATE so concurrent checkouts by the same user serialize,
+      // then count this user's prior redemptions.
+      await tx.$executeRaw`SELECT "id" FROM "Coupon" WHERE "id" = ${coupon.id} FOR UPDATE`;
+      const priorForUser = await tx.couponRedemption.count({ where: { couponId: coupon.id, userId: input.customerId } });
+      if (priorForUser >= coupon.perUserLimit) {
+        throw new Error('You have already used this coupon the maximum number of times.');
+      }
       await tx.couponRedemption.create({
         data: { couponId: coupon.id, orderId: o.id, userId: input.customerId, amountOff: couponAmount as any }
       });
-      await tx.coupon.update({ where: { id: coupon.id }, data: { usedCount: { increment: 1 } } });
+      // H18: increment usedCount atomically with the limit check. The eligibility
+      // read at :312 happened outside this transaction, so N concurrent checkouts
+      // on a 1-use code could all pass it. This conditional UPDATE only succeeds
+      // while usedCount is still below the limit (or the limit is null); if it
+      // affects no row the code is exhausted and we abort the order.
+      const bumped = await tx.$executeRaw`
+        UPDATE "Coupon" SET "usedCount" = "usedCount" + 1
+        WHERE "id" = ${coupon.id}
+          AND ("usageLimit" IS NULL OR "usedCount" < "usageLimit")`;
+      if (bumped === 0) {
+        throw new Error('This coupon has reached its usage limit.');
+      }
     }
     // Offer-engine redemptions: one row per winning offer. Audit logs fire
     // after the txn commits (audit() is best-effort and must not roll us back).
@@ -710,9 +744,17 @@ export async function maybeAutoAccept(orderId: string, restaurantId: string, act
   });
 }
 
-export async function transitionOrder(orderId: string, next: OrderStatus, opts: { actorId?: string; note?: string } = {}) {
-  const order = await prisma.order.findUniqueOrThrow({
-    where: { id: orderId },
+export async function transitionOrder(
+  orderId: string,
+  next: OrderStatus,
+  opts: { actorId?: string; note?: string; scopeRestaurantId?: string } = {}
+) {
+  // C12: when an untrusted (tenant-admin) caller passes scopeRestaurantId, the
+  // lookup is constrained to that restaurant so a cross-tenant id throws rather
+  // than transitioning another tenant's order. System callers (rider app,
+  // sweeps, reconciler) omit it and keep the unscoped lookup.
+  const order = await prisma.order.findFirstOrThrow({
+    where: opts.scopeRestaurantId ? { id: orderId, branch: { restaurantId: opts.scopeRestaurantId } } : { id: orderId },
     include: { customer: true, branch: { select: { restaurantId: true, restaurant: { select: { parentId: true } } } } }
   });
   // Idempotent: a double-click or replay that targets the current state is a no-op success.
@@ -742,10 +784,18 @@ export async function transitionOrder(orderId: string, next: OrderStatus, opts: 
   let forceDeliveredRiderId: string | null = null;
 
   const updated = await prisma.$transaction(async (tx) => {
-    const u = await tx.order.update({
-      where: { id: orderId },
+    // H8: single-winner write. The status was validated from a read OUTSIDE the
+    // transaction; two concurrent → DELIVERED transitions would both pass that
+    // check and both credit loyalty. Guard the write on the status we validated
+    // and abort if another transition already moved the order (count === 0), so
+    // the loyalty/assignment side-effects below run at most once.
+    const guard = await tx.order.updateMany({
+      where: { id: orderId, status: order.status },
       data: { status: next, ...(stamp as any), cancelReason: next === 'CANCELLED' ? opts.note : undefined }
     });
+    if (guard.count === 0) {
+      throw new OrderTransitionError('Order was changed concurrently; please retry.');
+    }
     await tx.orderStatusEvent.create({ data: { orderId, status: next, actorId: opts.actorId, note: opts.note } });
     if (next === OrderStatus.DELIVERED) {
       // Earn loyalty: 5pt per ₹100 of subtotal
@@ -763,7 +813,7 @@ export async function transitionOrder(orderId: string, next: OrderStatus, opts: 
         forceDeliveredRiderId = a.riderId;
       }
     }
-    return u;
+    return tx.order.findUniqueOrThrow({ where: { id: orderId } });
   });
 
   // Advance incentive progress for force-delivered orders. The rider's own
@@ -833,8 +883,9 @@ export async function transitionOrder(orderId: string, next: OrderStatus, opts: 
       log.error({ err: (e as Error).message, orderId }, 'signup bonus restore failed')
     );
     // Restore freebie stock so the gift becomes available to another order.
+    // H9: idempotent — passes orderId so a cancel-then-refund restores once.
     if (order.freebieRuleId) {
-      await restoreFreebieStock(order.freebieRuleId).catch((e) =>
+      await restoreFreebieStock(orderId, order.freebieRuleId).catch((e) =>
         log.error({ err: (e as Error).message, orderId, ruleId: order.freebieRuleId }, 'freebie stock restore failed')
       );
     }

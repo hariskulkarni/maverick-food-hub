@@ -122,6 +122,16 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
 
   if (input.destination === 'WALLET') {
     const refund = await prisma.$transaction(async (tx) => {
+      // H7: re-check the cap INSIDE the transaction. `remaining` above was read
+      // outside any transaction and Refund has no natural unique key, so a
+      // double-click could create two refunds that together exceed the order
+      // total. Re-sum here (and the Serializable isolation below makes two
+      // concurrent refunds conflict rather than both committing).
+      const priorAgg = await tx.refund.aggregate({ where: { orderId: order.id }, _sum: { amount: true } });
+      const remainingNow = Math.round((Number(order.total) - Number(priorAgg._sum.amount ?? 0)) * 100) / 100;
+      if (amount > remainingNow) {
+        throw new RefundError(`Refund exceeds the refundable balance (₹${remainingNow.toFixed(2)} left).`);
+      }
       const wallet = await tx.wallet.upsert({
         where: { userId: order.customerId },
         update: { balance: { increment: amount as any } },
@@ -147,7 +157,7 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
           createdById: input.actorId ?? null
         }
       });
-    });
+    }, { isolationLevel: 'Serializable' });
     result = { refundId: refund.id, destination: 'WALLET', status: 'COMPLETED', amount, walletCredited: amount };
   } else {
     // ORIGINAL_PAYMENT — reverse the charge on the gateway. Requires a captured
@@ -164,7 +174,11 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
     let gatewayRefundId: string | null = null;
     let providerRefundKey: string | null = null;
     let gatewayName: string | null = null;
-    let settledNow = true;
+    // C5: the failure path is the default. Only a confirmed gateway outcome may
+    // flip this true (PhonePe COMPLETED), and Razorpay stays false pending its
+    // webhook. Previously this started true, so a skipped gateway block wrote a
+    // COMPLETED refund with a fabricated reference and no money moved.
+    let settledNow = false;
 
     if (capturedPayment.providerName === 'razorpay' && capturedPayment.providerRef) {
       const creds = await resolveRazorpayCreds(order.branchId);
@@ -179,7 +193,7 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
           gatewayRefundId = gw.providerRefundId ?? null;
           providerRefundKey = gatewayRefundId;
           gatewayName = 'razorpay';
-          settledNow = false; // confirmed asynchronously by the webhook
+          // stays PENDING (settledNow=false) — confirmed asynchronously by the webhook
         } catch (e) {
           throw new RefundError(`Gateway refund failed: ${(e as Error).message}`, 502);
         }
@@ -221,8 +235,32 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
       }
     }
 
+    // C5: never record a COMPLETED refund when no real gateway was reached. If no
+    // gateway block ran (unknown provider, or credentials that could not be
+    // resolved/decrypted), refuse in production rather than fabricating a
+    // COMPLETED mock refund. Dev and genuine mock payments keep immediate settle.
+    if (!gatewayName) {
+      const isMockPayment = !capturedPayment.providerName || capturedPayment.providerName === 'mock';
+      if (process.env.NODE_ENV === 'production' && process.env.DEMO_MODE !== 'true' && !isMockPayment) {
+        throw new RefundError(
+          `Cannot refund the ${capturedPayment.providerName} payment for order ${order.id}: ` +
+            `no gateway credentials could be resolved, so the refund was NOT recorded. ` +
+            `Configure the gateway credentials, or refund to the customer's wallet instead.`,
+          502
+        );
+      }
+      // Dev / mock: immediate settlement is fine.
+      settledNow = true;
+    }
+
     const providerRef = providerRefundKey ?? `rfnd_${Math.random().toString(36).slice(2, 12)}`;
     const refund = await prisma.$transaction(async (tx) => {
+      // H7: re-check the cap inside the transaction (see WALLET path).
+      const priorAgg = await tx.refund.aggregate({ where: { orderId: order.id }, _sum: { amount: true } });
+      const remainingNow = Math.round((Number(order.total) - Number(priorAgg._sum.amount ?? 0)) * 100) / 100;
+      if (amount > remainingNow) {
+        throw new RefundError(`Refund exceeds the refundable balance (₹${remainingNow.toFixed(2)} left).`);
+      }
       const r = await tx.refund.create({
         data: {
           orderId: order.id,
@@ -240,11 +278,11 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
       });
       // Only mark the payment REFUNDED once actually settled (mock path). A real
       // gateway refund waits for the webhook to confirm before flipping status.
-      if (settledNow && amount >= remaining) {
+      if (settledNow && amount >= remainingNow) {
         await tx.payment.update({ where: { id: capturedPayment.id }, data: { status: 'REFUNDED' } });
       }
       return r;
-    });
+    }, { isolationLevel: 'Serializable' });
     result = {
       refundId: refund.id,
       destination: 'ORIGINAL_PAYMENT',

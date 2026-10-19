@@ -50,14 +50,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     return Response.json({ error: 'This order has no freebie', reason: 'no_freebie' }, { status: 404 });
   }
 
-  await prisma.$transaction(async (tx) => {
-    if (freebieLine) await tx.orderItem.delete({ where: { id: freebieLine.id } });
-    await tx.order.update({ where: { id: order.id }, data: { freebieRuleId: null } });
-  });
+  if (freebieLine) await prisma.orderItem.delete({ where: { id: freebieLine.id } });
 
-  // Restore stock outside the txn (helper opens its own connection + is
-  // best-effort against a since-deleted rule).
-  if (ruleId) await restoreFreebieStock(ruleId);
+  // H9: restoreFreebieStock now clears order.freebieRuleId atomically as its
+  // idempotency guard and restores stock, so we no longer null the link here.
+  if (ruleId) await restoreFreebieStock(order.id, ruleId);
 
   return Response.json({ ok: true, removed: true });
 }

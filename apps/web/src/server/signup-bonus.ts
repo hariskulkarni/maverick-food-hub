@@ -261,6 +261,11 @@ export async function commitSignupBonusForOrder(orderId: string): Promise<void> 
   if (!apply) return;
   const already = await (prisma as any).signupBonusLedger.findFirst({ where: { orderId, kind: 'COMMIT' } });
   if (already) return; // idempotent
+  // H10: if the hold was already RESTORED (order expired/cancelled, then retried
+  // and delivered), committing now would re-consume a bonus that was returned to
+  // pending — minting bonus money and driving pendingAmount negative. Refuse.
+  const restored = await (prisma as any).signupBonusLedger.findFirst({ where: { orderId, kind: 'RESTORE' } });
+  if (restored) return;
 
   const delta = Number(apply.delta);
   await prisma.$transaction(async (tx: any) => {
