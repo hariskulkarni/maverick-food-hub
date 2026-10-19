@@ -6,8 +6,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db: any = vi.hoisted(() => ({
   order: { findUnique: vi.fn() },
-  payment: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
+  payment: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn(), count: vi.fn() },
   refund: { findMany: vi.fn() },
+  $queryRaw: vi.fn(),
 }));
 const payments = vi.hoisted(() => ({ paymentProvider: vi.fn() }));
 const reconcile = vi.hoisted(() => ({
@@ -56,6 +57,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   db.payment.create.mockImplementation(async ({ data }: any) => ({ id: 'pay_new', ...data }));
   db.payment.update.mockResolvedValue({});
+  db.payment.count.mockResolvedValue(0);
+  db.$queryRaw.mockResolvedValue([{ locked: true }]); // H15 advisory lock acquired
   payments.paymentProvider.mockResolvedValue({ name: 'phonepe', createOrder: vi.fn().mockResolvedValue(providerOrder) });
 });
 
