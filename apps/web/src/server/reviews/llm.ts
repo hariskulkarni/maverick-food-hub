@@ -38,6 +38,8 @@ const OPENAI_COMPAT_BASE: Record<'openai' | 'nvidia', string> = {
   nvidia: 'https://integrate.api.nvidia.com/v1',
 };
 
+const LLM_TIMEOUT_MS = 20000;
+
 function buildPrompt(rating: number, comment: string | null, tone?: string | null): string {
   return [
     'You write a short, warm, professional reply from a restaurant to a Google review.',
@@ -55,6 +57,7 @@ async function callAnthropic(apiKey: string, model: string, prompt: string): Pro
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({ model, max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
+    signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`anthropic ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const data = await res.json();
@@ -68,6 +71,7 @@ async function callOpenAiCompat(base: string, apiKey: string, model: string, pro
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({ model, max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
+    signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`llm ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const data = await res.json();
@@ -77,8 +81,14 @@ async function callOpenAiCompat(base: string, apiKey: string, model: string, pro
 }
 
 async function callProvider(provider: LlmProvider, apiKey: string, model: string, prompt: string): Promise<string> {
-  if (provider === 'anthropic') return callAnthropic(apiKey, model, prompt);
-  return callOpenAiCompat(OPENAI_COMPAT_BASE[provider], apiKey, model, prompt);
+  try {
+    if (provider === 'anthropic') return await callAnthropic(apiKey, model, prompt);
+    return await callOpenAiCompat(OPENAI_COMPAT_BASE[provider], apiKey, model, prompt);
+  } catch (e: any) {
+    // Provider error bodies can echo the submitted key; never let it escape.
+    const msg = String(e?.message ?? 'LLM call failed');
+    throw new Error(apiKey ? msg.split(apiKey).join('***') : msg);
+  }
 }
 
 export async function generateReviewReply(args: {
@@ -86,6 +96,7 @@ export async function generateReviewReply(args: {
 }): Promise<{ text: string; provider: LlmProvider; model: string }> {
   const cfg = await getConfig(args.restaurantId, 'LLM_REVIEWS' as any);
   if (!cfg?.apiKey || !cfg?.provider) throw new LlmNotConfiguredError();
+  if (!Object.prototype.hasOwnProperty.call(LLM_MODELS, cfg.provider)) throw new LlmNotConfiguredError();
   const provider = cfg.provider as LlmProvider;
   const model = cfg.model || LLM_MODELS[provider][0].value;
   const prompt = buildPrompt(args.rating, args.comment, args.tone);
