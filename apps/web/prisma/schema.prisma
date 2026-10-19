@@ -161,6 +161,9 @@ enum IntegrationProvider {
   GOOGLE_BUSINESS
   // LLM key for Google-review auto-reply (provider=anthropic|openai|nvidia + apiKey + model).
   LLM_REVIEWS
+  // Experimental self-hosted UPI payment gateway. Pilot only; gated per-restaurant
+  // via YoupiFeatureRequest approval.
+  YOUPI
 }
 
 enum IntegrationStatus {
@@ -3308,4 +3311,37 @@ model ReviewAutoReplyConfig {
   enabledAt         DateTime?
   updatedAt         DateTime @updatedAt
   restaurant        Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+// ─── YouPI experimental PG pilot ───────────────────────────────────────────
+// Daily order-cap counter, incremented atomically per restaurant per UTC day.
+// Restaurant/User references are plain scalars (no FK relations) — lightweight ledger.
+model YoupiDailyUsage {
+  id           String   @id @default(cuid())
+  restaurantId String
+  day          DateTime @db.Date
+  count        Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@unique([restaurantId, day])
+}
+
+enum YoupiRequestStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  DISABLED
+}
+
+// Super-admin approval workflow for enabling YouPI on a restaurant.
+model YoupiFeatureRequest {
+  id            String             @id @default(cuid())
+  restaurantId  String             @unique
+  status        YoupiRequestStatus @default(REQUESTED)
+  requestedById String?
+  requestedAt   DateTime           @default(now())
+  decidedById   String?
+  decidedAt     DateTime?
+  note          String?
+  updatedAt     DateTime           @updatedAt
 }
