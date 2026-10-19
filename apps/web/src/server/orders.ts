@@ -710,9 +710,17 @@ export async function maybeAutoAccept(orderId: string, restaurantId: string, act
   });
 }
 
-export async function transitionOrder(orderId: string, next: OrderStatus, opts: { actorId?: string; note?: string } = {}) {
-  const order = await prisma.order.findUniqueOrThrow({
-    where: { id: orderId },
+export async function transitionOrder(
+  orderId: string,
+  next: OrderStatus,
+  opts: { actorId?: string; note?: string; scopeRestaurantId?: string } = {}
+) {
+  // C12: when an untrusted (tenant-admin) caller passes scopeRestaurantId, the
+  // lookup is constrained to that restaurant so a cross-tenant id throws rather
+  // than transitioning another tenant's order. System callers (rider app,
+  // sweeps, reconciler) omit it and keep the unscoped lookup.
+  const order = await prisma.order.findFirstOrThrow({
+    where: opts.scopeRestaurantId ? { id: orderId, branch: { restaurantId: opts.scopeRestaurantId } } : { id: orderId },
     include: { customer: true, branch: { select: { restaurantId: true, restaurant: { select: { parentId: true } } } } }
   });
   // Idempotent: a double-click or replay that targets the current state is a no-op success.
