@@ -90,7 +90,7 @@ export async function generateReviewReply(args: {
   const model = cfg.model || LLM_MODELS[provider][0].value;
   const prompt = buildPrompt(args.rating, args.comment, args.tone);
   const text = await callProvider(provider, cfg.apiKey, model, prompt);
-  log.info('reviews.llm.generated', { restaurantId: args.restaurantId, provider, model, rating: args.rating });
+  log.info({ restaurantId: args.restaurantId, provider, model, rating: args.rating }, 'reviews.llm.generated');
   return { text, provider, model };
 }
 

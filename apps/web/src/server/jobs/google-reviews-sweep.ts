@@ -25,7 +25,7 @@ export async function runGoogleReviewsSweep() {
   const result = { restaurantsScanned: 0, reviewsFound: 0, newReviews: 0, autoPosted: 0, drafted: 0, failed: 0 };
 
   const lock = (await prisma.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${LOCK_KEY}) AS locked`)[0];
-  if (!lock?.locked) { log.warn('reviews.sweep.skipped_locked', {}); return result; }
+  if (!lock?.locked) { log.warn({}, 'reviews.sweep.skipped_locked'); return result; }
 
   try {
     const connected = await prisma.integrationCredential.findMany({
@@ -39,7 +39,7 @@ export async function runGoogleReviewsSweep() {
         try {
           reviews = await listReviews(restaurantId);
         } catch (e: any) {
-          log.error('reviews.sweep.list_failed', { restaurantId, error: String(e?.message || e) });
+          log.error({ restaurantId, error: String(e?.message || e) }, 'reviews.sweep.list_failed');
           continue;
         }
         result.reviewsFound += reviews.length;
@@ -76,25 +76,25 @@ export async function runGoogleReviewsSweep() {
                 });
                 result.autoPosted++;
               } catch (se: any) {
-                log.error('reviews.sweep.posted_unrecorded', { restaurantId, googleReviewId: r.googleReviewId, error: String(se?.message || se) });
+                log.error({ restaurantId, googleReviewId: r.googleReviewId, error: String(se?.message || se) }, 'reviews.sweep.posted_unrecorded');
               }
             } else {
               try {
                 await saveReply({ reviewId: id, restaurantId, text: gen?.text ?? '', state: 'FAILED', source: 'AUTO', error: msg.slice(0, 300) });
               } catch (se: any) {
-                log.error('reviews.sweep.fail_save', { restaurantId, googleReviewId: r.googleReviewId, error: String(se?.message || se) });
+                log.error({ restaurantId, googleReviewId: r.googleReviewId, error: String(se?.message || se) }, 'reviews.sweep.fail_save');
               }
               result.failed++;
             }
           }
         }
       } catch (e: any) {
-        log.error('reviews.sweep.restaurant_failed', { restaurantId, error: String(e?.message || e) });
+        log.error({ restaurantId, error: String(e?.message || e) }, 'reviews.sweep.restaurant_failed');
       }
     }
   } finally {
     await prisma.$queryRaw`SELECT pg_advisory_unlock(${LOCK_KEY})`;
   }
-  log.info('reviews.sweep.done', result);
+  log.info(result, 'reviews.sweep.done');
   return result;
 }

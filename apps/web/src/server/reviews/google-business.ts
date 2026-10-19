@@ -113,5 +113,5 @@ export async function postReply(restaurantId: string, googleReviewId: string, te
     body: JSON.stringify({ comment: text }),
   });
   if (!res.ok) throw new Error(`google reply ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  log.info('reviews.google.replied', { restaurantId, googleReviewId });
+  log.info({ restaurantId, googleReviewId }, 'reviews.google.replied');
 }
