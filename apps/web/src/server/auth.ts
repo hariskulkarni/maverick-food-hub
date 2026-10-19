@@ -23,6 +23,7 @@ import {
 } from './2fa';
 import { audit } from './audit';
 import { headers } from 'next/headers';
+import { clientIp } from './http/client-ip';
 import { startSession, isSessionActive, revokeSession } from './sessions';
 import { isStaffTotpRole, verifyUserTotp, isBreakGlassEmail } from './user-totp';
 import { verifyWidgetAccessToken } from './msg91-widget';
@@ -187,8 +188,8 @@ export const authConfig: NextAuthConfig = {
         const isBreak = isBreakGlassEmail(user.email);
 
         if (!isBreak && user.role === Role.SUPER_ADMIN && sec.allowlist && sec.allowlist.length > 0) {
-          const fwd = req?.headers?.get?.('x-forwarded-for') ?? '';
-          const ip = String(fwd || '').split(',')[0]!.trim();
+          // C10: the allowlist must key on a header the client cannot forge.
+          const ip = (req?.headers ? clientIp(req.headers as Headers) : null) ?? '';
           if (!ip || !ipMatchesAllowlist(ip, sec.allowlist)) {
             recordLoginFailure(email, lockoutMinutes);
             await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'ip_not_allowlisted', ip } }).catch(() => {});
@@ -272,7 +273,7 @@ export const authConfig: NextAuthConfig = {
         try {
           const h = await headers();
           userAgent = h.get('user-agent');
-          ipAddress = (h.get('x-forwarded-for') ?? '').split(',')[0]!.trim() || null;
+          ipAddress = clientIp(h); // C10: last XFF hop / CF-Connecting-IP, not the first
         } catch {
           /* no request context — fine */
         }

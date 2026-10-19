@@ -19,6 +19,8 @@
  *   if (!rl.ok) return rl.response;   // 429 with Retry-After
  */
 
+import { clientIp as resolveClientIp } from './client-ip';
+
 export interface RateLimitStore {
   /**
    * Register one hit for `key` within a `windowMs` window and return the running
@@ -57,15 +59,13 @@ export function setRateLimitStore(s: RateLimitStore): void {
 }
 
 /**
- * Best-effort client IP from proxy headers. Behind nginx/Cloudflare the real IP
- * is in x-forwarded-for (first hop). Falls back to a constant so a missing
- * header degrades to a coarse global limit rather than no limit.
+ * Best-effort client IP from proxy headers. Delegates to the shared C10 helper
+ * (CF-Connecting-IP → X-Real-IP → LAST X-Forwarded-For hop — never the
+ * client-supplied first hop). Falls back to a constant so a missing header
+ * degrades to a coarse global limit rather than no limit.
  */
 export function clientIp(req: Request): string {
-  const h = req.headers;
-  const fwd = h.get('x-forwarded-for');
-  if (fwd) return fwd.split(',')[0]!.trim();
-  return h.get('x-real-ip')?.trim() || 'unknown';
+  return resolveClientIp(req.headers) || 'unknown';
 }
 
 export interface RateLimitOptions {

@@ -3,6 +3,7 @@ import NextAuth from 'next-auth';
 import { authEdgeConfig } from '@/server/auth.config';
 import { PLATFORM_ROLES, pageGateFor, can } from '@/server/permissions';
 import { PUBLIC_HOST, PORTAL_HOST, isPortalHost, hostSplitActive, isStaffPath } from '@/server/hosts';
+import { clientIp } from '@/server/http/client-ip';
 
 const { auth } = NextAuth(authEdgeConfig);
 
@@ -38,9 +39,9 @@ function rlSweep(now: number): void {
   for (const [k, pen] of RL_AUTH_PENALTY) if (pen.until <= now) RL_AUTH_PENALTY.delete(k);
 }
 function rlClientIp(req: NextRequest): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    || req.headers.get('x-real-ip')?.trim()
-    || 'unknown';
+  // C10: trust CF-Connecting-IP / X-Real-IP / the LAST XFF hop, never the
+  // client-supplied first hop (which defeated this limiter and the auth backoff).
+  return clientIp(req.headers) || 'unknown';
 }
 function rlTooMany(retryAfterSec: number): NextResponse {
   return new NextResponse(
