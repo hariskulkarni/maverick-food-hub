@@ -70,15 +70,15 @@ implemented, needs work/decision described; **needs-decision** = awaits owner.
 | H27 | needs-decision | — | migration drafted below; prod built by db push → needs sign-off |
 | H28 | needs-decision | — | migration drafted below |
 | H29 | needs-decision | — | migration strategy — recommendation below |
-| H5 | deferred | — | upload stored-XSS: validate the stored extension server-side, and stop serving `/uploads` via nginx `alias` (route through the app so CSP/nosniff apply). |
-| H6 | deferred | — | NotificationLog body stores full OTP text + admin substring search: stop persisting the code (store a redacted body) and/or drop the search over `body`. |
-| H15 | deferred | — | reconcile sweep MAX_AGE + no scheduler guard; add overlap-guarded cron + alerting; add a Razorpay reconciler (none exists). |
-| H16 | deferred | — | tip route: charge the customer / idempotency / rate-limit / order-status check before raising rider payable. |
-| H19 | deferred | — | Coupon.perUserLimit read nowhere + CouponRedemption unique only on orderId; enforce per-user in the order path (+ DB unique on `(couponId,userId)` — migration). |
-| H23 | deferred | — | msg91-widget falls back to client `claimedPhone`; require a signature-verified phone, add a replay/nonce store. |
-| H24 | deferred | — | public rider-application create + approve upserts role by phone; require ownership proof, don't flip an existing staff user's role. |
-| H30 | deferred | — | add `@@index([branchId, placedAt])` on Order (migration) — reporting endpoints filter on it. |
-| H31 | deferred | — | `?force=1` hard-delete cascades leave orphaned wallet/loyalty ledgers; block or reconcile before delete. |
+| H5 | fixed | `562503d` | upload-key.test.ts — buildKey extension whitelist (dangerous→.bin) + nginx nosniff/attachment. Follow-up (noted): content-sniff uploads via sharp. |
+| H6 | fixed | `a1ac409` | notify-redaction.test.ts — redact OTP code from NotificationLog body + strip meta.otpCode; drop body from admin search. |
+| H15 | fixed | `371b380` | phonepe-sweep-lock.test.ts — advisory-lock overlap guard + abandoned-count warn. Follow-up (NOT built): Razorpay reconciler + deploy-side alerting/dead-man/flock. |
+| H16 | fixed (Phase 1) | `a1ac409` | order-tip-route.test.ts — rate limit + tippable-state + set-once. **Phase 2 DECISION (not done):** route tips through the payment/ledger layer so a rider credit has a matching customer charge, before GA. |
+| H19 | fixed\* | `8068546` | app-level per-user enforcement + FOR UPDATE lock (no placeOrder unit harness; mirrors H18). DB backstop `UNIQUE(couponId,userId)` drafted below, not applied. |
+| H23 | fixed | `e678b67` | msg91-widget.test.ts — phone from verified response only; claimedPhone mismatch refused. Follow-up (drafted): sha256(token) single-use replay table (migration). |
+| H24 | fixed | `a1ac409` | rider-approve-route.test.ts — allow-list promotion (never flip a non-CUSTOMER/RIDER). Follow-up (recommended): OTP ownership proof at public create. |
+| H30 | needs-decision | — | DB index only — `@@index([branchId, placedAt])` on Order. Drafted below, NOT applied (adding the schema `@@index` without a migration would recreate H27/H28 drift; H29-gated). |
+| H31 | fixed | `a1ac409` | restaurant-force-delete.test.ts — refuse `?force=1` when financial records exist (has_financial_history). |
 
 ### H17 — DECISION taken: Option A (hide Razorpay from the wizard)
 The audit asked: hide Razorpay until the handoff works, or implement the handoff.
@@ -192,13 +192,34 @@ before the first `migrate deploy`, or it replays `0_init` and aborts. Also note 
 
 ---
 
+## Drafted migrations — H30 / H19 (NOT applied, H29-gated, needs backup)
+```sql
+-- H30: reporting endpoints filter Order by (branchId, placedAt range).
+CREATE INDEX "Order_branchId_placedAt_idx" ON "Order"("branchId", "placedAt");
+-- schema.prisma Order: add @@index([branchId, placedAt]) IN THE SAME migration.
+
+-- H19: per-user coupon backstop. VALID ONLY if every coupon's perUserLimit == 1.
+-- Pre-check: SELECT "couponId","userId",count(*) FROM "CouponRedemption"
+--   GROUP BY 1,2 HAVING count(*)>1;  -- must be empty or index creation fails.
+CREATE UNIQUE INDEX "CouponRedemption_couponId_userId_key"
+  ON "CouponRedemption"("couponId","userId");
+-- schema.prisma CouponRedemption: add @@unique([couponId,userId]) IN THE SAME migration.
+```
+
+## Follow-ups recorded (not done, each noted in its commit)
+- **H16 Phase 2 (DECISION):** route tips through the payment/ledger layer so a rider credit always has a matching customer charge — before GA.
+- **H23:** single-use replay store `sha256(token)` (new table + migration) for the multi-instance deploy.
+- **H15:** a Razorpay reconciler (new provider `getOrderStatus` + `reconcileRazorpayPayment`) and deploy-side alerting / dead-man heartbeat / cron `flock`.
+- **H24:** OTP ownership proof at the public rider-application create.
+- **H5:** content-sniff uploaded bytes (via the existing `sharp` dep) rather than trusting the client Content-Type.
+- **C7/H8/H18:** DB uniqueness constraints (partial-unique one-CAPTURED-per-order; `LoyaltyTransaction(orderId,type)`; coupon/offer) — drafted earlier, H29-gated.
+
 ## Remaining
 - MEDIUM / LOW findings: not implemented (Phase 4 is report-only for these).
-- The deferred HIGHs above (H5, H6, H15, H16, H19, H23, H24, H30, H31) and Group E
-  (H27–H29) are the outstanding work, each with a one-line path above.
+- **Group E (H27–H29)** + the H30/H19 DB indexes above: owner must decide H29, take a DB backup, then apply. Nothing DB-side has been applied.
+- The YouPI white-label embed and real WhatsApp/Gmail/bank-feed wiring: out of scope / compliance decisions, not done.
 - C14 pipeline changes are committed but un-run; the first deploy run is the
   owner's to trigger (and only after the H29 decision, since the deploy now
   fails-loud on detected schema drift).
 
-**Suite at completion:** `tsc --noEmit` exit 0 · `vitest run` → Test Files 66
-passed (66), Tests 774 passed (774), 6 pre-existing unhandled errors (otp-limits).
+**Suite at completion:** `tsc --noEmit` exit 0 · `vitest run` → Test Files 72 passed, Tests 795 passed (795), 6 pre-existing unhandled errors (otp-limits).
