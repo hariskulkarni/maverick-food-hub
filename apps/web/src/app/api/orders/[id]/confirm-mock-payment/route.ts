@@ -4,6 +4,13 @@ import { PaymentStatus } from '@prisma/client';
 import { auth } from '@/server/auth';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // C2: this route flips a PENDING mock payment straight to CAPTURED. It must
+  // never be reachable in production — only on dev or an explicit demo
+  // deployment. In production it 404s as if it did not exist.
+  if (process.env.NODE_ENV === 'production' && process.env.DEMO_MODE !== 'true') {
+    return new Response('Not found', { status: 404 });
+  }
+
   const { id } = await params;
   const session = await auth();
   if (!session?.user) return new Response('Unauthorized', { status: 401 });
