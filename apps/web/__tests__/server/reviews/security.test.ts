@@ -48,13 +48,15 @@ describe('reviews security', () => {
 
   it('testLlmKey masks a key echoed back by the provider', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
-      new Response(`invalid x-api-key: ${KEY}`, { status: 401 }));
+      new Response('x'.repeat(190) + KEY + 'tail', { status: 401 }));
     for (const provider of ['anthropic', 'openai'] as const) {
       const r = await testLlmKey({ provider, apiKey: KEY, model: 'm' });
       expect(r.ok).toBe(false);
       expect(r.error).toBeTruthy();
       expect(r.error).not.toContain(KEY);
-      expect(r.error).toContain('***');
+      for (let i = 0; i + 8 <= KEY.length; i++) {
+        for (let j = i + 8; j <= KEY.length; j++) expect(r.error).not.toContain(KEY.slice(i, j));
+      }
     }
   });
 
@@ -84,5 +86,12 @@ describe('reviews security', () => {
     expect(s).not.toContain('refreshToken');
     expect(s).not.toContain('configEncrypted');
     expect(s).not.toContain('sk-ant-');
+    const body = JSON.parse(s);
+    expect(Object.keys(body).sort()).toEqual(['autoReply', 'google', 'llm']);
+    expect(Object.keys(body.google).sort()).toEqual(['status', 'summary']);
+    expect(Object.keys(body.llm).sort()).toEqual(['status', 'summary']);
+    expect(body.llm.summary).toEqual({ provider: 'anthropic', apiKey: '••••T123', model: 'm' });
+    expect(body.google.summary).toEqual({ accountId: 'a1', locationId: 'l1' });
+    expect(h.getConfig).not.toHaveBeenCalled();
   });
 });

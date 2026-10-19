@@ -52,6 +52,12 @@ function buildPrompt(rating: number, comment: string | null, tone?: string | nul
   ].filter(Boolean).join('\n');
 }
 
+// Mask the key in the FULL body before truncating, so a cut inside an echoed key can't leak a prefix.
+async function safeBody(res: Response, apiKey: string): Promise<string> {
+  const raw = await res.text();
+  return (apiKey ? raw.split(apiKey).join('***') : raw).slice(0, 200);
+}
+
 async function callAnthropic(apiKey: string, model: string, prompt: string): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -59,7 +65,7 @@ async function callAnthropic(apiKey: string, model: string, prompt: string): Pro
     body: JSON.stringify({ model, max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
     signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
   });
-  if (!res.ok) throw new Error(`anthropic ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) throw new Error(`anthropic ${res.status}: ${await safeBody(res, apiKey)}`);
   const data = await res.json();
   const text = Array.isArray(data?.content) ? data.content.find((b: any) => b.type === 'text')?.text : '';
   if (!text) throw new Error('anthropic: empty response');
@@ -73,7 +79,7 @@ async function callOpenAiCompat(base: string, apiKey: string, model: string, pro
     body: JSON.stringify({ model, max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
     signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
   });
-  if (!res.ok) throw new Error(`llm ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) throw new Error(`llm ${res.status}: ${await safeBody(res, apiKey)}`);
   const data = await res.json();
   const text = data?.choices?.[0]?.message?.content;
   if (!text) throw new Error('llm: empty response');
