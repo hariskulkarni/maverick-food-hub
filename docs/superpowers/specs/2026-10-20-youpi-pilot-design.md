@@ -61,6 +61,16 @@ Credentials from `IntegrationCredential(YOUPI)`: `{ baseUrl, merchantId/apiKey, 
 - PENDING-until-reconciled: frontend/webhook-body alone never marks PAID.
 - Branding: opted-in restaurant's checkout/outcome renders its storefront branding.
 
+## 5b. Enablement workflow — super-admin approval (required)
+
+YouPI is gated behind an explicit **super-admin approval**, not just a restaurant pasting creds.
+
+- **Super-admin (platform) surface** (`/platform/...`): holds the **YouPI instance connection** config (baseUrl, apiKey, webhookSecret — stored as a platform-level `IntegrationCredential` under the `__platform__` sentinel, like the platform-security blob) + default caps; shows an **approvals queue** of restaurant requests; can **approve / reject / disable** YouPI per restaurant, and the change takes effect in **real time** (next provider-selection read sees it).
+- **Restaurant-admin feature-request page**: a dedicated page that explains the self-hosted/experimental gateway with a **prominent CAUTION block** (verbatim from YouPI's own warnings: research/experimental, observer-based confirmation, not a settlement guarantee, ≤20/day, pilot/low-value only, you accept the risk). A **"Request this feature"** button creates a request to the super-admin. Once **APPROVED**, the restaurant admin can set their **receiving VPA** + see status; before approval, YouPI is not selectable.
+- **Gating invariant (adds to §1):** the YOUPI provider is selectable for a restaurant **only when** its `YoupiFeatureRequest.status == APPROVED` **and** the platform YouPI connection is configured **and** the restaurant has set its VPA. Approval is the master switch; super-admin can disable at any time (real-time revoke).
+- **Data:** new `YoupiFeatureRequest { id, restaurantId @unique, status (REQUESTED|APPROVED|REJECTED|DISABLED), requestedById, requestedAt, decidedById, decidedAt, note }`. Audit each transition.
+- **Authz:** request endpoints are restaurant-admin + tenant-scoped; approve/reject/disable + platform config endpoints are **SUPER_ADMIN only**.
+
 ## 6. Dependencies / out of scope
 - **Live pilot requires a running YouPI-PG instance** + config (baseUrl, merchant/API creds, `webhookSecret`, receiving VPA). The adapter/webhook/poller are built + unit-tested against mocks; the live transaction needs that endpoint. If none exists, stand up an isolated YouPI eval first (like the original Track B) and prove the flow there before any real-customer exposure.
 - Refund automation (manual for pilot). High-value/high-volume use (capped out). YouPI's own observer/APK setup (operator's responsibility).
