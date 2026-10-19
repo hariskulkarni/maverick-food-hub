@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
-import { Building2, MapPin, Bell, Plug, Workflow, ChevronRight, Star } from 'lucide-react';
+import { Building2, MapPin, Bell, Plug, Workflow, ChevronRight } from 'lucide-react';
 import { requireRestaurant } from '@/server/tenancy';
 import { prisma } from '@/server/db';
 import { BrandingForm } from './branding-form';
@@ -71,7 +71,7 @@ export default async function SettingsPage() {
         }
         reviews={
           <section className="space-y-3">
-            <SectionHeader icon={Star} title="Google reviews" subtitle="Show your Google rating and reviews on your storefront." />
+            {/* ReviewsSettings renders its own branded header */}
             <ReviewsSettings restaurantId={restaurant.id} />
           </section>
         }
