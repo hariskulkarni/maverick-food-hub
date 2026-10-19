@@ -4,6 +4,7 @@ import { OrdersBoard } from './orders-board';
 import { PauseControl } from './pause-control';
 import { isPaused } from '@/server/branch-pause';
 import { auth } from '@/server/auth';
+import { LogoMark } from '@/components/brand/logo';
 
 export const metadata = { title: 'Admin · Orders' };
 // Never cache — every page render must reflect the live database. Without
@@ -45,7 +46,10 @@ export default async function AdminOrdersPage({ searchParams: _sp }: { searchPar
 
   return (
     <div className="p-6 space-y-4">
-      <h1 className="display text-2xl font-semibold">Orders</h1>
+      <div className="flex items-center gap-3">
+        <LogoMark className="h-9 w-9 shrink-0" />
+        <h1 className="display text-2xl font-semibold text-gradient-brand">Orders</h1>
+      </div>
       <PauseControl
         branchId={primaryBranchId}
         initial={{

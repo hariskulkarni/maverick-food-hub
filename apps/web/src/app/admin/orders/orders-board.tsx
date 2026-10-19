@@ -16,6 +16,7 @@ import { SoundToggle } from '@/components/sound-toggle';
 type Order = any;
 
 const FILTERS = [
+  { key: 'ACTIVE', label: 'Active', match: (o: any) => ['RECEIVED', 'ACCEPTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'].includes(o.status) },
   { key: 'all', label: 'All' },
   { key: 'PENDING', label: 'Pending', match: (o: any) => o.status === 'RECEIVED' },
   { key: 'PREPARING', label: 'Preparing', match: (o: any) => ['ACCEPTED', 'PREPARING', 'READY'].includes(o.status) },
@@ -25,6 +26,8 @@ const FILTERS = [
   { key: 'COD', label: 'COD', match: (o: any) => o.paymentMethod === 'COD' },
   { key: 'ONLINE', label: 'Online paid', match: (o: any) => o.paymentMethod === 'RAZORPAY' }
 ] as const;
+
+const PAGE_SIZE = 20;
 
 type PendingAlert = { orderId: string; code: string };
 
@@ -52,7 +55,9 @@ export function OrdersBoard({
   initial: Order[];
 }) {
   const [orders, setOrders] = useState<Order[]>(initial);
-  const [filter, setFilter] = useState<string>('all');
+  const [filter, setFilter] = useState<string>('ACTIVE');
+  // Presentation-only: how many filtered cards are rendered (Show more adds 20).
+  const [visible, setVisible] = useState<number>(PAGE_SIZE);
   // Per-restaurant filter for group mode: 'all' or a restaurantId.
   const [restaurantFilter, setRestaurantFilter] = useState<string>('all');
   // Fall back to the legacy branch channel when no channel prop is passed.
@@ -320,15 +325,15 @@ export function OrdersBoard({
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">Restaurant:</span>
           <button
-            onClick={() => setRestaurantFilter('all')}
-            className={`rounded-full border px-3 py-1.5 text-sm ${restaurantFilter === 'all' ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-accent'}`}
+            onClick={() => { setRestaurantFilter('all'); setVisible(PAGE_SIZE); }}
+            className={`min-h-[44px] rounded-full border px-3 py-1.5 text-sm ${restaurantFilter === 'all' ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-accent'}`}
           >
             All
           </button>
           {restaurantOptions.map((r) => (
             <button
               key={r.id}
-              onClick={() => setRestaurantFilter(r.id)}
+              onClick={() => { setRestaurantFilter(r.id); setVisible(PAGE_SIZE); }}
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm ${restaurantFilter === r.id ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-accent'}`}
             >
               {r.name}
@@ -344,8 +349,8 @@ export function OrdersBoard({
         {FILTERS.map((f) => (
           <button
             key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`rounded-full border px-3 py-1.5 text-sm ${filter === f.key ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-accent'}`}
+            onClick={() => { setFilter(f.key); setVisible(PAGE_SIZE); }}
+            className={`min-h-[44px] rounded-full border px-3 py-1.5 text-sm ${filter === f.key ? 'border-primary bg-primary/10 text-primary' : 'hover:bg-accent'}`}
           >
             {f.label}
           </button>
@@ -356,11 +361,11 @@ export function OrdersBoard({
         </div>
       </div>
 
-      <div className="grid gap-3">
+      <div className="max-h-[70vh] overflow-y-auto overscroll-contain grid gap-3 pr-1">
         {filtered.length === 0 && (
           <div className="rounded-xl border border-dashed bg-muted/30 p-10 text-center text-muted-foreground">No orders match this filter.</div>
         )}
-        {filtered.map((o) => (
+        {filtered.slice(0, visible).map((o) => (
           <Card key={o.id}>
             <CardContent className="p-5 grid gap-4 md:grid-cols-[1fr_auto] items-start">
               <div className="space-y-2">
@@ -427,6 +432,13 @@ export function OrdersBoard({
         ))}
       </div>
 
+      {filtered.length > visible && (
+        <div className="flex justify-center">
+          <Button variant="outline" className="min-h-[44px]" onClick={() => setVisible((v) => v + PAGE_SIZE)}>
+            Show {Math.min(PAGE_SIZE, filtered.length - visible)} more
+          </Button>
+        </div>
+      )}
     </>
   );
 }
