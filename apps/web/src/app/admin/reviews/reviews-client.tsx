@@ -45,6 +45,8 @@ export function ReviewsClient() {
   const [rating, setRating] = useState('');
   const [state, setState] = useState('');
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<{ text: string; notConnected?: boolean } | null>(null);
   // Per-review textarea content (draft edits and manual replies).
   const [texts, setTexts] = useState<Record<string, string>>({});
 
@@ -71,6 +73,29 @@ export function ReviewsClient() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function sync() {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const r = await fetch('/api/admin/reviews/sync', { method: 'POST' });
+      if (r.status === 409) {
+        setSyncMsg({ text: 'Connect Google Business first', notConnected: true });
+        return;
+      }
+      if (!r.ok) {
+        await reportApiError(r, 'Google sync failed');
+        return;
+      }
+      const d = (await r.json()) as { synced: number; created: number };
+      setSyncMsg({ text: `Synced ${d.synced} (${d.created} new)` });
+      await load();
+    } catch {
+      toast.error('Google sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function act(id: string, action: 'generate' | 'approve' | 'reply', text?: string) {
     setBusy((b) => ({ ...b, [id]: true }));
@@ -124,7 +149,21 @@ export function ReviewsClient() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="display text-2xl font-semibold">Reviews</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {syncMsg && (
+            <span className="text-sm text-muted-foreground" role="status">
+              {syncMsg.text}
+              {syncMsg.notConnected && (
+                <>
+                  {' '}
+                  <a href="/admin/settings" className="underline">Open settings</a>
+                </>
+              )}
+            </span>
+          )}
+          <Button variant="outline" disabled={syncing} onClick={sync}>
+            {syncing ? 'Syncing…' : 'Sync from Google'}
+          </Button>
           <select
             aria-label="Filter by rating"
             className="rounded-md border bg-background px-2 py-1 text-sm"
