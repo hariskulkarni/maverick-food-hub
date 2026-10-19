@@ -1,22 +1,11 @@
 import { NextRequest } from 'next/server';
-import { createHmac, timingSafeEqual } from 'crypto';
 import { requireManagedRestaurant } from '@/server/tenancy';
 import { exchangeCode, discoverAccountAndLocation } from '@/server/reviews/google-business';
 import { saveConfig } from '@/server/integrations';
+import { verifyState } from '@/server/reviews/oauth-state';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-function verifyState(state: string, restaurantId: string): boolean {
-  try {
-    const [rid, nonce, mac] = Buffer.from(state, 'base64url').toString().split(':');
-    if (!rid || !nonce || !mac || rid !== restaurantId) return false;
-    const want = createHmac('sha256', process.env.INTEGRATION_ENCRYPTION_KEY || 'dev')
-      .update(`${rid}:${nonce}`).digest('hex').slice(0, 32);
-    const a = Buffer.from(mac); const b = Buffer.from(want);
-    return a.length === b.length && timingSafeEqual(a, b);
-  } catch { return false; }
-}
 
 export async function GET(req: NextRequest) {
   const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));

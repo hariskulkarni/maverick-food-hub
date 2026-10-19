@@ -13,7 +13,8 @@ vi.mock('@/server/integrations', () => ({ saveConfig: saveMock }));
 vi.mock('@/server/log', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 import { NextRequest } from 'next/server';
-import { GET as connectGET, signState } from '@/app/api/admin/integrations/google-business/connect/route';
+import { GET as connectGET } from '@/app/api/admin/integrations/google-business/connect/route';
+import { signState } from '@/server/reviews/oauth-state';
 import { GET as callbackGET } from '@/app/api/admin/integrations/google-business/callback/route';
 
 const cb = (qs: string) =>
