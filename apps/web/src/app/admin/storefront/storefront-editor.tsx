@@ -2,12 +2,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { reportApiError } from '@/lib/api-error';
 import { ImageUploader } from '@/components/image-uploader';
-import { Image as ImageIcon, Images, Plus, Trash2, ArrowUp, ArrowDown, Save, ExternalLink, Eye, EyeOff, ChevronDown, ChevronRight, Star, Loader2, Type, Megaphone, BookOpen, Blocks, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
+import { Image as ImageIcon, Images, Plus, Trash2, ArrowUp, ArrowDown, Save, ExternalLink, Eye, EyeOff, ChevronDown, ChevronRight, Star, Loader2, Type, Megaphone, BookOpen, Blocks, LayoutGrid, ListOrdered, Palette, Store, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import type { StorefrontConfig, HeroSlide, HeroTransition, MenuLayout, FontPair, ButtonRadius, CardStyle, ContentBlock, BlockType, BlockPosition, Align, LogoFit, LogoShape, HeroWidth, HeroHeight } from '@/server/storefront-cms';
 import {
   LOGO_FITS, LOGO_SHAPES, LOGO_FIT_LABELS, LOGO_SHAPE_LABELS, LOGO_FIT_CLASS, LOGO_SHAPE_RADIUS_CLASS,
@@ -20,12 +21,23 @@ import {
 type Cat = { id: string; name: string; sortOrder: number; isActive: boolean; itemCount: number };
 type Item = { id: string; name: string; sortOrder: number; isAvailable: boolean; isFeatured: boolean };
 
+type Section = 'hero' | 'identity' | 'theme' | 'blocks' | 'menu' | 'categories';
+const SECTIONS: { id: Section; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'hero', label: 'Hero & cover', icon: Images },
+  { id: 'identity', label: 'Identity', icon: Store },
+  { id: 'theme', label: 'Theme', icon: Palette },
+  { id: 'blocks', label: 'Content blocks', icon: Blocks },
+  { id: 'menu', label: 'Menu layout', icon: LayoutGrid },
+  { id: 'categories', label: 'Categories & items', icon: ListOrdered },
+];
+
 const newBlockId = () => `blk_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 
 export function StorefrontEditor({ initialConfig, categories, slug, coverImageUrl }: {
   initialConfig: StorefrontConfig; categories: Cat[]; slug: string; coverImageUrl: string | null;
 }) {
   const router = useRouter();
+  const [section, setSection] = useState<Section>('hero');
   const [cfg, setCfg] = useState<StorefrontConfig>(initialConfig);
   const [cats, setCats] = useState<Cat[]>(categories);
   const [savingCfg, setSavingCfg] = useState(false);
@@ -133,13 +145,40 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-4 md:flex-row md:gap-8">
+      <nav
+        role="tablist"
+        aria-label="Storefront design sections"
+        className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 md:sticky md:top-6 md:mx-0 md:w-52 md:shrink-0 md:flex-col md:self-start md:overflow-visible md:px-0 md:pb-0"
+      >
+        {SECTIONS.map(({ id, label, icon: Icon }) => {
+          const active = section === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setSection(id)}
+              className={cn(
+                'flex min-h-[44px] shrink-0 items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+              )}
+            >
+              <Icon className="size-4" />
+              {label}
+            </button>
+          );
+        })}
+      </nav>
+      <div className="min-w-0 flex-1 space-y-6">
       <div className="flex items-center justify-between">
         <a href={`/r/${slug}`} target="_blank" rel="noreferrer" className="text-sm text-primary inline-flex items-center gap-1 hover:underline">
           <ExternalLink className="size-4" /> Preview live storefront
         </a>
       </div>
 
+      {section === 'hero' && (<>
       {/* HERO */}
       <Section title="Hero & Carousel" subtitle="The big banner at the top of your page.">
         <div className="flex gap-2">
@@ -267,7 +306,9 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
           </>
         )}
       </Section>
+      </>)}
 
+      {section === 'identity' && (<>
       {/* BRANDING */}
       <Section title="Branding" subtitle="Tagline & accent shown across your page.">
         <div className="flex flex-wrap items-end gap-4">
@@ -291,7 +332,9 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
           onChange={(d) => setBrand({ logoDisplay: d })}
         />
       </Section>
+      </>)}
 
+      {section === 'theme' && (<>
       {/* THEME */}
       <Section title="Theme — colours & fonts" subtitle="Set a secondary accent, pick a font pairing and the button/card style for your page.">
         <div className="flex flex-wrap items-end gap-4">
@@ -325,7 +368,9 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
           </div>
         </Field>
       </Section>
+      </>)}
 
+      {section === 'hero' && (<>
       {/* ANNOUNCEMENT BAR */}
       <Section title="Announcement bar" subtitle="A slim, dismissible promo bar pinned to the very top of your page.">
         <Toggle on={cfg.announcement.enabled} onClick={() => setAnn({ enabled: !cfg.announcement.enabled })} label="Show announcement bar" />
@@ -362,7 +407,9 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
           </>
         )}
       </Section>
+      </>)}
 
+      {section === 'identity' && (<>
       {/* ABOUT / STORY */}
       <Section title="About / Story section" subtitle="Tell customers your story — shown above the menu.">
         <Toggle on={cfg.about.enabled} onClick={() => setAbout({ enabled: !cfg.about.enabled })} label="Show about section" />
@@ -384,7 +431,9 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
           </>
         )}
       </Section>
+      </>)}
 
+      {section === 'blocks' && (<>
       {/* CONTENT BLOCKS */}
       <Section title="Content blocks" subtitle="Compose your page like a website builder — add rich text, images, galleries, calls-to-action, videos/maps, and spacers above or below the menu.">
         <div className="space-y-3">
@@ -471,7 +520,9 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
           </div>
         </div>
       </Section>
+      </>)}
 
+      {section === 'identity' && (<>
       {/* SOCIAL */}
       <Section title="Social & contact links" subtitle="Shown as icons in your storefront footer.">
         <div className="grid sm:grid-cols-2 gap-2">
@@ -501,7 +552,9 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
       <Section title="Footer note" subtitle="A custom message shown at the bottom of your page.">
         <TextArea value={cfg.footer.text} onChange={(v) => setFooter({ text: v })} placeholder="e.g. Open 11am–11pm daily · FSSAI 12345678901234 · © Your Restaurant" rows={2} />
       </Section>
+      </>)}
 
+      {section === 'hero' && (<>
       {/* LAYOUT */}
       <Section title="Info bar (under the hero)" subtitle="The status row beneath your banner — open status, delivery time, rating, city and the verified badge. Hide any chip, or fix the delivery time / rating.">
         <div className="grid sm:grid-cols-2 gap-2">
@@ -563,7 +616,9 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
         </div>
         <p className="mt-2 text-xs text-muted-foreground">Auto rating uses your real order reviews (shows “New” until you have enough). Manual override is handy for launch or for super-admins.</p>
       </Section>
+      </>)}
 
+      {section === 'menu' && (<>
       <Section title="Layout & Sections" subtitle="Toggle what customers see and how the menu is laid out.">
         <div className="grid sm:grid-cols-2 gap-2">
           <Toggle on={cfg.layout.showSearch} onClick={() => setLayout({ showSearch: !cfg.layout.showSearch })} label="Search bar" />
@@ -713,11 +768,14 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
           </div>
         )}
       </Section>
+      </>)}
 
-      <div className="sticky bottom-4 z-10">
-        <Button onClick={saveConfig} disabled={savingCfg} className="shadow-lg"><Save className="size-4" /> {savingCfg ? 'Saving…' : 'Save storefront design'}</Button>
+      <div className="sticky bottom-4 z-10 flex items-center justify-between gap-3 rounded-xl border bg-card/95 p-3 shadow-lg backdrop-blur">
+        <p className="hidden text-xs text-muted-foreground sm:block">Changes in every section are saved together and go live immediately.</p>
+        <Button onClick={saveConfig} disabled={savingCfg} className="min-h-[44px] w-full sm:w-auto"><Save className="size-4" /> {savingCfg ? 'Saving…' : 'Save storefront design'}</Button>
       </div>
 
+      {section === 'categories' && (<>
       {/* MENU ORDER */}
       <Section title="Menu categories — order & visibility" subtitle="Reorder how categories appear, and show/hide them on the storefront.">
         <div className="divide-y border rounded-lg overflow-hidden">
@@ -762,13 +820,15 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
         </div>
         <Button onClick={saveCats} disabled={savingCats} variant="outline"><Save className="size-4" /> {savingCats ? 'Saving…' : 'Save menu order'}</Button>
       </Section>
+      </>)}
+      </div>
     </div>
   );
 }
 
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <Card><CardContent className="p-5 space-y-4">
+    <Card className="rounded-xl"><CardContent className="p-4 sm:p-5 space-y-4">
       <div>
         <h3 className="font-semibold">{title}</h3>
         {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
