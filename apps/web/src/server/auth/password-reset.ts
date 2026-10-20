@@ -34,7 +34,7 @@ export async function requestPasswordReset(email: string, ip?: string): Promise<
   if (!normalized) return;
 
   const user = await prisma.user.findUnique({ where: { email: normalized } });
-  if (!user || !user.passwordHash || !user.email) return; // silent: no enumeration
+  if (!user || !user.passwordHash || !user.email || user.deletedAt) return; // silent: no enumeration
 
   const now = new Date();
   const raw = crypto.randomBytes(32).toString('base64url');
@@ -99,6 +99,8 @@ export async function consumePasswordReset(rawToken: string, newPassword: string
     const expired = await prisma.passwordResetToken.findFirst({ where: { tokenHash, usedAt: null } });
     return { ok: false, reason: expired ? 'expired' : 'invalid' };
   }
+
+  if (row.user.deletedAt) return { ok: false, reason: 'invalid' }; // soft-deleted: never recoverable
 
   const staff = isStaffTotpRole(row.user.role);
   const passwordHash = await argon2.hash(newPassword);

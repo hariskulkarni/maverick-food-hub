@@ -49,6 +49,13 @@ describe('requestPasswordReset', () => {
     expect(emailSend).not.toHaveBeenCalled();
   });
 
+  it('soft-deleted user: silent no-op (no token, no email)', async () => {
+    db.user.findUnique.mockResolvedValue({ id: 'u1', email: 'a@x.com', passwordHash: 'h', role: 'ADMIN', deletedAt: new Date() });
+    await requestPasswordReset('a@x.com');
+    expect(db.passwordResetToken.create).not.toHaveBeenCalled();
+    expect(emailSend).not.toHaveBeenCalled();
+  });
+
   it('user without passwordHash (OTP-only): silent no-op', async () => {
     db.user.findUnique.mockResolvedValue({ id: 'u1', email: 'a@x.com', passwordHash: null, role: 'CUSTOMER' });
     await requestPasswordReset('a@x.com');
@@ -183,5 +190,17 @@ describe('consumePasswordReset', () => {
     expect(audit).toHaveBeenCalled();
     expect((audit.mock.calls[0] as any)[0]).toBe('auth.password.reset');
     expect(JSON.stringify(audit.mock.calls)).not.toContain(RAW);
+  });
+});
+
+describe('consumePasswordReset: soft-deleted user', () => {
+  it('returns invalid and changes nothing', async () => {
+    db.passwordResetToken.findFirst.mockResolvedValue({
+      id: 't1', userId: 'u1', user: { id: 'u1', role: 'ADMIN', email: 'a@x.com', deletedAt: new Date() },
+    });
+    const r = await consumePasswordReset('rawtok', 'long-enough-pw');
+    expect(r).toEqual({ ok: false, reason: 'invalid' });
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(db.user.update).not.toHaveBeenCalled();
   });
 });

@@ -32,6 +32,18 @@ describe('POST /api/auth/password/request', () => {
     const bad = await reqPOST(new Request('http://x/', { method: 'POST', body: 'zzz' }) as any);
     expect(bad.status).toBe(200);
   });
+  it('per-email cap: adds IP-independent email bucket; still 200 and skips send when it trips', async () => {
+    rl.mockResolvedValueOnce({ ok: true, remaining: 1 }); // ip bucket
+    rl.mockResolvedValueOnce({ ok: false, response: Response.json({}, { status: 429 }) } as any); // email bucket
+    const res = await reqPOST(mk('/x', { email: ' Victim@X.com ' }) as any);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(request).not.toHaveBeenCalled();
+    expect(rl).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ name: 'pw-reset-email', limit: 5, windowMs: 900_000, key: 'victim@x.com', ignoreIp: true }),
+    );
+  });
   it('rate limited -> 429', async () => {
     rl.mockResolvedValueOnce({ ok: false, response: Response.json({}, { status: 429 }) } as any);
     const res = await reqPOST(mk('/x', { email: 'a@x.com' }) as any);

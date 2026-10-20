@@ -21,6 +21,13 @@ export async function POST(req: NextRequest) {
   } catch { /* neutral response regardless */ }
 
   if (email) {
+    // Per-email cap (IP-independent) so a victim can't be email-bombed by rotating
+    // source IPs. Trips silently: still 200, no send (no enumeration signal).
+    const rlEmail = await rateLimit(req, {
+      name: 'pw-reset-email', limit: 5, windowMs: 900_000,
+      key: email.toLowerCase().trim(), ignoreIp: true,
+    });
+    if (!rlEmail.ok) return Response.json({ ok: true });
     // Fire-and-forget: response time must not reveal whether the account exists
     // (known accounts do DB writes + an email send; unknown ones return at once).
     const ip = clientIp(req);
