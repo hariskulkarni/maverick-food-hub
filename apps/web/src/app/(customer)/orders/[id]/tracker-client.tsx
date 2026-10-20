@@ -67,6 +67,9 @@ export function OrderTrackerClient({
         setRiderPos(pos);
         setOrder((o: any) => ({ ...o, riderLocation: pos }));
       }
+      if (evt.kind === 'rider_arrived') {
+        toast.success(evt.phase === 'pickup' ? 'Rider has arrived at the restaurant' : 'Rider has arrived');
+      }
       if (evt.kind === 'rider:nearby' && !nearbyFiredRef.current.has(order.id)) {
         nearbyFiredRef.current.add(order.id);
         toast.info('Your rider is 2 min away');
@@ -306,7 +309,7 @@ export function OrderTrackerClient({
                 <div className="text-sm">{order.assignment.rider.user.name}</div>
                 <div className="text-xs text-muted-foreground">{order.assignment.rider.vehicleNumber}</div>
                 <div className="mt-3 flex gap-2">
-                  <a href={`tel:${order.assignment.rider.user.phone}`} className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm hover:bg-accent tap-press">
+                  <a href={`tel:${order.assignment.rider.user.phone}`} className="inline-flex h-11 sm:h-9 items-center gap-2 rounded-md border px-3 text-sm hover:bg-accent tap-press">
                     <Phone className="size-4" /> Call rider
                   </a>
                 </div>

@@ -9,6 +9,7 @@ import { money } from '@/lib/utils';
 import { Gift, ArrowRight } from 'lucide-react';
 import { remainingBalance } from '@/server/signup-bonus';
 import { LogoutButton } from './logout-button';
+import { PushToggle } from '@/components/push/push-toggle';
 
 export const metadata = { title: 'Profile' };
 // Always render the live profile (addresses, balances) from the DB.
@@ -84,6 +85,7 @@ export default async function ProfilePage() {
               { href: '/profile/addresses', label: 'Addresses' },
               { href: '/profile/favorites', label: 'Favorites' },
               { href: '/profile/rewards', label: 'Rewards' },
+              { href: '/profile/reviews', label: 'My reviews' },
               ...(bonus && !bonus.revoked ? [{ href: '/profile/signup-bonus', label: 'Signup Bonus' }] : []),
               { href: '/profile/referrals', label: 'Referrals' },
               { href: '/profile/security', label: 'Security & sessions' }
@@ -102,6 +104,7 @@ export default async function ProfilePage() {
       </aside>
 
       <section className="space-y-4">
+        <PushToggle />
         {bonus && !bonus.revoked && bonus.balance > 0 && (
           <Card className="border-primary/30 bg-gradient-to-br from-primary/10 via-warning/5 to-card">
             <CardContent className="p-5">

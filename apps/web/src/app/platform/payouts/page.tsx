@@ -23,7 +23,7 @@ export default async function PayoutRulesPage() {
   const sum = Number(stats._sum.earningsAmt ?? 0);
 
   return (
-    <div className="p-6 max-w-7xl space-y-6">
+    <div className="p-4 sm:p-6 max-w-7xl space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="display text-3xl font-semibold flex items-center gap-2"><Coins className="size-7 text-primary" /> Rider payout rules</h1>
@@ -44,6 +44,7 @@ export default async function PayoutRulesPage() {
       <section>
         <h3 className="font-semibold flex items-center gap-2 mb-3"><History className="size-4 text-primary" /> Rule history</h3>
         <Card><CardContent className="p-0">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 border-b">
               <tr>
@@ -84,6 +85,7 @@ export default async function PayoutRulesPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </CardContent></Card>
       </section>
     </div>

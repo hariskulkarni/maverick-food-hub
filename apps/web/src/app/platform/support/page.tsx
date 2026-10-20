@@ -29,7 +29,7 @@ export default async function PlatformSupportPage() {
   };
 
   return (
-    <div className="p-6 max-w-7xl space-y-6">
+    <div className="p-4 sm:p-6 max-w-7xl space-y-6">
       <header>
         <h1 className="display text-3xl font-semibold flex items-center gap-2"><LifeBuoy className="size-7 text-primary" /> Support tickets</h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">

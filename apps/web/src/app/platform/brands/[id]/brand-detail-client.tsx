@@ -513,7 +513,7 @@ function SettingsTab({
 
       <Card>
         <CardContent className="p-5 flex flex-wrap items-center gap-4">
-          <div className="flex-1 min-w-[240px]">
+          <div className="flex-1 min-w-[240px] max-w-full">
             <div className="font-semibold text-destructive">Deactivate brand</div>
             <p className="text-xs text-muted-foreground mt-0.5">
               Sets the brand to SUSPENDED. Restaurants stay assigned (you can unassign or reactivate later).

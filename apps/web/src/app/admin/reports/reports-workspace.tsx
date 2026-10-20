@@ -75,6 +75,7 @@ export async function ReportsWorkspace({ showHeader = true }: { showHeader?: boo
       {report.rollup && breakdown.length > 0 && (
         <Card><CardContent className="p-5">
           <h3 className="font-semibold mb-3 flex items-center gap-2"><Network className="size-4" /> By restaurant (30 days)</h3>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-muted-foreground">
               <tr><th className="py-2">Restaurant</th><th className="text-right">Orders</th><th className="text-right">Revenue</th></tr>
@@ -99,6 +100,7 @@ export async function ReportsWorkspace({ showHeader = true }: { showHeader?: boo
               </tr>
             </tfoot>
           </table>
+          </div>
         </CardContent></Card>
       )}
 
@@ -125,6 +127,7 @@ export async function ReportsWorkspace({ showHeader = true }: { showHeader?: boo
 
       <Card><CardContent className="p-5">
         <h3 className="font-semibold mb-3">Rider performance (30d)</h3>
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-left text-muted-foreground">
             <tr><th className="py-2">Rider</th><th>Done</th><th>Failed</th><th>Avg min</th><th>Rating</th></tr>
@@ -135,6 +138,7 @@ export async function ReportsWorkspace({ showHeader = true }: { showHeader?: boo
             ))}
           </tbody>
         </table>
+        </div>
       </CardContent></Card>
     </div>
   );

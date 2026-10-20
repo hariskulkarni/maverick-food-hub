@@ -44,7 +44,7 @@ export default async function PlatformUsersPage({ searchParams }: { searchParams
   for (const c of counts) byRole[c.role] = c._count;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
       <header>
         <h1 className="display text-3xl font-semibold">Users</h1>
         <p className="text-sm text-muted-foreground mt-1">Everyone on the platform — customers, restaurant staff, riders, and admins.</p>

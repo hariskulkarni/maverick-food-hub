@@ -65,6 +65,7 @@ export function QrSection({ restaurantId, initial }: { restaurantId: string; ini
       </div>
 
       <Card><CardContent className="p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-muted/40 border-b">
             <tr>
@@ -117,6 +118,7 @@ export function QrSection({ restaurantId, initial }: { restaurantId: string; ini
             })}
           </tbody>
         </table>
+        </div>
       </CardContent></Card>
     </div>
   );

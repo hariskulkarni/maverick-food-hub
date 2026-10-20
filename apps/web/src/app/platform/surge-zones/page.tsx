@@ -27,7 +27,7 @@ export default async function SurgeZonesPage() {
   const maxMult = rows.length ? Math.max(...rows.map((r) => r.multiplier)) : 0;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
       <header>
         <h1 className="display text-3xl font-semibold">Surge zones</h1>
         <p className="text-sm text-muted-foreground mt-1">

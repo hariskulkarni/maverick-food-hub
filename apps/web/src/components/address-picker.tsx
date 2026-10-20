@@ -42,16 +42,10 @@ interface Props {
 }
 
 interface SearchHit {
+  label: string;
   lat: number;
   lng: number;
-  displayName: string;
-  address: {
-    line1: string;
-    city: string;
-    state: string;
-    postalCode: string;
-    country: string;
-  };
+  pincode?: string;
 }
 
 // Guntur as a sensible default — most of the platform's launch users.
@@ -171,7 +165,7 @@ export function AddressPicker({ initial, onChange }: Props) {
     setSearching(true);
     setShowResults(true);
     try {
-      const res = await fetch('/api/customer/addresses/search', {
+      const res = await fetch('/api/customer/addresses/autocomplete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ q: query })
@@ -189,14 +183,11 @@ export function AddressPicker({ initial, onChange }: Props) {
       ...f,
       latitude: hit.lat,
       longitude: hit.lng,
-      line1: hit.address.line1 || f.line1,
-      city: hit.address.city || f.city,
-      state: hit.address.state || f.state,
-      postalCode: hit.address.postalCode || f.postalCode,
-      country: hit.address.country || f.country
+      postalCode: hit.pincode || f.postalCode
     }));
     setShowResults(false);
-    setQuery(hit.displayName);
+    setQuery(hit.label);
+    void reverseFill(hit.lat, hit.lng);
   }
 
   function useMyLocation() {
@@ -248,7 +239,7 @@ export function AddressPicker({ initial, onChange }: Props) {
                 className="tap-press flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
               >
                 <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <span className="truncate">{r.displayName}</span>
+                <span className="truncate">{r.label}</span>
               </button>
             ))}
           </div>

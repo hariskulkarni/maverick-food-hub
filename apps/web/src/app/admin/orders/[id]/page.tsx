@@ -31,8 +31,8 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
   const feedback = rawFeedback ? visibleForRole(rawFeedback, 'ADMIN') : null;
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="display text-2xl font-semibold flex items-center gap-3">{o.code} <OrderStatusBadge status={o.status} /></h1>
           <p className="text-sm text-muted-foreground">{fmtDate(o.placedAt)}</p>

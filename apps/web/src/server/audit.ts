@@ -70,6 +70,7 @@ export type AuditAction =
   | 'signup_bonus.consumed' | 'signup_bonus.restored' | 'signup_bonus.revoked'
   // Post-delivery feedback
   | 'order.feedback.submitted' | 'order.feedback.edited'
+  | 'feedback.moderate' | 'feedback.reply'
   // Other
   | (string & {});
 

@@ -4,6 +4,7 @@ import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { publish } from '@/server/realtime';
 import { maybePublishNearby } from '@/server/proximity';
+import { maybeEmitArrival } from '@/server/arrival';
 
 /**
  * High-frequency rider location ping.
@@ -26,7 +27,7 @@ const lastPersistAt = new Map<string, number>(); // riderId → ms
 const lastBranchAt  = new Map<string, number>(); // riderId → ms (for last known branchId on this assignment)
 // Cache of order → drop coords so we can compute proximity without a DB hit
 // on every ping. Lifetime matches lastBranchAt — refreshed every 30s.
-const dropCache = new Map<string, { branchId: string | null; drop: { lat: number; lng: number } | null }>();
+const dropCache = new Map<string, { branchId: string | null; pickup: { lat: number; lng: number } | null; drop: { lat: number; lng: number } | null }>();
 const DB_THROTTLE_MS = 3_000;
 
 export const runtime = 'nodejs';
@@ -70,12 +71,15 @@ export async function POST(req: NextRequest) {
     if (!cached || Date.now() - branchAt > 30_000) {
       const o = await prisma.order.findUnique({
         where: { id: data.orderId },
-        select: { branchId: true, address: { select: { latitude: true, longitude: true } } }
+        select: { branchId: true, branch: { select: { latitude: true, longitude: true } }, address: { select: { latitude: true, longitude: true } } }
       });
       const drop = o?.address?.latitude != null && o.address?.longitude != null
         ? { lat: Number(o.address.latitude), lng: Number(o.address.longitude) }
         : null;
-      cached = { branchId: o?.branchId ?? null, drop };
+      const pickup = o?.branch?.latitude != null && o.branch?.longitude != null
+        ? { lat: Number(o.branch.latitude), lng: Number(o.branch.longitude) }
+        : null;
+      cached = { branchId: o?.branchId ?? null, pickup, drop };
       dropCache.set(data.orderId, cached);
       if (cached.branchId) {
         (event as any).branchId = cached.branchId;
@@ -91,6 +95,11 @@ export async function POST(req: NextRequest) {
     // rider crosses inside 200m of the drop. The helper handles the dedupe.
     if (cached?.drop) {
       maybePublishNearby(data.orderId, { lat: data.lat, lng: data.lng }, cached.drop);
+    }
+
+    // Geofence arrival (pickup/dropoff) — idempotent per order+phase; never blocks the ack.
+    if (cached) {
+      void maybeEmitArrival(data.orderId, { lat: data.lat, lng: data.lng }, cached.pickup, cached.drop).catch(() => {});
     }
   }
 

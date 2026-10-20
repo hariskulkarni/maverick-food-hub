@@ -196,6 +196,17 @@ function RouteBlock({ a }: { a: Assignment }) {
         <View style={styles.routeBody}>
           <Text style={styles.routeLabel}>DROP</Text>
           <Text style={styles.routeValue}>{drop}</Text>
+          {o.address?.floor ? (
+            <Text style={styles.routeSub}>Floor / flat: {o.address.floor}</Text>
+          ) : null}
+          {o.address?.landmark ? (
+            <Text style={styles.routeSub}>Landmark: {o.address.landmark}</Text>
+          ) : null}
+          {o.address?.instructions ? (
+            <Text style={[styles.routeSub, { fontWeight: font.weight.medium, color: colors.text }]}>
+              Note: {o.address.instructions}
+            </Text>
+          ) : null}
           {o.customer?.name ? (
             <Text style={styles.routeSub}>{o.customer.name}</Text>
           ) : null}

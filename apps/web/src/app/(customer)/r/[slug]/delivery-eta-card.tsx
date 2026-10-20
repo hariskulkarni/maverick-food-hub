@@ -149,7 +149,7 @@ export function DeliveryEtaCard({ branchId, branchName, branchCity }: Props) {
         <div className="flex w-full items-center gap-2.5">
           <Locate className="size-4 shrink-0 text-primary" />
           <span className="flex-1 min-w-0 text-sm font-medium">See your delivery time</span>
-          <Button size="sm" onClick={requestLocation} className="h-8 shrink-0 px-3 text-xs">
+          <Button size="sm" onClick={requestLocation} className="h-11 sm:h-8 shrink-0 px-3 text-xs">
             <MapPin className="size-3.5" /> Use my location
           </Button>
         </div>
@@ -207,7 +207,7 @@ export function DeliveryEtaCard({ branchId, branchName, branchCity }: Props) {
             <div className="text-sm font-medium leading-tight">~35 min{branchCity ? ` · ${branchCity}` : ''}</div>
             <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{state.reason}</div>
           </div>
-          <Button size="sm" variant="outline" onClick={requestLocation} className="h-8 shrink-0 px-3 text-xs">
+          <Button size="sm" variant="outline" onClick={requestLocation} className="h-11 sm:h-8 shrink-0 px-3 text-xs">
             Try again
           </Button>
         </div>

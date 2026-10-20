@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export default function ObservabilityPage() {
   return (
-    <div className="p-6 space-y-6 max-w-[1400px]">
+    <div className="p-4 sm:p-6 space-y-6 max-w-[1400px]">
       <header>
         <h1 className="display text-3xl font-semibold">Observability</h1>
         <p className="text-sm text-muted-foreground mt-1">

@@ -231,7 +231,7 @@ function RosterCard({
 
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
             <Bike className="size-5" />

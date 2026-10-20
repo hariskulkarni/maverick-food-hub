@@ -87,7 +87,7 @@ describe('reviews security', () => {
     expect(s).not.toContain('configEncrypted');
     expect(s).not.toContain('sk-ant-');
     const body = JSON.parse(s);
-    expect(Object.keys(body).sort()).toEqual(['autoReply', 'google', 'llm']);
+    expect(Object.keys(body).sort()).toEqual(['autoPublishReviews', 'autoReply', 'google', 'llm']);
     expect(Object.keys(body.google).sort()).toEqual(['status', 'summary']);
     expect(Object.keys(body.llm).sort()).toEqual(['status', 'summary']);
     expect(body.llm.summary).toEqual({ provider: 'anthropic', apiKey: '••••T123', model: 'm' });

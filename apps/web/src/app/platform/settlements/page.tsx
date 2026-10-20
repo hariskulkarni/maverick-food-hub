@@ -31,7 +31,7 @@ export default async function SettlementsPage({ searchParams }: { searchParams: 
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
       <header>
         <h1 className="display text-3xl font-semibold">Settlements</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -69,6 +69,7 @@ export default async function SettlementsPage({ searchParams }: { searchParams: 
 
           {/* Payout Breakup */}
           <Section title="Payout Breakup">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 border-b"><tr>
                 <Th>S.no</Th><Th>Particular</Th><Th align="right">Delivered</Th><Th align="right">Cancelled</Th><Th align="right">Total</Th>
@@ -88,6 +89,7 @@ export default async function SettlementsPage({ searchParams }: { searchParams: 
                 })}
               </tbody>
             </table>
+            </div>
           </Section>
 
           {/* Order Level */}
@@ -119,6 +121,7 @@ export default async function SettlementsPage({ searchParams }: { searchParams: 
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Discounts Summary */}
             <Section title="Discounts Summary">
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 border-b"><tr>
                   <Th>Construct</Th><Th align="right">Orders</Th><Th align="right">Subtotal</Th><Th align="right">Discount</Th><Th align="right">Eff. %</Th>
@@ -136,10 +139,12 @@ export default async function SettlementsPage({ searchParams }: { searchParams: 
                   {report.discountsSummary.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">No discounts in period.</td></tr>}
                 </tbody>
               </table>
+              </div>
             </Section>
 
             {/* Tax */}
             <Section title="Tax &amp; Compliance">
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 border-b"><tr>
                   <Th>Component</Th><Th>Rate</Th><Th align="right">Total</Th>
@@ -154,6 +159,7 @@ export default async function SettlementsPage({ searchParams }: { searchParams: 
                   ))}
                 </tbody>
               </table>
+              </div>
             </Section>
           </div>
 

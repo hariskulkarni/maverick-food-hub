@@ -46,7 +46,9 @@ export type RealtimeEvent =
   | { kind: 'rider:position'; riderId: string; lat: number; lng: number; speedKph?: number; orderId?: string; at: string }
   // Proximity ping — rider has crossed inside ~200m of the customer drop point.
   // Debounced server-side so the customer only sees the "rider arriving" toast once.
-  | { kind: 'rider:nearby'; orderId: string; distanceM: number; at: string };
+  | { kind: 'rider:nearby'; orderId: string; distanceM: number; at: string }
+  // Geofence arrival — rider within ARRIVAL_RADIUS_M of pickup or dropoff. Once per phase.
+  | { kind: 'rider_arrived'; orderId: string; phase: 'pickup' | 'dropoff'; at: string };
 
 export interface BufferedEvent {
   seq: number;

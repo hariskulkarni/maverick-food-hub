@@ -14,6 +14,9 @@ import dynamic from 'next/dynamic';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -50,7 +53,21 @@ export interface AddressRow {
   latitude: number | null;
   longitude: number | null;
   isDefault: boolean;
+  landmark: string | null;
+  floor: string | null;
+  instructions: string | null;
+  labelType: LabelType | null;
+  labelName: string | null;
 }
+
+type LabelType = 'HOME' | 'WORK' | 'OTHER';
+const LABEL_CHIPS: { value: LabelType; text: string }[] = [
+  { value: 'HOME', text: 'Home' },
+  { value: 'WORK', text: 'Work' },
+  { value: 'OTHER', text: 'Other' }
+];
+const chipLabel = (a: AddressRow) =>
+  a.labelType === 'OTHER' ? a.labelName || 'Other' : a.labelType ? LABEL_CHIPS.find((c) => c.value === a.labelType)!.text : a.label;
 
 interface Props {
   addresses: AddressRow[];
@@ -63,16 +80,31 @@ export function AddressesClient({ addresses }: Props) {
   const [picked, setPicked] = useState<PickedAddress | null>(null);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [landmark, setLandmark] = useState('');
+  const [floor, setFloor] = useState('');
+  const [instructions, setInstructions] = useState('');
+  const [labelType, setLabelType] = useState<LabelType>('HOME');
+  const [labelName, setLabelName] = useState('');
+
+  function loadDetails(a: AddressRow | null) {
+    setLandmark(a?.landmark ?? '');
+    setFloor(a?.floor ?? '');
+    setInstructions(a?.instructions ?? '');
+    setLabelType(a?.labelType ?? 'HOME');
+    setLabelName(a?.labelName ?? '');
+  }
 
   function startAdd() {
     setEditing(null);
     setPicked(null);
+    loadDetails(null);
     setOpen(true);
   }
 
   function startEdit(a: AddressRow) {
     setEditing(a);
     setPicked(null);
+    loadDetails(a);
     setOpen(true);
   }
 
@@ -80,6 +112,10 @@ export function AddressesClient({ addresses }: Props) {
     if (!picked) return;
     if (!picked.line1.trim() || !picked.city.trim() || !picked.postalCode.trim()) {
       toast.error('Address line 1, city and PIN code are required');
+      return;
+    }
+    if (labelType === 'OTHER' && !labelName.trim()) {
+      toast.error('Give this address a name, e.g. "Mom\'s place"');
       return;
     }
     setSaving(true);
@@ -90,6 +126,13 @@ export function AddressesClient({ addresses }: Props) {
       const method = editing ? 'PATCH' : 'POST';
       const body = {
         ...picked,
+        // Keep the legacy free-text label in step with the structured chip.
+        label: labelType === 'OTHER' ? labelName.trim() : labelType === 'WORK' ? 'Work' : 'Home',
+        landmark: landmark.trim(),
+        floor: floor.trim(),
+        instructions: instructions.trim(),
+        labelType,
+        labelName: labelType === 'OTHER' ? labelName.trim() : '',
         // First-ever address auto-becomes the default.
         isDefault: editing ? editing.isDefault : addresses.length === 0
       };
@@ -174,6 +217,71 @@ export function AddressesClient({ addresses }: Props) {
                 }
                 onChange={setPicked}
               />
+              <div className="mt-4 grid gap-3 rounded-xl border bg-muted/30 p-3 sm:p-4">
+                <div>
+                  <div className="mb-2 text-sm font-medium">Save as</div>
+                  <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Address label">
+                    {LABEL_CHIPS.map((c) => (
+                      <button
+                        key={c.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={labelType === c.value}
+                        onClick={() => setLabelType(c.value)}
+                        className={`tap-press min-h-10 rounded-full border px-4 text-sm font-medium transition-colors ${
+                          labelType === c.value
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'bg-background text-foreground hover:bg-muted'
+                        }`}
+                      >
+                        {c.text}
+                      </button>
+                    ))}
+                  </div>
+                  {labelType === 'OTHER' && (
+                    <Input
+                      className="mt-2"
+                      placeholder="Name this address (e.g. Mom's place)"
+                      maxLength={40}
+                      value={labelName}
+                      onChange={(e) => setLabelName(e.target.value)}
+                    />
+                  )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="addr-landmark">Landmark</Label>
+                    <Input
+                      id="addr-landmark"
+                      placeholder="Near / opposite..."
+                      maxLength={120}
+                      value={landmark}
+                      onChange={(e) => setLandmark(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="addr-floor">Floor / flat</Label>
+                    <Input
+                      id="addr-floor"
+                      placeholder="e.g. 3rd floor, Flat 302"
+                      maxLength={40}
+                      value={floor}
+                      onChange={(e) => setFloor(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="addr-instructions">Delivery instructions</Label>
+                  <Textarea
+                    id="addr-instructions"
+                    rows={2}
+                    placeholder="Gate code, call on arrival, leave with security..."
+                    maxLength={300}
+                    value={instructions}
+                    onChange={(e) => setInstructions(e.target.value)}
+                  />
+                </div>
+              </div>
             </div>
             <DialogFooter className="gap-2">
               <Button variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
@@ -207,7 +315,7 @@ export function AddressesClient({ addresses }: Props) {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold">{a.label}</span>
+                      <span className="font-semibold">{chipLabel(a)}</span>
                       {a.isDefault && <Badge variant="success">Default</Badge>}
                     </div>
                     <div className="mt-1 text-sm text-muted-foreground">
@@ -218,6 +326,14 @@ export function AddressesClient({ addresses }: Props) {
                       {a.city}
                       {a.state ? `, ${a.state}` : ''} {a.postalCode}
                     </div>
+                    {(a.floor || a.landmark) && (
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        {[a.floor, a.landmark].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                    {a.instructions && (
+                      <div className="mt-1 text-xs italic text-muted-foreground">{a.instructions}</div>
+                    )}
                   </div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">

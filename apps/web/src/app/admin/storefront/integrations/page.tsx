@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
  */
 export default async function CmsIntegrationsTab() {
   return (
-    <div className="p-6 space-y-8 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-8 max-w-5xl">
       <section className="space-y-3">
         <SectionHeader icon={Plug} title="Integrations" subtitle="Connect payment gateways, WhatsApp & SMS messaging, email (SMTP), storage and maps with a guided wizard. Secrets stay encrypted in the database." />
         <IntegrationsSection />

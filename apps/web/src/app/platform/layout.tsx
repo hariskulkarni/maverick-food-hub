@@ -33,6 +33,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/platform/orders',        icon: <ListOrdered className={I} />,     label: 'All orders' },
       { href: '/platform/live',          icon: <Radio className={I} />,           label: 'Live tracking' },
       { href: '/platform/feedback',      icon: <MessageSquare className={I} />,   label: 'Feedback' },
+      { href: '/platform/reviews-analytics', icon: <BarChart3 className={I} />, label: 'Review analytics' },
       { href: '/platform/live-ops',      icon: <AlertTriangle className={I} />,   label: 'Live ops' },
       { href: '/platform/riders',        icon: <Bike className={I} />,            label: 'Riders' },
       { href: '/platform/kyc',           icon: <BadgeCheck className={I} />,      label: 'KYC review' },

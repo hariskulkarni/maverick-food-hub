@@ -99,7 +99,7 @@ export function SupportClient({ initial, stats }: { initial: Ticket[]; stats: St
       {/* Filter bar */}
       <Card><CardContent className="p-4 space-y-3">
         <div className="flex flex-wrap items-end gap-3">
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-[200px] max-w-full">
             <Label className="text-xs">Search</Label>
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Message, ticket id, order id…" />
           </div>
@@ -112,6 +112,7 @@ export function SupportClient({ initial, stats }: { initial: Ticket[]; stats: St
 
       {/* Table */}
       <Card><CardContent className="p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-muted/40 border-b">
             <tr>
@@ -139,6 +140,7 @@ export function SupportClient({ initial, stats }: { initial: Ticket[]; stats: St
             ))}
           </tbody>
         </table>
+        </div>
       </CardContent></Card>
 
       {/* Detail drawer */}

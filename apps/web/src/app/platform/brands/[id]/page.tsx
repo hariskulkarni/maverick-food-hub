@@ -31,7 +31,7 @@ export default async function BrandDetailPage({ params }: { params: Promise<{ id
   const rollup = await getBrandSalesRollup(brand.id, { from, to });
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
       <BrandDetailClient
         brand={{
           id: brand.id,
