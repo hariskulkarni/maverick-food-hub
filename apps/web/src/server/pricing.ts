@@ -40,6 +40,12 @@ export interface PricingInputs {
    * own.
    */
   offers?: OfferReward[];
+  /**
+   * Authoritative delivery fee in RUPEES computed by the zone engine
+   * (`server/delivery/zones.ts`). When set (including 0 = free) it REPLACES the
+   * legacy base + perKm calculation. Omit to keep the legacy fee.
+   */
+  deliveryFeeOverride?: number;
   walletApplied?: number;
   loyaltyApplied?: number;
   /**
@@ -101,7 +107,10 @@ export function pricing(inp: PricingInputs): PricingResult {
       { lat: inp.delivery.lat, lng: inp.delivery.lng }
     );
   }
-  const deliveryFee = clampTwo(inp.baseDeliveryFee + inp.perKmDeliveryFee * Math.max(0, distanceKm - 1));
+  const deliveryFee =
+    inp.deliveryFeeOverride != null
+      ? clampTwo(Math.max(0, inp.deliveryFeeOverride))
+      : clampTwo(inp.baseDeliveryFee + inp.perKmDeliveryFee * Math.max(0, distanceKm - 1));
   // Flat packaging charge. Treated like the delivery fee — added to the amount
   // owed but not part of the taxable base (mirrors how deliveryFee is handled).
   const packagingFee = clampTwo(Math.max(0, inp.packagingFee ?? 0));

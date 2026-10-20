@@ -67,3 +67,23 @@ describe('pricing', () => {
     expect(r.total).toBe(0);
   });
 });
+
+describe('pricing deliveryFeeOverride', () => {
+  const base = {
+    lines: [{ unitPrice: 100, quantity: 2 }],
+    taxRatePct: 0,
+    baseDeliveryFee: 30,
+    perKmDeliveryFee: 10,
+    branch: { lat: 12.9, lng: 77.6 },
+    delivery: { lat: 12.95, lng: 77.65 }
+  };
+  it('uses the override and skips base+perKm', () => {
+    expect(pricing({ ...base, deliveryFeeOverride: 49 }).deliveryFee).toBe(49);
+  });
+  it('override 0 means free (not legacy)', () => {
+    expect(pricing({ ...base, deliveryFeeOverride: 0 }).deliveryFee).toBe(0);
+  });
+  it('omitted override keeps legacy calc', () => {
+    expect(pricing(base).deliveryFee).toBeGreaterThan(30);
+  });
+});

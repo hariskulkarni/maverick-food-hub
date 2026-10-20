@@ -29,6 +29,8 @@ import { sendDeliveryOtpSms } from './notify-templates';
 import { pushOrderMilestone } from './push/milestones';
 import { resolveLineSelections } from './menu-selections';
 import { groupOrderChannel } from './group-scope';
+import { resolveDeliveryTerms } from './delivery/placement';
+import { branchHasActiveZones } from './delivery/zones';
 import { isBranchOpenAt, isScheduledTimeInsideOpenWindow } from './operating-hours';
 
 // State machine. Cancellation is allowed from any pre-delivery state into the
@@ -446,6 +448,25 @@ export async function placeOrder(input: PlaceOrderInput) {
     }
   }
 
+  // ── Zone-authoritative delivery fee (DELIVERY only) ────────────────────────
+  // validate-address is only an advisory pre-check; this is the enforcement
+  // point so a direct POST /api/orders can't bypass zone serviceability, the
+  // minimum order, or pay the wrong fee. No zones configured => legacy fee.
+  let deliveryFeeOverride: number | undefined;
+  if (isDelivery && address) {
+    const terms = await resolveDeliveryTerms({
+      branch,
+      address,
+      subtotalPaise: Math.round(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0) * 100)
+    });
+    if (terms.kind === 'reject') throw new Error(terms.message);
+    if (terms.kind === 'zone') deliveryFeeOverride = terms.feeRupees;
+  } else if (isDelivery && (await branchHasActiveZones(branch.id))) {
+    // A zoned branch cannot take a delivery order with no address to zone-check
+    // (would otherwise dodge serviceability, min-order and zone fee).
+    throw new Error('ZONE_UNAVAILABLE: a delivery address is required');
+  }
+
   const priced = pricing({
     lines: lines.map((l) => ({ unitPrice: l.unitPrice, quantity: l.quantity })),
     taxRatePct: branch.taxRatePct,
@@ -458,6 +479,7 @@ export async function placeOrder(input: PlaceOrderInput) {
     packagingFee: fulfillmentType === FulfillmentType.DINE_IN ? 0 : Number(branch.packagingFee),
     branch: { lat: branch.latitude, lng: branch.longitude },
     delivery: isDelivery && address ? { lat: address.latitude, lng: address.longitude } : null,
+    deliveryFeeOverride,
     coupon,
     offers: offerRewards,
     walletApplied: input.walletApply ?? 0,

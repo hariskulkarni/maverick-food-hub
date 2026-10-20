@@ -69,6 +69,15 @@ export async function matchZone(branchId: string, loc: DeliveryLoc): Promise<Del
   return zones.find((z) => z.isDefault) ?? null;
 }
 
+/**
+ * True when the branch has at least one active zone. Distinguishes "no zones
+ * configured" (legacy fee/radius path) from "zones configured but this
+ * location is outside all of them and there is no default" (must be rejected).
+ */
+export async function branchHasActiveZones(branchId: string): Promise<boolean> {
+  return (await prisma.deliveryZone.count({ where: { branchId, isActive: true } })) > 0;
+}
+
 function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
@@ -108,10 +117,13 @@ export function computeZoneDelivery(
     (a, b) => b.minSubtotal - a.minSubtotal,
   );
   const bracket = brackets.find((b) => subtotalPaise >= b.minSubtotal);
-  if (bracket && bracket.charge < 0) {
+  // Fail closed: no matching bracket (empty/garbage config, or subtotal below
+  // every bracket) or a -1 bracket means delivery is unavailable. Never default
+  // to free delivery.
+  if (!bracket || bracket.charge < 0) {
     return { available: false, feePaise: 0, minOrderPaise, etaMinutes };
   }
-  let feePaise = bracket ? bracket.charge : 0;
+  let feePaise = bracket.charge;
 
   const tiers = parseRows(zone.distanceTiers, ["uptoKm", "charge"]).sort((a, b) => a.uptoKm - b.uptoKm);
   const tier = tiers.find((t) => distanceKm <= t.uptoKm);

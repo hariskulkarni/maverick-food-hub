@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { publish, findFirst, create, findUnique } = vi.hoisted(() => ({
-  publish: vi.fn(), findFirst: vi.fn(), create: vi.fn(), findUnique: vi.fn()
+const { publish, findFirst, create, findUnique, arrivalCreate } = vi.hoisted(() => ({
+  publish: vi.fn(), findFirst: vi.fn(), create: vi.fn(), findUnique: vi.fn(), arrivalCreate: vi.fn()
 }));
 vi.mock('@/server/realtime', () => ({ publish }));
 vi.mock('@/server/db', () => ({
   prisma: {
     orderStatusEvent: { findFirst, create },
-    order: { findUnique }
+    order: { findUnique },
+    riderArrival: { create: arrivalCreate }
   }
 }));
 
@@ -34,6 +35,7 @@ describe('maybeEmitArrival', () => {
     findFirst.mockResolvedValue(null);
     findUnique.mockResolvedValue({ status: 'OUT_FOR_DELIVERY' });
     create.mockResolvedValue({});
+    arrivalCreate.mockResolvedValue({});
   });
 
   it('fires once on first in-radius ping: event + sse', async () => {
@@ -50,11 +52,34 @@ describe('maybeEmitArrival', () => {
     expect(create).toHaveBeenCalledTimes(1);
   });
 
-  it('does not re-fire if DB already has the marker (after restart)', async () => {
-    findFirst.mockResolvedValue({ id: 'x' });
-    await maybeEmitArrival('o2', nearPickup, pickup, drop);
+  it('claims the durable unique row before emitting', async () => {
+    await maybeEmitArrival('o5', nearPickup, pickup, drop);
+    expect(arrivalCreate).toHaveBeenCalledWith({ data: { orderId: 'o5', phase: 'pickup' } });
+  });
+
+  it('second call after clearing the in-process set is still deduped by the unique row', async () => {
+    await maybeEmitArrival('o6', nearPickup, pickup, drop);
+    expect(publish).toHaveBeenCalledTimes(1);
+    __resetArrivalCache(); // simulate another instance / restart
+    arrivalCreate.mockRejectedValueOnce(Object.assign(new Error('Unique constraint'), { code: 'P2002' }));
+    await maybeEmitArrival('o6', nearPickup, pickup, drop);
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('a create conflict (P2002) emits nothing: no SSE, no audit event', async () => {
+    arrivalCreate.mockRejectedValue(Object.assign(new Error('Unique constraint'), { code: 'P2002' }));
+    await maybeEmitArrival('o7', nearPickup, pickup, drop);
     expect(publish).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('non-conflict create error emits nothing and allows retry on next ping', async () => {
+    arrivalCreate.mockRejectedValueOnce(new Error('db down'));
+    await maybeEmitArrival('o8', nearPickup, pickup, drop);
+    expect(publish).not.toHaveBeenCalled();
+    await maybeEmitArrival('o8', nearPickup, pickup, drop);
+    expect(publish).toHaveBeenCalledTimes(1);
   });
 
   it('fires nothing outside radius', async () => {

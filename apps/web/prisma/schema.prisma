@@ -1315,6 +1315,16 @@ model OrderItem {
   @@index([orderId])
 }
 
+/// Durable once-only marker for geofence rider-arrival events (per order+phase).
+model RiderArrival {
+  id      String   @id @default(cuid())
+  orderId String
+  phase   String
+  at      DateTime @default(now())
+
+  @@unique([orderId, phase])
+}
+
 model OrderStatusEvent {
   id        String      @id @default(cuid())
   orderId   String

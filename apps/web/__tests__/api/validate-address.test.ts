@@ -4,9 +4,10 @@ const findUnique = vi.fn();
 vi.mock('@/server/db', () => ({ prisma: { branch: { findUnique: (a: unknown) => findUnique(a) } } }));
 vi.mock('@/server/branch-pause', () => ({ isPaused: vi.fn(async () => ({ paused: false })) }));
 const matchZone = vi.fn();
+const hasZones = vi.fn();
 vi.mock('@/server/delivery/zones', async () => {
   const actual = await vi.importActual<typeof import('@/server/delivery/zones')>('@/server/delivery/zones');
-  return { ...actual, matchZone: (...a: unknown[]) => matchZone(...a) };
+  return { ...actual, matchZone: (...a: unknown[]) => matchZone(...a), branchHasActiveZones: (...a: unknown[]) => hasZones(...a) };
 });
 
 import { POST } from '@/app/api/checkout/validate-address/route';
@@ -24,6 +25,7 @@ const zone = (over: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   findUnique.mockReset().mockResolvedValue(branch);
   matchZone.mockReset();
+  hasZones.mockReset().mockResolvedValue(false);
 });
 
 describe('validate-address zones', () => {
@@ -46,6 +48,13 @@ describe('validate-address zones', () => {
     const j = await (await call({ branchId: 'b1', lat: 12.91, lng: 77.61 })).json();
     expect(j.ok).toBe(false);
     expect(j.reason).toBe('ZONE_UNAVAILABLE');
+  });
+
+  it('zones exist but address outside all and no default -> ZONE_UNAVAILABLE', async () => {
+    matchZone.mockResolvedValue(null);
+    hasZones.mockResolvedValue(true);
+    const j = await (await call({ branchId: 'b1', lat: 12.9, lng: 77.6 })).json();
+    expect(j).toMatchObject({ ok: false, reason: 'ZONE_UNAVAILABLE' });
   });
 
   it('no zones -> legacy radius path unchanged', async () => {

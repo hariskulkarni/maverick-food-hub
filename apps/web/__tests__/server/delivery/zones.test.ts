@@ -113,13 +113,13 @@ describe("computeZoneDelivery", () => {
     expect(r.feePaise).toBe(0);
   });
 
-  it("no matching bracket or empty/garbage JSON => fee 0, available", () => {
-    expect(computeZoneDelivery(z({ feeBrackets: [] }), 100, 1)).toMatchObject({ available: true, feePaise: 0 });
+  it("no matching bracket or empty/garbage JSON => unavailable (fail-closed, never free)", () => {
+    expect(computeZoneDelivery(z({ feeBrackets: [] }), 100, 1)).toMatchObject({ available: false, feePaise: 0 });
     expect(computeZoneDelivery(z({ feeBrackets: "nope", distanceTiers: null }), 100, 1)).toMatchObject({
-      available: true,
+      available: false,
       feePaise: 0,
     });
-    expect(computeZoneDelivery(z({ feeBrackets: [{ minSubtotal: 500, charge: 900 }] }), 100, 1).feePaise).toBe(0);
+    expect(computeZoneDelivery(z({ feeBrackets: [{ minSubtotal: 500, charge: 900 }] }), 100, 1).available).toBe(false);
   });
 
   it("distance tier is additive; first tier by uptoKm asc with distance<=uptoKm", () => {

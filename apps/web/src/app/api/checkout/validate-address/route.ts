@@ -15,7 +15,7 @@ import { clampTwo } from '@/lib/utils';
 import { routeDistance } from '@/server/geo/routing';
 import { isPaused } from '@/server/branch-pause';
 import { parseOrJsonError } from '@/server/zod-helpers';
-import { matchZone, computeZoneDelivery } from '@/server/delivery/zones';
+import { matchZone, computeZoneDelivery, branchHasActiveZones } from '@/server/delivery/zones';
 
 const Body = z.object({
   branchId: z.string(),
@@ -77,6 +77,10 @@ export async function POST(req: NextRequest) {
           ok: true, distanceKm, serviceRadiusKm,
           feePaise: d.feePaise, minOrderPaise: d.minOrderPaise, etaMinutes: d.etaMinutes
         });
+      }
+      if (await branchHasActiveZones(branchId)) {
+        // Zones configured but the address is outside all of them (no default).
+        return Response.json({ ok: false, reason: 'ZONE_UNAVAILABLE', distanceKm, serviceRadiusKm });
       }
       if (distanceKm > serviceRadiusKm) {
         ok = false;

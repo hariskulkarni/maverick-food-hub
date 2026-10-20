@@ -128,6 +128,8 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
   // Re-check the qualifying freebie whenever the subtotal changes. Public
   // endpoint, resolved by restaurant slug — reuses the core selection engine.
   const subtotal = pricing?.subtotal;
+  // Server-computed serviceability (same resolution as order placement).
+  const zoneBlock: { reason: string; message: string; minOrderPaise?: number } | null = pricing?.zoneBlock ?? null;
   useEffect(() => {
     if (typeof subtotal !== 'number' || subtotal <= 0) { setFreebie(null); return; }
     let cancelled = false;
@@ -155,6 +157,7 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
 
   async function placeOrder() {
     if (isDelivery && !addressId) return toast.error('Pick a delivery address');
+    if (isDelivery && zoneBlock) return toast.error(zoneBlock.message);
 
     // Resolve the scheduled slot (if any). Validate it's in the future before
     // we ship it to the server (the server re-checks against operating hours).
@@ -420,7 +423,18 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
                   <Row label="Restaurant Packaging" value={money(pricing.packagingFee)} />
                 )}
                 {isDelivery && (
-                  <Row label={`Delivery${pricing.distanceKm ? ` (~${pricing.distanceKm} km)` : ''}`} value={money(pricing.deliveryFee)} />
+                  <Row label={`Delivery${pricing.distanceKm ? ` (~${pricing.distanceKm} km)` : ''}`} value={pricing.deliveryFee === 0 && pricing.zone ? 'Free' : money(pricing.deliveryFee)} />
+                )}
+                {isDelivery && pricing.zone && (
+                  <p className="text-xs text-muted-foreground">
+                    Arrives in ~{pricing.zone.etaMinutes} min
+                    {pricing.zone.minOrderPaise > 0 ? ` · Minimum order ${money(pricing.zone.minOrderPaise / 100)}` : ''}
+                  </p>
+                )}
+                {isDelivery && zoneBlock && (
+                  <div role="alert" className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive break-words">
+                    {zoneBlock.message}
+                  </div>
                 )}
                 <div className="flex justify-between border-t pt-2 mt-2 font-semibold text-base">
                   <span>Total</span><span>{money(pricing.total)}</span>
@@ -439,7 +453,7 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
                 )}
               </dl>
             )}
-            <Button className="mt-4 w-full" size="lg" onClick={placeOrder} disabled={busy || !pricing}>
+            <Button className="mt-4 w-full" size="lg" onClick={placeOrder} disabled={busy || !pricing || (isDelivery && !!zoneBlock)}>
               {busy ? 'Placing order…' : `Place order · ${money(pricing?.total ?? 0)}`}
             </Button>
             <p className="mt-2 text-xs text-muted-foreground text-center">By placing this order you agree to our Terms.</p>

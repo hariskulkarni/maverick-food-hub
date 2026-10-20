@@ -6,10 +6,11 @@
  * Ray-casting point-in-polygon. Ring points are [lng, lat]. The ring may be
  * open or closed (first point repeated as last); both behave identically.
  *
- * Boundary convention (deterministic, half-open): a point on the left or
- * bottom boundary is INSIDE, a point on the right or top boundary is OUTSIDE.
- * Vertices follow the same rule. Rings with fewer than 3 distinct points
- * contain nothing.
+ * Boundary convention: ray-casting uses a half-open comparison, so points
+ * exactly on an edge or vertex are resolved consistently but only
+ * approximately (floating-point input, no exactness guarantee). Treat on-edge
+ * results as unspecified; do not rely on them. Rings with fewer than 3
+ * distinct points contain nothing.
  */
 export function pointInPolygon(
   lng: number,

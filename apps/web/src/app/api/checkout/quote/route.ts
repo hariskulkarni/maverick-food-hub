@@ -4,6 +4,7 @@ import { prisma } from '@/server/db';
 import { pricing, type OfferReward } from '@/server/pricing';
 import { auth } from '@/server/auth';
 import { loadAndApplyOffers, loadOfferByCode } from '@/server/offers';
+import { resolveDeliveryTerms } from '@/server/delivery/placement';
 import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({
@@ -98,6 +99,23 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Zone-authoritative delivery terms — identical resolution to placeOrder so the
+  // preview equals the charged fee. Only for DELIVERY with a chosen address.
+  const isDelivery = body.fulfillmentType === 'DELIVERY' || !body.fulfillmentType;
+  let deliveryFeeOverride: number | undefined;
+  let zone: { etaMinutes: number; minOrderPaise: number } | null = null;
+  let zoneBlock: { reason: string; message: string; minOrderPaise?: number } | null = null;
+  if (isDelivery && address) {
+    const subtotalPaise = Math.round(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0) * 100);
+    const terms = await resolveDeliveryTerms({ branch, address, subtotalPaise });
+    if (terms.kind === 'zone') {
+      deliveryFeeOverride = terms.feeRupees;
+      zone = { etaMinutes: terms.etaMinutes, minOrderPaise: terms.minOrderPaise };
+    } else if (terms.kind === 'reject') {
+      zoneBlock = { reason: terms.reason, message: terms.message.replace(/^[A-Z_]+: /, ''), minOrderPaise: terms.minOrderPaise };
+    }
+  }
+
   const r = pricing({
     lines,
     taxRatePct: branch.taxRatePct,
@@ -107,10 +125,11 @@ export async function POST(req: NextRequest) {
     packagingFee: body.fulfillmentType === 'DINE_IN' ? 0 : Number(branch.packagingFee),
     branch: { lat: branch.latitude, lng: branch.longitude },
     delivery: address ? { lat: address.latitude, lng: address.longitude } : null,
+    deliveryFeeOverride,
     coupon,
     offers,
     walletApplied: body.walletApply,
     loyaltyApplied: body.loyaltyApply
   });
-  return Response.json({ ...r, taxRatePct: branch.taxRatePct });
+  return Response.json({ ...r, taxRatePct: branch.taxRatePct, zone, zoneBlock });
 }
