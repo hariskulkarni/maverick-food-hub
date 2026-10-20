@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DetailDrawer, DrawerSection } from '@/components/admin/detail-drawer';
 import { QrCard } from '@/components/qr-card';
+import { AddStaffDialog } from './[id]/add-staff-dialog';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -608,7 +609,7 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
         </div>
       </DrawerSection>
 
-      <DrawerSection title="Owner & team">
+      <DrawerSection title="Owner & team" action={<AddStaffDialog restaurantId={r.id} onAdded={() => { void load(); onChanged(); }} />}>
         <div className="p-4 space-y-2 text-sm">
           <div className="flex items-center gap-2"><Users className="size-4 text-muted-foreground" /><strong>{r.owner.name}</strong> · <span className="text-muted-foreground">{r.owner.email}</span></div>
           {r.members.length > 0 && (
