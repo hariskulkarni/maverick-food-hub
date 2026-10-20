@@ -72,7 +72,7 @@ export default async function PlatformOrdersPage({ searchParams }: { searchParam
     : Math.round(slaAgg.reduce((s, o) => s + ((+o.deliveredAt!) - (+o.placedAt)) / 60_000, 0) / slaAgg.length);
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
       <header>
         <h1 className="display text-3xl font-semibold">Orders</h1>
         <p className="text-sm text-muted-foreground mt-1">Every order across every restaurant. Filter, search, and drill in to inspect.</p>

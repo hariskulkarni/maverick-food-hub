@@ -73,7 +73,7 @@ export default async function PlatformQrPage() {
   });
 
   return (
-    <div className="p-6 max-w-7xl space-y-6">
+    <div className="p-4 sm:p-6 max-w-7xl space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="display text-3xl font-semibold flex items-center gap-2">

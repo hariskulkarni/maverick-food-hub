@@ -691,7 +691,7 @@ function WoymTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: PatchFn;
                 <MoveControls i={i} len={tiles.length} onMove={(f, tt) => setTiles(arrayMove(tiles, f, tt))} onRemove={() => setTiles(tiles.filter((_, idx) => idx !== i))} />
               </div>
             </div>
-            <div className="grid gap-3 grid-cols-[96px_1fr]">
+            <div className="grid gap-3 grid-cols-[72px_minmax(0,1fr)] sm:grid-cols-[96px_1fr]">
               <ImageUploader value={t.image} onChange={(url) => update(i, { image: url || '' })} folder="discovery" aspect="square" recommended="600×600 px (square) · JPG/PNG/WebP" />
               <div className="space-y-2">
                 <Field label="Label"><Text value={t.label} onChange={(v) => update(i, { label: v })} max={60} /></Field>
@@ -705,7 +705,7 @@ function WoymTab({ cfg, patch, setCfg }: { cfg: DiscoveryConfig; patch: PatchFn;
                 Category page (header &amp; SEO)
               </summary>
               <div className="mt-3 space-y-3">
-                <div className="grid gap-3 grid-cols-[128px_1fr]">
+                <div className="grid gap-3 grid-cols-[88px_minmax(0,1fr)] sm:grid-cols-[128px_1fr]">
                   <ImageUploader value={t.heroImage} onChange={(url) => update(i, { heroImage: url || '' })} folder="discovery" aspect="wide" label="Header image" recommended="2600×1300 (2:1) · blank = tile image" />
                   <div className="space-y-2">
                     <Field label="Header name" hint="Blank = tile label."><Text value={t.title} onChange={(v) => update(i, { title: v })} max={80} placeholder={t.label} /></Field>

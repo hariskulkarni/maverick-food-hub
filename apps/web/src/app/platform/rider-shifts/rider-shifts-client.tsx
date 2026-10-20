@@ -86,11 +86,11 @@ export function RiderShiftsClient({ initial }: { initial: ShiftRow[] }) {
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">From date</Label>
-              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 mt-1 w-[160px]" />
+              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 mt-1 w-[160px] max-w-full" />
             </div>
             <div>
               <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">To date</Label>
-              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 mt-1 w-[160px]" />
+              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 mt-1 w-[160px] max-w-full" />
             </div>
             <div className="ml-auto flex items-center gap-3">
               <span className="text-xs text-muted-foreground">

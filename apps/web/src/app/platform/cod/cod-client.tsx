@@ -119,7 +119,7 @@ export function CodClient({ initial, riders }: { initial: CodRow[]; riders: Ride
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[200px]">
+            <div className="min-w-[200px] max-w-full">
               <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Rider</Label>
               <select value={riderId} onChange={(e) => setRiderId(e.target.value)} className="h-9 mt-1 w-full rounded-md border bg-card px-2 text-sm">
                 <option value="">All riders</option>
@@ -128,11 +128,11 @@ export function CodClient({ initial, riders }: { initial: CodRow[]; riders: Ride
             </div>
             <div>
               <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">From</Label>
-              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 mt-1 w-[160px]" />
+              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 mt-1 w-[160px] max-w-full" />
             </div>
             <div>
               <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">To</Label>
-              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 mt-1 w-[160px]" />
+              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 mt-1 w-[160px] max-w-full" />
             </div>
             <div className="ml-auto flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={exportCsv}><Download className="size-4" /> CSV</Button>

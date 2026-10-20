@@ -1120,7 +1120,7 @@ function DineInConfig({ state, dispatch }: { state: DineInState; dispatch: React
                 <p className="text-xs text-muted-foreground">No tables yet. Add a few or set them up later from the admin console.</p>
               )}
               {state.tables.map((t) => (
-                <div key={t.id} className="grid gap-2 grid-cols-[1fr_120px_auto] items-end">
+                <div key={t.id} className="grid gap-2 grid-cols-[minmax(0,1fr)_96px_auto] sm:grid-cols-[1fr_120px_auto] items-end">
                   <div>
                     <Input value={t.name} placeholder="T1 / Window 4"
                       onChange={(e) => dispatch({ type: 'dineIn:table:update', id: t.id, patch: { name: e.target.value } })} />
