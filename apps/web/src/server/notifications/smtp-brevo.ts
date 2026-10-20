@@ -21,6 +21,7 @@ interface SendArgs {
   to: string;
   body: string;
   subject?: string;
+  html?: string;
 }
 
 export interface SendResult {
@@ -56,7 +57,8 @@ export async function sendBrevoSmtp(cfg: BrevoSmtpConfig, args: SendArgs): Promi
       from: cfg.fromEmail,
       to: args.to,
       subject: args.subject || 'Notification',
-      text: args.body
+      text: args.body,
+      ...(args.html ? { html: args.html } : {})
     });
     return { ok: true, providerId: info.messageId };
   } catch (e) {

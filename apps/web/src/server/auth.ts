@@ -75,8 +75,8 @@ export const authConfig: NextAuthConfig = {
         // to issue a signup bonus, so check before upserting.
         const existing = await prisma.user.findUnique({ where: { phone } });
         // Suspended accounts cannot log in (a super-admin has blocked them).
-        if (existing?.suspendedAt) {
-          await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: 'suspended', provider: 'phone-otp' } }).catch(() => {});
+        if (existing?.suspendedAt || existing?.deletedAt) {
+          await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: existing.deletedAt ? 'deleted' : 'suspended', provider: 'phone-otp' } }).catch(() => {});
           return null;
         }
         // C11: refuse staff — phone-OTP must not grant an ADMIN/SUPER_ADMIN/KITCHEN
@@ -125,8 +125,8 @@ export const authConfig: NextAuthConfig = {
         const { ok, phone } = await verifyWidgetAccessToken(token, claimed);
         if (!ok || !phone) return null;
         const existing = await prisma.user.findUnique({ where: { phone } });
-        if (existing?.suspendedAt) {
-          await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: 'suspended', provider: 'msg91-widget' } }).catch(() => {});
+        if (existing?.suspendedAt || existing?.deletedAt) {
+          await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: existing.deletedAt ? 'deleted' : 'suspended', provider: 'msg91-widget' } }).catch(() => {});
           return null;
         }
         // C11: same staff block as the built-in phone-OTP provider.
@@ -180,9 +180,9 @@ export const authConfig: NextAuthConfig = {
         // riders authenticate via OTP (and the rider native app), never here.
         if (user.role === Role.CUSTOMER || user.role === Role.RIDER) return null;
         // Suspended accounts cannot log in (a super-admin has blocked them).
-        if (user.suspendedAt) {
+        if (user.suspendedAt || user.deletedAt) {
           recordLoginFailure(email, lockoutMinutes);
-          await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'suspended' } }).catch(() => {});
+          await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: user.deletedAt ? 'deleted' : 'suspended' } }).catch(() => {});
           return null;
         }
 
@@ -250,6 +250,10 @@ export const authConfig: NextAuthConfig = {
         if (!email) return false;
         const existing = await prisma.user.findUnique({ where: { email } });
         if (existing) {
+          if (existing.deletedAt) {
+            await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: 'deleted', provider: 'google' } }).catch(() => {});
+            return false;
+          }
           (user as any).id = existing.id;
           return true;
         }
@@ -306,6 +310,9 @@ export const authConfig: NextAuthConfig = {
           where: { id: token.uid as string },
           include: { branchMemberships: { take: 1 } }
         });
+        if (u && (u.suspendedAt || u.deletedAt)) {
+          return { invalid: true } as typeof token;
+        }
         if (u) {
           token.role = u.role;
           token.phone = u.phone;

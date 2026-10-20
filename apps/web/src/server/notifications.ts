@@ -44,6 +44,8 @@ interface SendArgs {
   to: string;
   body: string;
   subject?: string;
+  /** Optional HTML alternative (SMTP email adapters only). */
+  html?: string;
   template?: string;
   userId?: string | null;
   meta?: Record<string, unknown>;
@@ -54,8 +56,14 @@ interface SendArgs {
 type SendResult = { ok: boolean; providerId?: string; error?: string };
 
 // ─── adapters ───────────────────────────────────────────────────────────────
+/** Single-use credential links (password reset) must never reach logs / the journal. */
+export function redactSecretLinks(template: string | undefined, text: string): string {
+  if (template !== 'password-reset') return text;
+  return text.replace(/token=[A-Za-z0-9_-]+/g, 'token=[redacted]');
+}
+
 async function sendMock(channel: Channel, args: SendArgs): Promise<SendResult> {
-  log.info({ channel, to: args.to, template: args.template, body: args.body, subject: args.subject }, '[notify mock]');
+  log.info({ channel, to: args.to, template: args.template, body: redactSecretLinks(args.template, args.body), subject: args.subject }, '[notify mock]');
   return { ok: true, providerId: `mock_${Date.now()}` };
 }
 
@@ -101,7 +109,8 @@ async function sendSmtp(cfg: { host: string; port: string; username: string; pas
       from: cfg.fromEmail,
       to: args.to,
       subject: args.subject || 'Notification',
-      text: args.body
+      text: args.body,
+      ...(args.html ? { html: args.html } : {})
     });
     return { ok: true, providerId: info.messageId };
   } catch (e) {
@@ -277,7 +286,7 @@ async function dispatch(channel: Channel, args: SendArgs) {
   // the code out of both the stored body and meta for OTP-template sends. The
   // in-memory `args.body` used to actually deliver the SMS is untouched.
   const isOtp = (args.template ?? '').startsWith('otp');
-  const storedBody = isOtp ? args.body.replace(/\d{4,8}/g, '••••') : args.body;
+  const storedBody = isOtp ? args.body.replace(/\d{4,8}/g, '••••') : redactSecretLinks(args.template, args.body);
   let storedMeta: unknown = args.meta;
   if (isOtp && args.meta && typeof args.meta === 'object') {
     const { otpCode: _drop, ...rest } = args.meta as Record<string, unknown>;

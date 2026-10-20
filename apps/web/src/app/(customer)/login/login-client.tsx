@@ -407,6 +407,9 @@ export function LoginClient({
                         {busy ? 'Checking…' : 'Continue'}
                       </Button>
                       <p className="text-xs text-muted-foreground">Protected by Google Authenticator (2FA). You&apos;ll enter a code next.</p>
+                      <div className="text-center">
+                        <Link href="/forgot-password" className="inline-flex min-h-11 items-center text-sm text-primary underline">Forgot password?</Link>
+                      </div>
                     </>
                   ) : (
                     <>

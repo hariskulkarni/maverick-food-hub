@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   if (!email || !password || !code) return Response.json({ ok: false });
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !user.passwordHash || !isStaffTotpRole(user.role) || user.suspendedAt) {
+  if (!user || !user.passwordHash || !isStaffTotpRole(user.role) || user.suspendedAt || user.deletedAt) {
     return Response.json({ ok: false });
   }
   const okPw = await argon2.verify(user.passwordHash, password).catch(() => false);

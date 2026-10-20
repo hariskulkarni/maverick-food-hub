@@ -291,6 +291,7 @@ model User {
   favoriteItems         FavoriteItem[]
   reservations          Reservation[]        @relation("CustomerReservations")
   sessions              UserSession[]
+  passwordResetTokens   PasswordResetToken[]
   approvalsRequested    ApprovalRequest[]    @relation("ApprovalRequester")
   approvalsReviewed     ApprovalRequest[]    @relation("ApprovalReviewer")
   webPushSubscriptions  WebPushSubscription[]
@@ -305,6 +306,19 @@ model User {
 /// `revokedAt` set ⇒ the session is dead (superseded by a newer login, or the
 /// user terminated it). The active session is the one User.currentSessionId
 /// points at; all others should be revoked.
+model PasswordResetToken {
+  id          String    @id @default(cuid())
+  userId      String
+  tokenHash   String    @unique // sha256 hex of the raw token; raw is never stored
+  expiresAt   DateTime
+  usedAt      DateTime?
+  requestedIp String?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 model UserSession {
   id            String    @id @default(cuid())
   userId        String
