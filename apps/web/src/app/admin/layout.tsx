@@ -5,7 +5,7 @@ import { currentRestaurant, accessibleRestaurants } from '@/server/tenancy';
 import {
   LayoutDashboard, ScrollText, CalendarClock, Armchair, Radio, Building2,
   Bike, ShieldAlert, MessagesSquare, BarChart3, History, MessageSquare,
-  Settings, Paintbrush, Star,
+  Settings, Paintbrush, Star, MapPinned,
 } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { RestaurantSwitcher } from './restaurant-switcher';
@@ -29,6 +29,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/tables',         icon: <Armchair className={ICON} />,        label: 'Tables' },
       { href: '/admin/live',           icon: <Radio className={ICON} />,           label: 'Live tracking' },
       { href: '/admin/branches',       icon: <Building2 className={ICON} />,       label: 'Branches' },
+      { href: '/admin/delivery-zones', icon: <MapPinned className={ICON} />,    label: 'Delivery Zones' },
       { href: '/admin/riders',         icon: <Bike className={ICON} />,            label: 'Dedicated Riders' },
       { href: '/admin/safety',         icon: <ShieldAlert className={ICON} />,     label: 'Rider Safety' },
       { href: '/admin/messages',       icon: <MessagesSquare className={ICON} />,  label: 'Messages' },

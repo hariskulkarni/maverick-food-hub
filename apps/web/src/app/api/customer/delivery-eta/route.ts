@@ -21,7 +21,8 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { computeEta, DEFAULT_RIDER_SPEED_KPH } from '@/server/eta';
-import { haversineKm, clampTwo } from '@/lib/utils';
+import { clampTwo } from '@/lib/utils';
+import { routeDistance } from '@/server/geo/routing';
 import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({
@@ -63,10 +64,10 @@ export async function POST(req: NextRequest) {
   }
 
   const distanceKm = clampTwo(
-    haversineKm(
+    (await routeDistance(
       { lat: branch.latitude, lng: branch.longitude },
       { lat: data.lat, lng: data.lng },
-    ),
+    )).distanceKm,
   );
   const radius = branch.serviceRadiusKm ?? 0;
   const withinRadius = radius <= 0 || distanceKm <= radius;

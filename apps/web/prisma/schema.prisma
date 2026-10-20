@@ -293,6 +293,7 @@ model User {
   sessions              UserSession[]
   approvalsRequested    ApprovalRequest[]    @relation("ApprovalRequester")
   approvalsReviewed     ApprovalRequest[]    @relation("ApprovalReviewer")
+  webPushSubscriptions  WebPushSubscription[]
 
   @@index([role])
   @@index([phone])
@@ -348,6 +349,13 @@ model Address {
   latitude   Float?
   longitude  Float?
   isDefault  Boolean  @default(false)
+  // Rich address fields. NOTE: `label` above is the legacy free-text label
+  // ("Home"); the structured enum lives in `labelType` to avoid breaking it.
+  landmark     String?
+  floor        String?
+  instructions String?
+  labelType    AddressLabel?
+  labelName    String? // custom name when labelType = OTHER
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -355,6 +363,12 @@ model Address {
   orders Order[]
 
   @@index([userId])
+}
+
+enum AddressLabel {
+  HOME
+  WORK
+  OTHER
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -725,8 +739,57 @@ model Branch {
   tables         RestaurantTable[]
   reservations   Reservation[]
   freebieRules   FreebieRule[]
+  deliveryZones  DeliveryZone[]
 
   @@index([isActive])
+}
+
+enum DeliveryZoneType {
+  POLYGON
+  CIRCLE
+  PINCODE
+}
+
+/// Per-branch delivery zone (polygon / circle / pincode list) with its own fee
+/// brackets, distance tiers, minimum order and ETA.
+model DeliveryZone {
+  id            String           @id @default(cuid())
+  branchId      String
+  name          String
+  type          DeliveryZoneType
+  priority      Int              @default(100)
+  isActive      Boolean          @default(true)
+  isDefault     Boolean          @default(false)
+  polygon       Json?
+  centerLat     Float?
+  centerLng     Float?
+  radiusKm      Float?
+  pincodes      String[]         @default([])
+  feeBrackets   Json             @default("[]")
+  distanceTiers Json             @default("[]")
+  minOrder      Decimal?         @db.Decimal(10, 2)
+  etaMinutes    Int?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([branchId, priority])
+}
+
+/// Browser Web Push subscription for a user (one row per endpoint).
+model WebPushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model BranchUser {
@@ -1250,6 +1313,16 @@ model OrderItem {
   combo    Combo?    @relation(fields: [comboId], references: [id])
 
   @@index([orderId])
+}
+
+/// Durable once-only marker for geofence rider-arrival events (per order+phase).
+model RiderArrival {
+  id      String   @id @default(cuid())
+  orderId String
+  phase   String
+  at      DateTime @default(now())
+
+  @@unique([orderId, phase])
 }
 
 model OrderStatusEvent {

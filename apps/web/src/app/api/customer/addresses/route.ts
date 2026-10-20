@@ -27,6 +27,11 @@ const CreateBody = z.object({
   country: optionalString(2),
   latitude: z.number().optional().nullable(),
   longitude: z.number().optional().nullable(),
+  landmark: z.string().max(120).optional().nullable(),
+  floor: z.string().max(40).optional().nullable(),
+  instructions: z.string().max(300).optional().nullable(),
+  labelType: z.enum(['HOME', 'WORK', 'OTHER']).optional().nullable(),
+  labelName: z.string().max(40).optional().nullable(),
   isDefault: z.boolean().optional()
 });
 
@@ -68,6 +73,12 @@ export async function POST(req: NextRequest) {
         country: data.country || 'IN',
         latitude: data.latitude ?? null,
         longitude: data.longitude ?? null,
+        landmark: data.landmark?.trim() || null,
+        floor: data.floor?.trim() || null,
+        instructions: data.instructions?.trim() || null,
+        labelType: data.labelType ?? null,
+        // A custom name only makes sense for OTHER.
+        labelName: data.labelType === 'OTHER' ? data.labelName?.trim() || null : null,
         isDefault: !!data.isDefault
       }
     });
