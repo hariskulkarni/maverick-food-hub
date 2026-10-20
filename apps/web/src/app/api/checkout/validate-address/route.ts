@@ -11,7 +11,8 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { haversineKm, clampTwo } from '@/lib/utils';
+import { clampTwo } from '@/lib/utils';
+import { routeDistance } from '@/server/geo/routing';
 import { isPaused } from '@/server/branch-pause';
 import { parseOrJsonError } from '@/server/zod-helpers';
 
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
   // Distance is computed for diagnostics regardless of why we might reject.
   const distanceKm =
     branch.latitude != null && branch.longitude != null
-      ? clampTwo(haversineKm({ lat: branch.latitude, lng: branch.longitude }, { lat, lng }))
+      ? clampTwo((await routeDistance({ lat: branch.latitude, lng: branch.longitude }, { lat, lng })).distanceKm)
       : 0;
   const serviceRadiusKm = branch.serviceRadiusKm;
 
