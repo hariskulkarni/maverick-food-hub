@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { ISSUE_CATEGORIES, submitIssue, type IssueCategory } from '@/lib/help-issue';
 
@@ -21,9 +22,9 @@ export function IssueForm({ orderId: initialOrderId }: { orderId: string }) {
       <div role="status" className="mt-8 rounded-xl border bg-card p-6 text-center">
         <h2 className="display text-xl font-semibold">Thanks, we have your report</h2>
         <p className="mt-2 text-sm text-muted-foreground">Our support team will follow up shortly.</p>
-        <a href="/orders" className="mt-4 inline-flex h-11 items-center rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground">
+        <Link href="/orders" className="mt-4 inline-flex h-11 items-center rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground">
           Back to my orders
-        </a>
+        </Link>
       </div>
     );
   }

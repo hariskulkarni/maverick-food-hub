@@ -19,7 +19,15 @@
  *      WITHOUT a `sm:` or `md:` qualifier — these are the search-input
  *      bug from Phases 3+4.
  *
- * Scope: scans only apps/web/src/app/** files (page.tsx, *-client.tsx,
+ *   4. (overflow rules, scan all of apps/web/src — see checkOverflow* below)
+ *      a. `w-[Npx]` / `min-w-[Npx]` with N >= 360, un-prefixed, in a class
+ *         string with no `max-w-full` / `max-w-[..vw..]` → overflows a 360px phone.
+ *      b. raw `<table` in a .tsx whose file has no `overflow-x-auto` (or
+ *         `overflow-x-scroll` / `overflow-auto`) wrapper → table cut off on mobile.
+ *      c. un-prefixed `-ml-[Npx]` / `-mr-[Npx]` / `-mx-[Npx]` with N >= 24 in a
+ *         file with no `overflow-x-hidden|auto|clip|scroll` / `overflow-hidden`.
+ *
+ * Scope (rules 1-3): scans only apps/web/src/app/** files (page.tsx, *-client.tsx,
  * *.tsx). Skips legacy `_old.tsx`, generated files, and the e2e suite.
  *
  * Allowlist: if a violation is intentional, add the file path to ALLOW.
@@ -98,6 +106,13 @@ async function* iterFiles() {
   }
 }
 
+async function* iterFilesIn(dir) {
+  for await (const f of glob('**/*.{tsx,ts}', { cwd: dir })) {
+    if (f.endsWith('.d.ts') || f.endsWith('_old.tsx')) continue;
+    yield path.join(dir, f);
+  }
+}
+
 function relFromRoot(abs) {
   return path.relative(ROOT, abs).replace(/\\/g, '/');
 }
@@ -168,7 +183,92 @@ function checkUnqualifiedMinW(content, file) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Overflow / off-screen-cutoff rules (4a-4c). They scan all of apps/web/src
+// (components included), and are deliberately narrow to keep false positives
+// low. Responsive-prefixed utilities (sm:w-[480px], md:-ml-[40px]) are NOT
+// flagged: the lookbehind `(?<![\w:-])` requires the utility to start a token,
+// i.e. apply at the base (phone) breakpoint. ALLOW does not apply to these.
+// ---------------------------------------------------------------------------
+const WEB_ROOT = path.join(ROOT, 'apps/web/src');
+/** Any quoted string literal (class lists live in "..", '..' or `..`). */
+const STRING_RE = /(["'`])((?:\\.|(?!\1)[^\\])*?)\1/g;
+const FIXED_W_RE = /(?<![\w:-])(?:min-)?w-\[(\d+)px\]/g;
+const MAX_W_OK_RE = /(?<![\w:-])max-w-(?:full|\[[^\]]*vw[^\]]*\])/;
+const NEG_MARGIN_RE = /(?<![\w:])-m[lrx]-\[(\d+)px\]/g;
+const OVERFLOW_CONTAIN_RE = /overflow-x-(?:hidden|auto|clip|scroll)|overflow-hidden|overflow-auto/;
+
+function lineOf(content, index) {
+  return content.slice(0, index).split('\n').length;
+}
+
+function checkFixedWidthOverflow(content, file) {
+  const rel = relFromRoot(file);
+  STRING_RE.lastIndex = 0;
+  let m;
+  while ((m = STRING_RE.exec(content)) !== null) {
+    const str = m[2];
+    if (!/w-\[/.test(str)) continue;
+    FIXED_W_RE.lastIndex = 0;
+    let w;
+    while ((w = FIXED_W_RE.exec(str)) !== null) {
+      if (Number(w[1]) < 360) continue;
+      if (MAX_W_OK_RE.test(str)) break;
+      violations.push({
+        file: rel,
+        line: lineOf(content, m.index),
+        rule: 'no-fixed-width-overflow',
+        detail: `${w[0]} (>=360px) without max-w-full / max-w-[..vw] — overflows a 360px phone`,
+      });
+      break;
+    }
+  }
+}
+
+function checkTableScrollWrapper(content, file) {
+  if (!file.endsWith('.tsx')) return;
+  const rel = relFromRoot(file);
+  if (/overflow-x-(?:auto|scroll)|overflow-auto/.test(content)) return;
+  const re = /<table[\s>]/g;
+  let m;
+  while ((m = re.exec(content)) !== null) {
+    violations.push({
+      file: rel,
+      line: lineOf(content, m.index),
+      rule: 'table-needs-overflow-x-auto',
+      detail: 'raw <table> in a file with no overflow-x-auto wrapper — cut off on mobile',
+    });
+  }
+}
+
+function checkNegativeMarginBleed(content, file) {
+  const rel = relFromRoot(file);
+  if (OVERFLOW_CONTAIN_RE.test(content)) return;
+  STRING_RE.lastIndex = 0;
+  let m;
+  while ((m = STRING_RE.exec(content)) !== null) {
+    if (!/-m[lrx]-\[/.test(m[2])) continue;
+    NEG_MARGIN_RE.lastIndex = 0;
+    let n;
+    while ((n = NEG_MARGIN_RE.exec(m[2])) !== null) {
+      if (Number(n[1]) < 24) continue;
+      violations.push({
+        file: rel,
+        line: lineOf(content, m.index),
+        rule: 'no-uncontained-negative-margin',
+        detail: `${n[0]} (>=24px) with no overflow-x containment in file — can push content off-screen`,
+      });
+    }
+  }
+}
+
 async function main() {
+  for await (const file of iterFilesIn(WEB_ROOT)) {
+    const content = readFileSync(file, 'utf8');
+    checkFixedWidthOverflow(content, file);
+    checkTableScrollWrapper(content, file);
+    checkNegativeMarginBleed(content, file);
+  }
   for await (const file of iterFiles()) {
     const content = readFileSync(file, 'utf8');
     checkUnqualifiedGrid(content, file);
