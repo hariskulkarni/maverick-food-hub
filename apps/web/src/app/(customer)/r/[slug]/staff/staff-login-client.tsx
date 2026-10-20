@@ -14,6 +14,7 @@
  *      signed in but not a member of this restaurant" with a Continue link.
  */
 import { useState } from 'react';
+import Link from 'next/link';
 import { signIn } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -124,6 +125,9 @@ export function StaffLoginClient({ slug, restaurantName }: { slug: string; resta
       <Button className="w-full" disabled={busy} type="submit">
         {busy ? 'Signing in…' : 'Sign in'}
       </Button>
+      <div className="text-center">
+        <Link href="/forgot-password" className="inline-flex min-h-11 items-center text-sm text-primary underline">Forgot password?</Link>
+      </div>
     </form>
   );
 }
