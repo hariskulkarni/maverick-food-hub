@@ -202,7 +202,7 @@ export function ReviewsClient() {
   const noFilters = !rating && !state;
 
   return (
-    <div className="space-y-6 overflow-x-hidden">
+    <div className="space-y-6 overflow-x-hidden px-4 py-4 sm:px-6 lg:px-8">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <LogoMark className="h-11 w-11 shrink-0 drop-shadow-sm" />

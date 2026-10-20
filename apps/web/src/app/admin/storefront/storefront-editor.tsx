@@ -227,13 +227,13 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
         <div className="mt-3 flex flex-wrap items-end gap-4">
           <Field label="Hero image fit">
             <select value={cfg.hero.imageFit} onChange={(e) => setHero({ imageFit: e.target.value as StorefrontConfig['hero']['imageFit'] })}
-              className="h-9 rounded-md border bg-background px-2 text-sm w-[210px]">
+              className="h-9 rounded-md border bg-background px-2 text-sm w-[210px] max-w-full">
               {HERO_FITS.map((f) => <option key={f} value={f}>{HERO_FIT_LABELS[f]}</option>)}
             </select>
           </Field>
           <Field label="Focal position">
             <select value={cfg.hero.imagePosition} onChange={(e) => setHero({ imagePosition: e.target.value as StorefrontConfig['hero']['imagePosition'] })}
-              className="h-9 rounded-md border bg-background px-2 text-sm w-[150px]">
+              className="h-9 rounded-md border bg-background px-2 text-sm w-[150px] max-w-full">
               {HERO_POSITIONS.map((pos) => <option key={pos} value={pos}>{HERO_POSITION_LABELS[pos]}</option>)}
             </select>
           </Field>
@@ -245,13 +245,13 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
             <div className="flex flex-wrap items-end gap-4">
               <Field label="Transition">
                 <select value={cfg.hero.transition} onChange={(e) => setHero({ transition: e.target.value as HeroTransition })}
-                  className="h-9 rounded-md border bg-background px-2 text-sm w-[140px]">
+                  className="h-9 rounded-md border bg-background px-2 text-sm w-[140px] max-w-full">
                   <option value="slide">Slide</option><option value="fade">Fade</option><option value="zoom">Zoom</option>
                 </select>
               </Field>
               <Field label="Autoplay (seconds, 0 = off)">
                 <Input type="number" min={0} max={30} value={Math.round(cfg.hero.autoplayMs / 1000)}
-                  onChange={(e) => setHero({ autoplayMs: (Number(e.target.value) || 0) * 1000 })} className="h-9 w-[120px]" />
+                  onChange={(e) => setHero({ autoplayMs: (Number(e.target.value) || 0) * 1000 })} className="h-9 w-[120px] max-w-full" />
               </Field>
             </div>
 
@@ -313,12 +313,12 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
       <Section title="Branding" subtitle="Tagline & accent shown across your page.">
         <div className="flex flex-wrap items-end gap-4">
           <Field label="Tagline">
-            <Input value={cfg.branding.tagline} onChange={(e) => setBrand({ tagline: e.target.value })} placeholder="e.g. Andhra's smokiest barbeque" className="h-9 w-[320px]" />
+            <Input value={cfg.branding.tagline} onChange={(e) => setBrand({ tagline: e.target.value })} placeholder="e.g. Andhra's smokiest barbeque" className="h-9 w-[320px] max-w-full" />
           </Field>
           <Field label="Accent colour">
             <div className="flex items-center gap-2">
               <input type="color" value={cfg.branding.accentColor} onChange={(e) => setBrand({ accentColor: e.target.value })} className="h-9 w-12 rounded border cursor-pointer" />
-              <Input value={cfg.branding.accentColor} onChange={(e) => setBrand({ accentColor: e.target.value })} className="h-9 w-[110px] font-mono" />
+              <Input value={cfg.branding.accentColor} onChange={(e) => setBrand({ accentColor: e.target.value })} className="h-9 w-[110px] max-w-full font-mono" />
             </div>
           </Field>
         </div>
@@ -341,11 +341,11 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
           <Field label="Secondary colour">
             <div className="flex items-center gap-2">
               <input type="color" value={cfg.theme.secondaryColor} onChange={(e) => setTheme({ secondaryColor: e.target.value })} className="h-9 w-12 rounded border cursor-pointer" />
-              <Input value={cfg.theme.secondaryColor} onChange={(e) => setTheme({ secondaryColor: e.target.value })} className="h-9 w-[110px] font-mono" />
+              <Input value={cfg.theme.secondaryColor} onChange={(e) => setTheme({ secondaryColor: e.target.value })} className="h-9 w-[110px] max-w-full font-mono" />
             </div>
           </Field>
           <Field label="Font pairing">
-            <select value={cfg.theme.fontPair} onChange={(e) => setTheme({ fontPair: e.target.value as FontPair })} className="h-9 rounded-md border bg-background px-2 text-sm w-[160px]">
+            <select value={cfg.theme.fontPair} onChange={(e) => setTheme({ fontPair: e.target.value as FontPair })} className="h-9 rounded-md border bg-background px-2 text-sm w-[160px] max-w-full">
               <option value="modern">Modern (Jakarta + Inter)</option>
               <option value="classic">Classic (Playfair + Source)</option>
               <option value="playful">Playful (Poppins + Nunito)</option>
@@ -391,13 +391,13 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
               <Field label="Background">
                 <div className="flex items-center gap-2">
                   <input type="color" value={cfg.announcement.bgColor} onChange={(e) => setAnn({ bgColor: e.target.value })} className="h-9 w-12 rounded border cursor-pointer" />
-                  <Input value={cfg.announcement.bgColor} onChange={(e) => setAnn({ bgColor: e.target.value })} className="h-9 w-[110px] font-mono" />
+                  <Input value={cfg.announcement.bgColor} onChange={(e) => setAnn({ bgColor: e.target.value })} className="h-9 w-[110px] max-w-full font-mono" />
                 </div>
               </Field>
               <Field label="Text colour">
                 <div className="flex items-center gap-2">
                   <input type="color" value={cfg.announcement.textColor} onChange={(e) => setAnn({ textColor: e.target.value })} className="h-9 w-12 rounded border cursor-pointer" />
-                  <Input value={cfg.announcement.textColor} onChange={(e) => setAnn({ textColor: e.target.value })} className="h-9 w-[110px] font-mono" />
+                  <Input value={cfg.announcement.textColor} onChange={(e) => setAnn({ textColor: e.target.value })} className="h-9 w-[110px] max-w-full font-mono" />
                 </div>
               </Field>
             </div>
@@ -416,7 +416,7 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
         {cfg.about.enabled && (
           <>
             <Field label="Title">
-              <Input value={cfg.about.title} onChange={(e) => setAbout({ title: e.target.value })} placeholder="Our story" className="h-9 w-[320px]" />
+              <Input value={cfg.about.title} onChange={(e) => setAbout({ title: e.target.value })} placeholder="Our story" className="h-9 w-[320px] max-w-full" />
             </Field>
             <Field label="Body">
               <TextArea value={cfg.about.body} onChange={(v) => setAbout({ body: v })} placeholder="Since 1990, we've grilled over open flame…" rows={4} />
@@ -568,7 +568,7 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
         <div className="mt-4 flex flex-wrap items-end gap-4">
           <Field label="Delivery time mode">
             <select value={cfg.infoBar.etaMode} onChange={(e) => setInfoBar({ etaMode: e.target.value as StorefrontConfig['infoBar']['etaMode'] })}
-              className="h-9 rounded-md border bg-background px-2 text-sm w-[230px]">
+              className="h-9 rounded-md border bg-background px-2 text-sm w-[230px] max-w-full">
               <option value="auto">Auto — live by customer location</option>
               <option value="range">Fixed range (min–max)</option>
               <option value="fixed">Custom label</option>
@@ -578,17 +578,17 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
             <>
               <Field label="Min minutes">
                 <Input type="number" min={1} max={240} value={cfg.infoBar.etaRangeMin}
-                  onChange={(e) => setInfoBar({ etaRangeMin: Number(e.target.value) || 0 })} className="h-9 w-[110px]" />
+                  onChange={(e) => setInfoBar({ etaRangeMin: Number(e.target.value) || 0 })} className="h-9 w-[110px] max-w-full" />
               </Field>
               <Field label="Max minutes">
                 <Input type="number" min={1} max={240} value={cfg.infoBar.etaRangeMax}
-                  onChange={(e) => setInfoBar({ etaRangeMax: Number(e.target.value) || 0 })} className="h-9 w-[110px]" />
+                  onChange={(e) => setInfoBar({ etaRangeMax: Number(e.target.value) || 0 })} className="h-9 w-[110px] max-w-full" />
               </Field>
             </>
           ) : (
             <Field label="Custom delivery label">
               <Input value={cfg.infoBar.etaFixedLabel} onChange={(e) => setInfoBar({ etaFixedLabel: e.target.value })}
-                placeholder="e.g. Same-day delivery" className="h-9 w-[230px]" />
+                placeholder="e.g. Same-day delivery" className="h-9 w-[230px] max-w-full" />
             </Field>
           )}
         </div>
@@ -596,7 +596,7 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
         <div className="mt-4 flex flex-wrap items-end gap-4">
           <Field label="Rating source">
             <select value={cfg.infoBar.ratingMode} onChange={(e) => setInfoBar({ ratingMode: e.target.value as StorefrontConfig['infoBar']['ratingMode'] })}
-              className="h-9 rounded-md border bg-background px-2 text-sm w-[230px]">
+              className="h-9 rounded-md border bg-background px-2 text-sm w-[230px] max-w-full">
               <option value="auto">Auto — from real customer reviews</option>
               <option value="manual">Manual override</option>
             </select>
@@ -605,11 +605,11 @@ export function StorefrontEditor({ initialConfig, categories, slug, coverImageUr
             <>
               <Field label="Rating (e.g. 4.5)">
                 <Input value={cfg.infoBar.ratingManualValue} onChange={(e) => setInfoBar({ ratingManualValue: e.target.value })}
-                  placeholder="4.5" className="h-9 w-[110px]" />
+                  placeholder="4.5" className="h-9 w-[110px] max-w-full" />
               </Field>
               <Field label="Review count">
                 <Input type="number" min={0} value={cfg.infoBar.ratingManualCount}
-                  onChange={(e) => setInfoBar({ ratingManualCount: Number(e.target.value) || 0 })} className="h-9 w-[130px]" />
+                  onChange={(e) => setInfoBar({ ratingManualCount: Number(e.target.value) || 0 })} className="h-9 w-[130px] max-w-full" />
               </Field>
             </>
           )}

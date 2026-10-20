@@ -76,7 +76,7 @@ export default async function ActivityPage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       <header>
         <h1 className="display text-2xl font-semibold">Activity</h1>
         <p className="text-sm text-muted-foreground">Menu and integration changes across {restaurant.name}.</p>

@@ -19,7 +19,7 @@ export default async function StorefrontCmsLayout({ children }: { children: Reac
 
   return (
     <div>
-      <div className="px-6 pt-6 space-y-4">
+      <div className="px-4 pt-4 sm:px-6 sm:pt-6 space-y-4">
         <header className="flex items-center gap-3 sm:gap-4">
           <LogoMark className="size-11 shrink-0 sm:size-12" />
           <div className="min-w-0">

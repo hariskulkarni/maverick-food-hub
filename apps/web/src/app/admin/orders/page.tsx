@@ -23,7 +23,7 @@ export default async function AdminOrdersPage({ searchParams: _sp }: { searchPar
   // selected. For a single-restaurant operator this is exactly that one branch.
   const scope = await accessibleOrderScope();
   if (!scope) {
-    return <div className="p-6">No restaurant for this account.</div>;
+    return <div className="p-4 sm:p-6">No restaurant for this account.</div>;
   }
   const primaryBranchId = scope.primaryBranchId ?? scope.branchIds[0]!;
   const pause = await isPaused(primaryBranchId);
@@ -45,7 +45,7 @@ export default async function AdminOrdersPage({ searchParams: _sp }: { searchPar
     : [];
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-4 sm:p-6 space-y-4">
       <div className="flex items-center gap-3">
         <LogoMark className="h-9 w-9 shrink-0" />
         <h1 className="display text-2xl font-semibold text-gradient-brand">Orders</h1>

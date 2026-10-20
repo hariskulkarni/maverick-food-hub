@@ -21,7 +21,7 @@ export default async function OrderFlowSettingsPage() {
   };
 
   return (
-    <div className="p-6 space-y-8 max-w-3xl">
+    <div className="p-4 sm:p-6 space-y-8 max-w-3xl">
       <header className="flex items-center gap-3">
         <div className="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
           <Workflow className="size-5" />

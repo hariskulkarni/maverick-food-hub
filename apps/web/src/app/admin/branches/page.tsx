@@ -14,8 +14,8 @@ export default async function BranchesPage() {
     include: { _count: { select: { menuItems: true, orders: true, riders: true } } }
   });
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="display text-2xl font-semibold">My branches</h1>
         <Button asChild><Link href="/admin/branches/new">+ Add branch</Link></Button>
       </div>

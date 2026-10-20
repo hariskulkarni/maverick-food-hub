@@ -20,7 +20,7 @@ export default async function StorefrontCmsPage() {
   const categories = cats.map((c) => ({ id: c.id, name: c.name, sortOrder: c.sortOrder, isActive: c.isActive, itemCount: c._count.menuItems }));
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="p-4 sm:p-6 max-w-5xl">
       <StorefrontEditor
         initialConfig={config}
         categories={categories}
