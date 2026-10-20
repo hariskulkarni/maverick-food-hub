@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { SuperAdminCard } from './super-admin-card';
 import { UserPlus, Loader2, ShieldOff, ShieldCheck, KeyRound } from 'lucide-react';
 
 interface Row {
@@ -140,6 +141,9 @@ export function IamConsole({ initial, assignable }: { initial: Row[]; assignable
           )}
         </CardContent>
       </Card>
+
+      {/* Super admin creation — separate, high-privilege surface */}
+      <SuperAdminCard />
 
       {/* Table */}
       <Card>
