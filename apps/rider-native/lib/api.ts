@@ -180,6 +180,9 @@ export interface AssignmentOrder {
     city: string;
     latitude: number | null;
     longitude: number | null;
+    landmark?: string | null;
+    floor?: string | null;
+    instructions?: string | null;
   } | null;
   branch: {
     id: string;

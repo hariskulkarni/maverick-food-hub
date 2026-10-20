@@ -37,7 +37,12 @@ export default async function AddressesPage() {
     country: a.country,
     latitude: a.latitude,
     longitude: a.longitude,
-    isDefault: a.isDefault
+    isDefault: a.isDefault,
+    landmark: a.landmark,
+    floor: a.floor,
+    instructions: a.instructions,
+    labelType: a.labelType,
+    labelName: a.labelName
   }));
 
   return (
