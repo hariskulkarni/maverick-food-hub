@@ -14,6 +14,7 @@ interface MyReview {
   issueTags: string[];
   imageUrl: string | null;
   shareCommentWithRider: boolean;
+  sharePublicly: boolean;
   createdAt: string;
   windowEndsAt: string;
   canEdit: boolean;
@@ -26,6 +27,7 @@ export function ReviewsClient() {
   const [overall, setOverall] = useState(5);
   const [comment, setComment] = useState('');
   const [share, setShare] = useState(false);
+  const [sharePublic, setSharePublic] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -35,7 +37,7 @@ export function ReviewsClient() {
   useEffect(() => { load(); }, [load]);
 
   function startEdit(r: MyReview) {
-    setEditing(r.id); setOverall(r.overallRating ?? 5); setComment(r.comment ?? ''); setShare(r.shareCommentWithRider); setErr(null);
+    setEditing(r.id); setOverall(r.overallRating ?? 5); setComment(r.comment ?? ''); setShare(r.shareCommentWithRider); setSharePublic(!!r.sharePublicly); setErr(null);
   }
 
   async function save(r: MyReview) {
@@ -51,6 +53,7 @@ export function ReviewsClient() {
         issueTags: r.issueTags,
         ...(r.imageUrl ? { imageUrl: r.imageUrl } : {}),
         shareCommentWithRider: share,
+        sharePublicly: sharePublic,
       }),
     });
     if (res.ok) { setEditing(null); await load(); }
@@ -76,9 +79,15 @@ export function ReviewsClient() {
                 </select>
               </label>
               <textarea className="w-full rounded-md border bg-background p-2 text-sm" rows={3} maxLength={500} value={comment} onChange={(e) => setComment(e.target.value)} aria-label="Comment" />
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" className="size-5" checked={share} onChange={(e) => setShare(e.target.checked)} />
-                Allow my comment to be shown to others
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={share} onChange={(e) => setShare(e.target.checked)} />
+                <span>Share my comment with the rider</span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" className="mt-0.5 size-5 shrink-0" checked={sharePublic} onChange={(e) => setSharePublic(e.target.checked)} />
+                <span>Show my comment on the public page
+                  <span className="block text-xs text-muted-foreground">Your first name, rating and comment will be visible to anyone on the restaurant&apos;s page.</span>
+                </span>
               </label>
               {err && <p role="alert" className="text-sm text-destructive">{err}</p>}
               <div className="flex gap-2">

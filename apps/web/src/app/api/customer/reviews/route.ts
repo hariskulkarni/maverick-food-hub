@@ -26,6 +26,7 @@ export async function GET() {
   const reviews = rows.map((r: any) => ({
     ...visibleForRole(r as FeedbackLite, 'CUSTOMER'),
     shareCommentWithRider: !!r.shareCommentWithRider,
+    sharePublicly: !!r.sharePublicly,
     windowEndsAt: new Date(r.windowEndsAt).toISOString(),
     canEdit: canEditFeedback(r as FeedbackLite, userId, now).eligible,
     reply: r.reply ? { text: r.reply, at: r.replyAt ? new Date(r.replyAt).toISOString() : null } : null,

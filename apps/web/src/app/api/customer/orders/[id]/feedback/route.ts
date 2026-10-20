@@ -48,7 +48,8 @@ const Body = z.object({
   comment: z.string().max(500).optional(),
   issueTags: z.array(z.enum(ISSUE_TAGS)).max(7).optional(),
   imageUrl: z.string().optional(),
-  shareCommentWithRider: z.boolean().optional()
+  shareCommentWithRider: z.boolean().optional(),
+  sharePublicly: z.boolean().optional()
 }).refine(
   (d) =>
     d.foodRating != null ||
@@ -153,6 +154,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       issueTags: data.issueTags ?? [],
       imageUrl: data.imageUrl ?? null,
       shareCommentWithRider: data.shareCommentWithRider ?? false,
+      sharePublicly: data.sharePublicly ?? false,
       windowEndsAt,
       moderationStatus: autoPublish ? 'PUBLISHED' : 'HIDDEN'
     }
@@ -174,7 +176,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       issueTags: created.issueTags,
       hasComment: !!created.comment,
       hasImage: !!created.imageUrl,
-      shareCommentWithRider: created.shareCommentWithRider
+      shareCommentWithRider: created.shareCommentWithRider,
+      sharePublicly: created.sharePublicly
     }
   }).catch((e) => log.error({ err: e }, 'feedback submit audit failed'));
 
@@ -212,7 +215,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     comment: existing!.comment,
     issueTags: existing!.issueTags,
     imageUrl: existing!.imageUrl,
-    shareCommentWithRider: existing!.shareCommentWithRider
+    shareCommentWithRider: existing!.shareCommentWithRider,
+    sharePublicly: existing!.sharePublicly
   };
 
   const updated = await (prisma as any).orderFeedback.update({
@@ -225,6 +229,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       issueTags: data.issueTags ?? [],
       imageUrl: data.imageUrl ?? null,
       shareCommentWithRider: data.shareCommentWithRider ?? false,
+      sharePublicly: data.sharePublicly ?? false,
       editedAt: new Date()
     }
   });
@@ -242,7 +247,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       comment: updated.comment,
       issueTags: updated.issueTags,
       imageUrl: updated.imageUrl,
-      shareCommentWithRider: updated.shareCommentWithRider
+      shareCommentWithRider: updated.shareCommentWithRider,
+      sharePublicly: updated.sharePublicly
     }
   }).catch((e) => log.error({ err: e }, 'feedback edit audit failed'));
 

@@ -3,8 +3,9 @@
  *
  * In-app reviews go through the SAME central redaction as every other surface
  * (`visibleForRole`). The public view is the ADMIN projection narrowed further:
- * only the overall rating, and the comment only when the customer opted in
- * (`shareCommentWithRider` is the existing comment opt-in flag). Tags, images,
+ * only the overall rating, and the comment only when the customer gave the
+ * dedicated public opt-in (`sharePublicly === true`). `shareCommentWithRider`
+ * is rider-only consent and is NEVER used here. Tags, images,
  * food/delivery ratings, order ids, customer ids and contact details are never
  * emitted. Only moderationStatus === PUBLISHED rows are ever returned.
  */
@@ -42,7 +43,7 @@ export function toPublicInApp(row: any): PublicReview | null {
   if (row.moderationStatus !== 'PUBLISHED') return null;
   const v = visibleForRole(row as FeedbackLite, 'ADMIN');
   if (v.overallRating == null) return null;
-  const comment = row.shareCommentWithRider && v.visibleFields.includes('comment') ? v.comment : null;
+  const comment = row.sharePublicly === true && v.visibleFields.includes('comment') ? v.comment : null;
   return {
     id: `app:${row.id}`,
     source: 'app',
@@ -85,7 +86,7 @@ export async function loadPublicReviews(
       where: appWhere,
       select: {
         id: true, orderId: true, customerId: true, foodRating: true, deliveryRating: true, overallRating: true,
-        comment: true, issueTags: true, imageUrl: true, shareCommentWithRider: true, windowEndsAt: true,
+        comment: true, issueTags: true, imageUrl: true, shareCommentWithRider: true, sharePublicly: true, windowEndsAt: true,
         createdAt: true, editedAt: true, moderationStatus: true, reply: true, replyAt: true,
         customer: { select: { name: true } },
       },

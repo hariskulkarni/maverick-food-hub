@@ -57,6 +57,7 @@ export interface FeedbackLite {
   issueTags: FeedbackIssueTag[];
   imageUrl: string | null;
   shareCommentWithRider: boolean;
+  sharePublicly?: boolean;
   windowEndsAt: Date | string;
   createdAt: Date | string;
   editedAt: Date | string | null;

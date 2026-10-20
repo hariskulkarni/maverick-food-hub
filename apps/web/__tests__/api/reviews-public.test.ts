@@ -12,12 +12,13 @@ vi.mock('@/server/db', () => ({ prisma: h.prisma }));
 vi.mock('@/server/auth', () => ({ auth: async () => h.session }));
 
 import { GET as publicGET } from '@/app/api/storefront/[slug]/reviews/route';
+import { visibleForRole } from '@/server/feedback';
 import { GET as mineGET } from '@/app/api/customer/reviews/route';
 
 const fb = (o: Record<string, unknown>) => ({
   id: 'f1', orderId: 'o1', customerId: 'u1', foodRating: 4, deliveryRating: 2, overallRating: 5,
   comment: 'Great biryani', issueTags: ['LATE_DELIVERY'], imageUrl: 'http://img/x.jpg',
-  shareCommentWithRider: true, windowEndsAt: new Date(Date.now() + 3600_000),
+  shareCommentWithRider: true, sharePublicly: true, windowEndsAt: new Date(Date.now() + 3600_000),
   createdAt: new Date('2026-10-10T10:00:00Z'), editedAt: null,
   moderationStatus: 'PUBLISHED', flagReason: 'secret', reply: null, replyAt: null,
   customer: { name: 'Priya Sharma', phone: '+919999999999', email: 'p@x.com' },
@@ -51,13 +52,43 @@ describe('GET /api/storefront/[slug]/reviews', () => {
     expect(j.reviews.map((r: any) => r.id)).toEqual(['app:a']);
   });
 
-  it('shows comment only when customer opted in', async () => {
+  it('hides comment publicly when sharePublicly=false even if shareCommentWithRider=true', async () => {
     h.prisma.orderFeedback.findMany.mockResolvedValue([
-      fb({ id: 'a', shareCommentWithRider: true }), fb({ id: 'b', shareCommentWithRider: false }),
+      fb({ id: 'a', sharePublicly: false, shareCommentWithRider: true }),
+    ]);
+    const j = await (await pubCall()).json();
+    expect(j.reviews[0].rating).toBe(5);
+    expect(j.reviews[0].comment).toBeNull();
+    expect(JSON.stringify(j)).not.toContain('Great biryani');
+  });
+
+  it('shows comment when sharePublicly=true, regardless of shareCommentWithRider', async () => {
+    h.prisma.orderFeedback.findMany.mockResolvedValue([
+      fb({ id: 'a', sharePublicly: true, shareCommentWithRider: false }),
+      fb({ id: 'b', sharePublicly: true, shareCommentWithRider: true }),
     ]);
     const j = await (await pubCall()).json();
     expect(j.reviews.find((r: any) => r.id === 'app:a').comment).toBe('Great biryani');
-    expect(j.reviews.find((r: any) => r.id === 'app:b').comment).toBeNull();
+    expect(j.reviews.find((r: any) => r.id === 'app:b').comment).toBe('Great biryani');
+  });
+
+  it('treats missing sharePublicly as not opted in', async () => {
+    h.prisma.orderFeedback.findMany.mockResolvedValue([fb({ id: 'a', sharePublicly: undefined })]);
+    expect((await (await pubCall()).json()).reviews[0].comment).toBeNull();
+  });
+
+  it('selects sharePublicly from the DB', async () => {
+    h.prisma.orderFeedback.findMany.mockResolvedValue([]);
+    await pubCall();
+    expect(h.prisma.orderFeedback.findMany.mock.calls[0][0].select.sharePublicly).toBe(true);
+  });
+
+  it('rider-facing feedback still governed by shareCommentWithRider only', () => {
+    const base: any = { ...fb({}), createdAt: new Date(), windowEndsAt: new Date() };
+    const on = visibleForRole({ ...base, shareCommentWithRider: true, sharePublicly: false }, 'RIDER');
+    const off = visibleForRole({ ...base, shareCommentWithRider: false, sharePublicly: true }, 'RIDER');
+    expect(on.comment).toBe('Great biryani');
+    expect(off.comment).toBeNull();
   });
 
   it('applies redaction: no PII, tags, image, delivery/food ratings, flag reason', async () => {
