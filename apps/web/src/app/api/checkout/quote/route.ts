@@ -5,13 +5,19 @@ import { pricing, type OfferReward } from '@/server/pricing';
 import { auth } from '@/server/auth';
 import { loadAndApplyOffers, loadOfferByCode } from '@/server/offers';
 import { resolveDeliveryTerms } from '@/server/delivery/placement';
+import { resolveLineSelections } from '@/server/menu-selections';
+import { loadRulesForRestaurant, priceForItem, priceForCombo } from '@/server/happy-hours';
+import { clampTwo } from '@/lib/utils';
 import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({
   branchId: z.string(),
   addressId: z.string().optional(),
   fulfillmentType: z.enum(['DELIVERY', 'PICKUP', 'DINE_IN']).optional(),
-  items: z.array(z.object({ menuItemId: z.string().optional(), comboId: z.string().optional(), quantity: z.number().int().positive() })),
+  items: z.array(z.object({ menuItemId: z.string().optional(), comboId: z.string().optional(), quantity: z.number().int().positive(),
+    selectedVariantId: z.string().optional(),
+    selectedModifierOptionIds: z.array(z.string()).optional()
+  })),
   couponCode: z.string().optional(),
   walletApply: z.number().nonnegative().optional(),
   loyaltyApply: z.number().nonnegative().optional()
@@ -29,20 +35,53 @@ export async function POST(req: NextRequest) {
   // so the Offer engine can scope item/category-restricted offers).
   const lines: { unitPrice: number; quantity: number }[] = [];
   const offerCart: { menuItemId: string; categoryId: string | null; unitPrice: number; quantity: number }[] = [];
+  // Line pricing MUST mirror placeOrder(): variant price replaces base, happy-hour
+  // discounts the size-level price, modifier deltas are added AFTER happy hour.
+  // The subtotal feeds resolveDeliveryTerms, so any drift here would make the
+  // previewed zone fee / min-order differ from what placeOrder charges/enforces.
+  const hhNow = new Date();
+  const hhRules = await loadRulesForRestaurant(branch.restaurantId, hhNow);
   for (const it of body.items) {
     if (it.menuItemId) {
-      const m = await prisma.menuItem.findUnique({
-        where: { id: it.menuItemId },
-        select: { id: true, price: true, categoryId: true }
+      const m = await prisma.menuItem.findFirst({
+        where: { id: it.menuItemId, branchId: body.branchId },
+        include: {
+          category: true,
+          variants: { orderBy: { sortOrder: 'asc' } },
+          modifierGroups: { orderBy: { sortOrder: 'asc' }, include: { options: { orderBy: { sortOrder: 'asc' } } } }
+        }
       });
       if (m) {
-        const unitPrice = Number(m.price);
+        let selections;
+        try {
+          selections = resolveLineSelections(
+            m.name,
+            m.variants.map((v) => ({ id: v.id, name: v.name, price: Number(v.price), isDefault: v.isDefault, isAvailable: v.isAvailable })),
+            m.modifierGroups.map((g) => ({
+              id: g.id,
+              name: g.name,
+              minSelect: g.minSelect,
+              maxSelect: g.maxSelect,
+              required: g.required,
+              options: g.options.map((o) => ({ id: o.id, name: o.name, priceDelta: Number(o.priceDelta), isAvailable: o.isAvailable }))
+            })),
+            { selectedVariantId: it.selectedVariantId, selectedModifierOptionIds: it.selectedModifierOptionIds }
+          );
+        } catch (e) {
+          return Response.json({ error: e instanceof Error ? e.message : 'Invalid selection' }, { status: 400 });
+        }
+        const lineBasePrice = selections.variant ? selections.variant.price : Number(m.price);
+        const priced = priceForItem({ id: m.id, categoryId: m.category.id, price: lineBasePrice }, hhRules, hhNow);
+        const unitPrice = clampTwo(priced.effectivePrice + selections.modifierDelta);
         lines.push({ unitPrice, quantity: it.quantity });
         offerCart.push({ menuItemId: m.id, categoryId: m.categoryId ?? null, unitPrice, quantity: it.quantity });
       }
     } else if (it.comboId) {
       const c = await prisma.combo.findUnique({ where: { id: it.comboId } });
-      if (c) lines.push({ unitPrice: Number(c.price), quantity: it.quantity });
+      if (c) {
+        const priced = priceForCombo({ id: c.id, price: Number(c.price) }, hhRules, hhNow);
+        lines.push({ unitPrice: priced.effectivePrice, quantity: it.quantity });
+      }
     }
   }
 
