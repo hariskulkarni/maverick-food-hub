@@ -77,6 +77,9 @@ export function OrdersClient({ orders }: { orders: OrderRow[] }) {
                   <Button variant="outline" asChild>
                     <Link href={`/orders/${o.id}`}>Track</Link>
                   </Button>
+                  <Button variant="outline" asChild>
+                    <Link href={`/help?order=${o.id}`}>Get help</Link>
+                  </Button>
                   <ReorderButton orderId={o.id} />
                   <FeedbackCTA order={o} onClick={() => openFor(o.id)} />
                 </div>
