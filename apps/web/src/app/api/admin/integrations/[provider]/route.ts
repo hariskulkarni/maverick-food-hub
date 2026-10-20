@@ -15,6 +15,9 @@ function parseProvider(s: string): ProviderKey | null {
   return s in PROVIDERS ? (s as ProviderKey) : null;
 }
 
+const YOUPI_BLOCKED = () =>
+  Response.json({ error: 'YouPI is configured through its approval flow, not this endpoint.' }, { status: 403 });
+
 function diffFields(before: Record<string, string> | null, after: Record<string, string>): Record<string, { from: string; to: string }> {
   const a = maskCredentials(before ?? {});
   const b = maskCredentials(after);
@@ -29,6 +32,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ prov
   const { provider } = await params;
   const p = parseProvider(provider);
   if (!p) return new Response('Unknown provider', { status: 400 });
+  if (p === 'YOUPI') return YOUPI_BLOCKED();
 
   const session = await auth();
   const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
@@ -84,6 +88,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ p
   const { provider } = await params;
   const p = parseProvider(provider);
   if (!p) return new Response('Unknown provider', { status: 400 });
+  if (p === 'YOUPI') return YOUPI_BLOCKED();
   const session = await auth();
   const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
 
