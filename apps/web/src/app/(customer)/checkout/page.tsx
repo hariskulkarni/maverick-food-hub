@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { CheckoutForm } from './checkout-form';
-import { resolveGatewayKey } from '@/server/payments';
+import { resolveGatewayKey, youpiEnabledForRestaurant } from '@/server/payments';
 
 export const metadata = { title: 'Checkout' };
 // Read addresses live every time — never serve a cached render that could show
@@ -66,6 +66,8 @@ export default async function CheckoutPage({
   // form submits and the label the customer sees. Null (no gateway configured)
   // still renders the online option — it routes to the mock provider in dev.
   const gateway = await resolveGatewayKey(branch.restaurantId);
+  // YouPI (experimental) is offered only to restaurants with an APPROVED request.
+  const youpiEnabled = await youpiEnabledForRestaurant(branch.restaurantId);
 
   return (
     <div className="container py-8">
@@ -77,6 +79,7 @@ export default async function CheckoutPage({
         loyaltyPoints={loyalty?.pointsBalance ?? 0}
         fulfillment={fulfillment}
         gateway={gateway}
+        youpiEnabled={youpiEnabled}
       />
     </div>
   );

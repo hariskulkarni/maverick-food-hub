@@ -45,13 +45,15 @@ interface FulfillmentCtx {
   reservationDiscountPct: number;
 }
 
-export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints, fulfillment, gateway = null }: {
+export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints, fulfillment, gateway = null, youpiEnabled = false }: {
   branchId: string;
   addresses: Addr[];
   walletBalance: number;
   loyaltyPoints: number;
   fulfillment: FulfillmentCtx;
   gateway?: Gateway;
+  /** Server-computed: restaurant has YouPI (experimental) APPROVED. */
+  youpiEnabled?: boolean;
 }) {
   const { lines, clear } = useCart();
   const router = useRouter();
@@ -65,6 +67,9 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
   // when nothing is configured (mock provider in dev).
   const onlineMethod: 'RAZORPAY' | 'PHONEPE' = gateway ?? 'RAZORPAY';
   const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'PHONEPE' | 'COD'>(onlineMethod);
+  // YouPI rides the online PaymentMethod; `paymentRail` tells the server to use it.
+  const [youpiSelected, setYoupiSelected] = useState(false);
+  const useYoupi = youpiEnabled && youpiSelected;
   const [notes, setNotes] = useState('');
   const [pricing, setPricing] = useState<any>(null);
   const [busy, setBusy] = useState(false);
@@ -190,6 +195,7 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
           })),
           couponCode: appliedCoupon || undefined,
           paymentMethod,
+          paymentRail: useYoupi && paymentMethod !== 'COD' ? 'youpi' : undefined,
           customerNotes: notes,
           walletApply: walletApply ? Math.min(walletBalance, 500) : 0,
           loyaltyApply: loyaltyApply ? Math.min(loyaltyPoints, 200) : 0,
@@ -230,6 +236,13 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
         await fetch(`/api/orders/${data.orderId}/confirm-mock-payment`, { method: 'POST' });
         toast.success('Payment captured (mock)');
         router.push(`/orders/${data.orderId}`);
+        return;
+      }
+
+      if (payment.providerName === 'youpi' && payment.redirectUrl) {
+        // Full redirect to YouPI's checkout. The order stays unpaid until the
+        // server reconciles; the return page only polls.
+        window.location.href = payment.redirectUrl;
         return;
       }
 
@@ -382,12 +395,22 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
             <div className="grid gap-2 sm:grid-cols-2">
               <PaymentChoice
                 value={onlineMethod}
-                current={paymentMethod}
-                onChange={setPaymentMethod}
+                current={useYoupi ? '' : paymentMethod}
+                onChange={(v) => { setYoupiSelected(false); setPaymentMethod(v); }}
                 title={GATEWAY_LABEL[onlineMethod].title}
                 subtitle={GATEWAY_LABEL[onlineMethod].subtitle}
               />
-              <PaymentChoice value="COD" current={paymentMethod} onChange={setPaymentMethod} title="Cash on Delivery" subtitle="Pay the rider" />
+              {youpiEnabled && (
+                <button
+                  type="button"
+                  onClick={() => { setYoupiSelected(true); setPaymentMethod(onlineMethod); }}
+                  className={`text-left rounded-lg border p-3 hover:bg-accent ${useYoupi ? 'border-primary bg-primary/5' : ''}`}
+                >
+                  <div className="text-sm font-medium">UPI (YouPI — experimental)</div>
+                  <div className="text-xs text-muted-foreground">Pay by UPI. Confirmed after your bank verifies it.</div>
+                </button>
+              )}
+              <PaymentChoice value="COD" current={paymentMethod} onChange={(v) => { setYoupiSelected(false); setPaymentMethod(v); }} title="Cash on Delivery" subtitle="Pay the rider" />
             </div>
           </CardContent>
         </Card>

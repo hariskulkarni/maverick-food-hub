@@ -34,6 +34,7 @@ export type ProviderKey =
   | 'ZOHO_SMTP'
   | 'BREVO_SMTP'
   | 'GOOGLE_BUSINESS'
+  | 'YOUPI'
   | 'LLM_REVIEWS';
 
 export interface FieldOption {
@@ -526,6 +527,42 @@ const GoogleBusiness: ProviderDef = {
   async test() { return { ok: true, detail: 'Connected via OAuth' }; },
 };
 
+// ─── YouPI UPI (experimental; split platform/restaurant config — NOT in the wizard list) ──
+const Youpi: ProviderDef = {
+  key: 'YOUPI',
+  title: 'YouPI UPI (experimental)',
+  vendor: 'YouPI-PG',
+  description: 'Experimental — self-hosted research gateway, pilot only. Configured via dedicated approval pages, not the generic wizard.',
+  docsUrl: 'https://github.com/youpi-pg/YouPI-PG',
+  fields: [
+    { key: 'baseUrl', label: 'Gateway base URL', type: 'text', required: true, placeholder: 'https://pg.example.com' },
+    // YouPI-PG auth: public X-Merchant-Id (UUID) + X-Merchant-Key (= the webhook secret). No Bearer key.
+    { key: 'merchantId', label: 'Merchant ID', type: 'text', required: true, placeholder: 'X-Merchant-Id (UUID)' },
+    { key: 'webhookSecret', label: 'Merchant key / webhook secret', type: 'password', required: true, secret: true },
+    { key: 'receivingVpa', label: 'Receiving VPA', type: 'text', required: true, placeholder: 'shop@bank' },
+    { key: 'dailyLimit', label: 'Daily limit (transactions)', type: 'number', required: false },
+    { key: 'maxAmountPaise', label: 'Max amount per payment (paise)', type: 'number', required: false },
+  ],
+  buildSummary: (c) => ({
+    baseUrl: c.baseUrl,
+    merchantId: c.merchantId,
+    receivingVpa: c.receivingVpa,
+    webhookSecret: c.webhookSecret ? maskSecret(c.webhookSecret) : '(not set)',
+    dailyLimit: c.dailyLimit,
+    maxAmountPaise: c.maxAmountPaise,
+  }),
+  async test(c) {
+    try {
+      const res = await fetch(c.baseUrl, { method: 'GET', signal: AbortSignal.timeout(5000) });
+      return { ok: true, detail: `Gateway reachable (HTTP ${res.status})` };
+    } catch (e) {
+      let msg = e instanceof Error ? e.message : String(e);
+      if (c.webhookSecret) msg = msg.split(c.webhookSecret).join(maskSecret(c.webhookSecret));
+      return { ok: false, error: `Gateway unreachable: ${msg}` };
+    }
+  },
+};
+
 export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
   RAZORPAY: Razorpay,
   PHONEPE: PhonePe,
@@ -541,7 +578,8 @@ export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
   ZOHO_SMTP: ZohoSmtp,
   BREVO_SMTP: BrevoSmtp,
   LLM_REVIEWS: LlmReviews,
-  GOOGLE_BUSINESS: GoogleBusiness
+  GOOGLE_BUSINESS: GoogleBusiness,
+  YOUPI: Youpi
 };
 
 export const PROVIDER_LIST: ProviderDef[] = [

@@ -7,7 +7,7 @@ import {
   AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet,
   History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, ShieldCheck, ClipboardCheck,
   Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones,
-  GraduationCap, MessagesSquare, Banknote, LayoutTemplate,
+  GraduationCap, MessagesSquare, Banknote, LayoutTemplate, Zap,
 } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { DemoBanner } from '@/components/demo-banner';
@@ -27,6 +27,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/platform/restaurants',   icon: <Building2 className={I} />,       label: 'Restaurants' },
       { href: '/platform/brands',        icon: <Layers className={I} />,          label: 'Brands' },
       { href: '/platform/payment-gateways', icon: <Banknote className={I} />,    label: 'Payment gateways' },
+      { href: '/platform/youpi',            icon: <Zap className={I} />,            label: 'YouPI' },
       { href: '/platform/discovery-cms', icon: <LayoutTemplate className={I} />,  label: 'Discovery CMS' },
       { href: '/platform/signup-bonus',  icon: <Gift className={I} />,            label: 'Signup Bonus' },
       { href: '/platform/orders',        icon: <ListOrdered className={I} />,     label: 'All orders' },
