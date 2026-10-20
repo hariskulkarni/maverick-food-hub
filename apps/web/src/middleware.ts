@@ -338,6 +338,6 @@ export const config = {
     // NOTE: `api` is excluded so Next doesn't buffer (and 10MB-truncate) large
     // request bodies through middleware — critical for video uploads. API routes
     // do their own auth; the demo gate already exempts /api.
-    '/((?!api/admin/upload|api/admin/menu/import|api/events|_next/static|_next/image|favicon.ico|manifest.json|manifest.webmanifest|sw.js|service-worker.js|robots.txt|sitemap.xml).*)'
+    '/((?!api/admin/upload|api/admin/menu/import|api/events|_next/static|_next/image|favicon.ico|manifest.json|manifest.webmanifest|sw.js|push-sw.js|service-worker.js|robots.txt|sitemap.xml).*)'
   ]
 };

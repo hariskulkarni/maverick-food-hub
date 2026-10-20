@@ -26,6 +26,7 @@ import { loadRulesForRestaurant, priceForItem, priceForCombo } from './happy-hou
 import { refreshChallengeProgressForOrder } from './challenges';
 import { previewSignupBonusForUser, holdSignupBonusForOrder, commitSignupBonusForOrder, restoreSignupBonusForOrder } from './signup-bonus';
 import { sendDeliveryOtpSms } from './notify-templates';
+import { pushOrderMilestone } from './push/milestones';
 import { resolveLineSelections } from './menu-selections';
 import { groupOrderChannel } from './group-scope';
 import { isBranchOpenAt, isScheduledTimeInsideOpenWindow } from './operating-hours';
@@ -898,6 +899,9 @@ export async function transitionOrder(
       restaurantId: order.branch.restaurantId,
       body: `${brand.name}: Order ${order.code} — ${STATUS_LABELS[next]}.`
     }).catch((e) => log.error({ err: (e as Error).message, orderId, next }, 'order status sms failed'));
+  }
+  if (order.customer?.id) {
+    await pushOrderMilestone({ orderId, code: order.code, customerId: order.customer.id, status: next });
   }
   log.info({ orderId, next }, 'order transitioned');
   return updated;
