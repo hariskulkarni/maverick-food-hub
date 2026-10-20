@@ -58,6 +58,7 @@ describe('fetchPlaceReviews', () => {
       { googleReviewId: 'places:p1:1759000000', reviewerName: 'Ravi', rating: 2, comment: null, reviewCreatedAt: new Date(1759000000 * 1000), source: 'places' },
     ]);
     expect(String(fetchMock.mock.calls[0][0])).toContain('fields=reviews%2Crating%2Cuser_ratings_total%2Cname');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('reviews_sort=newest');
   });
 
   it('is idempotent: same input yields the same ids', async () => {
