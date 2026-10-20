@@ -225,7 +225,7 @@ function AlertCard({
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 shrink-0 min-w-[124px]">
+          <div className="flex flex-col gap-2 shrink-0 min-w-[124px] max-w-full">
             {esc.status === 'OPEN' && (
               <Button size="sm" variant="outline" onClick={onAck} disabled={pending}>
                 {pending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}

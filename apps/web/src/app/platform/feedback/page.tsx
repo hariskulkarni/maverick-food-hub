@@ -68,7 +68,7 @@ export default async function PlatformFeedbackPage() {
   }));
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-4 sm:p-6 space-y-4">
       <header>
         <h1 className="display text-2xl font-semibold">Feedback</h1>
         <p className="text-sm text-muted-foreground">Platform-wide ratings across all restaurants and riders (last 30 days).</p>

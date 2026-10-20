@@ -27,7 +27,7 @@ export default async function RiderIncentivesPage() {
   const weekly = rows.filter((r) => r.period === 'WEEKLY').length;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
       <header>
         <h1 className="display text-3xl font-semibold">Rider incentives</h1>
         <p className="text-sm text-muted-foreground mt-1">

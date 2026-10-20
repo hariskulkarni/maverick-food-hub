@@ -103,7 +103,7 @@ export default async function SystemHealthPage() {
   const mem = process.memoryUsage();
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
       <header className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="display text-3xl font-semibold">System health</h1>

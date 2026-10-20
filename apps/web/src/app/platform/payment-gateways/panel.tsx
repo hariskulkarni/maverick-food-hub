@@ -44,7 +44,7 @@ export function PaymentGatewaysPanel() {
   );
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-5xl">
       <div className="flex items-start gap-3">
         <div className="grid size-10 place-items-center rounded-lg bg-primary/10 text-primary shrink-0">
           <CreditCard className="size-5" />

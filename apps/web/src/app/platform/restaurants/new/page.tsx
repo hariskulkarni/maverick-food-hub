@@ -45,7 +45,7 @@ export default async function NewRestaurantPage() {
   };
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <WizardClient
         brands={JSON.parse(JSON.stringify(brandsRaw))}
         unownedAdmins={JSON.parse(JSON.stringify(unownedAdminsRaw))}

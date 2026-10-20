@@ -30,7 +30,7 @@ export default async function PlatformSecurityPage() {
   });
 
   return (
-    <div className="p-6 max-w-5xl space-y-6">
+    <div className="p-4 sm:p-6 max-w-5xl space-y-6">
       <header>
         <h1 className="display text-3xl font-semibold flex items-center gap-2">
           <Shield className="size-7 text-primary" /> Platform security
@@ -63,6 +63,7 @@ export default async function PlatformSecurityPage() {
         <h3 className="font-semibold mb-3">Recent failed logins</h3>
         <Card>
           <CardContent className="p-0">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 border-b">
                 <tr>
@@ -94,6 +95,7 @@ export default async function PlatformSecurityPage() {
                 })}
               </tbody>
             </table>
+            </div>
           </CardContent>
         </Card>
       </section>

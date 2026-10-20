@@ -150,7 +150,7 @@ export default async function PlatformDashboard() {
   const trendFor = (delta: number) => delta > 1 ? 'up' as const : delta < -1 ? 'down' as const : 'flat' as const;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
       {/* Header */}
       <header className="flex flex-wrap items-end justify-between gap-3 reveal">
         <div>
