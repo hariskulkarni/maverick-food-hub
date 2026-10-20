@@ -22,6 +22,11 @@ const PatchBody = z.object({
   country: optionalString(2),
   latitude: z.number().optional().nullable(),
   longitude: z.number().optional().nullable(),
+  landmark: z.string().max(120).optional().nullable(),
+  floor: z.string().max(40).optional().nullable(),
+  instructions: z.string().max(300).optional().nullable(),
+  labelType: z.enum(['HOME', 'WORK', 'OTHER']).optional().nullable(),
+  labelName: z.string().max(40).optional().nullable(),
   isDefault: z.boolean().optional()
 });
 
@@ -49,7 +54,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         data: { isDefault: false }
       });
     }
-    return tx.address.update({ where: { id }, data });
+    const { landmark, floor, instructions, labelName, ...rest } = data;
+    // Blank strings clear the field (null); undefined leaves it untouched.
+    const clear = (v: string | null | undefined) => (v === undefined ? undefined : v?.trim() || null);
+    return tx.address.update({
+      where: { id },
+      data: {
+        ...rest,
+        landmark: clear(landmark),
+        floor: clear(floor),
+        instructions: clear(instructions),
+        labelName: data.labelType && data.labelType !== 'OTHER' ? null : clear(labelName)
+      }
+    });
   });
   return Response.json(updated);
 }

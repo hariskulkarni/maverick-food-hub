@@ -10,7 +10,8 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { haversineKm, clampTwo } from '@/lib/utils';
+import { clampTwo } from '@/lib/utils';
+import { routeDistance } from '@/server/geo/routing';
 import { parseOrJsonError } from '@/server/zod-helpers';
 
 const Body = z.object({
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
 
   const distanceKm =
     branch.latitude != null && branch.longitude != null
-      ? clampTwo(haversineKm({ lat: branch.latitude, lng: branch.longitude }, { lat, lng }))
+      ? clampTwo((await routeDistance({ lat: branch.latitude, lng: branch.longitude }, { lat, lng })).distanceKm)
       : 0;
 
   const base = Number(branch.baseDeliveryFee);

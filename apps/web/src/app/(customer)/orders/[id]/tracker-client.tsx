@@ -67,6 +67,9 @@ export function OrderTrackerClient({
         setRiderPos(pos);
         setOrder((o: any) => ({ ...o, riderLocation: pos }));
       }
+      if (evt.kind === 'rider_arrived') {
+        toast.success(evt.phase === 'pickup' ? 'Rider has arrived at the restaurant' : 'Rider has arrived');
+      }
       if (evt.kind === 'rider:nearby' && !nearbyFiredRef.current.has(order.id)) {
         nearbyFiredRef.current.add(order.id);
         toast.info('Your rider is 2 min away');

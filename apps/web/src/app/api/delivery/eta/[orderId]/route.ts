@@ -13,7 +13,8 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
-import { haversineKm, clampTwo } from '@/lib/utils';
+import { clampTwo } from '@/lib/utils';
+import { routeDistance } from '@/server/geo/routing';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,7 +76,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ord
 
   // Path A — rider GPS available: live-distance ETA.
   if (riderPos && dest) {
-    const remainingKm = clampTwo(haversineKm(riderPos, dest));
+    const leg = await routeDistance(riderPos, dest);
+    const remainingKm = clampTwo(leg.distanceKm);
     const etaMin = Math.max(1, Math.round(remainingKm * PER_KM_MIN + HANDOVER_MIN));
     return Response.json({
       orderId: order.id,
@@ -83,6 +85,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ord
       etaAt: new Date(Date.now() + etaMin * 60_000).toISOString(),
       etaMin,
       remainingKm,
+      ...(leg.polyline ? { polyline: leg.polyline } : {}),
       source: 'RIDER_GPS'
     });
   }
@@ -92,7 +95,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ord
     order.branch?.latitude != null && order.branch?.longitude != null
       ? { lat: order.branch.latitude, lng: order.branch.longitude }
       : null;
-  const driveKm = branch && dest ? clampTwo(haversineKm(branch, dest)) : 0;
+  const driveLeg = branch && dest ? await routeDistance(branch, dest) : null;
+  const driveKm = driveLeg ? clampTwo(driveLeg.distanceKm) : 0;
   const baseMin = COOK_MIN + PER_KM_MIN * driveKm;
 
   if (order.assignment?.assignedAt) {
@@ -103,6 +107,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ord
       status: order.status,
       etaAt: etaAt.toISOString(),
       etaMin,
+      ...(driveLeg?.polyline ? { polyline: driveLeg.polyline } : {}),
       source: 'ASSIGNMENT_FALLBACK'
     });
   }
@@ -116,6 +121,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ord
       status: order.status,
       etaAt: etaAt.toISOString(),
       etaMin,
+      ...(driveLeg?.polyline ? { polyline: driveLeg.polyline } : {}),
       source: 'PLACED_FALLBACK'
     });
   }
