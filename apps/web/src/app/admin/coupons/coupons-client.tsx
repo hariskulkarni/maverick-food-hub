@@ -114,7 +114,7 @@ export function CouponsClient({ coupons, branches }: { coupons: Coupon[]; branch
       )}
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-muted-foreground">
           {coupons.length} {coupons.length === 1 ? 'coupon' : 'coupons'}
         </div>

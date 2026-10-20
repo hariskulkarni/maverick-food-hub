@@ -57,6 +57,7 @@ export interface FeedbackLite {
   issueTags: FeedbackIssueTag[];
   imageUrl: string | null;
   shareCommentWithRider: boolean;
+  sharePublicly?: boolean;
   windowEndsAt: Date | string;
   createdAt: Date | string;
   editedAt: Date | string | null;
@@ -295,7 +296,7 @@ export async function loadRestaurantFeedback(restaurantId: string, opts: { from?
 /** Rider-side rollup — only the delivery rating + their own deliveries. */
 export async function loadRiderFeedback(riderId: string) {
   const rows = await (prisma as any).orderFeedback.findMany({
-    where: { order: { assignment: { riderId } } },
+    where: { moderationStatus: 'PUBLISHED', order: { assignment: { riderId } } },
     include: { order: { select: { code: true } } },
     orderBy: { createdAt: 'desc' },
     take: 200

@@ -105,7 +105,7 @@ export default async function AdminLivePage() {
   const channel = branchIds[0] ? `branch:${branchIds[0]}:riders` : 'platform:riders';
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
       <header>
         <h1 className="display text-3xl font-semibold flex items-center gap-2">
           <Radio className="size-7 text-primary" /> Live tracking

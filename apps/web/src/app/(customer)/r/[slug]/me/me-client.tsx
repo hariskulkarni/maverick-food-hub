@@ -224,7 +224,7 @@ function KpiTiles({ walletBalance, loyaltyPoints, ordersFromHereCount }: {
   walletBalance: number; loyaltyPoints: number; ordersFromHereCount: number;
 }) {
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-3 gap-2 sm:gap-3">
       <KpiTile icon={<WalletIcon className="size-4" />} label="Wallet" value={money(walletBalance)} accent="text-primary" />
       <KpiTile icon={<Sparkles className="size-4" />} label="Loyalty" value={`${loyaltyPoints} pts`} accent="text-warning" />
       <KpiTile icon={<Receipt className="size-4" />} label="Orders" value={String(ordersFromHereCount)} accent="text-success" />
@@ -234,7 +234,7 @@ function KpiTiles({ walletBalance, loyaltyPoints, ordersFromHereCount }: {
 
 function KpiTile({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent: string }) {
   return (
-    <div className="rounded-2xl border bg-card p-3 md:p-4 card-lift tap-press">
+    <div className="min-w-0 rounded-2xl border bg-card p-2.5 sm:p-3 md:p-4 card-lift tap-press">
       <div className={`flex items-center gap-1.5 text-xs font-medium ${accent}`}>{icon}{label}</div>
       <div className="mt-1.5 font-semibold text-base md:text-lg">{value}</div>
     </div>

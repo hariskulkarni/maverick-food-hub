@@ -280,7 +280,7 @@ function OverviewTab() {
       {/* overall banner */}
       <div className={`flex flex-wrap items-center gap-4 rounded-xl border p-5 ${bannerClass(overall)}`}>
         <div className={`flex size-3 shrink-0 rounded-full ${statusDotClass(overall)} ${overall === 'DOWN' || overall === 'DEGRADED' ? 'animate-pulse' : ''}`} />
-        <div className="flex-1 min-w-[200px]">
+        <div className="flex-1 min-w-[200px] max-w-full">
           <div className="flex items-center gap-2 text-lg font-semibold">
             <Activity className="size-5" /> {statusLabel(overall)}
           </div>

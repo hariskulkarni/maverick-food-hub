@@ -417,7 +417,7 @@ function ModuleDrawer({
             />
           </div>
           <div className="flex flex-wrap gap-3">
-            <div className="min-w-[180px]">
+            <div className="min-w-[180px] max-w-full">
               <Label className="text-[11px] uppercase tracking-wider text-muted-foreground">Category</Label>
               <select
                 value={draft.category}

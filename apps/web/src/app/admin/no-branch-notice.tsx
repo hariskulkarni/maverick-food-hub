@@ -9,7 +9,7 @@ import { Building2 } from 'lucide-react';
  */
 export function NoBranchNotice({ title = 'No active branch yet' }: { title?: string }) {
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="mx-auto max-w-xl rounded-2xl border border-dashed bg-muted/30 p-10 text-center">
         <div className="mx-auto grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
           <Building2 className="size-6" />

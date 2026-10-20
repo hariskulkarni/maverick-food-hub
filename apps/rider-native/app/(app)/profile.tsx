@@ -455,6 +455,13 @@ export default function ProfileScreen() {
             tint={colors.warning}
           />
           <ToolRow
+            icon="star-outline"
+            label="Customer Feedback"
+            hint="Delivery ratings and comments"
+            route="/customer-feedback"
+            tint={colors.warning}
+          />
+          <ToolRow
             icon="gift-outline"
             label="Refer & Earn"
             hint="Invite riders, earn bonuses"

@@ -191,6 +191,7 @@ const RAW_PAGE_GATES: ReadonlyArray<{ prefix: string; capability: Capability }> 
   // SUPER_ADMIN-only surfaces
   { prefix: '/platform/users', capability: 'platform:admin' },
   { prefix: '/platform/analytics', capability: 'platform:admin' },
+  { prefix: '/platform/reviews-analytics', capability: 'platform:admin' },
   { prefix: '/platform/reports', capability: 'platform:admin' },
   { prefix: '/platform/audit-log', capability: 'platform:admin' },
   { prefix: '/platform/observability', capability: 'platform:admin' },

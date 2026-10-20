@@ -144,7 +144,11 @@ export default function RefundsPage() {
             <a href="mailto:support@oakandsizzler.in" className="text-primary underline">
               support@oakandsizzler.in
             </a>{' '}
-            or call {brand.supportPhone}. You can also reach us through the{' '}
+            or call {brand.supportPhone}. Or{' '}
+            <a href="/help" className="text-primary underline">
+              report a problem with an order
+            </a>{' '}
+            directly. You can also reach us through the{' '}
             <a href="/contact" className="text-primary underline">
               contact page
             </a>

@@ -58,8 +58,8 @@ export default async function AdminDashboardPage() {
   ]);
 
   return (
-    <div className="p-6 space-y-6">
-      <header className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="display text-2xl font-semibold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">
@@ -96,7 +96,7 @@ export default async function AdminDashboardPage() {
           {/* overflow-x-auto so a long restaurant name doesn't push the
               right-aligned Orders/Revenue columns off the phone viewport. */}
           <div className="-mx-2 overflow-x-auto">
-          <table className="w-full text-sm min-w-[360px]">
+          <table className="w-full max-w-full text-sm min-w-[360px]">
             <thead className="text-left text-muted-foreground">
               <tr><th className="py-2">Restaurant</th><th className="text-right">Orders</th><th className="text-right">Revenue</th></tr>
             </thead>

@@ -53,7 +53,7 @@ export default async function AdminMessagesPage() {
     .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-6xl">
       <header>
         <h1 className="display text-3xl font-semibold">Messages</h1>
         <p className="text-sm text-muted-foreground mt-1">

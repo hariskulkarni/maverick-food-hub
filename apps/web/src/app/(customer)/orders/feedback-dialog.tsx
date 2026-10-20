@@ -47,6 +47,7 @@ export interface FeedbackLite {
   issueTags: string[];
   imageUrl: string | null;
   shareCommentWithRider: boolean;
+  sharePublicly?: boolean;
   windowEndsAt: string | Date;
   createdAt: string | Date;
   editedAt: string | Date | null;
@@ -82,6 +83,7 @@ export function FeedbackDialog({ order, existing, readOnly, open, onOpenChange, 
   const [tags, setTags] = useState<string[]>(existing?.issueTags ?? []);
   const [imageUrl, setImageUrl] = useState<string | null>(existing?.imageUrl ?? null);
   const [shareWithRider, setShareWithRider] = useState<boolean>(existing?.shareCommentWithRider ?? false);
+  const [sharePublicly, setSharePublicly] = useState<boolean>(existing?.sharePublicly ?? false);
   const [busy, setBusy] = useState(false);
 
   // Re-seed form whenever `existing` changes (re-opening the dialog
@@ -94,6 +96,7 @@ export function FeedbackDialog({ order, existing, readOnly, open, onOpenChange, 
     setTags(existing?.issueTags ?? []);
     setImageUrl(existing?.imageUrl ?? null);
     setShareWithRider(existing?.shareCommentWithRider ?? false);
+    setSharePublicly(existing?.sharePublicly ?? false);
   }, [
     existing?.id,
     existing?.foodRating,
@@ -103,6 +106,7 @@ export function FeedbackDialog({ order, existing, readOnly, open, onOpenChange, 
     existing?.issueTags,
     existing?.imageUrl,
     existing?.shareCommentWithRider,
+    existing?.sharePublicly,
     open,
   ]);
 
@@ -134,7 +138,8 @@ export function FeedbackDialog({ order, existing, readOnly, open, onOpenChange, 
           comment: comment.trim() ? comment.trim() : undefined,
           issueTags: tags,
           imageUrl: imageUrl ?? undefined,
-          shareCommentWithRider: shareWithRider
+          shareCommentWithRider: shareWithRider,
+          sharePublicly
         })
       });
       if (!res.ok) {
@@ -246,6 +251,21 @@ export function FeedbackDialog({ order, existing, readOnly, open, onOpenChange, 
                 <span className="font-medium">Share my comment with the rider</span>
                 <span className="block text-xs text-muted-foreground">
                   By default, the rider only sees your delivery rating. Tick this if your comment is meant for them.
+                </span>
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sharePublicly}
+                onChange={(e) => setSharePublicly(e.target.checked)}
+                className="mt-0.5 size-4 shrink-0 accent-primary"
+              />
+              <span className="text-sm">
+                <span className="font-medium">Show my comment on the public page</span>
+                <span className="block text-xs text-muted-foreground">
+                  Off by default. If ticked, your first name, rating and comment may appear on the restaurant&apos;s public reviews. This is separate from sharing with the rider.
                 </span>
               </span>
             </label>

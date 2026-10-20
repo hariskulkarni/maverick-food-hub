@@ -6,14 +6,15 @@ const h = vi.hoisted(() => ({
   listForRestaurant: vi.fn(),
   upsert: vi.fn(),
   findUnique: vi.fn(),
+  restaurantUpdate: vi.fn(),
 }));
 vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: h.requireManagedRestaurant }));
 vi.mock('@/server/integrations', () => ({ listForRestaurant: h.listForRestaurant }));
 vi.mock('@/server/db', () => ({
-  prisma: { reviewAutoReplyConfig: { upsert: h.upsert, findUnique: h.findUnique } },
+  prisma: { reviewAutoReplyConfig: { upsert: h.upsert, findUnique: h.findUnique }, restaurant: { update: h.restaurantUpdate } },
 }));
 
-import { GET, POST } from '@/app/api/admin/reviews/config/route';
+import { GET, POST, PATCH } from '@/app/api/admin/reviews/config/route';
 
 const post = (body: unknown) =>
   new NextRequest('http://x/api/admin/reviews/config', {
@@ -81,5 +82,31 @@ describe('reviews config route', () => {
     expect(s).not.toContain('refreshToken');
     expect(s).not.toContain('configEncrypted');
     expect(s).not.toContain('sk-');
+  });
+
+  it('GET exposes autoPublishReviews (default true)', async () => {
+    h.listForRestaurant.mockResolvedValue([]);
+    h.findUnique.mockResolvedValue(null);
+    h.requireManagedRestaurant.mockResolvedValue({ id: 'rest1', autoPublishReviews: false });
+    expect((await (await GET(new NextRequest('http://x/api/admin/reviews/config'))).json()).autoPublishReviews).toBe(false);
+    h.requireManagedRestaurant.mockResolvedValue({ id: 'rest1' });
+    expect((await (await GET(new NextRequest('http://x/api/admin/reviews/config'))).json()).autoPublishReviews).toBe(true);
+  });
+
+  it('PATCH persists autoPublishReviews on the restaurant', async () => {
+    h.restaurantUpdate.mockResolvedValue({});
+    const res = await PATCH(new NextRequest('http://x/api/admin/reviews/config', {
+      method: 'PATCH', body: JSON.stringify({ autoPublishReviews: false }), headers: { 'content-type': 'application/json' },
+    }));
+    expect(res.status).toBe(200);
+    expect(h.restaurantUpdate).toHaveBeenCalledWith({ where: { id: 'rest1' }, data: { autoPublishReviews: false } });
+  });
+
+  it('PATCH rejects non-boolean', async () => {
+    const res = await PATCH(new NextRequest('http://x/api/admin/reviews/config', {
+      method: 'PATCH', body: JSON.stringify({ autoPublishReviews: 'no' }), headers: { 'content-type': 'application/json' },
+    }));
+    expect(res.status).toBe(400);
+    expect(h.restaurantUpdate).not.toHaveBeenCalled();
   });
 });

@@ -12,7 +12,7 @@ export default async function PlatformAnalyticsPage() {
     platformKpis(), gmvSeries(30), topRestaurants(10), topProducts(10), peakHours(), paymentSplit(), riderLeaderboard(10), spendDistribution()
   ]);
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       <header>
         <h1 className="display text-2xl font-semibold">Deep analytics</h1>
         <p className="text-sm text-muted-foreground">Last 30 days · cross-restaurant + per-tenant drill-downs.</p>
@@ -76,6 +76,7 @@ export default async function PlatformAnalyticsPage() {
 
       <Card><CardContent className="p-5">
         <h3 className="font-semibold mb-3">Rider leaderboard</h3>
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-left text-muted-foreground">
             <tr><th className="py-2">Rider</th><th>Deliveries</th><th>Rating</th><th>Earnings</th><th>Tips</th></tr>
@@ -92,6 +93,7 @@ export default async function PlatformAnalyticsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </CardContent></Card>
     </div>
   );

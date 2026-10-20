@@ -127,7 +127,7 @@ export function SignupBonusClient({
   }
 
   return (
-    <div className="p-6 max-w-6xl space-y-6 pb-28">
+    <div className="p-4 sm:p-6 max-w-6xl space-y-6 pb-28">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="display text-3xl font-semibold flex items-center gap-2">

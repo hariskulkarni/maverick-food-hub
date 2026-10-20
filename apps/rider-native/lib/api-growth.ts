@@ -176,9 +176,28 @@ export interface ModuleProgress {
   quizScore: number | null;
 }
 
+// ─── Customer feedback (redacted for riders) ────────────────────────────────
+
+export interface RiderFeedbackRow {
+  id: string;
+  orderId: string;
+  deliveryRating: number | null;
+  /** Present only when the customer opted in to sharing it with the rider. */
+  comment: string | null;
+  createdAt: string;
+}
+
+export interface RiderFeedbackResponse {
+  rows: RiderFeedbackRow[];
+  summary: { count: number; avgDelivery: number | null; lowDeliveryCount: number } | null;
+}
+
 // ─── Endpoints ───────────────────────────────────────────────────────────────
 
 export const growth = {
+  /** Customer delivery feedback (rating + opted-in comment only). */
+  feedback: () => apiRequest<RiderFeedbackResponse>('/api/rider/feedback'),
+
   /** The rider's loyalty-tier standing + ladder. */
   tier: () => apiRequest<TierResponse>('/api/rider/tier'),
 

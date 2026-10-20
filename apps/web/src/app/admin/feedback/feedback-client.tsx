@@ -16,8 +16,12 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Star, MessageSquare, AlertTriangle, ArrowUpRight, Loader2, Filter } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Star, MessageSquare, AlertTriangle, ArrowUpRight, Loader2, Filter, Eye, EyeOff, Flag, Reply } from 'lucide-react';
 import { toast } from 'sonner';
+
+type ModStatus = 'PUBLISHED' | 'HIDDEN' | 'FLAGGED';
+type StatusFilter = 'ALL' | ModStatus;
 
 interface Row {
   id: string;
@@ -28,6 +32,10 @@ interface Row {
   issueTags: string[];
   imageUrl: string | null;
   createdAt: string;
+  moderationStatus: ModStatus;
+  flagReason: string | null;
+  reply: string | null;
+  replyAt: string | null;
   order: { id: string; code: string | null; total: any };
 }
 
@@ -58,6 +66,53 @@ export function FeedbackClient({ initialRows, initialSummary }: { initialRows: R
   const [lowOnly, setLowOnly] = useState(false);
   const [sort, setSort] = useState<Sort>('newest');
   const [loading, setLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<{ id: string; mode: 'flag' | 'reply'; text: string } | null>(null);
+
+  function patchRow(id: string, p: Partial<Row>) {
+    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...p } : r)));
+  }
+
+  async function act(id: string, body: Record<string, unknown>) {
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/admin/feedback/${id}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.error ?? `HTTP ${r.status}`);
+      patchRow(id, j.feedback);
+      setEditing(null);
+      toast.success('Updated');
+    } catch (e: any) {
+      toast.error('Update failed', { description: e?.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function bulk(action: 'hide' | 'unhide') {
+    if (selected.size === 0) return;
+    setBusy(true);
+    try {
+      const ids = [...selected];
+      const r = await fetch('/api/admin/feedback/bulk', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids, action })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.error ?? `HTTP ${r.status}`);
+      const status: ModStatus = action === 'hide' ? 'HIDDEN' : 'PUBLISHED';
+      setRows((rs) => rs.map((x) => (selected.has(x.id) ? { ...x, moderationStatus: status, flagReason: null } : x)));
+      setSelected(new Set());
+      toast.success(`${j.updated} updated`);
+    } catch (e: any) {
+      toast.error('Bulk update failed', { description: e?.message });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // Re-fetch whenever the period or low-only filter changes. We always pull
   // through /api/admin/feedback so the ADMIN role gate is applied server-side.
@@ -90,7 +145,7 @@ export function FeedbackClient({ initialRows, initialSummary }: { initialRows: R
   }, [period, lowOnly]);
 
   const sorted = useMemo(() => {
-    const arr = [...rows];
+    const arr = rows.filter((r) => statusFilter === 'ALL' || r.moderationStatus === statusFilter);
     const cmpNum = (a: number | null, b: number | null) => (a ?? -1) - (b ?? -1);
     switch (sort) {
       case 'newest': arr.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)); break;
@@ -101,7 +156,7 @@ export function FeedbackClient({ initialRows, initialSummary }: { initialRows: R
       case 'overall-desc': arr.sort((a, b) => cmpNum(b.overallRating, a.overallRating)); break;
     }
     return arr;
-  }, [rows, sort]);
+  }, [rows, sort, statusFilter]);
 
   const lowPct = summary.count > 0
     ? Math.round(((summary.lowFoodCount + summary.lowOverallCount) / (summary.count * 2)) * 100)
@@ -128,6 +183,12 @@ export function FeedbackClient({ initialRows, initialSummary }: { initialRows: R
             {(['7d', '30d', '90d'] as Period[]).map((p) => (
               <Chip key={p} active={period === p} onClick={() => setPeriod(p)}>{p}</Chip>
             ))}
+            <span className="text-xs text-muted-foreground ml-3 mr-1">Status:</span>
+            {(['ALL', 'PUBLISHED', 'HIDDEN', 'FLAGGED'] as StatusFilter[]).map((st) => (
+              <Chip key={st} active={statusFilter === st} onClick={() => setStatusFilter(st)}>
+                {st === 'ALL' ? 'All' : st.charAt(0) + st.slice(1).toLowerCase()}
+              </Chip>
+            ))}
             {loading && <Loader2 className="size-4 ml-2 animate-spin text-muted-foreground" />}
           </div>
 
@@ -152,6 +213,19 @@ export function FeedbackClient({ initialRows, initialSummary }: { initialRows: R
         </CardContent>
       </Card>
 
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+          <span className="text-sm font-medium">{selected.size} selected</span>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => bulk('hide')}>
+            <EyeOff className="size-4 mr-1" /> Hide
+          </Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => bulk('unhide')}>
+            <Eye className="size-4 mr-1" /> Unhide
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+        </div>
+      )}
+
       {/* Table */}
       <Card>
         <CardContent className="p-0">
@@ -159,22 +233,49 @@ export function FeedbackClient({ initialRows, initialSummary }: { initialRows: R
             <table className="w-full text-sm">
               <thead className="bg-muted/40 border-b">
                 <tr>
+                  <Th>
+                    <input
+                      type="checkbox"
+                      aria-label="Select all"
+                      checked={sorted.length > 0 && sorted.every((r) => selected.has(r.id))}
+                      onChange={(e) => setSelected(e.target.checked ? new Set(sorted.map((r) => r.id)) : new Set())}
+                    />
+                  </Th>
                   <Th>Order</Th>
                   <Th onClick={() => setSort(sort === 'food-desc' ? 'food-asc' : 'food-desc')} sortable>Food</Th>
                   <Th onClick={() => setSort(sort === 'overall-desc' ? 'overall-asc' : 'overall-desc')} sortable>Overall</Th>
                   <Th>Tags</Th>
                   <Th>Comment</Th>
                   <Th onClick={() => setSort(sort === 'newest' ? 'oldest' : 'newest')} sortable>When</Th>
-                  <Th align="right">&nbsp;</Th>
+                  <Th align="right">Actions</Th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {sorted.length === 0 && !loading && (
-                  <tr><td colSpan={7} className="p-12 text-center text-muted-foreground">No feedback in this range.</td></tr>
+                  <tr><td colSpan={8} className="p-12 text-center text-muted-foreground">No feedback in this range.</td></tr>
                 )}
                 {sorted.map((r) => (
-                  <tr key={r.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-3 font-mono text-xs">{r.order.code ?? '—'}</td>
+                  <tr key={r.id} className={`hover:bg-muted/30 ${r.moderationStatus === 'HIDDEN' ? 'opacity-60' : ''}`}>
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select feedback for order ${r.order.code ?? r.id}`}
+                        checked={selected.has(r.id)}
+                        onChange={(e) => {
+                          const n = new Set(selected);
+                          if (e.target.checked) n.add(r.id); else n.delete(r.id);
+                          setSelected(n);
+                        }}
+                      />
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      {r.order.code ?? '—'}
+                      {r.moderationStatus !== 'PUBLISHED' && (
+                        <Badge variant={r.moderationStatus === 'FLAGGED' ? 'warning' : 'secondary'} className="ml-2 text-[10px]">
+                          {r.moderationStatus === 'FLAGGED' ? 'Flagged' : 'Hidden'}
+                        </Badge>
+                      )}
+                    </td>
                     <td className="px-4 py-3"><Stars value={r.foodRating} /></td>
                     <td className="px-4 py-3"><Stars value={r.overallRating} /></td>
                     <td className="px-4 py-3">
@@ -187,11 +288,50 @@ export function FeedbackClient({ initialRows, initialSummary }: { initialRows: R
                     </td>
                     <td className="px-4 py-3 max-w-[260px]">
                       <span className="text-xs text-muted-foreground line-clamp-2">{r.comment ?? '—'}</span>
+                      {r.flagReason && <p className="text-[11px] text-warning mt-1">Flag: {r.flagReason}</p>}
+                      {r.reply && <p className="text-[11px] text-foreground mt-1 border-l-2 border-primary pl-2 line-clamp-2">Reply: {r.reply}</p>}
+                      {editing?.id === r.id && (
+                        <div className="mt-2 space-y-2">
+                          <textarea
+                            className="w-full rounded-md border bg-background p-2 text-xs"
+                            rows={3}
+                            maxLength={editing.mode === 'reply' ? 1000 : 500}
+                            placeholder={editing.mode === 'reply' ? 'Write a public reply…' : 'Reason for flagging…'}
+                            value={editing.text}
+                            onChange={(e) => setEditing({ ...editing, text: e.target.value })}
+                          />
+                          <div className="flex gap-2">
+                            <Button size="sm" disabled={busy || !editing.text.trim()} onClick={() =>
+                              act(r.id, editing.mode === 'reply' ? { action: 'reply', reply: editing.text } : { action: 'flag', reason: editing.text })
+                            }>
+                              {editing.mode === 'reply' ? 'Post reply' : 'Flag'}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+                          </div>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                       {new Date(r.createdAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
                     </td>
                     <td className="px-4 py-3 text-right">
+                      <div className="flex flex-wrap justify-end gap-1 mb-1">
+                        {r.moderationStatus === 'PUBLISHED' ? (
+                          <Button size="sm" variant="outline" disabled={busy} onClick={() => act(r.id, { action: 'hide' })} aria-label="Hide">
+                            <EyeOff className="size-4" />
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="outline" disabled={busy} onClick={() => act(r.id, { action: 'unhide' })} aria-label="Unhide">
+                            <Eye className="size-4" />
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" disabled={busy} aria-label="Flag" onClick={() => setEditing({ id: r.id, mode: 'flag', text: '' })}>
+                          <Flag className="size-4" />
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={busy} aria-label="Reply" onClick={() => setEditing({ id: r.id, mode: 'reply', text: r.reply ?? '' })}>
+                          <Reply className="size-4" />
+                        </Button>
+                      </div>
                       <Link href={`/admin/orders/${r.order.id}`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
                         Open order <ArrowUpRight className="size-3" />
                       </Link>

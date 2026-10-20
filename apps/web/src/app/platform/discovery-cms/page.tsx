@@ -87,7 +87,7 @@ export default async function DiscoveryCmsPage() {
   }));
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="p-4 sm:p-6 max-w-5xl">
       <header className="mb-6">
         <h1 className="display text-3xl font-semibold">Discovery CMS</h1>
         <p className="text-sm text-muted-foreground mt-1">

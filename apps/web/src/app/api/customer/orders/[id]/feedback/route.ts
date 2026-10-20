@@ -18,6 +18,7 @@ import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { audit } from '@/server/audit';
 import { log } from '@/server/log';
+import { recomputeRiderRatingForOrder } from '@/server/reviews/rider-rating';
 import {
   canSubmitFeedback,
   canEditFeedback,
@@ -47,7 +48,8 @@ const Body = z.object({
   comment: z.string().max(500).optional(),
   issueTags: z.array(z.enum(ISSUE_TAGS)).max(7).optional(),
   imageUrl: z.string().optional(),
-  shareCommentWithRider: z.boolean().optional()
+  shareCommentWithRider: z.boolean().optional(),
+  sharePublicly: z.boolean().optional()
 }).refine(
   (d) =>
     d.foodRating != null ||
@@ -135,6 +137,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const deliveredAt = order.deliveredAt!;
   const windowEndsAt = new Date(deliveredAt.getTime() + FEEDBACK_WINDOW_MS);
 
+  // Restaurant opted out of auto-publish => hold as HIDDEN until an admin publishes (R3).
+  const autoPublish = await prisma.order
+    .findUnique({ where: { id }, select: { branch: { select: { restaurant: { select: { autoPublishReviews: true } } } } } })
+    .then((o) => o?.branch?.restaurant?.autoPublishReviews !== false)
+    .catch(() => true);
+
   const created = await (prisma as any).orderFeedback.create({
     data: {
       orderId: id,
@@ -146,7 +154,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       issueTags: data.issueTags ?? [],
       imageUrl: data.imageUrl ?? null,
       shareCommentWithRider: data.shareCommentWithRider ?? false,
-      windowEndsAt
+      sharePublicly: data.sharePublicly ?? false,
+      windowEndsAt,
+      moderationStatus: autoPublish ? 'PUBLISHED' : 'HIDDEN'
     }
   });
 
@@ -166,9 +176,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       issueTags: created.issueTags,
       hasComment: !!created.comment,
       hasImage: !!created.imageUrl,
-      shareCommentWithRider: created.shareCommentWithRider
+      shareCommentWithRider: created.shareCommentWithRider,
+      sharePublicly: created.sharePublicly
     }
   }).catch((e) => log.error({ err: e }, 'feedback submit audit failed'));
+
+  // Best-effort rider-rating refresh; never throws, never fails the write.
+  if (created.deliveryRating != null) {
+    await recomputeRiderRatingForOrder(id).catch((e) => log.error({ err: e }, 'rider rating refresh failed'));
+  }
 
   return Response.json({ feedback: created }, { status: 201 });
 }
@@ -199,7 +215,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     comment: existing!.comment,
     issueTags: existing!.issueTags,
     imageUrl: existing!.imageUrl,
-    shareCommentWithRider: existing!.shareCommentWithRider
+    shareCommentWithRider: existing!.shareCommentWithRider,
+    sharePublicly: existing!.sharePublicly
   };
 
   const updated = await (prisma as any).orderFeedback.update({
@@ -212,6 +229,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       issueTags: data.issueTags ?? [],
       imageUrl: data.imageUrl ?? null,
       shareCommentWithRider: data.shareCommentWithRider ?? false,
+      sharePublicly: data.sharePublicly ?? false,
       editedAt: new Date()
     }
   });
@@ -229,9 +247,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       comment: updated.comment,
       issueTags: updated.issueTags,
       imageUrl: updated.imageUrl,
-      shareCommentWithRider: updated.shareCommentWithRider
+      shareCommentWithRider: updated.shareCommentWithRider,
+      sharePublicly: updated.sharePublicly
     }
   }).catch((e) => log.error({ err: e }, 'feedback edit audit failed'));
+
+  // Recompute also when the delivery rating was cleared or changed.
+  if (updated.deliveryRating != null || before.deliveryRating != null) {
+    await recomputeRiderRatingForOrder(id).catch((e) => log.error({ err: e }, 'rider rating refresh failed'));
+  }
 
   return Response.json({ feedback: updated });
 }

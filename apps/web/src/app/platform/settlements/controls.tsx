@@ -24,17 +24,17 @@ export function SettlementControls({
       <div>
         <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Restaurant</label>
         <select value={rid} onChange={(e) => setRid(e.target.value)}
-          className="mt-1 h-9 w-[240px] rounded-md border bg-background px-2 text-sm">
+          className="mt-1 h-9 w-[240px] max-w-full rounded-md border bg-background px-2 text-sm">
           {restaurants.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
         </select>
       </div>
       <div>
         <label className="text-[11px] uppercase tracking-wider text-muted-foreground">From</label>
-        <Input type="date" value={f} onChange={(e) => setF(e.target.value)} className="h-9 mt-1 w-[150px]" />
+        <Input type="date" value={f} onChange={(e) => setF(e.target.value)} className="h-9 mt-1 w-[150px] max-w-full" />
       </div>
       <div>
         <label className="text-[11px] uppercase tracking-wider text-muted-foreground">To</label>
-        <Input type="date" value={t} onChange={(e) => setT(e.target.value)} className="h-9 mt-1 w-[150px]" />
+        <Input type="date" value={t} onChange={(e) => setT(e.target.value)} className="h-9 mt-1 w-[150px] max-w-full" />
       </div>
       <Button onClick={go} size="sm"><RefreshCw className="size-4" /> Generate</Button>
       <a href={`/api/platform/settlements/export?${qs()}`}>

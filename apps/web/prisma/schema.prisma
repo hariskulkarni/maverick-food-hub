@@ -492,6 +492,9 @@ model Restaurant {
   // Customers may schedule an order for a future date/time (validated against
   // operating hours). The kitchen surfaces it as the scheduled slot approaches.
   scheduledOrdersEnabled Boolean @default(true)
+  // New customer reviews (OrderFeedback) go live immediately (PUBLISHED) when
+  // true; when false they start HIDDEN until a moderator publishes them.
+  autoPublishReviews     Boolean @default(true)
   // Customers may choose self-pickup (no rider, no delivery fee, handover code).
   selfPickupEnabled      Boolean @default(true)
   // Master switch for the freebie/gift engine. When on, the restaurant can
@@ -1197,6 +1200,9 @@ model Order {
   deliveryOtp         String? // 4-digit verification code
   deliveryOtpVerified Boolean @default(false)
 
+  // When the post-delivery review request was sent to the customer.
+  feedbackRequestedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1257,6 +1263,12 @@ enum FeedbackIssueTag {
   FOOD_QUALITY
 }
 
+enum ModerationStatus {
+  PUBLISHED
+  HIDDEN
+  FLAGGED
+}
+
 model OrderFeedback {
   id                    String             @id @default(cuid())
   orderId               String             @unique
@@ -1272,12 +1284,24 @@ model OrderFeedback {
   // Customer can opt-in to share their (already-public) comment with the rider.
   // Default: rider sees ratings + redacted comment only.
   shareCommentWithRider Boolean            @default(false)
+  // Separate, explicit opt-in to show the comment on PUBLIC pages. Never
+  // inferred from shareCommentWithRider (rider-only consent).
+  sharePublicly         Boolean            @default(false)
   // Snapshotted at create so the 48h window survives clock drift on the order.
   windowEndsAt          DateTime
   // Audit
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
   editedAt              DateTime?
+  // Moderation + restaurant reply. Only PUBLISHED rows appear on public pages
+  // and in public aggregates.
+  moderationStatus      ModerationStatus   @default(PUBLISHED)
+  moderatedByUserId     String?
+  moderatedAt           DateTime?
+  flagReason            String?
+  reply                 String?
+  replyAt               DateTime?
+  replyByUserId         String?
 
   order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   customer User  @relation("CustomerFeedback", fields: [customerId], references: [id], onDelete: Cascade)
