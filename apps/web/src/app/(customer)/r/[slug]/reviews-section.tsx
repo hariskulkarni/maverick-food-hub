@@ -59,7 +59,7 @@ export function ReviewsSection({ slug, data }: { slug: string; data: PublicRevie
         {data.reviews.map((r) => <ReviewCard key={r.id} r={r} />)}
       </ul>
       {data.aggregate.count > data.reviews.length && (
-        <Link href={`/r/${slug}/reviews`} className="mt-4 inline-flex min-h-10 items-center font-medium text-primary hover:underline">
+        <Link href={`/r/${slug}/reviews`} className="mt-4 inline-flex min-h-11 items-center font-medium text-primary hover:underline">
           See all {data.aggregate.count} reviews
         </Link>
       )}
