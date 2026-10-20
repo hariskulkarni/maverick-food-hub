@@ -92,6 +92,8 @@ export interface PlaceOrderInput {
    */
   offerCode?: string;
   paymentMethod: PaymentMethod;
+  /** Opt-in YouPI rail (experimental). Only honoured for online methods. */
+  paymentRail?: 'youpi';
   customerNotes?: string;
   walletApply?: number;
   loyaltyApply?: number;
@@ -687,7 +689,8 @@ export async function placeOrder(input: PlaceOrderInput) {
     try {
       const session = await startOnlinePayment(order.id, {
         method: input.paymentMethod,
-        amount: finalTotal
+        amount: finalTotal,
+        ...(input.paymentRail === 'youpi' ? { rail: 'youpi' as const } : {})
       });
       // Online orders are auto-accepted (if the restaurant opts in) only AFTER
       // payment is captured — that happens in the webhook/reconcile path, not

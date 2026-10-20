@@ -33,6 +33,9 @@ export function PaymentStatusView() {
   const params = useSearchParams();
   const router = useRouter();
   const orderId = params.get('orderId') ?? '';
+  // YouPI stays PENDING until our server reconciles (status + UTR + amount); the
+  // browser returning here proves nothing.
+  const isYoupi = params.get('provider') === 'youpi';
 
   const [phase, setPhase] = useState<Phase>('PENDING');
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +57,7 @@ export function PaymentStatusView() {
     const poll = async () => {
       if (cancelled) return;
       try {
-        const res = await fetch(`/api/payments/phonepe/status?orderId=${encodeURIComponent(orderId)}`, {
+        const res = await fetch(`/api/payments/${isYoupi ? 'youpi' : 'phonepe'}/status?orderId=${encodeURIComponent(orderId)}`, {
           cache: 'no-store',
         });
         if (!res.ok) throw new Error(await res.text());
@@ -96,7 +99,7 @@ export function PaymentStatusView() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [orderId, router]);
+  }, [orderId, router, isYoupi]);
 
   /** Mint a fresh PayPage — the previous merchantOrderId cannot be reused. */
   const retry = useCallback(async () => {
@@ -107,6 +110,10 @@ export function PaymentStatusView() {
       if (!res.ok) throw new Error(data?.error || 'Could not restart the payment.');
       const p = data.payment;
       if (!p?.redirectUrl) throw new Error('The payment gateway did not return a checkout link.');
+      if (p.providerName === 'youpi') {
+        window.location.href = p.redirectUrl; // full redirect to YouPI checkout
+        return;
+      }
       await openPhonePeCheckout({ tokenUrl: p.redirectUrl, scriptUrl: p.checkoutScriptUrl });
       // Whatever the PayPage reports, the server decides — restart polling.
       startedAt.current = Date.now();
@@ -127,9 +134,13 @@ export function PaymentStatusView() {
         {phase === 'PENDING' && (
           <>
             <Loader2 className="mx-auto size-10 animate-spin text-primary" />
-            <h1 className="mt-4 text-lg font-semibold">Confirming your payment…</h1>
+            <h1 className="mt-4 text-lg font-semibold">
+              {isYoupi ? 'Payment is being confirmed' : 'Confirming your payment…'}
+            </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              This usually takes a few seconds. If you paid by UPI collect, approve the request in your UPI app.
+              {isYoupi
+                ? 'We’re waiting for your bank to confirm the UPI payment. Your order is not confirmed until then — this can take a minute.'
+                : 'This usually takes a few seconds. If you paid by UPI collect, approve the request in your UPI app.'}
             </p>
             <p className="mt-4 text-xs text-muted-foreground">Please don’t close this page.</p>
           </>
