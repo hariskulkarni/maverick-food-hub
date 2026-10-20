@@ -127,6 +127,9 @@ export async function startOnlinePayment(
     if (!(await youpiEnabledForRestaurant(order.branch.restaurantId))) {
       throw new OnlinePaymentError('YouPI is not available for this restaurant.', 400);
     }
+    if (!brand.url) {
+      throw new OnlinePaymentError('YouPI return URL is not configured (brand.url missing)', 500);
+    }
     provider = await paymentProvider(order.branch.restaurantId, { prefer: 'youpi' });
   } else {
     provider = await paymentProvider(order.branch.restaurantId);
@@ -171,7 +174,7 @@ export async function startOnlinePayment(
       expireAfterSec: opts.expireAfterSec,
       // YouPI sends the customer back here; the page only polls, never trusts the return.
       ...(useYoupi
-        ? { redirectUrl: `${(brand.url || '').replace(/\/+$/, '')}/checkout/payment-status?orderId=${encodeURIComponent(order.id)}&provider=youpi` }
+        ? { redirectUrl: `${brand.url.replace(/\/+$/, '')}/checkout/payment-status?orderId=${encodeURIComponent(order.id)}&provider=youpi` }
         : {}),
     });
   } catch (e) {

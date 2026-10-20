@@ -10,7 +10,13 @@ const VPA_RE = /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
 /** Save the restaurant's receiving UPI VPA. Only once super-admin has APPROVED the feature. */
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  const restaurant = await requireManagedRestaurant(body?.restaurantId ?? null);
+  let restaurant;
+  try {
+    restaurant = await requireManagedRestaurant(body?.restaurantId ?? null);
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
   const fr = await prisma.youpiFeatureRequest.findUnique({ where: { restaurantId: restaurant.id } });
   if (fr?.status !== 'APPROVED') {
     return Response.json({ error: 'YouPI is not approved for this restaurant' }, { status: 403 });

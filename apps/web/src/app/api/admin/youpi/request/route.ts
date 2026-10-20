@@ -8,7 +8,13 @@ export const dynamic = 'force-dynamic';
 /** Restaurant admin requests the experimental YouPI UPI feature (super-admin approves). */
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
-  const restaurant = await requireManagedRestaurant(body?.restaurantId ?? null);
+  let restaurant;
+  try {
+    restaurant = await requireManagedRestaurant(body?.restaurantId ?? null);
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
   const existing = await prisma.youpiFeatureRequest.findUnique({ where: { restaurantId: restaurant.id } });
   if (existing?.status === 'APPROVED') {
     return Response.json({ error: 'Already approved', status: 'APPROVED' }, { status: 409 });

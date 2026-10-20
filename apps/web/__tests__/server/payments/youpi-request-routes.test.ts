@@ -80,3 +80,18 @@ describe('POST /api/admin/youpi/vpa', () => {
     );
   });
 });
+
+describe('requireManagedRestaurant throwing a Response', () => {
+  it('request route returns it instead of 500', async () => {
+    h.require.mockRejectedValue(new Response('Not found', { status: 404 }));
+    const res = await requestPOST(req({}));
+    expect(res.status).toBe(404);
+    expect(h.upsert).not.toHaveBeenCalled();
+  });
+  it('vpa route returns it instead of 500', async () => {
+    h.require.mockRejectedValue(new Response('Not found', { status: 404 }));
+    const res = await vpaPOST(req({ receivingVpa: 'a@b' }));
+    expect(res.status).toBe(404);
+    expect(h.saveConfig).not.toHaveBeenCalled();
+  });
+});

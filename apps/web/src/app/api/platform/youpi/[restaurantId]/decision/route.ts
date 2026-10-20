@@ -32,6 +32,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ res
     return Response.json({ error: 'Configure the YouPI connection first' }, { status: 409 });
   }
 
+  const exists = await prisma.restaurant.findUnique({ where: { id: restaurantId }, select: { id: true } });
+  if (!exists) return new Response('No such restaurant', { status: 404 });
+
   const before = await prisma.youpiFeatureRequest.findUnique({ where: { restaurantId }, select: { status: true } });
   const status = STATUS[decision];
   const now = new Date();

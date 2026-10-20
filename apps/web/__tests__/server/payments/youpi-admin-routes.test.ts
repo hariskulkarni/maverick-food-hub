@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   reqFindMany: vi.fn(async (): Promise<any[]> => []),
   reqUpsert: vi.fn(async (a: any) => ({ id: 'yr1', restaurantId: a.where.restaurantId, status: a.update.status })),
   reqFind: vi.fn(async (): Promise<any> => ({ id: 'yr1', status: 'REQUESTED' })),
+  restFind: vi.fn(async (): Promise<any> => ({ id: 'r1' })),
 }));
 
 vi.mock('@/server/auth', () => ({
@@ -18,6 +19,7 @@ vi.mock('@/server/integrations', () => ({ saveConfig: h.saveConfig, getConfig: h
 vi.mock('@/server/audit', () => ({ audit: h.audit }));
 vi.mock('@/server/db', () => ({
   prisma: {
+    restaurant: { findUnique: h.restFind },
     integrationCredential: { findUnique: h.credFind },
     youpiFeatureRequest: { findMany: h.reqFindMany, upsert: h.reqUpsert, findUnique: h.reqFind },
   },
@@ -36,6 +38,17 @@ beforeEach(() => {
   h.role = 'SUPER_ADMIN';
   h.getConfig.mockResolvedValue(null);
   h.credFind.mockResolvedValue(null);
+  h.restFind.mockResolvedValue({ id: 'r1' });
+});
+
+describe('decision for unknown restaurant', () => {
+  it('404s and writes nothing', async () => {
+    h.getConfig.mockResolvedValue({ baseUrl: 'x' });
+    h.restFind.mockResolvedValue(null);
+    const res = await decide(mk({ decision: 'APPROVE' }), ctx);
+    expect(res.status).toBe(404);
+    expect(h.reqUpsert).not.toHaveBeenCalled();
+  });
 });
 
 describe('non-SUPER_ADMIN gets 403 everywhere', () => {

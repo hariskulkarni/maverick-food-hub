@@ -99,3 +99,14 @@ describe('startOnlinePayment — YouPI rail', () => {
     expect(h.youpiEnabled).not.toHaveBeenCalled();
   });
 });
+
+describe('YouPI return URL guard', () => {
+  it('throws OnlinePaymentError when brand.url is unset', async () => {
+    vi.resetModules();
+    vi.doMock('@/lib/brand', () => ({ brand: { url: '' } }));
+    const mod = await import('@/server/payments/online');
+    await expect(mod.startOnlinePayment('o1', { rail: 'youpi' } as any)).rejects.toThrow(/brand\.url missing/);
+    expect(h.db.payment.create).not.toHaveBeenCalled();
+    vi.doUnmock('@/lib/brand');
+  });
+});

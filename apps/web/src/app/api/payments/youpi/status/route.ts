@@ -11,6 +11,7 @@ import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { rateLimit } from '@/server/http/rate-limit';
 import { reconcileYoupiPayment } from '@/server/payments/youpi-reconcile';
+import { userCanAccessRestaurant } from '@/server/tenancy';
 import { PaymentStatus } from '@prisma/client';
 
 export const runtime = 'nodejs';
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest) {
       id: true,
       code: true,
       customerId: true,
+      branch: { select: { restaurantId: true } },
       status: true,
       payments: {
         where: { providerName: 'youpi' },
@@ -42,8 +44,11 @@ export async function GET(req: NextRequest) {
     },
   });
   if (!order) return new Response('Not found', { status: 404 });
-  if (order.customerId !== session.user.id && session.user.role === 'CUSTOMER') {
-    return new Response('Forbidden', { status: 403 });
+  if (session.user.role === 'CUSTOMER') {
+    if (order.customerId !== session.user.id) return new Response('Forbidden', { status: 403 });
+  } else if (session.user.role !== 'SUPER_ADMIN') {
+    const ok = await userCanAccessRestaurant(session.user.id, order.branch.restaurantId);
+    if (!ok) return new Response('Forbidden', { status: 403 });
   }
 
   const payment = order.payments[0];
