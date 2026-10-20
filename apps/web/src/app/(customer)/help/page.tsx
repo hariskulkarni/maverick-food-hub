@@ -8,8 +8,8 @@ export const metadata = {
   description: `Report a problem with your ${brand.name} order.`
 };
 
-export default async function HelpPage({ searchParams }: { searchParams: { order?: string } }) {
-  const order = searchParams.order?.slice(0, 64) ?? '';
+export default async function HelpPage({ searchParams }: { searchParams: Promise<{ order?: string }> }) {
+  const order = (await searchParams).order?.slice(0, 64) ?? '';
   const session = await auth();
   if (!session?.user?.id) {
     redirect(`/login?next=${encodeURIComponent(`/help${order ? `?order=${order}` : ''}`)}`);
