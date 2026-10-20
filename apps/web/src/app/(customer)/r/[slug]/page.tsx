@@ -30,6 +30,8 @@ import { FoodLicenseFooter } from './food-license-footer';
 import { JsonLd } from '@/components/seo/json-ld';
 import { brand } from '@/lib/brand';
 import { loadRestaurantPageData } from './page-data';
+import { ReviewsSection } from './reviews-section';
+import { loadPublicReviews } from '@/server/reviews/public';
 
 const SITE = 'https://flavrly.in';
 
@@ -546,6 +548,8 @@ export default async function RestaurantPage({ params }: { params: Promise<{ slu
 
       {/* ───────── CMS: bottom content blocks + footer ───────── */}
       <ContentBlocks blocks={cms.blocks} position="bottom" />
+
+      <ReviewsSection slug={slug} data={await loadPublicReviews(restaurant.id, { pageSize: 3 }).catch(() => null)} />
 
       <StorefrontFooter footerText={cms.footer.text} social={cms.social} />
 
