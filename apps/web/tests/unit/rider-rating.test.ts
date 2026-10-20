@@ -37,6 +37,8 @@ describe('recomputeRiderRating', () => {
     expect(arg.take).toBe(RIDER_RATING_WINDOW);
     expect(RIDER_RATING_WINDOW).toBe(100);
     expect(arg.where.deliveryRating).toEqual({ not: null });
+    // Hidden/flagged feedback must not move the rider's average.
+    expect(arg.where.moderationStatus).toBe('PUBLISHED');
     expect(arg.where.order.assignment).toEqual({ riderId: 'r1', status: 'DELIVERED' });
   });
 

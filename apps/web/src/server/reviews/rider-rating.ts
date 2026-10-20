@@ -7,6 +7,8 @@
  * rated deliveries (newest feedback first), so old history ages out and the
  * query stays bounded.
  *
+ * Only PUBLISHED feedback counts: HIDDEN/FLAGGED rows are excluded.
+ *
  * Both exports are best-effort: they never throw into the caller.
  */
 import { prisma } from '@/server/db';
@@ -19,6 +21,7 @@ export async function recomputeRiderRating(riderId: string): Promise<void> {
     const rows: { deliveryRating: number | null }[] = await (prisma as any).orderFeedback.findMany({
       where: {
         deliveryRating: { not: null },
+        moderationStatus: 'PUBLISHED',
         order: { assignment: { riderId, status: 'DELIVERED' } }
       },
       orderBy: { createdAt: 'desc' },

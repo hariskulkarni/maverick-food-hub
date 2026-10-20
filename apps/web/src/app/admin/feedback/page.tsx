@@ -9,6 +9,7 @@
  * The `(prisma as any)` cast lives inside the loader — this page stays clean.
  */
 import { requireRestaurant } from '@/server/tenancy';
+import { moderationFields } from '@/server/reviews/moderation';
 import { loadRestaurantFeedback, visibleForRole } from '@/server/feedback';
 import { FeedbackClient } from './feedback-client';
 
@@ -26,6 +27,7 @@ export default async function AdminFeedbackPage() {
   // Keep `order` metadata so the table can render "Open order →" links.
   const projected = rows.map((r: any) => ({
     ...visibleForRole(r, 'ADMIN'),
+    ...moderationFields(r),
     order: {
       id: r.orderId,
       code: r.order?.code ?? null,

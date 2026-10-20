@@ -15,6 +15,7 @@
 import { NextRequest } from 'next/server';
 import { requireRestaurant } from '@/server/tenancy';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
+import { moderationFields } from '@/server/reviews/moderation';
 import { loadRestaurantFeedback, visibleForRole, summariseRatings } from '@/server/feedback';
 
 export async function GET(req: NextRequest) {
@@ -35,6 +36,7 @@ export async function GET(req: NextRequest) {
   // metadata alongside so the dashboard can render the "Open order →" link.
   const projected = limited.map((r: any) => ({
     ...visibleForRole(r, 'ADMIN'),
+    ...moderationFields(r),
     order: {
       id: r.orderId,
       code: r.order?.code ?? null,

@@ -10,6 +10,7 @@
  * next/navigation for the bad-restaurant / no-branch case so both pages
  * inherit the same 404 behaviour.
  */
+import { publishedRatingWhere } from '@/server/reviews/published';
 import { notFound } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
@@ -247,7 +248,7 @@ export async function loadRestaurantPageData(slug: string): Promise<RestaurantPa
   const _fb = await prisma.orderFeedback.aggregate({
     _avg: { overallRating: true },
     _count: { overallRating: true },
-    where: { overallRating: { not: null }, order: { branch: { restaurantId: restaurant.id } } },
+    where: publishedRatingWhere(restaurant.id),
   });
   const ratingCount = _fb._count.overallRating ?? 0;
   const _avg = _fb._avg.overallRating ?? 0;
