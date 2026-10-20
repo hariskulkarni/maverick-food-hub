@@ -28,6 +28,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/platform/brands',        icon: <Layers className={I} />,          label: 'Brands' },
       { href: '/platform/payment-gateways', icon: <Banknote className={I} />,    label: 'Payment gateways' },
       { href: '/platform/youpi',            icon: <Zap className={I} />,            label: 'YouPI' },
+      { href: '/platform/youpi-admin',      icon: <Zap className={I} />,            label: 'YouPI Admin' },
       { href: '/platform/discovery-cms', icon: <LayoutTemplate className={I} />,  label: 'Discovery CMS' },
       { href: '/platform/signup-bonus',  icon: <Gift className={I} />,            label: 'Signup Bonus' },
       { href: '/platform/orders',        icon: <ListOrdered className={I} />,     label: 'All orders' },
