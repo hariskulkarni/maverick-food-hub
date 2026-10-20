@@ -12,7 +12,7 @@ import { z } from 'zod';
 import argon2 from 'argon2';
 import { Role } from '@prisma/client';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { clientIp } from '@/server/http/rate-limit';
 
@@ -26,13 +26,9 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let session;
-  try {
-    session = await requireSuperAdmin();
-  } catch (e) {
-    if (e instanceof Response) return e;
-    throw e;
-  }
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const { id: restaurantId } = await params;
 
   let body: z.infer<typeof Body>;

@@ -51,6 +51,19 @@ describe('POST /api/platform/iam/super-admins', () => {
     expect(m.create).not.toHaveBeenCalled();
   });
 
+  it('409 (not 500) when a concurrent insert trips the unique constraint (P2002)', async () => {
+    m.create.mockRejectedValue(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }));
+    const res = await POST(req(good));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe('email_taken');
+    expect(m.audit).not.toHaveBeenCalled();
+  });
+
+  it('rethrows non-P2002 create errors', async () => {
+    m.create.mockRejectedValue(new Error('db down'));
+    await expect(POST(req(good))).rejects.toThrow('db down');
+  });
+
   it('400 for password < 12', async () => {
     const res = await POST(req({ ...good, password: 'short-pw-11' }));
     expect(res.status).toBe(400);

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const m = vi.hoisted(() => ({
-  requireSuperAdmin: vi.fn(),
+  session: null as any,
   restFind: vi.fn(),
   userFind: vi.fn(),
   userCreate: vi.fn(),
@@ -9,7 +9,7 @@ const m = vi.hoisted(() => ({
   audit: vi.fn()
 }));
 
-vi.mock('@/server/tenancy', () => ({ requireSuperAdmin: m.requireSuperAdmin }));
+vi.mock('@/server/auth', () => ({ auth: async () => m.session }));
 vi.mock('@/server/audit', () => ({ audit: m.audit }));
 vi.mock('@/server/http/rate-limit', () => ({ clientIp: () => '1.2.3.4' }));
 vi.mock('@/server/db', () => {
@@ -31,8 +31,8 @@ const req = (body: unknown) =>
   ({ json: async () => body, headers: new Headers({ 'user-agent': 'vt' }) }) as any;
 
 beforeEach(() => {
-  Object.values(m).forEach((f) => f.mockReset());
-  m.requireSuperAdmin.mockResolvedValue({ user: { id: 'sa1', role: 'SUPER_ADMIN' } });
+  Object.values(m).forEach((f) => typeof f === 'function' && (f as any).mockReset?.());
+  m.session = { user: { id: 'sa1', role: 'SUPER_ADMIN' } };
   m.restFind.mockResolvedValue({ id: 'r1' });
   m.userFind.mockResolvedValue(null);
   m.userCreate.mockResolvedValue({ id: 'u9', email: 'asha@example.com', role: 'KITCHEN' });
@@ -41,8 +41,22 @@ beforeEach(() => {
 });
 
 describe('POST /api/platform/restaurants/[id]/staff', () => {
+  it('401 (not 403) when unauthenticated, no writes', async () => {
+    m.session = null;
+    const res = await POST(req(good), ctx);
+    expect(res.status).toBe(401);
+    expect(m.userCreate).not.toHaveBeenCalled();
+    expect(m.restFind).not.toHaveBeenCalled();
+  });
+
+  it('401 (no TypeError/500) on a malformed session without user', async () => {
+    m.session = {};
+    const res = await POST(req(good), ctx);
+    expect(res.status).toBe(401);
+  });
+
   it('403 for non-super-admin and performs no writes', async () => {
-    m.requireSuperAdmin.mockRejectedValue(new Response('Forbidden', { status: 403 }));
+    m.session = { user: { id: 'x', role: 'ADMIN' } };
     const res = await POST(req(good), ctx);
     expect(res.status).toBe(403);
     expect(m.userCreate).not.toHaveBeenCalled();

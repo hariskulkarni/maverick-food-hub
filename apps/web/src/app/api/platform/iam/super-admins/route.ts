@@ -57,10 +57,22 @@ export async function POST(req: NextRequest) {
   }
 
   const passwordHash = await argon2.hash(body.password);
-  const created = await prisma.user.create({
-    data: { name: body.name.trim(), email, passwordHash, role: Role.SUPER_ADMIN },
-    select: { id: true, email: true, role: true },
-  });
+  let created: { id: string; email: string | null; role: Role };
+  try {
+    created = await prisma.user.create({
+      data: { name: body.name.trim(), email, passwordHash, role: Role.SUPER_ADMIN },
+      select: { id: true, email: true, role: true },
+    });
+  } catch (e: any) {
+    // Race on the unique email constraint (TOCTOU vs the pre-check above).
+    if (e?.code === 'P2002') {
+      return Response.json(
+        { error: 'email_taken', message: 'A user with that email already exists.' },
+        { status: 409 },
+      );
+    }
+    throw e;
+  }
 
   await audit('iam.superadmin.create', {
     actorId: session.user.id,
