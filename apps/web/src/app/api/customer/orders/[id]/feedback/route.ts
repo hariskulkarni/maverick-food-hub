@@ -18,6 +18,7 @@ import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { audit } from '@/server/audit';
 import { log } from '@/server/log';
+import { recomputeRiderRatingForOrder } from '@/server/reviews/rider-rating';
 import {
   canSubmitFeedback,
   canEditFeedback,
@@ -170,6 +171,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }).catch((e) => log.error({ err: e }, 'feedback submit audit failed'));
 
+  // Best-effort rider-rating refresh; never throws, never fails the write.
+  if (created.deliveryRating != null) {
+    await recomputeRiderRatingForOrder(id).catch((e) => log.error({ err: e }, 'rider rating refresh failed'));
+  }
+
   return Response.json({ feedback: created }, { status: 201 });
 }
 
@@ -232,6 +238,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       shareCommentWithRider: updated.shareCommentWithRider
     }
   }).catch((e) => log.error({ err: e }, 'feedback edit audit failed'));
+
+  // Recompute also when the delivery rating was cleared or changed.
+  if (updated.deliveryRating != null || before.deliveryRating != null) {
+    await recomputeRiderRatingForOrder(id).catch((e) => log.error({ err: e }, 'rider rating refresh failed'));
+  }
 
   return Response.json({ feedback: updated });
 }
