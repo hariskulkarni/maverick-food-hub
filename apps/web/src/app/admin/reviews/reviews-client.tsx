@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { Bot, CheckCircle2, MessageSquareReply, RefreshCw, Sparkles, Star } from 'lucide-react';
+import { Bot, CheckCircle2, Copy, ExternalLink, MessageSquareReply, RefreshCw, Sparkles, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,8 +16,13 @@ type Review = {
   rating: number;
   comment: string | null;
   reviewCreatedAt: string;
+  /** 'gbp' = Business Profile (inline reply) | 'places' = Places API (read-only). */
+  source?: 'gbp' | 'places';
   reply: { state: ReplyState; text: string | null; source: string | null; postedAt: string | null } | null;
 };
+
+// Places API is read-only, so owners reply in Google's own UI.
+export const GOOGLE_REPLY_URL = 'https://business.google.com/reviews';
 
 const STATE_FILTERS: { key: string; label: string }[] = [
   { key: '', label: 'All replies' },
@@ -98,6 +103,8 @@ export function ReviewsClient() {
   const [syncMsg, setSyncMsg] = useState<{ text: string; notConnected?: boolean } | null>(null);
   // Per-review textarea content (draft edits and manual replies).
   const [texts, setTexts] = useState<Record<string, string>>({});
+  // AI drafts for read-only (Places) reviews: shown for copy/paste, never persisted.
+  const [aiDrafts, setAiDrafts] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -129,7 +136,19 @@ export function ReviewsClient() {
     try {
       const r = await fetch('/api/admin/reviews/sync', { method: 'POST' });
       if (r.status === 409) {
-        setSyncMsg({ text: 'Connect Google Business first', notConnected: true });
+        // No Business Profile link: fall back to the Places quick-connect, if any.
+        const p = await fetch('/api/admin/reviews/places/sync', { method: 'POST' });
+        if (p.status === 409) {
+          setSyncMsg({ text: 'Connect Google first', notConnected: true });
+          return;
+        }
+        if (!p.ok) {
+          await reportApiError(p, 'Google sync failed');
+          return;
+        }
+        const pd = (await p.json()) as { synced: number; created: number };
+        setSyncMsg({ text: `Synced ${pd.synced} (${pd.created} new)` });
+        await load();
         return;
       }
       if (!r.ok) {
@@ -171,6 +190,32 @@ export function ReviewsClient() {
     }
   }
 
+  async function aiDraft(id: string) {
+    setBusy((b) => ({ ...b, [id]: true }));
+    try {
+      const r = await fetch(`/api/admin/reviews/${id}/draft`, { method: 'POST' });
+      if (!r.ok) {
+        await reportApiError(r, 'Could not generate a draft');
+        return;
+      }
+      const d = (await r.json()) as { text: string };
+      setAiDrafts((m) => ({ ...m, [id]: d.text }));
+    } catch {
+      toast.error('Could not generate a draft');
+    } finally {
+      setBusy((b) => ({ ...b, [id]: false }));
+    }
+  }
+
+  async function copyDraft(id: string) {
+    try {
+      await navigator.clipboard.writeText(aiDrafts[id] ?? '');
+      toast.success('Copied. Paste it into your Google reply.');
+    } catch {
+      toast.error('Copy failed. Select the text and copy manually.');
+    }
+  }
+
   const drafts = reviews.filter((r) => r.reply?.state === 'PENDING_APPROVAL');
   const others = reviews.filter((r) => r.reply?.state !== 'PENDING_APPROVAL');
 
@@ -188,6 +233,11 @@ export function ReviewsClient() {
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="truncate font-medium">{r.reviewerName ?? 'Anonymous'}</span>
+            {r.source === 'places' && (
+              <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                via Google Places
+              </span>
+            )}
             <span className="text-xs text-muted-foreground" title={fmt(r.reviewCreatedAt)}>
               {relTime(r.reviewCreatedAt)}
             </span>
@@ -348,6 +398,34 @@ export function ReviewsClient() {
                   </p>
                   <p className="whitespace-pre-wrap break-words">{r.reply.text}</p>
                   <p className="mt-1 text-xs text-muted-foreground">Posted {fmt(r.reply.postedAt)}</p>
+                </div>
+              ) : r.source === 'places' ? (
+                <div className="space-y-2 rounded-xl bg-muted/40 p-3" data-testid="places-actions">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                    <Button asChild className="min-h-[44px] gap-2">
+                      <a href={GOOGLE_REPLY_URL} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                        Reply on Google
+                      </a>
+                    </Button>
+                    <Button variant="outline" className="min-h-[44px] gap-2" disabled={busy[r.id]} onClick={() => aiDraft(r.id)}>
+                      <Sparkles className="h-4 w-4" aria-hidden="true" />
+                      {aiDrafts[r.id] ? 'Regenerate AI draft' : 'AI draft'}
+                    </Button>
+                  </div>
+                  {aiDrafts[r.id] && (
+                    <div className="space-y-2 rounded-xl border border-warning/30 bg-warning/5 p-3">
+                      <p className="flex items-center gap-1.5 text-xs font-medium text-warning">
+                        <Bot className="h-3.5 w-3.5" aria-hidden="true" /> AI draft - copy, then paste into Google
+                      </p>
+                      <p className="whitespace-pre-wrap break-words text-sm">{aiDrafts[r.id]}</p>
+                      <Button variant="outline" className="min-h-[44px] gap-2" onClick={() => copyDraft(r.id)}>
+                        <Copy className="h-4 w-4" aria-hidden="true" />
+                        Copy
+                      </Button>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">Replies to these reviews are posted on Google, not here.</p>
                 </div>
               ) : (
                 <div className="space-y-2 rounded-xl bg-muted/40 p-3">

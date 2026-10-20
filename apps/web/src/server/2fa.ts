@@ -132,6 +132,9 @@ export async function setPlatformSecurity(input: PlatformSecurity): Promise<void
   await invalidateTag('platform:security');
 }
 
+// +/-1 step (30s) clock-drift tolerance. Do not widen beyond 1.
+authenticator.options = { ...authenticator.options, window: 1 };
+
 export function verifyTotp(secret: string, token: string): boolean {
   if (!secret || !token) return false;
   try {

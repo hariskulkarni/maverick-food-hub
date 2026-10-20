@@ -77,6 +77,8 @@ export interface RateLimitOptions {
   windowMs: number;
   /** Extra key part (e.g. a phone number) to scope the limit beyond IP. */
   key?: string;
+  /** Omit the client IP from the bucket key (global per-`key` cap, e.g. per-email). */
+  ignoreIp?: boolean;
 }
 
 export type RateLimitResult =
@@ -89,7 +91,7 @@ export type RateLimitResult =
  * with a `Retry-After` header — when the limit is exceeded.
  */
 export async function rateLimit(req: Request, opts: RateLimitOptions): Promise<RateLimitResult> {
-  const ip = clientIp(req);
+  const ip = opts.ignoreIp ? '' : clientIp(req);
   const bucketKey = `${opts.name}:${ip}${opts.key ? ':' + opts.key : ''}`;
   const count = await store.hit(bucketKey, opts.windowMs);
   if (count > opts.limit) {

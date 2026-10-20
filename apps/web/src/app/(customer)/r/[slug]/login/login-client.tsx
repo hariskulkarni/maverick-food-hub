@@ -8,6 +8,7 @@
  * to `/r/<slug>` so the menu page reloads with the customer header.
  */
 import { useState } from 'react';
+import Link from 'next/link';
 import { signIn } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -146,6 +147,9 @@ export function CustomerLoginClient({ slug, googleEnabled = false }: { slug: str
           </button>
         </form>
       )}
+      <div className="text-center">
+        <Link href="/forgot-password" className="inline-flex min-h-11 items-center text-sm text-primary underline">Forgot password?</Link>
+      </div>
     </div>
   );
 }

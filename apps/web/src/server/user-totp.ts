@@ -21,6 +21,12 @@ import { Role } from '@prisma/client';
 
 const ISSUER = 'Flavrly';
 
+// Tolerate +/-1 30s step of clock drift between the authenticator device and
+// this server. Never widen beyond 1 — each extra step enlarges the brute-force
+// surface. (otplib's `authenticator` is a shared singleton, so this also governs
+// server/2fa.ts; it is set explicitly there too.)
+authenticator.options = { ...authenticator.options, window: 1 };
+
 /** Roles that must use a Google Authenticator code as a second factor. */
 export const STAFF_TOTP_ROLES: Role[] = [Role.ADMIN, Role.SUPER_ADMIN, Role.KITCHEN];
 export function isStaffTotpRole(role: Role | string | null | undefined): boolean {

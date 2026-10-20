@@ -294,6 +294,7 @@ model User {
   favoriteItems         FavoriteItem[]
   reservations          Reservation[]        @relation("CustomerReservations")
   sessions              UserSession[]
+  passwordResetTokens   PasswordResetToken[]
   approvalsRequested    ApprovalRequest[]    @relation("ApprovalRequester")
   approvalsReviewed     ApprovalRequest[]    @relation("ApprovalReviewer")
   webPushSubscriptions  WebPushSubscription[]
@@ -308,6 +309,19 @@ model User {
 /// `revokedAt` set ⇒ the session is dead (superseded by a newer login, or the
 /// user terminated it). The active session is the one User.currentSessionId
 /// points at; all others should be revoked.
+model PasswordResetToken {
+  id          String    @id @default(cuid())
+  userId      String
+  tokenHash   String    @unique // sha256 hex of the raw token; raw is never stored
+  expiresAt   DateTime
+  usedAt      DateTime?
+  requestedIp String?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 model UserSession {
   id            String    @id @default(cuid())
   userId        String
@@ -3376,6 +3390,7 @@ model GoogleReview {
   comment         String?
   reviewCreatedAt DateTime
   syncedAt        DateTime @default(now())
+  source          String   @default("gbp") // 'gbp' (Business Profile API) | 'places' (Places API, read-only)
   reply           ReviewReply?
   restaurant      Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   @@index([restaurantId, reviewCreatedAt])
@@ -3408,6 +3423,10 @@ model ReviewAutoReplyConfig {
   draftMaxRating    Int      @default(3)
   tonePrompt        String?
   enabledAt         DateTime?
+  // Tier-1 Google Places quick-connect (no API approval). Null = not linked.
+  googlePlaceId          String?
+  googlePlaceName        String?
+  googlePlaceConnectedAt DateTime?
   updatedAt         DateTime @updatedAt
   restaurant        Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 }

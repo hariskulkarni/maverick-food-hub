@@ -207,6 +207,10 @@ function UserDrawer({ id, onClose }: { id: string; onClose: () => void }) {
         />
       </DrawerSection>
 
+      <DrawerSection title="Password">
+        <PasswordResetControl userId={u.id} staff={u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' || u.role === 'KITCHEN'} />
+      </DrawerSection>
+
       {/* Two-factor (Google Authenticator) — staff only. Super-admin reset. */}
       {(u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' || u.role === 'KITCHEN') && (
         <DrawerSection title="Two-factor (Google Authenticator)">
@@ -308,6 +312,61 @@ function UserDrawer({ id, onClose }: { id: string; onClose: () => void }) {
         </DrawerSection>
       )}
     </DetailDrawer>
+  );
+}
+
+function PasswordResetControl({ userId, staff }: { userId: string; staff: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const valid = pw.length >= 12;
+  async function submit() {
+    if (!valid) return;
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/platform/users/${userId}/reset-password`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+      if (r.ok) {
+        toast.success('Password reset. All their sessions were signed out.');
+        setPw('');
+        setOpen(false);
+      } else {
+        const d = await r.json().catch(() => ({}));
+        toast.error(d.error || 'Could not reset password.');
+      }
+    } catch {
+      toast.error('Could not reach the server. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="p-4 space-y-2 text-sm">
+      {!open ? (
+        <Button size="sm" variant="outline" onClick={() => setOpen(true)}>Reset password</Button>
+      ) : (
+        <div role="dialog" aria-label="Reset password" className="space-y-2">
+          <label className="block text-xs font-medium" htmlFor={`pw-${userId}`}>New password (min 12 characters)</label>
+          <Input
+            id={`pw-${userId}`}
+            type="password"
+            autoComplete="new-password"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+          />
+          {staff && (
+            <p className="text-xs text-muted-foreground">They re-set Google Authenticator on next sign-in.</p>
+          )}
+          <div className="flex gap-2">
+            <Button size="sm" disabled={busy || !valid} onClick={submit}>{busy ? 'Saving\u2026' : 'Set password'}</Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setOpen(false); setPw(''); }}>Cancel</Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

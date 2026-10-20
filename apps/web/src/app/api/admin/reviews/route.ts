@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
       reviewerName: r.reviewerName,
       rating: r.rating,
       comment: r.comment,
+      source: r.source,
       reviewCreatedAt: r.reviewCreatedAt,
       reply: r.reply
         ? { state: r.reply.state, text: r.reply.text, source: r.reply.source, postedAt: r.reply.postedAt }

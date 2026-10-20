@@ -20,6 +20,11 @@ export async function GET(req: NextRequest) {
   return Response.json({
     autoPublishReviews: (restaurant as { autoPublishReviews?: boolean }).autoPublishReviews ?? true,
     google: pick('GOOGLE_BUSINESS'),
+    places: {
+      configured: !!process.env.GOOGLE_PLACES_API_KEY,
+      connected: !!cfg?.googlePlaceId,
+      name: cfg?.googlePlaceName ?? null,
+    },
     llm: pick('LLM_REVIEWS'),
     autoReply: cfg
       ? {

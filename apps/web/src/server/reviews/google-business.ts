@@ -20,6 +20,8 @@ const MBAPI = 'https://mybusiness.googleapis.com/v4';
 export type NormalizedReview = {
   googleReviewId: string; reviewerName: string | null; rating: number;
   comment: string | null; reviewCreatedAt: Date;
+  /** 'gbp' (default) or 'places'. */
+  source?: 'gbp' | 'places';
 };
 
 function env(name: string): string {
