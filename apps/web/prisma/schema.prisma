@@ -3385,6 +3385,7 @@ model GoogleReview {
   comment         String?
   reviewCreatedAt DateTime
   syncedAt        DateTime @default(now())
+  source          String   @default("gbp") // 'gbp' (Business Profile API) | 'places' (Places API, read-only)
   reply           ReviewReply?
   restaurant      Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   @@index([restaurantId, reviewCreatedAt])
@@ -3417,6 +3418,10 @@ model ReviewAutoReplyConfig {
   draftMaxRating    Int      @default(3)
   tonePrompt        String?
   enabledAt         DateTime?
+  // Tier-1 Google Places quick-connect (no API approval). Null = not linked.
+  googlePlaceId          String?
+  googlePlaceName        String?
+  googlePlaceConnectedAt DateTime?
   updatedAt         DateTime @updatedAt
   restaurant        Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 }
