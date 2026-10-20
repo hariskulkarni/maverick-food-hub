@@ -20,6 +20,10 @@ const PLATFORM_ID = '__platform__';
 // 'YOUPI' is not yet in the ProviderKey union / DB enum; cast until it is added.
 const YOUPI_KEY = 'YOUPI' as ProviderKey;
 
+/** Conservative pilot ceilings used when the platform sets none. */
+const DEFAULT_DAILY_LIMIT = 20;
+const DEFAULT_MAX_AMOUNT_PAISE = 500000; // Rs 5,000
+
 function num(v: unknown): number | undefined {
   if (v === undefined || v === null || v === '') return undefined;
   const n = Number(v);
@@ -48,8 +52,12 @@ export async function resolveYoupiConfig(restaurantId?: string | null): Promise<
       apiKey: platform.apiKey,
       webhookSecret: platform.webhookSecret || undefined,
       receivingVpa: rest.receivingVpa,
-      dailyLimit: num(rest.dailyLimit) ?? num(platform.dailyLimit),
-      maxAmountPaise: num(rest.maxAmountPaise) ?? num(platform.maxAmountPaise),
+      // Caps only tighten: a restaurant may lower, never raise, platform limits.
+      dailyLimit: Math.min(num(platform.dailyLimit) ?? DEFAULT_DAILY_LIMIT, num(rest.dailyLimit) ?? Infinity),
+      maxAmountPaise: Math.min(
+        num(platform.maxAmountPaise) ?? DEFAULT_MAX_AMOUNT_PAISE,
+        num(rest.maxAmountPaise) ?? Infinity,
+      ),
     };
   } catch {
     // Fail closed: any lookup/decrypt error means YouPI is not available.
@@ -57,6 +65,7 @@ export async function resolveYoupiConfig(restaurantId?: string | null): Promise<
   }
 }
 
+// Only construct via paymentProvider()/resolveYoupiConfig() (the config gate), never directly with an arbitrary cfg.
 export function youpiProvider(cfg: YoupiConfig): PaymentProvider {
   return {
     name: YOUPI_PROVIDER_NAME,

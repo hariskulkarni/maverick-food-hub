@@ -77,11 +77,23 @@ describe('resolveYoupiConfig', () => {
       maxAmountPaise: 500000,
     });
   });
-  it('restaurant caps override platform caps', async () => {
-    wire({ rest: { receivingVpa: 'shop@upi', dailyLimit: '3', maxAmountPaise: '1000' } });
+  it('restaurant can lower caps', async () => {
+    wire({ platform: { ...platform, dailyLimit: '20' }, rest: { receivingVpa: 'shop@upi', dailyLimit: '5', maxAmountPaise: '1000' } });
     const c = await resolveYoupiConfig('r1');
-    expect(c?.dailyLimit).toBe(3);
+    expect(c?.dailyLimit).toBe(5);
     expect(c?.maxAmountPaise).toBe(1000);
+  });
+  it('restaurant cannot raise caps', async () => {
+    wire({ platform: { ...platform, dailyLimit: '20', maxAmountPaise: '300000' }, rest: { receivingVpa: 'shop@upi', dailyLimit: '50', maxAmountPaise: '900000' } });
+    const c = await resolveYoupiConfig('r1');
+    expect(c?.dailyLimit).toBe(20);
+    expect(c?.maxAmountPaise).toBe(300000);
+  });
+  it('defaults: daily 20, max 500000 when nothing set or invalid', async () => {
+    wire({ platform: { baseUrl: 'https://youpi.test', apiKey: 'k', maxAmountPaise: 'abc', dailyLimit: '-1' }, rest: { receivingVpa: 'shop@upi', maxAmountPaise: '0' } });
+    const c = await resolveYoupiConfig('r1');
+    expect(c?.maxAmountPaise).toBe(500000);
+    expect(c?.dailyLimit).toBe(20);
   });
 });
 
