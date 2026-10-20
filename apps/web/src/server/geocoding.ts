@@ -37,7 +37,7 @@ let queueTail: Promise<unknown> = Promise.resolve();
 let lastDispatchedAt = 0;
 
 /** Queue `task` so it runs at least `MIN_GAP_MS` after the previous queued task. */
-function enqueue<T>(task: () => Promise<T>): Promise<T> {
+export function enqueue<T>(task: () => Promise<T>): Promise<T> {
   const run = queueTail.then(async () => {
     const now = Date.now();
     const wait = Math.max(0, lastDispatchedAt + MIN_GAP_MS - now);
