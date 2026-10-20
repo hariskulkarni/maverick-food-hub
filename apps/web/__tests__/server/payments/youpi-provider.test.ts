@@ -18,7 +18,7 @@ vi.mock('@/server/payments/youpi-caps', () => ({ assertUnderCap }));
 import { resolveYoupiConfig, youpiProvider, YOUPI_PROVIDER_NAME } from '@/server/payments/youpi';
 import { paymentProvider, youpiEnabledForRestaurant } from '@/server/payments';
 
-const platform = { baseUrl: 'https://youpi.test', apiKey: 'k', webhookSecret: 'w', dailyLimit: '10', maxAmountPaise: '500000' };
+const platform = { baseUrl: 'https://youpi.test', merchantId: 'm', webhookSecret: 'w', dailyLimit: '10', maxAmountPaise: '500000' };
 const rest = { receivingVpa: 'shop@upi' };
 
 function wire(opts: { approved?: boolean; platform?: any; rest?: any } = {}) {
@@ -27,7 +27,7 @@ function wire(opts: { approved?: boolean; platform?: any; rest?: any } = {}) {
   getConfig.mockImplementation(async (id: string) => (id === '__platform__' ? p : r));
 }
 
-const cfg = { baseUrl: 'https://youpi.test', apiKey: 'k', receivingVpa: 'shop@upi' };
+const cfg = { baseUrl: 'https://youpi.test', merchantId: 'm', webhookSecret: 'w', receivingVpa: 'shop@upi' };
 const baseArgs = {
   orderId: 'o1',
   amount: 250.5,
@@ -70,7 +70,7 @@ describe('resolveYoupiConfig', () => {
     wire();
     expect(await resolveYoupiConfig('r1')).toEqual({
       baseUrl: 'https://youpi.test',
-      apiKey: 'k',
+      merchantId: 'm',
       webhookSecret: 'w',
       receivingVpa: 'shop@upi',
       dailyLimit: 10,
@@ -90,7 +90,7 @@ describe('resolveYoupiConfig', () => {
     expect(c?.maxAmountPaise).toBe(300000);
   });
   it('defaults: daily 20, max 500000 when nothing set or invalid', async () => {
-    wire({ platform: { baseUrl: 'https://youpi.test', apiKey: 'k', maxAmountPaise: 'abc', dailyLimit: '-1' }, rest: { receivingVpa: 'shop@upi', maxAmountPaise: '0' } });
+    wire({ platform: { baseUrl: 'https://youpi.test', merchantId: 'm', webhookSecret: 'w', maxAmountPaise: 'abc', dailyLimit: '-1' }, rest: { receivingVpa: 'shop@upi', maxAmountPaise: '0' } });
     const c = await resolveYoupiConfig('r1');
     expect(c?.maxAmountPaise).toBe(500000);
     expect(c?.dailyLimit).toBe(20);

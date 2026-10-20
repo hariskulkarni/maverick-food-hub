@@ -26,14 +26,14 @@ export function YoupiAdminClient({
   const [rows, setRows] = useState(initialRequests);
   const [busy, setBusy] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [f, setF] = useState({ baseUrl: '', apiKey: '', webhookSecret: '', dailyLimit: '', maxAmountPaise: '' });
+  const [f, setF] = useState({ baseUrl: '', merchantId: '', webhookSecret: '', dailyLimit: '', maxAmountPaise: '' });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     try {
-      const body: Record<string, unknown> = { baseUrl: f.baseUrl, apiKey: f.apiKey, webhookSecret: f.webhookSecret };
+      const body: Record<string, unknown> = { baseUrl: f.baseUrl, merchantId: f.merchantId, webhookSecret: f.webhookSecret };
       if (f.dailyLimit) body.dailyLimit = Number(f.dailyLimit);
       if (f.maxAmountPaise) body.maxAmountPaise = Number(f.maxAmountPaise);
       const res = await fetch('/api/platform/youpi/config', {
@@ -41,7 +41,7 @@ export function YoupiAdminClient({
       });
       if (!res.ok) { toast.error((await res.json().catch(() => ({}))).error || 'Save failed.'); return; }
       toast.success('YouPI connection saved.');
-      setF({ baseUrl: '', apiKey: '', webhookSecret: '', dailyLimit: '', maxAmountPaise: '' });
+      setF({ baseUrl: '', merchantId: '', webhookSecret: '', dailyLimit: '', maxAmountPaise: '' });
       router.refresh();
     } catch { toast.error('Network error.'); } finally { setSaving(false); }
   }
@@ -88,8 +88,8 @@ export function YoupiAdminClient({
               <Input id="yp-base" type="url" required placeholder="https://pg.example.com" value={f.baseUrl} onChange={set('baseUrl')} />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="yp-key">API key</Label>
-              <Input id="yp-key" type="password" required autoComplete="off" value={f.apiKey} onChange={set('apiKey')} />
+              <Label htmlFor="yp-key">Merchant ID</Label>
+              <Input id="yp-key" type="text" required autoComplete="off" placeholder="X-Merchant-Id (UUID)" value={f.merchantId} onChange={set('merchantId')} />
             </div>
             <div className="space-y-1">
               <Label htmlFor="yp-wh">Webhook secret</Label>

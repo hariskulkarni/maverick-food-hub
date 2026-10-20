@@ -536,9 +536,9 @@ const Youpi: ProviderDef = {
   docsUrl: 'https://github.com/youpi-pg/YouPI-PG',
   fields: [
     { key: 'baseUrl', label: 'Gateway base URL', type: 'text', required: true, placeholder: 'https://pg.example.com' },
-    { key: 'merchantId', label: 'Merchant ID', type: 'text', required: false },
-    { key: 'apiKey', label: 'API key', type: 'password', required: true, secret: true },
-    { key: 'webhookSecret', label: 'Webhook secret', type: 'password', required: true, secret: true },
+    // YouPI-PG auth: public X-Merchant-Id (UUID) + X-Merchant-Key (= the webhook secret). No Bearer key.
+    { key: 'merchantId', label: 'Merchant ID', type: 'text', required: true, placeholder: 'X-Merchant-Id (UUID)' },
+    { key: 'webhookSecret', label: 'Merchant key / webhook secret', type: 'password', required: true, secret: true },
     { key: 'receivingVpa', label: 'Receiving VPA', type: 'text', required: true, placeholder: 'shop@bank' },
     { key: 'dailyLimit', label: 'Daily limit (transactions)', type: 'number', required: false },
     { key: 'maxAmountPaise', label: 'Max amount per payment (paise)', type: 'number', required: false },
@@ -547,7 +547,6 @@ const Youpi: ProviderDef = {
     baseUrl: c.baseUrl,
     merchantId: c.merchantId,
     receivingVpa: c.receivingVpa,
-    apiKey: maskSecret(c.apiKey),
     webhookSecret: c.webhookSecret ? maskSecret(c.webhookSecret) : '(not set)',
     dailyLimit: c.dailyLimit,
     maxAmountPaise: c.maxAmountPaise,
@@ -558,7 +557,7 @@ const Youpi: ProviderDef = {
       return { ok: true, detail: `Gateway reachable (HTTP ${res.status})` };
     } catch (e) {
       let msg = e instanceof Error ? e.message : String(e);
-      if (c.apiKey) msg = msg.split(c.apiKey).join(maskSecret(c.apiKey));
+      if (c.webhookSecret) msg = msg.split(c.webhookSecret).join(maskSecret(c.webhookSecret));
       return { ok: false, error: `Gateway unreachable: ${msg}` };
     }
   },

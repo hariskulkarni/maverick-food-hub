@@ -40,15 +40,16 @@ export async function resolveYoupiConfig(restaurantId?: string | null): Promise<
     if (!fr || fr.status !== 'APPROVED') return null;
 
     const platform = await getConfig(PLATFORM_ID, YOUPI_KEY);
-    if (!platform?.baseUrl || !platform?.apiKey) return null;
+    // YouPI-PG auth = X-Merchant-Id (public) + X-Merchant-Key (= webhookSecret). All three required.
+    if (!platform?.baseUrl || !platform?.merchantId || !platform?.webhookSecret) return null;
 
     const rest = await getConfig(restaurantId, YOUPI_KEY);
     if (!rest?.receivingVpa) return null;
 
     return {
       baseUrl: platform.baseUrl,
-      apiKey: platform.apiKey,
-      webhookSecret: platform.webhookSecret || undefined,
+      merchantId: platform.merchantId,
+      webhookSecret: platform.webhookSecret,
       receivingVpa: rest.receivingVpa,
       // Caps only tighten: a restaurant may lower, never raise, platform limits.
       dailyLimit: Math.min(num(platform.dailyLimit) ?? DEFAULT_DAILY_LIMIT, num(rest.dailyLimit) ?? Infinity),
