@@ -27,6 +27,8 @@ export function SwRegister() {
       try {
         const regs = await navigator.serviceWorker.getRegistrations();
         for (const r of regs) {
+          // Keep the opt-in web-push worker (own scope); only purge the legacy one.
+          if (r.scope.includes('/push-sw-scope/')) continue;
           try { await r.unregister(); } catch { /* ignore */ }
         }
         if ('caches' in window) {
