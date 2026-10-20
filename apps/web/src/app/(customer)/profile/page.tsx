@@ -85,6 +85,7 @@ export default async function ProfilePage() {
               { href: '/profile/addresses', label: 'Addresses' },
               { href: '/profile/favorites', label: 'Favorites' },
               { href: '/profile/rewards', label: 'Rewards' },
+              { href: '/profile/reviews', label: 'My reviews' },
               ...(bonus && !bonus.revoked ? [{ href: '/profile/signup-bonus', label: 'Signup Bonus' }] : []),
               { href: '/profile/referrals', label: 'Referrals' },
               { href: '/profile/security', label: 'Security & sessions' }
