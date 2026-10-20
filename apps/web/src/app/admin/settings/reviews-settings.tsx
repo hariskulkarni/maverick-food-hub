@@ -11,7 +11,7 @@ import { GoogleGLogo, AnthropicLogo, OpenAILogo, NvidiaLogo } from './provider-l
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Save, KeyRound, Star, Sparkles, Check } from 'lucide-react';
+import { Save, KeyRound, Star, Sparkles, Check, Unlink } from 'lucide-react';
 
 type Status = 'CONNECTED' | 'DISCONNECTED' | 'FAILED';
 interface Part { status: Status; summary: Record<string, any> | null }
@@ -134,6 +134,8 @@ function GoogleCard({ part, qs }: { part: Part; qs: string }) {
   const [forcePick, setForcePick] = useState(false);
   const [selected, setSelected] = useState('');
   const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('pickLocation') === '1') setForcePick(true);
   }, []);
@@ -154,6 +156,21 @@ function GoogleCard({ part, qs }: { part: Part; qs: string }) {
     } catch {
       toast.error('Could not save location. Try again.');
       setSaving(false);
+    }
+  }
+
+  async function disconnect() {
+    setDisconnecting(true);
+    try {
+      const r = await fetch(`/api/admin/reviews/disconnect${qs}`, { method: 'POST' });
+      if (!r.ok) throw new Error('failed');
+      toast.success('Google account disconnected.');
+      const u = new URL(window.location.href);
+      u.searchParams.delete('pickLocation');
+      window.location.href = u.toString();
+    } catch {
+      toast.error('Could not disconnect. Try again.');
+      setDisconnecting(false);
     }
   }
 
@@ -211,7 +228,6 @@ function GoogleCard({ part, qs }: { part: Part; qs: string }) {
                 <p className="text-xs text-muted-foreground">Reviews sync from this location.</p>
               </>
             )}
-            {/* Disconnect intentionally omitted: use Manage on the Google card in the integrations grid above. */}
           </>
         ) : (
           <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-5 text-center">
@@ -219,10 +235,35 @@ function GoogleCard({ part, qs }: { part: Part; qs: string }) {
             <p className="mt-1 text-xs text-muted-foreground">Connect your Google Business Profile so {brand.name} can pull reviews and post replies.</p>
           </div>
         )}
-        <Button size="sm" variant={connected ? 'outline' : 'default'} className="w-full sm:w-auto"
-          onClick={() => { window.location.href = '/api/admin/integrations/google-business/connect'; }}>
-          <GoogleGLogo className="size-4" /> {connected ? 'Reconnect Google' : 'Connect Google Business'}
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <Button size="sm" variant={connected ? 'outline' : 'default'} className="min-h-[44px] w-full sm:w-auto"
+            onClick={() => { window.location.href = '/api/admin/integrations/google-business/connect'; }}>
+            <GoogleGLogo className="size-4" /> {connected ? 'Reconnect Google' : 'Connect Google Business'}
+          </Button>
+          {connected && !confirming && (
+            <Button size="sm" variant="outline" className="min-h-[44px] w-full text-destructive hover:text-destructive sm:w-auto"
+              onClick={() => setConfirming(true)}>
+              <Unlink className="size-4" /> Disconnect
+            </Button>
+          )}
+        </div>
+        {connected && confirming && (
+          <div role="alertdialog" aria-label="Confirm disconnect"
+            className="space-y-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+            <p className="text-sm font-medium">Disconnect this Google account?</p>
+            <p className="text-xs text-muted-foreground">
+              {brand.name} will stop syncing reviews and posting replies until you connect a Google account again. You can then link a different one.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button size="sm" variant="destructive" className="min-h-[44px] w-full sm:w-auto" disabled={disconnecting} onClick={disconnect}>
+                <Unlink className="size-4" /> {disconnecting ? 'Disconnecting...' : 'Yes, disconnect'}
+              </Button>
+              <Button size="sm" variant="ghost" className="min-h-[44px] w-full sm:w-auto" disabled={disconnecting} onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
