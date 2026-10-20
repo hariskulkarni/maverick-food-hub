@@ -7,6 +7,7 @@ import { ShieldCheck, ArrowLeft } from 'lucide-react';
 import { describeUserAgent } from './ua';
 import { SessionsClient, type SessionRow } from './sessions-client';
 import { DeleteAccount } from './delete-account';
+import { ChangePassword } from './change-password';
 
 export const metadata = { title: 'Security & sessions' };
 // Live data — never cache the session list.
@@ -59,6 +60,8 @@ export default async function SecurityPage() {
       </Card>
 
       <SessionsClient sessions={sessions} />
+
+      <ChangePassword />
 
       {/* Right to erasure (DPDP Act) — self-serve account + data deletion. */}
       <DeleteAccount />
