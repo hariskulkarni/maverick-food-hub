@@ -16,7 +16,7 @@ import { Save, KeyRound, Star, Sparkles, Check } from 'lucide-react';
 type Status = 'CONNECTED' | 'DISCONNECTED' | 'FAILED';
 interface Part { status: Status; summary: Record<string, any> | null }
 interface AutoReply { enabled: boolean; autoPostMinRating: number; draftMaxRating: number; tonePrompt: string | null }
-interface ConfigResponse { google: Part; llm: Part; autoReply: AutoReply }
+interface ConfigResponse { autoPublishReviews: boolean; google: Part; llm: Part; autoReply: AutoReply }
 
 const RATINGS = [1, 2, 3, 4, 5];
 const TONE_EXAMPLES = [
@@ -53,10 +53,46 @@ export function ReviewsSettings({ restaurantId }: { restaurantId?: string } = {}
           </p>
         </div>
       </header>
+      <PublishCard initial={cfg.autoPublishReviews !== false} qs={qs} />
       <GoogleCard part={cfg.google} qs={qs} />
       <LlmCard part={cfg.llm} qs={qs} onSaved={load} />
       <AutoReplyCard initial={cfg.autoReply} qs={qs} />
     </div>
+  );
+}
+
+function PublishCard({ initial, qs }: { initial: boolean; qs: string }) {
+  const [on, setOn] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  async function change(next: boolean) {
+    const prev = on;
+    setOn(next);
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/admin/reviews/config${qs}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoPublishReviews: next }),
+      });
+      if (!r.ok) throw new Error('failed');
+      toast.success(next ? 'New reviews will publish automatically.' : 'New reviews will wait for your approval.');
+    } catch {
+      setOn(prev);
+      toast.error('Save failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card className="rounded-2xl">
+      <CardContent className="p-4 sm:p-5">
+        <CardHead
+          icon={<Check className="size-4 text-primary" />}
+          title="Auto-publish customer reviews"
+          desc={on ? 'New customer reviews go live immediately.' : 'New customer reviews stay hidden until you publish them.'}
+          right={<Switch checked={on} disabled={busy} onCheckedChange={change} aria-label="Auto-publish customer reviews" />}
+        />
+      </CardContent>
+    </Card>
   );
 }
 

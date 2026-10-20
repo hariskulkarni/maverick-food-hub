@@ -136,6 +136,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const deliveredAt = order.deliveredAt!;
   const windowEndsAt = new Date(deliveredAt.getTime() + FEEDBACK_WINDOW_MS);
 
+  // Restaurant opted out of auto-publish => hold as HIDDEN until an admin publishes (R3).
+  const autoPublish = await prisma.order
+    .findUnique({ where: { id }, select: { branch: { select: { restaurant: { select: { autoPublishReviews: true } } } } } })
+    .then((o) => o?.branch?.restaurant?.autoPublishReviews !== false)
+    .catch(() => true);
+
   const created = await (prisma as any).orderFeedback.create({
     data: {
       orderId: id,
@@ -147,7 +153,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       issueTags: data.issueTags ?? [],
       imageUrl: data.imageUrl ?? null,
       shareCommentWithRider: data.shareCommentWithRider ?? false,
-      windowEndsAt
+      windowEndsAt,
+      moderationStatus: autoPublish ? 'PUBLISHED' : 'HIDDEN'
     }
   });
 

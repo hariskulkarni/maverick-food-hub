@@ -27,6 +27,7 @@ import { refreshChallengeProgressForOrder } from './challenges';
 import { previewSignupBonusForUser, holdSignupBonusForOrder, commitSignupBonusForOrder, restoreSignupBonusForOrder } from './signup-bonus';
 import { sendDeliveryOtpSms } from './notify-templates';
 import { pushOrderMilestone } from './push/milestones';
+import { requestFeedbackOnDelivered } from './reviews/feedback-request';
 import { resolveLineSelections } from './menu-selections';
 import { groupOrderChannel } from './group-scope';
 import { resolveDeliveryTerms } from './delivery/placement';
@@ -924,6 +925,16 @@ export async function transitionOrder(
   }
   if (order.customer?.id) {
     await pushOrderMilestone({ orderId, code: order.code, customerId: order.customer.id, status: next });
+    if (next === OrderStatus.DELIVERED) {
+      await requestFeedbackOnDelivered({
+        orderId,
+        code: order.code,
+        customerId: order.customer.id,
+        phone: order.customer.phone,
+        restaurantId: order.branch.restaurantId,
+        feedbackRequestedAt: (order as { feedbackRequestedAt?: Date | null }).feedbackRequestedAt ?? null
+      });
+    }
   }
   log.info({ orderId, next }, 'order transitioned');
   return updated;

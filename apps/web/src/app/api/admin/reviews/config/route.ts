@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
   };
   const cfg = await prisma.reviewAutoReplyConfig.findUnique({ where: { restaurantId: restaurant.id } });
   return Response.json({
+    autoPublishReviews: (restaurant as { autoPublishReviews?: boolean }).autoPublishReviews ?? true,
     google: pick('GOOGLE_BUSINESS'),
     llm: pick('LLM_REVIEWS'),
     autoReply: cfg
@@ -56,5 +57,14 @@ export async function POST(req: NextRequest) {
     create: { restaurantId: restaurant.id, ...data },
     update: data,
   });
+  return Response.json({ ok: true });
+}
+
+/** Toggle whether new customer reviews publish immediately or wait for admin approval. */
+export async function PATCH(req: NextRequest) {
+  const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+  const b = await req.json().catch(() => ({}));
+  if (typeof b.autoPublishReviews !== 'boolean') return new Response('Bad body', { status: 400 });
+  await prisma.restaurant.update({ where: { id: restaurant.id }, data: { autoPublishReviews: b.autoPublishReviews } });
   return Response.json({ ok: true });
 }
