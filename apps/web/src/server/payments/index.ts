@@ -16,6 +16,7 @@
 import { mockProvider } from './mock';
 import { razorpayProvider } from './razorpay';
 import { phonepeProvider, resolvePhonePeConfig, PHONEPE_PROVIDER_NAME } from './phonepe';
+import { youpiProvider, resolveYoupiConfig, YOUPI_PROVIDER_NAME } from './youpi';
 import { getConfigInherited } from '../integrations';
 
 /** Gateways that take money online (as opposed to COD/wallet settlement). */
@@ -163,7 +164,22 @@ export async function resolveGatewayKey(restaurantId?: string | null): Promise<G
  *   2. Env-configured gateway (PAYMENT_PROVIDER).
  *   3. Mock (auto-confirms, dev only).
  */
-export async function paymentProvider(restaurantId?: string | null): Promise<PaymentProvider> {
+export async function paymentProvider(
+  restaurantId?: string | null,
+  opts?: { prefer?: 'youpi' },
+): Promise<PaymentProvider> {
+  // YouPI is opt-in per call. An explicit YouPI request never falls back to
+  // another gateway: if it is not APPROVED/configured we fail loud.
+  if (opts?.prefer === 'youpi') {
+    const ycfg = await resolveYoupiConfig(restaurantId);
+    if (ycfg) return youpiProvider(ycfg);
+    throw new Error(
+      `YouPI was requested for restaurant ${restaurantId ?? '(none)'} but is not available ` +
+        `(feature not APPROVED, platform connection missing, or no receiving VPA); ` +
+        `refusing to fall back to another payment gateway.`
+    );
+  }
+
   const key = await resolveGatewayKey(restaurantId);
 
   if (key === 'PHONEPE') {
@@ -199,9 +215,14 @@ export async function paymentProvider(restaurantId?: string | null): Promise<Pay
   return mockProvider();
 }
 
+/** Whether to offer YouPI at checkout: APPROVED + platform connection + restaurant VPA. */
+export async function youpiEnabledForRestaurant(restaurantId?: string | null): Promise<boolean> {
+  return !!(await resolveYoupiConfig(restaurantId));
+}
+
 /** True when a stored `Payment.providerName` denotes the PhonePe rail. */
 export function isPhonePePayment(providerName?: string | null): boolean {
   return providerName === PHONEPE_PROVIDER_NAME;
 }
 
-export { PHONEPE_PROVIDER_NAME };
+export { PHONEPE_PROVIDER_NAME, YOUPI_PROVIDER_NAME };
