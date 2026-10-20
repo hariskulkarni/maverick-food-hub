@@ -14,7 +14,8 @@
 
 import { prisma } from '../db';
 import { log } from '../log';
-import { paymentProvider, type ProviderOrder } from './index';
+import { paymentProvider, youpiEnabledForRestaurant, type ProviderOrder } from './index';
+import { brand } from '@/lib/brand';
 import { PaymentMethod, PaymentStatus } from '@prisma/client';
 
 /** Payment methods that open a gateway checkout rather than settling in-app. */
@@ -74,14 +75,24 @@ function toSession(paymentId: string, p: ProviderOrder): OnlinePaymentSession {
  */
 export async function startOnlinePayment(
   orderId: string,
-  opts: { method?: PaymentMethod; amount?: number; expireAfterSec?: number } = {},
+  opts: {
+    method?: PaymentMethod;
+    amount?: number;
+    expireAfterSec?: number;
+    /**
+     * 'youpi' opts this attempt into the YouPI rail (experimental, per-restaurant
+     * APPROVED). Omitted = the restaurant's normal gateway, exactly as before.
+     * The Payment stays PENDING; only reconcile/webhook may capture it.
+     */
+    rail?: 'youpi';
+  } = {},
 ): Promise<OnlinePaymentSession> {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
       customer: { select: { name: true, phone: true, email: true } },
       branch: { select: { id: true, restaurantId: true } },
-      payments: { select: { id: true, method: true, status: true } },
+      payments: { select: { id: true, method: true, status: true, providerName: true } },
     },
   });
   if (!order) throw new OnlinePaymentError('Order not found.', 404);
@@ -108,7 +119,18 @@ export async function startOnlinePayment(
     });
   }
 
-  const provider = await paymentProvider(order.branch.restaurantId);
+  // A retry of an order whose earlier attempt was YouPI stays on YouPI.
+  const useYoupi = opts.rail === 'youpi' || order.payments.some((p) => p.providerName === 'youpi');
+  let provider;
+  if (useYoupi) {
+    // Fail loud rather than silently routing a YouPI request to another gateway.
+    if (!(await youpiEnabledForRestaurant(order.branch.restaurantId))) {
+      throw new OnlinePaymentError('YouPI is not available for this restaurant.', 400);
+    }
+    provider = await paymentProvider(order.branch.restaurantId, { prefer: 'youpi' });
+  } else {
+    provider = await paymentProvider(order.branch.restaurantId);
+  }
   const method = opts.method ?? (order.paymentMethod as PaymentMethod);
 
   // Attempt number = existing online payment rows + 1. Used to mint a unique
@@ -147,6 +169,10 @@ export async function startOnlinePayment(
       branchId: order.branch.id,
       merchantOrderId,
       expireAfterSec: opts.expireAfterSec,
+      // YouPI sends the customer back here; the page only polls, never trusts the return.
+      ...(useYoupi
+        ? { redirectUrl: `${(brand.url || '').replace(/\/+$/, '')}/checkout/payment-status?orderId=${encodeURIComponent(order.id)}&provider=youpi` }
+        : {}),
     });
   } catch (e) {
     log.error({ err: (e as Error).message, orderId: order.id, provider: provider.name }, 'gateway createOrder failed');
