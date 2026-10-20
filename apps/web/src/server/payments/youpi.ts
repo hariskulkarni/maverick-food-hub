@@ -10,15 +10,13 @@ import type { PaymentProvider, CreateOrderArgs, ProviderOrder, VerifyArgs, Verif
 import { createYoupiPayment, getYoupiStatus, type YoupiConfig } from './youpi-api';
 import { assertUnderCap } from './youpi-caps';
 import { getConfig } from '../integrations';
-import type { ProviderKey } from '../integrations/providers';
 import { prisma } from '../db';
 
 export const YOUPI_PROVIDER_NAME = 'youpi';
 
 /** Sentinel restaurantId for platform-level IntegrationCredential rows. */
 const PLATFORM_ID = '__platform__';
-// 'YOUPI' is not yet in the ProviderKey union / DB enum; cast until it is added.
-const YOUPI_KEY = 'YOUPI' as ProviderKey;
+const YOUPI_KEY = 'YOUPI' as const;
 
 /** Conservative pilot ceilings used when the platform sets none. */
 const DEFAULT_DAILY_LIMIT = 20;

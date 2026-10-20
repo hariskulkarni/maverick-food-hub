@@ -20,7 +20,6 @@ import crypto from 'node:crypto';
 import { prisma } from '@/server/db';
 import { log } from '@/server/log';
 import { getConfig } from '@/server/integrations';
-import type { ProviderKey } from '@/server/integrations/providers';
 import { reconcileYoupiPayment } from '@/server/payments/youpi-reconcile';
 
 export const runtime = 'nodejs';
@@ -58,7 +57,7 @@ export async function POST(req: NextRequest) {
 
   let secret: string | null = null;
   try {
-    const cfg = await getConfig('__platform__', 'YOUPI' as ProviderKey);
+    const cfg = await getConfig('__platform__', 'YOUPI');
     secret = (cfg?.webhookSecret as string | undefined) || null;
   } catch (e) {
     log.error({ err: e }, 'youpi.webhook.config_error');
