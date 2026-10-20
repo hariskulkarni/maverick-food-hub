@@ -8,7 +8,10 @@ export async function syncPlacesReviews(restaurantId: string, placeId: string) {
   let failed = 0;
   for (const r of res.reviews) {
     try {
-      const { isNew } = await upsertReview(restaurantId, { ...r, source: 'places' });
+      // Scope the synthetic id by restaurant so two tenants linking the SAME
+      // placeId never collide on the globally-unique googleReviewId.
+      const scopedId = r.googleReviewId.replace(/^places:/, `places:${restaurantId}:`);
+      const { isNew } = await upsertReview(restaurantId, { ...r, googleReviewId: scopedId, source: 'places' });
       if (isNew) created++;
     } catch {
       failed++;
