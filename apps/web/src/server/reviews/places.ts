@@ -83,7 +83,8 @@ export async function fetchPlaceReviews(placeId: string): Promise<PlaceReviewsRe
   let key: string;
   try { key = apiKey(); } catch { return empty; }
   try {
-    const data = await getJson('details', { place_id: placeId, fields: 'reviews,rating,user_ratings_total,name' }, key);
+    // reviews_sort=newest returns the 5 most RECENT reviews (default is most_relevant).
+    const data = await getJson('details', { place_id: placeId, fields: 'reviews,rating,user_ratings_total,name', reviews_sort: 'newest' }, key);
     const result = data?.result ?? {};
     const raw = Array.isArray(result.reviews) ? result.reviews : [];
     const reviews: NormalizedReview[] = raw
