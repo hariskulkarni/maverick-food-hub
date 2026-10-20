@@ -15,7 +15,7 @@ vi.mock('@/server/db', () => ({
 }));
 vi.mock('@/server/log', () => ({ log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
-import { recomputeRiderRating, recomputeRiderRatingForOrder, RIDER_RATING_WINDOW } from '@/server/reviews/rider-rating';
+import { recomputeRiderRating, recomputeRiderRatingForOrder, RIDER_RATING_WINDOW, DEFAULT_RIDER_RATING } from '@/server/reviews/rider-rating';
 import { defaultScorer } from '@/server/rider-allocator';
 
 beforeEach(() => {
@@ -42,10 +42,11 @@ describe('recomputeRiderRating', () => {
     expect(arg.where.order.assignment).toEqual({ riderId: 'r1', status: 'DELIVERED' });
   });
 
-  it('keeps the default (no write) when there is no feedback', async () => {
+  it('resets to the schema default (5.0) when the PUBLISHED set is empty, not the stale value', async () => {
     m.feedbackFindMany.mockResolvedValue([]);
     await recomputeRiderRating('r1');
-    expect(m.riderUpdate).not.toHaveBeenCalled();
+    expect(DEFAULT_RIDER_RATING).toBe(5);
+    expect(m.riderUpdate).toHaveBeenCalledWith({ where: { id: 'r1' }, data: { rating: DEFAULT_RIDER_RATING } });
   });
 
   it('never throws when the DB fails', async () => {

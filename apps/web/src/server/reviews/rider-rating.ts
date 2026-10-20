@@ -16,6 +16,9 @@ import { log } from '@/server/log';
 
 export const RIDER_RATING_WINDOW = 100;
 
+/** Mirrors `RiderProfile.rating @default(5.0)` in schema.prisma. */
+export const DEFAULT_RIDER_RATING = 5.0;
+
 export async function recomputeRiderRating(riderId: string): Promise<void> {
   try {
     const rows: { deliveryRating: number | null }[] = await (prisma as any).orderFeedback.findMany({
@@ -29,8 +32,9 @@ export async function recomputeRiderRating(riderId: string): Promise<void> {
       select: { deliveryRating: true }
     });
     const ratings = rows.map((r) => r.deliveryRating).filter((n): n is number => typeof n === 'number');
-    if (ratings.length === 0) return; // keep the existing/default rating
-    const avg = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+    // Empty PUBLISHED window (e.g. only rating was hidden/flagged): reset to the
+    // default so a stale moderated value is not carried.
+    const avg = ratings.length === 0 ? DEFAULT_RIDER_RATING : ratings.reduce((a, b) => a + b, 0) / ratings.length;
     await prisma.riderProfile.update({ where: { id: riderId }, data: { rating: avg } });
   } catch (err) {
     log.error({ err, riderId }, 'rider rating recompute failed');
