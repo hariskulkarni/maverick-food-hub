@@ -29,7 +29,7 @@ export function ReviewsList({ slug, initial }: { slug: string; initial: PublicRe
     <>
       <ul className="mt-6 grid gap-3">{reviews.map((r) => <ReviewCard key={r.id} r={r} />)}</ul>
       {hasMore && (
-        <Button className="mt-4 min-h-10" variant="outline" onClick={more} disabled={loading}>
+        <Button className="mt-4 min-h-11" variant="outline" onClick={more} disabled={loading}>
           {loading ? 'Loading…' : 'Load more'}
         </Button>
       )}

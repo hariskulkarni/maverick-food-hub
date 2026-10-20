@@ -91,8 +91,8 @@ export function ReviewsClient() {
               </label>
               {err && <p role="alert" className="text-sm text-destructive">{err}</p>}
               <div className="flex gap-2">
-                <Button className="min-h-10" onClick={() => save(r)}>Save</Button>
-                <Button className="min-h-10" variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+                <Button className="min-h-11" onClick={() => save(r)}>Save</Button>
+                <Button className="min-h-11" variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
               </div>
             </div>
           ) : (
@@ -111,7 +111,7 @@ export function ReviewsClient() {
               )}
               <div className="mt-3">
                 {r.canEdit
-                  ? <Button className="min-h-10" variant="outline" onClick={() => startEdit(r)}>Edit (until {new Date(r.windowEndsAt).toLocaleString('en-IN')})</Button>
+                  ? <Button className="min-h-11" variant="outline" onClick={() => startEdit(r)}>Edit (until {new Date(r.windowEndsAt).toLocaleString('en-IN')})</Button>
                   : <p className="text-xs text-muted-foreground">Editing closed (48-hour window passed).</p>}
               </div>
             </>

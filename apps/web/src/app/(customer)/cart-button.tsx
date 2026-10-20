@@ -6,7 +6,7 @@ import { useCart } from './cart-context';
 export function CartButton() {
   const { count } = useCart();
   return (
-    <Link href="/cart" className="relative inline-flex h-9 items-center gap-2 rounded-md bg-secondary px-3 text-sm hover:bg-secondary/80">
+    <Link href="/cart" className="relative inline-flex h-11 sm:h-9 items-center gap-2 rounded-md bg-secondary px-3 text-sm hover:bg-secondary/80">
       <ShoppingBag className="size-4" />
       <span className="hidden sm:inline">Cart</span>
       {count > 0 && (
