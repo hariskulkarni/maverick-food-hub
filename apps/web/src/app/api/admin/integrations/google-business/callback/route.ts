@@ -28,22 +28,15 @@ function settingsRedirect(base: string, params: string): Response {
 
 export async function GET(req: NextRequest) {
   const base = externalBaseUrl(req.headers);
-  try {
-    // Google can hand back ?error=access_denied etc. when the user cancels/declines.
-    const googleErr = req.nextUrl.searchParams.get('error');
-    if (googleErr) {
-      log.warn({ googleErr }, '[gbp-callback] google returned an error param');
-      return settingsRedirect(base, `google=connect_error&why=${encodeURIComponent(googleErr)}`);
-    }
+  // Security preconditions reject HARD (403) and never redirect or save — a
+  // tampered/absent state, a missing code, or a cross-restaurant state binding
+  // is not a user-recoverable condition.
+  const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+  const code = req.nextUrl.searchParams.get('code');
+  const state = req.nextUrl.searchParams.get('state') ?? '';
+  if (!code || !verifyState(state, restaurant.id)) return new Response('Forbidden', { status: 403 });
 
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
-    const code = req.nextUrl.searchParams.get('code');
-    const state = req.nextUrl.searchParams.get('state') ?? '';
-    if (!code) return settingsRedirect(base, 'google=connect_error&why=no_code');
-    if (!verifyState(state, restaurant.id)) {
-      log.warn('[gbp-callback] state verification failed');
-      return settingsRedirect(base, 'google=connect_error&why=state_mismatch');
-    }
+  try {
 
     const { refreshToken } = await exchangeCode(code);
 
