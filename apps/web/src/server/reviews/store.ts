@@ -13,6 +13,7 @@ export async function upsertReview(restaurantId: string, r: NormalizedReview): P
     create: {
       restaurantId, googleReviewId: r.googleReviewId, reviewerName: r.reviewerName,
       rating: r.rating, comment: r.comment, reviewCreatedAt: r.reviewCreatedAt,
+      source: r.source ?? 'gbp',
     },
     update: { reviewerName: r.reviewerName, rating: r.rating, comment: r.comment },
   });
@@ -61,4 +62,28 @@ export async function listReviewsForAdmin(
 
 export async function getReviewScoped(restaurantId: string, reviewId: string) {
   return prisma.googleReview.findFirst({ where: { id: reviewId, restaurantId }, include: { reply: true } });
+}
+
+// ---- Tier-1 Google Places link (stored on the 1-per-restaurant ReviewAutoReplyConfig row) ----
+
+export async function getPlacesLink(restaurantId: string): Promise<{ placeId: string; name: string } | null> {
+  const c = await prisma.reviewAutoReplyConfig.findUnique({ where: { restaurantId } });
+  return c?.googlePlaceId ? { placeId: c.googlePlaceId, name: c.googlePlaceName ?? '' } : null;
+}
+
+export async function setPlacesLink(restaurantId: string, link: { placeId: string; name: string }): Promise<void> {
+  const data = { googlePlaceId: link.placeId, googlePlaceName: link.name, googlePlaceConnectedAt: new Date() };
+  await prisma.reviewAutoReplyConfig.upsert({
+    where: { restaurantId }, create: { restaurantId, ...data }, update: data,
+  });
+}
+
+/** Unlink and remove this tenant's places-sourced reviews (replies cascade) so nothing stale lingers. */
+export async function clearPlacesLink(restaurantId: string): Promise<void> {
+  await prisma.googleReview.deleteMany({ where: { restaurantId, source: 'places' } });
+  await prisma.reviewAutoReplyConfig.upsert({
+    where: { restaurantId },
+    create: { restaurantId },
+    update: { googlePlaceId: null, googlePlaceName: null, googlePlaceConnectedAt: null },
+  });
 }
