@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Loader2, Check, X, Ban, ShieldCheck } from 'lucide-react';
+import { Loader2, Check, X, Ban, ShieldCheck, ExternalLink } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,13 @@ const STATUS_CLS: Record<string, string> = {
 
 const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 
+// Flavrly and the self-hosted YouPI gateway run on the same VPS, so the Payment
+// Core API is reached over localhost. Pre-fill it so it never has to be typed.
+const DEFAULT_BASE_URL = 'http://127.0.0.1:6100';
+// One-click into the self-hosted YouPI admin hub (where the Merchant ID + webhook
+// secret live). Override per-deployment with NEXT_PUBLIC_YOUPI_ADMIN_URL.
+const YOUPI_ADMIN_URL = process.env.NEXT_PUBLIC_YOUPI_ADMIN_URL || 'https://pay-admin.flavrly.in';
+
 export function YoupiAdminClient({
   configured, summary, initialRequests,
 }: { configured: boolean; summary: Record<string, unknown> | null; initialRequests: Req[] }) {
@@ -26,7 +33,7 @@ export function YoupiAdminClient({
   const [rows, setRows] = useState(initialRequests);
   const [busy, setBusy] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [f, setF] = useState({ baseUrl: '', merchantId: '', webhookSecret: '', dailyLimit: '', maxAmountPaise: '' });
+  const [f, setF] = useState({ baseUrl: DEFAULT_BASE_URL, merchantId: '', webhookSecret: '', dailyLimit: '', maxAmountPaise: '' });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
 
   async function save(e: React.FormEvent) {
@@ -41,7 +48,7 @@ export function YoupiAdminClient({
       });
       if (!res.ok) { toast.error((await res.json().catch(() => ({}))).error || 'Save failed.'); return; }
       toast.success('YouPI connection saved.');
-      setF({ baseUrl: '', merchantId: '', webhookSecret: '', dailyLimit: '', maxAmountPaise: '' });
+      setF({ baseUrl: DEFAULT_BASE_URL, merchantId: '', webhookSecret: '', dailyLimit: '', maxAmountPaise: '' });
       router.refresh();
     } catch { toast.error('Network error.'); } finally { setSaving(false); }
   }
@@ -72,6 +79,21 @@ export function YoupiAdminClient({
               {configured ? 'Connected' : 'Not configured'}
             </span>
           </div>
+          <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs space-y-2">
+            <a
+              href={YOUPI_ADMIN_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
+            >
+              Open YouPI Admin <ExternalLink className="size-3.5" />
+            </a>
+            <ul className="text-muted-foreground space-y-1 leading-relaxed">
+              <li><span className="font-medium text-foreground">Gateway base URL</span> — pre-filled to <code className="font-mono">{DEFAULT_BASE_URL}</code> (same-VPS localhost). Leave as-is unless the gateway moved.</li>
+              <li><span className="font-medium text-foreground">Merchant ID</span> — YouPI Admin → <span className="font-medium">Store Settings</span> (the X-Merchant-Id).</li>
+              <li><span className="font-medium text-foreground">Webhook secret</span> — YouPI Admin → <span className="font-medium">Developer &amp; Infrastructure Hub → Webhooks &amp; Secrets</span>. Must match exactly.</li>
+            </ul>
+          </div>
           {shown.length > 0 && (
             <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
               {shown.map(([k, v]) => (
@@ -85,7 +107,7 @@ export function YoupiAdminClient({
           <form onSubmit={save} className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2 space-y-1">
               <Label htmlFor="yp-base">Gateway base URL</Label>
-              <Input id="yp-base" type="url" required placeholder="https://pg.example.com" value={f.baseUrl} onChange={set('baseUrl')} />
+              <Input id="yp-base" type="url" required placeholder={DEFAULT_BASE_URL} value={f.baseUrl} onChange={set('baseUrl')} />
             </div>
             <div className="space-y-1">
               <Label htmlFor="yp-key">Merchant ID</Label>
