@@ -526,6 +526,8 @@ model Restaurant {
   happyHourRules    HappyHourRule[]
   challenges        Challenge[]
   couponCampaigns   CouponCampaign[]
+  youpiDailyUsage     YoupiDailyUsage[]
+  youpiFeatureRequest YoupiFeatureRequest?
 
   @@index([status])
   @@index([brandId])
@@ -3315,13 +3317,13 @@ model ReviewAutoReplyConfig {
 
 // ─── YouPI experimental PG pilot ───────────────────────────────────────────
 // Daily order-cap counter, incremented atomically per restaurant per UTC day.
-// Restaurant/User references are plain scalars (no FK relations) — lightweight ledger.
 model YoupiDailyUsage {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   restaurantId String
-  day          DateTime @db.Date
-  count        Int      @default(0)
-  updatedAt    DateTime @updatedAt
+  day          DateTime   @db.Date
+  count        Int        @default(0)
+  updatedAt    DateTime   @updatedAt
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
   @@unique([restaurantId, day])
 }
@@ -3344,4 +3346,5 @@ model YoupiFeatureRequest {
   decidedAt     DateTime?
   note          String?
   updatedAt     DateTime           @updatedAt
+  restaurant    Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 }
