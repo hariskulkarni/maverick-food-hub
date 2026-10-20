@@ -1,36 +1,36 @@
 /**
- * YouPI-PG HTTP client (Payment API, default port 6100).
+ * YouPI-PG HTTP client (Payment Core REST API, default port 6100).
  *
- * ASSUMED CONTRACT — verify against live instance
- * ------------------------------------------------
- * No live YouPI instance was available when this was written; the shapes below
- * are inferred from the YouPI-PG README (fields event/orderId/amount/amountPaise/
- * utr/paymentId; outcomes success/failed/suspicious/expired/cancelled). Tune the
- * constants/parsers in this file once the real API is confirmed.
+ * Verified against the public YouPI-PG spec (openapi.yaml / MERCHANT_INTEGRATION):
  *
- *   POST {baseUrl}/api/payments/create
- *     headers: authorization: Bearer <apiKey>, content-type: application/json
- *     body:    { orderId, amountPaise, customer?: {name, phone}, redirectUrl? }
- *     200:     { paymentId | id, checkoutUrl | checkout_url | url }
+ *   POST {baseUrl}/api/v1/payments
+ *     headers: X-Merchant-Id: <merchantId>, Idempotency-Key: <orderId>, content-type: application/json
+ *     body:    { orderId, amount: "<INR>.<dd>", currency: "INR", customer?, returnUrl?, metadata? }
+ *     201/200: { paymentId, orderId, amount, amountPaise, currency, status, checkoutUrl }
  *
- *   GET  {baseUrl}/api/payments/{paymentId}/status
- *     headers: authorization: Bearer <apiKey>
- *     200:     { status | outcome, utr?, amountPaise? }
+ *   GET  {baseUrl}/api/v1/payments/{paymentId}
+ *     headers: X-Merchant-Key: <webhookSecret>   // unlocks the merchant-private view
+ *     200:     { paymentId, status, amountPaise, verificationLevel, completedAt, ... }
  *
- * Status mapping (YouPI outcome, case-insensitive -> YoupiVerifyStatus):
- *   success                         -> CAPTURED
- *   failed, cancelled               -> FAILED
- *   pending, queued, processing     -> PENDING
- *   suspicious, expired, unknown,
- *   anything else / unparseable     -> UNKNOWN  (reconcile keeps order PENDING)
+ * Status (YouPI -> YoupiVerifyStatus), case-insensitive:
+ *   SUCCESS                               -> CAPTURED
+ *   FAILED, CANCELLED, EXPIRED            -> FAILED
+ *   INITIATED, ACTIVE, QUEUED, PROCESSING -> PENDING
+ *   anything else / unparseable           -> UNKNOWN  (reconcile keeps order PENDING)
  *
- * Security: cfg.apiKey is masked ('***') out of every thrown/logged error text.
+ * Auth model: YouPI-PG has NO Bearer API key. `X-Merchant-Id` (public UUID)
+ * creates payments; `X-Merchant-Key` (the merchant webhook secret) reads the
+ * private status view and signs webhooks. `utr` is delivered only on the
+ * webhook, never on the status response.
+ *
+ * Security: cfg.webhookSecret (the merchant key) is masked ('***') out of every
+ * thrown/logged error text.
  */
 
 export type YoupiConfig = {
   baseUrl: string;
-  apiKey: string;
-  webhookSecret?: string;
+  merchantId: string;
+  webhookSecret: string;
   receivingVpa?: string;
   dailyLimit?: number;
   maxAmountPaise?: number;
@@ -41,13 +41,14 @@ export type YoupiVerifyStatus = 'CAPTURED' | 'PENDING' | 'FAILED' | 'UNKNOWN';
 const TIMEOUT_MS = 20000;
 const MAX_ERR = 200;
 
-function mask(text: string, apiKey: string): string {
-  return apiKey ? text.split(apiKey).join('***') : text;
+/** The merchant key is the only secret in a request; keep it out of all error text. */
+function mask(text: string, secret: string): string {
+  return secret ? text.split(secret).join('***') : text;
 }
 
-/** Mask first, then slice, so a key straddling the boundary can't leak a prefix. */
-function safeMsg(text: string, apiKey: string): string {
-  return mask(text, apiKey).slice(0, MAX_ERR);
+/** Mask first, then slice, so a secret straddling the boundary can't leak a prefix. */
+function safeMsg(text: string, secret: string): string {
+  return mask(text, secret).slice(0, MAX_ERR);
 }
 
 function url(cfg: YoupiConfig, path: string): string {
@@ -56,6 +57,12 @@ function url(cfg: YoupiConfig, path: string): string {
 
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
+}
+
+/** amountPaise comes back as a string on some YouPI responses; coerce safely. */
+function toPaise(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+  return Number.isFinite(n) ? Math.round(n) : null;
 }
 
 export async function createYoupiPayment(
@@ -67,25 +74,38 @@ export async function createYoupiPayment(
     redirectUrl?: string;
   },
 ): Promise<{ paymentId: string; checkoutUrl: string }> {
+  // YouPI-PG wants the amount as an INR string with 2 decimals, not paise.
+  const amountInr = (args.amountPaise / 100).toFixed(2);
+  const customer = args.customer
+    ? { name: args.customer.name ?? undefined, phoneNumber: args.customer.phone ?? undefined }
+    : undefined;
+
   let res: Response;
   try {
-    res = await fetch(url(cfg, '/api/payments/create'), {
+    res = await fetch(url(cfg, '/api/v1/payments'), {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.apiKey}` },
+      headers: {
+        'content-type': 'application/json',
+        'X-Merchant-Id': cfg.merchantId,
+        // Idempotent on our orderId: a retried create returns the existing session.
+        'Idempotency-Key': args.orderId,
+      },
       body: JSON.stringify({
         orderId: args.orderId,
-        amountPaise: args.amountPaise,
-        customer: args.customer,
-        redirectUrl: args.redirectUrl,
+        amount: amountInr,
+        currency: 'INR',
+        customer,
+        returnUrl: args.redirectUrl,
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {
-    throw new Error(safeMsg(`YouPI create failed: ${e instanceof Error ? e.message : String(e)}`, cfg.apiKey));
+    throw new Error(safeMsg(`YouPI create failed: ${e instanceof Error ? e.message : String(e)}`, cfg.webhookSecret));
   }
   const text = await res.text().catch(() => '');
+  // 200 = existing session returned for an idempotent/ongoing request; 201 = created.
   if (!res.ok) {
-    throw new Error(safeMsg(`YouPI create HTTP ${res.status}: ${text}`, cfg.apiKey));
+    throw new Error(safeMsg(`YouPI create HTTP ${res.status}: ${text}`, cfg.webhookSecret));
   }
   let data: Record<string, unknown> = {};
   try {
@@ -93,24 +113,26 @@ export async function createYoupiPayment(
   } catch {
     /* handled below */
   }
-  const paymentId = str(data?.paymentId) ?? str(data?.id);
-  const checkoutUrl = str(data?.checkoutUrl) ?? str(data?.checkout_url) ?? str(data?.url);
+  const paymentId = str(data?.paymentId);
+  const checkoutUrl = str(data?.checkoutUrl);
   if (!paymentId || !checkoutUrl) {
-    throw new Error(safeMsg(`YouPI create: unexpected response: ${text}`, cfg.apiKey));
+    throw new Error(safeMsg(`YouPI create: unexpected response: ${text}`, cfg.webhookSecret));
   }
   return { paymentId, checkoutUrl };
 }
 
-function mapOutcome(raw: unknown): YoupiVerifyStatus {
-  switch (typeof raw === 'string' ? raw.trim().toLowerCase() : '') {
-    case 'success':
+function mapStatus(raw: unknown): YoupiVerifyStatus {
+  switch (typeof raw === 'string' ? raw.trim().toUpperCase() : '') {
+    case 'SUCCESS':
       return 'CAPTURED';
-    case 'failed':
-    case 'cancelled':
+    case 'FAILED':
+    case 'CANCELLED':
+    case 'EXPIRED':
       return 'FAILED';
-    case 'pending':
-    case 'queued':
-    case 'processing':
+    case 'INITIATED':
+    case 'ACTIVE':
+    case 'QUEUED':
+    case 'PROCESSING':
       return 'PENDING';
     default:
       return 'UNKNOWN';
@@ -122,23 +144,24 @@ export async function getYoupiStatus(
   paymentId: string,
 ): Promise<{ status: YoupiVerifyStatus; utr?: string | null; amountPaise?: number | null }> {
   try {
-    const res = await fetch(url(cfg, `/api/payments/${encodeURIComponent(paymentId)}/status`), {
+    const res = await fetch(url(cfg, `/api/v1/payments/${encodeURIComponent(paymentId)}`), {
       method: 'GET',
-      headers: { authorization: `Bearer ${cfg.apiKey}` },
+      // Merchant key unlocks the private view; status is in the public view too.
+      headers: { 'X-Merchant-Key': cfg.webhookSecret },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!res.ok) return { status: 'UNKNOWN' };
     const data = (await res.json()) as Record<string, unknown>;
     if (!data || typeof data !== 'object') return { status: 'UNKNOWN' };
-    const amt = data.amountPaise;
     return {
-      status: mapOutcome(data.status ?? data.outcome),
+      status: mapStatus(data.status),
+      // utr is only delivered on the webhook payload, never on the status view.
       utr: str(data.utr) ?? null,
-      amountPaise: typeof amt === 'number' && Number.isFinite(amt) ? amt : null,
+      amountPaise: toPaise(data.amountPaise),
     };
   } catch (e) {
-    // Fail safe: never throw into the reconcile loop; log with key masked.
-    console.warn(safeMsg(`YouPI status check failed: ${e instanceof Error ? e.message : String(e)}`, cfg.apiKey));
+    // Fail safe: never throw into the reconcile loop; log with secret masked.
+    console.warn(safeMsg(`YouPI status check failed: ${e instanceof Error ? e.message : String(e)}`, cfg.webhookSecret));
     return { status: 'UNKNOWN' };
   }
 }

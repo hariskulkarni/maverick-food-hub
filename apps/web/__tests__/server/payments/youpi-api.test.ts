@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createYoupiPayment, getYoupiStatus, type YoupiConfig } from '@/server/payments/youpi-api';
 
-const cfg: YoupiConfig = { baseUrl: 'http://youpi.local:6100', apiKey: 'sk_secret_123' };
+// webhookSecret doubles as the X-Merchant-Key and is the only secret in a request.
+const cfg: YoupiConfig = { baseUrl: 'http://youpi.local:6100', merchantId: 'mrc_123', webhookSecret: 'sk_secret_123' };
 
 function mockFetch(status: number, body: unknown) {
   return vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -12,83 +13,89 @@ function mockFetch(status: number, body: unknown) {
 afterEach(() => vi.restoreAllMocks());
 
 describe('createYoupiPayment', () => {
-  it('returns paymentId + checkoutUrl and sends Bearer auth', async () => {
-    const spy = mockFetch(200, { paymentId: 'p1', checkoutUrl: 'http://pay/p1' });
+  it('posts to /api/v1/payments with X-Merchant-Id, INR amount and idempotency key', async () => {
+    const spy = mockFetch(201, { paymentId: 'p1', checkoutUrl: 'http://pay/p1' });
     const r = await createYoupiPayment(cfg, { orderId: 'o1', amountPaise: 12300 });
     expect(r).toEqual({ paymentId: 'p1', checkoutUrl: 'http://pay/p1' });
     const [url, init] = spy.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('http://youpi.local:6100/api/payments/create');
+    expect(url).toBe('http://youpi.local:6100/api/v1/payments');
     expect(init.method).toBe('POST');
-    expect((init.headers as Record<string, string>).authorization).toBe('Bearer sk_secret_123');
-    expect(JSON.parse(init.body as string)).toMatchObject({ orderId: 'o1', amountPaise: 12300 });
+    const headers = init.headers as Record<string, string>;
+    expect(headers['X-Merchant-Id']).toBe('mrc_123');
+    expect(headers['Idempotency-Key']).toBe('o1');
+    expect(headers.authorization).toBeUndefined(); // YouPI-PG has no Bearer auth
+    // Amount goes as an INR string, not paise.
+    expect(JSON.parse(init.body as string)).toMatchObject({ orderId: 'o1', amount: '123.00', currency: 'INR' });
     expect(init.signal).toBeDefined();
   });
 
-  it('accepts alternate field names', async () => {
-    mockFetch(200, { id: 'p2', checkout_url: 'http://pay/p2' });
+  it('accepts a 200 (existing idempotent session) response', async () => {
+    mockFetch(200, { paymentId: 'p2', checkoutUrl: 'http://pay/p2' });
     expect(await createYoupiPayment(cfg, { orderId: 'o', amountPaise: 1 })).toEqual({
       paymentId: 'p2',
       checkoutUrl: 'http://pay/p2',
     });
   });
 
-  it('throws on 500 with the apiKey masked and message <= 200 chars', async () => {
-    mockFetch(500, `boom echo ${cfg.apiKey} ${'x'.repeat(500)}`);
+  it('throws on 500 with the secret masked and message <= 200 chars', async () => {
+    mockFetch(500, `boom echo ${cfg.webhookSecret} ${'x'.repeat(500)}`);
     const err = await createYoupiPayment(cfg, { orderId: 'o', amountPaise: 1 }).catch((e) => e);
     expect(err).toBeInstanceOf(Error);
-    expect(err.message).not.toContain(cfg.apiKey);
+    expect(err.message).not.toContain(cfg.webhookSecret);
     expect(err.message).toContain('***');
     expect(err.message.length).toBeLessThanOrEqual(200);
   });
 
-  it('masks the apiKey even when the key straddles the slice boundary', async () => {
-    mockFetch(500, `${'y'.repeat(190)}${cfg.apiKey}`);
+  it('masks the secret even when it straddles the slice boundary', async () => {
+    mockFetch(500, `${'y'.repeat(190)}${cfg.webhookSecret}`);
     const err = await createYoupiPayment(cfg, { orderId: 'o', amountPaise: 1 }).catch((e) => e);
-    expect(err.message).not.toContain(cfg.apiKey);
+    expect(err.message).not.toContain(cfg.webhookSecret);
     expect(err.message).not.toContain('sk_secret');
   });
 
-  it('throws when response lacks paymentId/checkoutUrl, key masked', async () => {
-    mockFetch(200, { note: cfg.apiKey });
+  it('throws when response lacks paymentId/checkoutUrl, secret masked', async () => {
+    mockFetch(200, { note: cfg.webhookSecret });
     const err = await createYoupiPayment(cfg, { orderId: 'o', amountPaise: 1 }).catch((e) => e);
     expect(err).toBeInstanceOf(Error);
-    expect(err.message).not.toContain(cfg.apiKey);
+    expect(err.message).not.toContain(cfg.webhookSecret);
   });
 
-  it('masks apiKey in network errors', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error(`connect failed ${cfg.apiKey}`));
+  it('masks the secret in network errors', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error(`connect failed ${cfg.webhookSecret}`));
     const err = await createYoupiPayment(cfg, { orderId: 'o', amountPaise: 1 }).catch((e) => e);
-    expect(err.message).not.toContain(cfg.apiKey);
+    expect(err.message).not.toContain(cfg.webhookSecret);
   });
 });
 
 describe('getYoupiStatus', () => {
   it.each([
-    ['success', 'CAPTURED'],
-    ['failed', 'FAILED'],
-    ['cancelled', 'FAILED'],
-    ['pending', 'PENDING'],
-    ['processing', 'PENDING'],
-    ['queued', 'PENDING'],
-    ['suspicious', 'UNKNOWN'],
-    ['expired', 'UNKNOWN'],
+    ['SUCCESS', 'CAPTURED'],
+    ['FAILED', 'FAILED'],
+    ['CANCELLED', 'FAILED'],
+    ['EXPIRED', 'FAILED'],
+    ['INITIATED', 'PENDING'],
+    ['ACTIVE', 'PENDING'],
+    ['QUEUED', 'PENDING'],
+    ['PROCESSING', 'PENDING'],
     ['weird', 'UNKNOWN'],
-  ])('maps %s -> %s', async (outcome, expected) => {
-    mockFetch(200, { status: outcome });
+  ])('maps %s -> %s', async (status, expected) => {
+    mockFetch(200, { status });
     expect((await getYoupiStatus(cfg, 'p1')).status).toBe(expected);
   });
 
-  it('GETs the status URL with Bearer auth and extracts utr + amountPaise', async () => {
-    const spy = mockFetch(200, { status: 'SUCCESS', utr: 'U123', amountPaise: 5000 });
+  it('GETs /api/v1/payments/{id} with X-Merchant-Key and extracts amountPaise (string ok)', async () => {
+    const spy = mockFetch(200, { status: 'SUCCESS', utr: 'U123', amountPaise: '5000' });
     const r = await getYoupiStatus(cfg, 'p1');
     expect(r).toEqual({ status: 'CAPTURED', utr: 'U123', amountPaise: 5000 });
     const [url, init] = spy.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('http://youpi.local:6100/api/payments/p1/status');
-    expect((init.headers as Record<string, string>).authorization).toBe('Bearer sk_secret_123');
+    expect(url).toBe('http://youpi.local:6100/api/v1/payments/p1');
+    const headers = init.headers as Record<string, string>;
+    expect(headers['X-Merchant-Key']).toBe('sk_secret_123');
+    expect(headers.authorization).toBeUndefined();
   });
 
   it('returns UNKNOWN (no throw) on 500', async () => {
-    mockFetch(500, `err ${cfg.apiKey}`);
+    mockFetch(500, `err ${cfg.webhookSecret}`);
     expect((await getYoupiStatus(cfg, 'p1')).status).toBe('UNKNOWN');
   });
 

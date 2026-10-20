@@ -16,7 +16,8 @@ const PLATFORM_ID = '__platform__';
 
 const Body = z.object({
   baseUrl: z.string().url().max(500),
-  apiKey: z.string().min(1).max(500),
+  // YouPI-PG: public merchant UUID (X-Merchant-Id) + merchant key (X-Merchant-Key = webhookSecret).
+  merchantId: z.string().min(1).max(500),
   webhookSecret: z.string().min(1).max(500),
   dailyLimit: z.number().int().positive().optional(),
   maxAmountPaise: z.number().int().positive().optional(),
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
   const d = parsed.data;
   const config: Record<string, string> = {
     baseUrl: d.baseUrl.replace(/\/+$/, ''),
-    apiKey: d.apiKey,
+    merchantId: d.merchantId,
     webhookSecret: d.webhookSecret,
   };
   if (d.dailyLimit !== undefined) config.dailyLimit = String(d.dailyLimit);

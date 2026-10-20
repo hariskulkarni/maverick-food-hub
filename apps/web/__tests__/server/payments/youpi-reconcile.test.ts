@@ -33,7 +33,7 @@ beforeEach(() => {
   h.db.payment.findUnique.mockResolvedValue(pay());
   h.db.payment.findFirst.mockResolvedValue(null);
   h.db.payment.updateMany.mockResolvedValue({ count: 1 });
-  h.cfg.mockResolvedValue({ baseUrl: 'x', apiKey: 'k' });
+  h.cfg.mockResolvedValue({ baseUrl: 'x', merchantId: 'm', webhookSecret: 'w' });
   h.transition.mockResolvedValue(undefined);
 });
 

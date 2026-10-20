@@ -31,7 +31,7 @@ import { POST as decide } from '@/app/api/platform/youpi/[restaurantId]/decision
 
 const mk = (body?: unknown) => ({ json: async () => body }) as any;
 const ctx = { params: Promise.resolve({ restaurantId: 'r1' }) };
-const goodCfg = { baseUrl: 'https://pg.example.com', apiKey: 'sk_live_SECRETKEY123', webhookSecret: 'whsec_SECRET456' };
+const goodCfg = { baseUrl: 'https://pg.example.com', merchantId: 'merchant-uuid-123', webhookSecret: 'whsec_SECRET456' };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -71,16 +71,15 @@ describe('non-SUPER_ADMIN gets 403 everywhere', () => {
 
 describe('config', () => {
   it('POST saves to the platform sentinel and returns masked only', async () => {
-    h.credFind.mockResolvedValue({ status: 'CONNECTED', summary: { baseUrl: goodCfg.baseUrl, apiKey: 'sk_l…123' } });
+    h.credFind.mockResolvedValue({ status: 'CONNECTED', summary: { baseUrl: goodCfg.baseUrl, merchantId: goodCfg.merchantId } });
     const res = await cfgPOST(mk({ ...goodCfg, dailyLimit: 50, maxAmountPaise: 100000 }));
     expect(res.status).toBe(200);
     expect(h.saveConfig).toHaveBeenCalledWith(
       '__platform__', 'YOUPI',
-      expect.objectContaining({ baseUrl: goodCfg.baseUrl, apiKey: goodCfg.apiKey, webhookSecret: goodCfg.webhookSecret, dailyLimit: '50', maxAmountPaise: '100000' }),
+      expect.objectContaining({ baseUrl: goodCfg.baseUrl, merchantId: goodCfg.merchantId, webhookSecret: goodCfg.webhookSecret, dailyLimit: '50', maxAmountPaise: '100000' }),
       expect.objectContaining({ status: 'CONNECTED' }),
     );
     const text = JSON.stringify(await res.json());
-    expect(text).not.toContain('SECRETKEY123');
     expect(text).not.toContain('SECRET456');
   });
 
@@ -94,7 +93,7 @@ describe('config', () => {
     h.credFind.mockResolvedValue({
       status: 'CONNECTED',
       configEncrypted: 'ENC',
-      summary: { baseUrl: goodCfg.baseUrl, apiKey: 'sk_l…123', webhookSecret: 'whse…456' },
+      summary: { baseUrl: goodCfg.baseUrl, merchantId: goodCfg.merchantId, webhookSecret: 'whse…456' },
     });
     const res = await cfgGET();
     expect(res.status).toBe(200);
