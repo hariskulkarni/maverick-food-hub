@@ -3,6 +3,7 @@ import { requireManagedRestaurant } from '@/server/tenancy';
 import { exchangeCode, listAccounts, listAllLocations } from '@/server/reviews/google-business';
 import { saveConfig } from '@/server/integrations';
 import { verifyState } from '@/server/reviews/oauth-state';
+import { externalBaseUrl } from '@/server/http/external-url';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,5 +33,9 @@ export async function GET(req: NextRequest) {
     { status: 'CONNECTED' },
   );
   const dest = locs.length === 0 ? 'google=needs_location' : locs.length === 1 ? 'google=connected' : 'pickLocation=1';
-  return Response.redirect(new URL(`/admin/settings?tab=reviews&${dest}`, req.url), 302);
+  // Redirect to the PUBLIC host the admin's browser used — NOT req.url, which
+  // behind the nginx proxy resolves to the internal http://localhost:3000 and
+  // produces an unreachable "localhost refused to connect" redirect.
+  const base = externalBaseUrl(req.headers);
+  return Response.redirect(new URL(`/admin/settings?tab=reviews&${dest}`, base), 302);
 }
