@@ -1,4 +1,4 @@
-import { ExternalLink, Zap } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { requireSuperAdmin } from '@/server/tenancy';
 
 export const metadata = { title: 'Platform · Flavrly PG Admin' };
@@ -20,7 +20,6 @@ export default async function PlatformYoupiAdminPage() {
   return (
     <div className="flex h-dvh flex-col pb-16 md:pb-0">
       <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-        <Zap className="size-5 text-primary" />
         <div className="min-w-0">
           <h1 className="display text-lg font-semibold leading-tight">Flavrly PG Admin</h1>
           <p className="truncate text-xs text-muted-foreground">
