@@ -3,14 +3,14 @@ import { prisma } from '@/server/db';
 const DEFAULT_DAILY = 20;
 
 export class YoupiCapExceededError extends Error {
-  constructor(message = 'YouPI daily transaction cap reached') {
+  constructor(message = 'Flavrly PG daily transaction cap reached') {
     super(message);
     this.name = 'YoupiCapExceededError';
   }
 }
 
 export class YoupiAmountExceededError extends Error {
-  constructor(message = 'YouPI max transaction amount exceeded') {
+  constructor(message = 'Flavrly PG max transaction amount exceeded') {
     super(message);
     this.name = 'YoupiAmountExceededError';
   }

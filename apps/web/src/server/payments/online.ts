@@ -80,7 +80,7 @@ export async function startOnlinePayment(
     amount?: number;
     expireAfterSec?: number;
     /**
-     * 'youpi' opts this attempt into the YouPI rail (experimental, per-restaurant
+     * 'youpi' opts this attempt into the Flavrly PG rail (experimental, per-restaurant
      * APPROVED). Omitted = the restaurant's normal gateway, exactly as before.
      * The Payment stays PENDING; only reconcile/webhook may capture it.
      */
@@ -119,16 +119,16 @@ export async function startOnlinePayment(
     });
   }
 
-  // A retry of an order whose earlier attempt was YouPI stays on YouPI.
+  // A retry of an order whose earlier attempt was Flavrly PG stays on Flavrly PG.
   const useYoupi = opts.rail === 'youpi' || order.payments.some((p) => p.providerName === 'youpi');
   let provider;
   if (useYoupi) {
-    // Fail loud rather than silently routing a YouPI request to another gateway.
+    // Fail loud rather than silently routing a Flavrly PG request to another gateway.
     if (!(await youpiEnabledForRestaurant(order.branch.restaurantId))) {
-      throw new OnlinePaymentError('YouPI is not available for this restaurant.', 400);
+      throw new OnlinePaymentError('Flavrly PG is not available for this restaurant.', 400);
     }
     if (!brand.url) {
-      throw new OnlinePaymentError('YouPI return URL is not configured (brand.url missing)', 500);
+      throw new OnlinePaymentError('Flavrly PG return URL is not configured (brand.url missing)', 500);
     }
     provider = await paymentProvider(order.branch.restaurantId, { prefer: 'youpi' });
   } else {
@@ -172,7 +172,7 @@ export async function startOnlinePayment(
       branchId: order.branch.id,
       merchantOrderId,
       expireAfterSec: opts.expireAfterSec,
-      // YouPI sends the customer back here; the page only polls, never trusts the return.
+      // Flavrly PG sends the customer back here; the page only polls, never trusts the return.
       ...(useYoupi
         ? { redirectUrl: `${brand.url.replace(/\/+$/, '')}/checkout/payment-status?orderId=${encodeURIComponent(order.id)}&provider=youpi` }
         : {}),

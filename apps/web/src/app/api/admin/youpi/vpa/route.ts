@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   }
   const fr = await prisma.youpiFeatureRequest.findUnique({ where: { restaurantId: restaurant.id } });
   if (fr?.status !== 'APPROVED') {
-    return Response.json({ error: 'YouPI is not approved for this restaurant' }, { status: 403 });
+    return Response.json({ error: 'Flavrly PG is not approved for this restaurant' }, { status: 403 });
   }
   const receivingVpa = typeof body?.receivingVpa === 'string' ? body.receivingVpa.trim() : '';
   if (!VPA_RE.test(receivingVpa)) {

@@ -1,5 +1,5 @@
 /**
- * YouPI adapter — implements the platform `PaymentProvider` seam on top of
+ * Flavrly PG adapter — implements the platform `PaymentProvider` seam on top of
  * `youpi-api.ts`, gated per restaurant by an APPROVED `YoupiFeatureRequest`.
  *
  * `verifyPayment` only maps the gateway status; it never marks anything paid.
@@ -40,7 +40,7 @@ export async function resolveYoupiConfig(restaurantId?: string | null): Promise<
     if (!fr || fr.status !== 'APPROVED') return null;
 
     const platform = await getConfig(PLATFORM_ID, YOUPI_KEY);
-    // YouPI-PG auth = X-Merchant-Id (public) + X-Merchant-Key (= webhookSecret). All three required.
+    // Flavrly PG auth = X-Merchant-Id (public) + X-Merchant-Key (= webhookSecret). All three required.
     if (!platform?.baseUrl || !platform?.merchantId || !platform?.webhookSecret) return null;
 
     const rest = await getConfig(restaurantId, YOUPI_KEY);
@@ -59,7 +59,7 @@ export async function resolveYoupiConfig(restaurantId?: string | null): Promise<
       ),
     };
   } catch {
-    // Fail closed: any lookup/decrypt error means YouPI is not available.
+    // Fail closed: any lookup/decrypt error means Flavrly PG is not available.
     return null;
   }
 }
@@ -71,13 +71,13 @@ export function youpiProvider(cfg: YoupiConfig): PaymentProvider {
 
     async createOrder(args: CreateOrderArgs): Promise<ProviderOrder> {
       if (typeof args.amount !== 'number' || !Number.isFinite(args.amount) || args.amount <= 0) {
-        throw new Error('YouPI: amount must be a positive finite number');
+        throw new Error('Flavrly PG: amount must be a positive finite number');
       }
       const amountPaise = Math.round(args.amount * 100);
       if (!Number.isSafeInteger(amountPaise) || amountPaise <= 0) {
-        throw new Error('YouPI: amount must be a positive finite number');
+        throw new Error('Flavrly PG: amount must be a positive finite number');
       }
-      if (!args.restaurantId) throw new Error('YouPI: restaurantId is required');
+      if (!args.restaurantId) throw new Error('Flavrly PG: restaurantId is required');
 
       // Caps first: reserves a daily slot / enforces the per-payment max.
       await assertUnderCap(args.restaurantId, amountPaise, cfg);
@@ -100,7 +100,7 @@ export function youpiProvider(cfg: YoupiConfig): PaymentProvider {
 
     async verifyPayment(args: VerifyArgs): Promise<VerifyResult> {
       const id = args.providerOrderId ?? args.merchantOrderId;
-      if (!id) return { ok: false, status: 'UNKNOWN', error: 'Missing YouPI payment id' };
+      if (!id) return { ok: false, status: 'UNKNOWN', error: 'Missing Flavrly PG payment id' };
       const r = await getYoupiStatus(cfg, id);
       return {
         ok: r.status === 'CAPTURED',
@@ -111,7 +111,7 @@ export function youpiProvider(cfg: YoupiConfig): PaymentProvider {
     },
 
     async refund(): Promise<RefundResult> {
-      return { ok: false, status: 'FAILED', error: 'YouPI refunds are not supported in the pilot' };
+      return { ok: false, status: 'FAILED', error: 'Flavrly PG refunds are not supported in the pilot' };
     },
   };
 }

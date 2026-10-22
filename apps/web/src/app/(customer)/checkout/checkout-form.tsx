@@ -52,7 +52,7 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
   loyaltyPoints: number;
   fulfillment: FulfillmentCtx;
   gateway?: Gateway;
-  /** Server-computed: restaurant has YouPI (experimental) APPROVED. */
+  /** Server-computed: restaurant has Flavrly PG (experimental) APPROVED. */
   youpiEnabled?: boolean;
 }) {
   const { lines, clear } = useCart();
@@ -67,7 +67,7 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
   // when nothing is configured (mock provider in dev).
   const onlineMethod: 'RAZORPAY' | 'PHONEPE' = gateway ?? 'RAZORPAY';
   const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'PHONEPE' | 'COD'>(onlineMethod);
-  // YouPI rides the online PaymentMethod; `paymentRail` tells the server to use it.
+  // Flavrly PG rides the online PaymentMethod; `paymentRail` tells the server to use it.
   const [youpiSelected, setYoupiSelected] = useState(false);
   const useYoupi = youpiEnabled && youpiSelected;
   const [notes, setNotes] = useState('');
@@ -240,7 +240,7 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
       }
 
       if (payment.providerName === 'youpi' && payment.redirectUrl) {
-        // Full redirect to YouPI's checkout. The order stays unpaid until the
+        // Full redirect to Flavrly PG's checkout. The order stays unpaid until the
         // server reconciles; the return page only polls.
         window.location.href = payment.redirectUrl;
         return;
@@ -406,7 +406,7 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
                   onClick={() => { setYoupiSelected(true); setPaymentMethod(onlineMethod); }}
                   className={`text-left rounded-lg border p-3 hover:bg-accent ${useYoupi ? 'border-primary bg-primary/5' : ''}`}
                 >
-                  <div className="text-sm font-medium">UPI (YouPI — experimental)</div>
+                  <div className="text-sm font-medium">UPI (Flavrly PG — experimental)</div>
                   <div className="text-xs text-muted-foreground">Pay by UPI. Confirmed after your bank verifies it.</div>
                 </button>
               )}

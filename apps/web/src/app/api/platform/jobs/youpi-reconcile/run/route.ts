@@ -1,7 +1,7 @@
 /**
  * POST /api/platform/jobs/youpi-reconcile/run
  *
- * Reconciles in-flight YouPI payments against the gateway (safety net for lost
+ * Reconciles in-flight Flavrly PG payments against the gateway (safety net for lost
  * webhooks). Schedule every 3 minutes.
  *
  * Auth: SUPER_ADMIN session OR x-internal-secret matching INTERNAL_CRON_SECRET.

@@ -1,6 +1,6 @@
 /**
- * YouPI reconciliation sweep — safety net for lost webhooks. Asks the gateway
- * about every in-flight YouPI payment via `reconcileYoupiPayment` (the only
+ * Flavrly PG reconciliation sweep — safety net for lost webhooks. Asks the gateway
+ * about every in-flight Flavrly PG payment via `reconcileYoupiPayment` (the only
  * place that can capture). Advisory-lock guarded against overlapping runs.
  *
  * Run from /api/platform/jobs/youpi-reconcile/run every 3 minutes.

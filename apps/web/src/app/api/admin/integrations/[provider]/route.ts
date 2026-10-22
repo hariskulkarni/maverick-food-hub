@@ -16,7 +16,7 @@ function parseProvider(s: string): ProviderKey | null {
 }
 
 const YOUPI_BLOCKED = () =>
-  Response.json({ error: 'YouPI is configured through its approval flow, not this endpoint.' }, { status: 403 });
+  Response.json({ error: 'Flavrly PG is configured through its approval flow, not this endpoint.' }, { status: 403 });
 
 function diffFields(before: Record<string, string> | null, after: Record<string, string>): Record<string, { from: string; to: string }> {
   const a = maskCredentials(before ?? {});

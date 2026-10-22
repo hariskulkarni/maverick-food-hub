@@ -1,5 +1,5 @@
 /**
- * Super-admin decision on a restaurant's YouPI feature request.
+ * Super-admin decision on a restaurant's Flavrly PG feature request.
  * Writes straight to the DB (no caching on the status read path), so the next
  * provider read reflects it immediately.
  */
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ res
   const { decision } = parsed.data;
 
   if (decision === 'APPROVE' && !(await getConfig('__platform__', 'YOUPI'))) {
-    return Response.json({ error: 'Configure the YouPI connection first' }, { status: 409 });
+    return Response.json({ error: 'Configure the Flavrly PG connection first' }, { status: 409 });
   }
 
   const exists = await prisma.restaurant.findUnique({ where: { id: restaurantId }, select: { id: true } });

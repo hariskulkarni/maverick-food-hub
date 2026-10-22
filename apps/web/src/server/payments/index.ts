@@ -168,13 +168,13 @@ export async function paymentProvider(
   restaurantId?: string | null,
   opts?: { prefer?: 'youpi' },
 ): Promise<PaymentProvider> {
-  // YouPI is opt-in per call. An explicit YouPI request never falls back to
+  // Flavrly PG is opt-in per call. An explicit Flavrly PG request never falls back to
   // another gateway: if it is not APPROVED/configured we fail loud.
   if (opts?.prefer === 'youpi') {
     const ycfg = await resolveYoupiConfig(restaurantId);
     if (ycfg) return youpiProvider(ycfg);
     throw new Error(
-      `YouPI was requested for restaurant ${restaurantId ?? '(none)'} but is not available ` +
+      `Flavrly PG was requested for restaurant ${restaurantId ?? '(none)'} but is not available ` +
         `(feature not APPROVED, platform connection missing, or no receiving VPA); ` +
         `refusing to fall back to another payment gateway.`
     );
@@ -215,7 +215,7 @@ export async function paymentProvider(
   return mockProvider();
 }
 
-/** Whether to offer YouPI at checkout: APPROVED + platform connection + restaurant VPA. */
+/** Whether to offer Flavrly PG at checkout: APPROVED + platform connection + restaurant VPA. */
 export async function youpiEnabledForRestaurant(restaurantId?: string | null): Promise<boolean> {
   return !!(await resolveYoupiConfig(restaurantId));
 }

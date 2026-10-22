@@ -66,7 +66,7 @@ export default async function CheckoutPage({
   // form submits and the label the customer sees. Null (no gateway configured)
   // still renders the online option — it routes to the mock provider in dev.
   const gateway = await resolveGatewayKey(branch.restaurantId);
-  // YouPI (experimental) is offered only to restaurants with an APPROVED request.
+  // Flavrly PG (experimental) is offered only to restaurants with an APPROVED request.
   const youpiEnabled = await youpiEnabledForRestaurant(branch.restaurantId);
 
   return (

@@ -2,10 +2,10 @@ import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { YoupiAdminClient } from './youpi-client';
 
-export const metadata = { title: 'Platform · YouPI' };
+export const metadata = { title: 'Platform · Flavrly PG' };
 export const dynamic = 'force-dynamic';
 
-/** SUPER_ADMIN only: shared YouPI connection + per-restaurant approvals queue. */
+/** SUPER_ADMIN only: shared Flavrly PG connection + per-restaurant approvals queue. */
 export default async function PlatformYoupiPage() {
   await requireSuperAdmin();
 
@@ -24,7 +24,7 @@ export default async function PlatformYoupiPage() {
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-6xl">
       <header>
-        <h1 className="display text-2xl sm:text-3xl font-semibold">YouPI</h1>
+        <h1 className="display text-2xl sm:text-3xl font-semibold">Flavrly PG</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Experimental UPI gateway pilot. Configure the shared connection, then approve restaurants.
         </p>

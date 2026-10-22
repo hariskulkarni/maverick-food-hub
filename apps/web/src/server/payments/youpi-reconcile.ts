@@ -1,5 +1,5 @@
 /**
- * YouPI reconciliation — the single writer that can flip a YouPI payment (and
+ * Flavrly PG reconciliation — the single writer that can flip a Flavrly PG payment (and
  * therefore its order) to PAID.
  *
  * Money-safety contract: a payment is CAPTURED only when ALL hold:
@@ -94,7 +94,7 @@ export async function reconcileYoupiPayment(paymentId: string): Promise<YoupiRec
     const weCaptured = updated.count > 0;
     if (weCaptured) {
       try {
-        await transitionOrder(payment.orderId, OrderStatus.RECEIVED, { note: 'Payment captured (YouPI)' });
+        await transitionOrder(payment.orderId, OrderStatus.RECEIVED, { note: 'Payment captured (Flavrly PG)' });
       } catch (e) {
         log.error({ err: (e as Error).message, orderId: payment.orderId }, 'youpi: order -> RECEIVED failed');
       }

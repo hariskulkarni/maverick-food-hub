@@ -37,15 +37,15 @@ export function YoupiRequest({ status, receivingVpa }: { status: Status; receivi
       <header className="flex items-center gap-3 rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card p-4 sm:p-5">
         <LogoMark className="size-11 shrink-0 shadow-sm" />
         <div className="min-w-0">
-          <h1 className="text-xl font-bold leading-tight tracking-tight text-gradient-brand">YouPI UPI (Experimental)</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">Accept UPI payments through the YouPI-PG research gateway.</p>
+          <h1 className="text-xl font-bold leading-tight tracking-tight text-gradient-brand">Flavrly PG UPI (Experimental)</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">Accept UPI payments through the Flavrly PG research gateway.</p>
         </div>
       </header>
 
       <div role="alert" className="rounded-2xl border border-amber-500/50 bg-amber-500/10 p-4 sm:p-5 text-amber-900 dark:text-amber-200">
         <div className="mb-2 flex items-center gap-2 font-semibold"><AlertTriangle className="size-5 shrink-0" /> CAUTION</div>
         <ul className="list-disc space-y-1.5 pl-5 text-sm">
-          <li>YouPI-PG is an experimental, self-hosted research gateway — NOT bank/NPCI-certified, audited, or production-grade.</li>
+          <li>Flavrly PG is an experimental, self-hosted research gateway — NOT bank/NPCI-certified, audited, or production-grade.</li>
           <li>Payment confirmation is observer-based (bank SMS/email parsing) and is NOT a guarantee of settlement.</li>
           <li>Pilot / low-value use only; a per-day transaction cap applies.</li>
           <li>By requesting this, you accept the experimental risk for these transactions.</li>

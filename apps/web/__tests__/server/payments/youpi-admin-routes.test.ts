@@ -126,7 +126,7 @@ describe('decision', () => {
   it('APPROVE without platform config -> 409', async () => {
     const res = await decide(mk({ decision: 'APPROVE' }), ctx);
     expect(res.status).toBe(409);
-    expect((await res.json()).error).toMatch(/configure the YouPI connection first/i);
+    expect((await res.json()).error).toMatch(/configure the Flavrly PG connection first/i);
     expect(h.reqUpsert).not.toHaveBeenCalled();
   });
 

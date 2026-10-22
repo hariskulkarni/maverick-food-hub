@@ -96,7 +96,7 @@ export interface PlaceOrderInput {
    */
   offerCode?: string;
   paymentMethod: PaymentMethod;
-  /** Opt-in YouPI rail (experimental). Only honoured for online methods. */
+  /** Opt-in Flavrly PG rail (experimental). Only honoured for online methods. */
   paymentRail?: 'youpi';
   customerNotes?: string;
   walletApply?: number;

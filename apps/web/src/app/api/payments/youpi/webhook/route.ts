@@ -1,12 +1,12 @@
 /**
- * YouPI webhook receiver.
+ * Flavrly PG webhook receiver.
  *
  * Trust model: the webhook is only a HINT that a payment may have changed. We
  * never act on the body's event/status/amount. After authenticating the
- * delivery we call reconcileYoupiPayment(), which re-verifies against YouPI's
+ * delivery we call reconcileYoupiPayment(), which re-verifies against Flavrly PG's
  * status API and applies the single-winner capture (status + UTR + exact amount).
  *
- * - HMAC-SHA256 over the RAW body with the platform YouPI webhook secret,
+ * - HMAC-SHA256 over the RAW body with the platform Flavrly PG webhook secret,
  *   constant-time compared (X-Gateway-Signature).
  * - Replay window: X-Gateway-Timestamp must be within 5 minutes of now.
  * - Idempotent: PaymentWebhookEvent keyed 'youpi:<X-Gateway-Delivery-Id>'
