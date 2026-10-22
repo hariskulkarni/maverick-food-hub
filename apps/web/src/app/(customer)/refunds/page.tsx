@@ -5,7 +5,7 @@ export const metadata = {
   description: `How cancellations and refunds work on ${brand.name}.`
 };
 
-const UPDATED = '15 May 2026';
+const UPDATED = '22 October 2026';
 
 export default function RefundsPage() {
   return (
@@ -113,9 +113,14 @@ export default function RefundsPage() {
           <h2 className="display text-xl font-semibold">5. How refunds are paid</h2>
           <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
             <li>
-              <span className="font-medium text-foreground">Online payments</span> — refunded to
-              your original payment method, typically within 5–7 business days, depending on your
-              bank or payment provider.
+              <span className="font-medium text-foreground">UPI payments</span> — refunded to the
+              UPI ID or bank account you paid from, typically within 5–7 business days, depending
+              on your bank.
+            </li>
+            <li>
+              <span className="font-medium text-foreground">Other online payments</span> (through
+              Razorpay, where enabled) — refunded to your original payment method, typically
+              within 5–7 business days, depending on your bank or payment provider.
             </li>
             <li>
               <span className="font-medium text-foreground">Cash on delivery</span> — refunded as
@@ -129,7 +134,34 @@ export default function RefundsPage() {
         </section>
 
         <section>
-          <h2 className="display text-xl font-semibold">6. Coupons &amp; credits</h2>
+          <h2 className="display text-xl font-semibold">
+            6. Wrong amounts, late payments &amp; UPI disputes
+          </h2>
+          <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+            <li>
+              If you pay a different amount from the one shown, or pay after the payment window
+              has expired, the payment is still recorded and reconciled. Any amount due back to
+              you is refunded to the UPI ID you paid from, as described above.
+            </li>
+            <li>
+              Payments flagged by our risk checks may be held for review. Screenshots are not
+              accepted as proof of payment; we confirm payments against the bank&apos;s credit
+              record.
+            </li>
+            <li>
+              For a UPI transaction problem (for example, money debited but not received), you can
+              also raise a dispute through your UPI app or bank, which follow the NPCI
+              dispute-resolution process (UDIR).
+            </li>
+            <li>
+              We never ask for your UPI PIN and never send UPI &ldquo;collect&rdquo; requests to
+              receive payment. Never share your UPI PIN or OTP with anyone.
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 className="display text-xl font-semibold">7. Coupons &amp; credits</h2>
           <p className="mt-3 text-sm text-muted-foreground">
             Where a discount or coupon was applied, refunds are calculated on the amount you
             actually paid. Promotional credits used on a cancelled order are returned as
@@ -138,7 +170,7 @@ export default function RefundsPage() {
         </section>
 
         <section>
-          <h2 className="display text-xl font-semibold">7. Need help?</h2>
+          <h2 className="display text-xl font-semibold">8. Need help?</h2>
           <p className="mt-3 text-sm text-muted-foreground">
             For any refund or cancellation question, contact{' '}
             <a href="mailto:support@oakandsizzler.in" className="text-primary underline">
