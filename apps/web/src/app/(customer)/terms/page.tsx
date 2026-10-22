@@ -5,7 +5,7 @@ export const metadata = {
   description: `The terms governing your use of the ${brand.name} platform.`
 };
 
-const UPDATED = '15 May 2026';
+const UPDATED = '22 October 2026';
 
 export default function TermsPage() {
   return (
@@ -79,8 +79,33 @@ export default function TermsPage() {
               fee and any other charges, less any discount or coupon applied.
             </li>
             <li>
-              You may pay online through our payment partners or, where offered, by cash on
-              delivery.
+              You may pay by UPI directly to the UPI ID of {brand.name} or the restaurant shown at
+              checkout (by QR code or by opening your UPI app), online through Razorpay where
+              enabled, or, where offered, by cash on delivery.
+            </li>
+            <li>
+              A UPI payment is confirmed when our payment software matches the bank&apos;s credit
+              to your order using the amount, bank reference (UTR) and time. Screenshots are not
+              accepted as proof of payment.
+            </li>
+            <li>
+              Please pay the exact amount shown, within the payment window. If you pay a different
+              amount or pay after the window has expired, the payment is still recorded and
+              reconciled, and any amount due back to you is refunded to the UPI ID you paid from,
+              as set out in our Refund &amp; Cancellation Policy.
+            </li>
+            <li>
+              Payments flagged by our risk checks may be held for review before the order is
+              confirmed.
+            </li>
+            <li>
+              We never ask for your UPI PIN and never send UPI &ldquo;collect&rdquo; requests to
+              receive payment. Never share your UPI PIN or OTP with anyone.
+            </li>
+            <li>
+              Disputes about a UPI transaction (for example, money debited but not received) can
+              be raised through your UPI app or bank, which follow the NPCI dispute-resolution
+              process (UDIR). You can also contact us for help.
             </li>
             <li>
               Coupons and promotional credits are subject to their own terms and may be
