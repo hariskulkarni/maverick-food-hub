@@ -3,7 +3,7 @@
  *
  * Customer-driven status poll for the payment-status page. Mirrors the PhonePe
  * status route but delegates to reconcileYoupiPayment, the single writer that
- * may capture a YouPI payment (status + UTR + exact amount verified). This
+ * may capture a Flavrly PG payment (status + UTR + exact amount verified). This
  * route never marks anything paid itself.
  */
 import { NextRequest } from 'next/server';

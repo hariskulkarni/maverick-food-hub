@@ -19,10 +19,10 @@ const STATUS_CLS: Record<string, string> = {
 
 const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 
-// Flavrly and the self-hosted YouPI gateway run on the same VPS, so the Payment
+// Flavrly and the self-hosted Flavrly PG gateway run on the same VPS, so the Payment
 // Core API is reached over localhost. Pre-fill it so it never has to be typed.
 const DEFAULT_BASE_URL = 'http://127.0.0.1:6100';
-// One-click into the self-hosted YouPI admin hub (where the Merchant ID + webhook
+// One-click into the self-hosted Flavrly PG admin hub (where the Merchant ID + webhook
 // secret live). Override per-deployment with NEXT_PUBLIC_YOUPI_ADMIN_URL.
 const YOUPI_ADMIN_URL = process.env.NEXT_PUBLIC_YOUPI_ADMIN_URL || 'https://pay-admin.flavrly.in';
 
@@ -47,7 +47,7 @@ export function YoupiAdminClient({
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       if (!res.ok) { toast.error((await res.json().catch(() => ({}))).error || 'Save failed.'); return; }
-      toast.success('YouPI connection saved.');
+      toast.success('Flavrly PG connection saved.');
       setF({ baseUrl: DEFAULT_BASE_URL, merchantId: '', webhookSecret: '', dailyLimit: '', maxAmountPaise: '' });
       router.refresh();
     } catch { toast.error('Network error.'); } finally { setSaving(false); }
@@ -86,12 +86,12 @@ export function YoupiAdminClient({
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
             >
-              Open YouPI Admin <ExternalLink className="size-3.5" />
+              Open Flavrly PG Admin <ExternalLink className="size-3.5" />
             </a>
             <ul className="text-muted-foreground space-y-1 leading-relaxed">
               <li><span className="font-medium text-foreground">Gateway base URL</span> — pre-filled to <code className="font-mono">{DEFAULT_BASE_URL}</code> (same-VPS localhost). Leave as-is unless the gateway moved.</li>
-              <li><span className="font-medium text-foreground">Merchant ID</span> — YouPI Admin → <span className="font-medium">Store Settings</span> (the X-Merchant-Id).</li>
-              <li><span className="font-medium text-foreground">Webhook secret</span> — YouPI Admin → <span className="font-medium">Developer &amp; Infrastructure Hub → Webhooks &amp; Secrets</span>. Must match exactly.</li>
+              <li><span className="font-medium text-foreground">Merchant ID</span> — Flavrly PG Admin → <span className="font-medium">Store Settings</span> (the X-Merchant-Id).</li>
+              <li><span className="font-medium text-foreground">Webhook secret</span> — Flavrly PG Admin → <span className="font-medium">Developer &amp; Infrastructure Hub → Webhooks &amp; Secrets</span>. Must match exactly.</li>
             </ul>
           </div>
           {shown.length > 0 && (
@@ -139,7 +139,7 @@ export function YoupiAdminClient({
         <CardContent className="p-4 sm:p-6 space-y-3">
           <h2 className="font-semibold">Requests queue</h2>
           {rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No restaurant has requested YouPI yet.</p>
+            <p className="text-sm text-muted-foreground">No restaurant has requested Flavrly PG yet.</p>
           ) : (
             <ul className="divide-y divide-border">
               {rows.map((r) => (

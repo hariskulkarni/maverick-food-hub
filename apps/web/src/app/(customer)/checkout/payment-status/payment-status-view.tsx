@@ -33,7 +33,7 @@ export function PaymentStatusView() {
   const params = useSearchParams();
   const router = useRouter();
   const orderId = params.get('orderId') ?? '';
-  // YouPI stays PENDING until our server reconciles (status + UTR + amount); the
+  // Flavrly PG stays PENDING until our server reconciles (status + UTR + amount); the
   // browser returning here proves nothing.
   const isYoupi = params.get('provider') === 'youpi';
 
@@ -111,7 +111,7 @@ export function PaymentStatusView() {
       const p = data.payment;
       if (!p?.redirectUrl) throw new Error('The payment gateway did not return a checkout link.');
       if (p.providerName === 'youpi') {
-        window.location.href = p.redirectUrl; // full redirect to YouPI checkout
+        window.location.href = p.redirectUrl; // full redirect to Flavrly PG checkout
         return;
       }
       await openPhonePeCheckout({ tokenUrl: p.redirectUrl, scriptUrl: p.checkoutScriptUrl });

@@ -3,7 +3,7 @@ import { prisma } from '@/server/db';
 import { getConfig } from '@/server/integrations';
 import { YoupiRequest } from './youpi-request';
 
-export const metadata = { title: 'Admin · YouPI UPI (Experimental)' };
+export const metadata = { title: 'Admin · Flavrly PG UPI (Experimental)' };
 export const dynamic = 'force-dynamic';
 
 export default async function YoupiSettingsPage() {

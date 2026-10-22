@@ -23,7 +23,7 @@ describe('createYoupiPayment', () => {
     const headers = init.headers as Record<string, string>;
     expect(headers['X-Merchant-Id']).toBe('mrc_123');
     expect(headers['Idempotency-Key']).toBe('o1');
-    expect(headers.authorization).toBeUndefined(); // YouPI-PG has no Bearer auth
+    expect(headers.authorization).toBeUndefined(); // Flavrly PG has no Bearer auth
     // Amount goes as an INR string, not paise.
     expect(JSON.parse(init.body as string)).toMatchObject({ orderId: 'o1', amount: '123.00', currency: 'INR' });
     expect(init.signal).toBeDefined();

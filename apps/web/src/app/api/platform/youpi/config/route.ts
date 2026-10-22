@@ -1,5 +1,5 @@
 /**
- * Super-admin: shared YouPI connection (platform-level IntegrationCredential,
+ * Super-admin: shared Flavrly PG connection (platform-level IntegrationCredential,
  * restaurantId sentinel `__platform__`). Secrets are encrypted at rest and are
  * NEVER returned — GET/POST respond with the masked summary only.
  */
@@ -16,7 +16,7 @@ const PLATFORM_ID = '__platform__';
 
 const Body = z.object({
   baseUrl: z.string().url().max(500),
-  // YouPI-PG: public merchant UUID (X-Merchant-Id) + merchant key (X-Merchant-Key = webhookSecret).
+  // Flavrly PG: public merchant UUID (X-Merchant-Id) + merchant key (X-Merchant-Key = webhookSecret).
   merchantId: z.string().min(1).max(500),
   webhookSecret: z.string().min(1).max(500),
   dailyLimit: z.number().int().positive().optional(),

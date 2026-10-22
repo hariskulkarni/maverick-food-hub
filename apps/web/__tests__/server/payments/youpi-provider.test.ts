@@ -117,7 +117,7 @@ describe('youpiProvider.createOrder', () => {
       currency: 'INR',
     });
   });
-  it.each([NaN, -5, 0, Infinity])('rejects amount %s without calling YouPI', async (amount) => {
+  it.each([NaN, -5, 0, Infinity])('rejects amount %s without calling Flavrly PG', async (amount) => {
     await expect(youpiProvider(cfg).createOrder({ ...baseArgs, amount })).rejects.toThrow();
     expect(createYoupiPayment).not.toHaveBeenCalled();
     expect(assertUnderCap).not.toHaveBeenCalled();
@@ -158,11 +158,11 @@ describe('paymentProvider selection', () => {
   it('prefer youpi + no config -> throws in prod', async () => {
     wire({ approved: false });
     (process.env as any).NODE_ENV = 'production';
-    await expect(paymentProvider('r1', { prefer: 'youpi' })).rejects.toThrow(/YouPI/);
+    await expect(paymentProvider('r1', { prefer: 'youpi' })).rejects.toThrow(/Flavrly PG/);
   });
   it('prefer youpi + no config -> throws outside prod too (no silent fallback)', async () => {
     wire({ approved: false });
-    await expect(paymentProvider('r1', { prefer: 'youpi' })).rejects.toThrow(/YouPI/);
+    await expect(paymentProvider('r1', { prefer: 'youpi' })).rejects.toThrow(/Flavrly PG/);
   });
   it('no prefer -> never youpi', async () => {
     wire();

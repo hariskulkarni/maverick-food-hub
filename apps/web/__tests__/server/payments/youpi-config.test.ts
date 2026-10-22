@@ -10,7 +10,7 @@ describe('YOUPI provider registry', () => {
 
   it('merchantId is a required public field; webhookSecret is the secret (no apiKey)', () => {
     const f = (n: string) => PROVIDERS.YOUPI.fields.find((x) => x.key === n);
-    expect(f('apiKey')).toBeUndefined(); // YouPI-PG has no Bearer key
+    expect(f('apiKey')).toBeUndefined(); // Flavrly PG has no Bearer key
     expect(f('merchantId')?.required).toBe(true);
     expect(f('merchantId')?.secret).toBeFalsy(); // X-Merchant-Id is a public UUID
     expect(f('webhookSecret')?.secret).toBe(true);

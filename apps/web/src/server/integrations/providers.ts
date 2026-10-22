@@ -527,16 +527,16 @@ const GoogleBusiness: ProviderDef = {
   async test() { return { ok: true, detail: 'Connected via OAuth' }; },
 };
 
-// ─── YouPI UPI (experimental; split platform/restaurant config — NOT in the wizard list) ──
+// ─── Flavrly PG UPI (experimental; split platform/restaurant config — NOT in the wizard list) ──
 const Youpi: ProviderDef = {
   key: 'YOUPI',
-  title: 'YouPI UPI (experimental)',
-  vendor: 'YouPI-PG',
+  title: 'Flavrly PG UPI (experimental)',
+  vendor: 'Flavrly PG',
   description: 'Experimental — self-hosted research gateway, pilot only. Configured via dedicated approval pages, not the generic wizard.',
   docsUrl: 'https://github.com/youpi-pg/YouPI-PG',
   fields: [
     { key: 'baseUrl', label: 'Gateway base URL', type: 'text', required: true, placeholder: 'https://pg.example.com' },
-    // YouPI-PG auth: public X-Merchant-Id (UUID) + X-Merchant-Key (= the webhook secret). No Bearer key.
+    // Flavrly PG auth: public X-Merchant-Id (UUID) + X-Merchant-Key (= the webhook secret). No Bearer key.
     { key: 'merchantId', label: 'Merchant ID', type: 'text', required: true, placeholder: 'X-Merchant-Id (UUID)' },
     { key: 'webhookSecret', label: 'Merchant key / webhook secret', type: 'password', required: true, secret: true },
     { key: 'receivingVpa', label: 'Receiving VPA', type: 'text', required: true, placeholder: 'shop@bank' },

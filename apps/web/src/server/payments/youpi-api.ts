@@ -1,7 +1,7 @@
 /**
- * YouPI-PG HTTP client (Payment Core REST API, default port 6100).
+ * Flavrly PG HTTP client (Payment Core REST API, default port 6100).
  *
- * Verified against the public YouPI-PG spec (openapi.yaml / MERCHANT_INTEGRATION):
+ * Verified against the public Flavrly PG spec (openapi.yaml / MERCHANT_INTEGRATION):
  *
  *   POST {baseUrl}/api/v1/payments
  *     headers: X-Merchant-Id: <merchantId>, Idempotency-Key: <orderId>, content-type: application/json
@@ -12,13 +12,13 @@
  *     headers: X-Merchant-Key: <webhookSecret>   // unlocks the merchant-private view
  *     200:     { paymentId, status, amountPaise, verificationLevel, completedAt, ... }
  *
- * Status (YouPI -> YoupiVerifyStatus), case-insensitive:
+ * Status (Flavrly PG -> YoupiVerifyStatus), case-insensitive:
  *   SUCCESS                               -> CAPTURED
  *   FAILED, CANCELLED, EXPIRED            -> FAILED
  *   INITIATED, ACTIVE, QUEUED, PROCESSING -> PENDING
  *   anything else / unparseable           -> UNKNOWN  (reconcile keeps order PENDING)
  *
- * Auth model: YouPI-PG has NO Bearer API key. `X-Merchant-Id` (public UUID)
+ * Auth model: Flavrly PG has NO Bearer API key. `X-Merchant-Id` (public UUID)
  * creates payments; `X-Merchant-Key` (the merchant webhook secret) reads the
  * private status view and signs webhooks. `utr` is delivered only on the
  * webhook, never on the status response.
@@ -59,7 +59,7 @@ function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
 }
 
-/** amountPaise comes back as a string on some YouPI responses; coerce safely. */
+/** amountPaise comes back as a string on some Flavrly PG responses; coerce safely. */
 function toPaise(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
   return Number.isFinite(n) ? Math.round(n) : null;
@@ -74,7 +74,7 @@ export async function createYoupiPayment(
     redirectUrl?: string;
   },
 ): Promise<{ paymentId: string; checkoutUrl: string }> {
-  // YouPI-PG wants the amount as an INR string with 2 decimals, not paise.
+  // Flavrly PG wants the amount as an INR string with 2 decimals, not paise.
   const amountInr = (args.amountPaise / 100).toFixed(2);
   const customer = args.customer
     ? { name: args.customer.name ?? undefined, phoneNumber: args.customer.phone ?? undefined }
@@ -100,12 +100,12 @@ export async function createYoupiPayment(
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {
-    throw new Error(safeMsg(`YouPI create failed: ${e instanceof Error ? e.message : String(e)}`, cfg.webhookSecret));
+    throw new Error(safeMsg(`Flavrly PG create failed: ${e instanceof Error ? e.message : String(e)}`, cfg.webhookSecret));
   }
   const text = await res.text().catch(() => '');
   // 200 = existing session returned for an idempotent/ongoing request; 201 = created.
   if (!res.ok) {
-    throw new Error(safeMsg(`YouPI create HTTP ${res.status}: ${text}`, cfg.webhookSecret));
+    throw new Error(safeMsg(`Flavrly PG create HTTP ${res.status}: ${text}`, cfg.webhookSecret));
   }
   let data: Record<string, unknown> = {};
   try {
@@ -116,7 +116,7 @@ export async function createYoupiPayment(
   const paymentId = str(data?.paymentId);
   const checkoutUrl = str(data?.checkoutUrl);
   if (!paymentId || !checkoutUrl) {
-    throw new Error(safeMsg(`YouPI create: unexpected response: ${text}`, cfg.webhookSecret));
+    throw new Error(safeMsg(`Flavrly PG create: unexpected response: ${text}`, cfg.webhookSecret));
   }
   return { paymentId, checkoutUrl };
 }
@@ -161,7 +161,7 @@ export async function getYoupiStatus(
     };
   } catch (e) {
     // Fail safe: never throw into the reconcile loop; log with secret masked.
-    console.warn(safeMsg(`YouPI status check failed: ${e instanceof Error ? e.message : String(e)}`, cfg.webhookSecret));
+    console.warn(safeMsg(`Flavrly PG status check failed: ${e instanceof Error ? e.message : String(e)}`, cfg.webhookSecret));
     return { status: 'UNKNOWN' };
   }
 }

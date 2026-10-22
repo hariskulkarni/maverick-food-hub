@@ -46,7 +46,7 @@ describe('reconcileYoupiPayment', () => {
     expect(arg.where.id).toBe('p1');
     expect(arg.where.status.in).toEqual(['PENDING', 'AUTHORIZED', 'FAILED']);
     expect(arg.data.status).toBe('CAPTURED');
-    expect(h.transition).toHaveBeenCalledWith('o1', 'RECEIVED', { note: 'Payment captured (YouPI)' });
+    expect(h.transition).toHaveBeenCalledWith('o1', 'RECEIVED', { note: 'Payment captured (Flavrly PG)' });
   });
 
   it('does not transition when another writer already won (count 0)', async () => {

@@ -1,4 +1,4 @@
-/** Super-admin: YouPI feature-request approvals queue. */
+/** Super-admin: Flavrly PG feature-request approvals queue. */
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
 

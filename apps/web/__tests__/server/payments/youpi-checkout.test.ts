@@ -49,8 +49,8 @@ beforeEach(() => {
   h.paymentProvider.mockResolvedValue({ name: 'youpi', createOrder: h.createOrder });
 });
 
-describe('startOnlinePayment — YouPI rail', () => {
-  it('persists a PENDING youpi Payment with providerRef = YouPI paymentId and returns the checkoutUrl', async () => {
+describe('startOnlinePayment — Flavrly PG rail', () => {
+  it('persists a PENDING youpi Payment with providerRef = Flavrly PG paymentId and returns the checkoutUrl', async () => {
     const s = await startOnlinePayment('o1', { rail: 'youpi' });
 
     expect(h.paymentProvider).toHaveBeenCalledWith('r1', { prefer: 'youpi' });
@@ -80,9 +80,9 @@ describe('startOnlinePayment — YouPI rail', () => {
     }
   });
 
-  it('does not take the YouPI branch when not enabled for the restaurant', async () => {
+  it('does not take the Flavrly PG branch when not enabled for the restaurant', async () => {
     h.youpiEnabled.mockResolvedValue(false);
-    await expect(startOnlinePayment('o1', { rail: 'youpi' })).rejects.toThrow(/YouPI/);
+    await expect(startOnlinePayment('o1', { rail: 'youpi' })).rejects.toThrow(/Flavrly PG/);
     expect(h.paymentProvider).not.toHaveBeenCalled();
     expect(h.db.payment.create).not.toHaveBeenCalled();
   });
@@ -100,7 +100,7 @@ describe('startOnlinePayment — YouPI rail', () => {
   });
 });
 
-describe('YouPI return URL guard', () => {
+describe('Flavrly PG return URL guard', () => {
   it('throws OnlinePaymentError when brand.url is unset', async () => {
     vi.resetModules();
     vi.doMock('@/lib/brand', () => ({ brand: { url: '' } }));

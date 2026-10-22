@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { IntegrationProvider, Prisma, YoupiRequestStatus } from '@prisma/client';
 
-describe('YouPI schema', () => {
+describe('Flavrly PG schema', () => {
   it('adds YOUPI to IntegrationProvider', () => {
     expect(IntegrationProvider.YOUPI).toBe('YOUPI');
   });

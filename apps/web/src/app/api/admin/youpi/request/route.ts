@@ -5,7 +5,7 @@ import { prisma } from '@/server/db';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** Restaurant admin requests the experimental YouPI UPI feature (super-admin approves). */
+/** Restaurant admin requests the experimental Flavrly PG UPI feature (super-admin approves). */
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   let restaurant;
