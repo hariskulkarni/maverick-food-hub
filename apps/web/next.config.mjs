@@ -50,6 +50,16 @@ const nextConfig = {
       catch { return 'https://pay-admin.flavrly.in'; }
     })();
 
+    // The admin hub sits behind Authelia: the first in-frame load 302-redirects
+    // to the Authelia login origin (password + TOTP), so that origin must be a
+    // frame-src child too, or the browser blocks the login screen inside the
+    // iframe. Derived from NEXT_PUBLIC_YOUPI_AUTH_URL; falls back to the pilot
+    // auth subdomain.
+    const youpiAuthOrigin = (() => {
+      try { return new URL(process.env.NEXT_PUBLIC_YOUPI_AUTH_URL || 'https://auth.flavrly.in').origin; }
+      catch { return 'https://auth.flavrly.in'; }
+    })();
+
     // Content-Security-Policy. Pragmatic, allowlist-based: it locks down framing,
     // object/base/form targets and bounds where scripts/styles/images/connections
     // may come from, while explicitly allowing the third parties this app needs —
@@ -76,7 +86,7 @@ const nextConfig = {
       "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com https://*.razorpay.com https://api.phonepe.com https://api-preprod.phonepe.com https://mercury.phonepe.com https://mercury-stg.phonepe.com https://*.phonepe.com https://maps.googleapis.com https://nominatim.openstreetmap.org https://*.tile.openstreetmap.org https://control.msg91.com https://verify.msg91.com https://*.msg91.com https://pass.hostnsoft.com https://*.hostnsoft.com",
       // The PhonePe iframe PayPage renders inside a mercury-hosted frame; UPI
       // intent hand-offs also need the upi:// scheme to survive form-action.
-      "frame-src 'self' https://checkout.razorpay.com https://api.razorpay.com https://mercury.phonepe.com https://mercury-stg.phonepe.com https://*.phonepe.com https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://verify.msg91.com https://*.msg91.com https://pass.hostnsoft.com https://*.hostnsoft.com https://www.google.com " + youpiAdminOrigin,
+      "frame-src 'self' https://checkout.razorpay.com https://api.razorpay.com https://mercury.phonepe.com https://mercury-stg.phonepe.com https://*.phonepe.com https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://verify.msg91.com https://*.msg91.com https://pass.hostnsoft.com https://*.hostnsoft.com https://www.google.com " + youpiAdminOrigin + " " + youpiAuthOrigin,
       // Hero/carousel videos: same-origin uploads (/uploads), blob previews,
       // and pasted external direct-file URLs (CDN/S3) over https.
       "media-src 'self' blob: data: https:",
