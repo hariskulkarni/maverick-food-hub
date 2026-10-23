@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
     // status/amount/utr are deliberately ignored — reconcile re-verifies.
     const payment =
       (gatewayPaymentId
-        ? await prisma.payment.findFirst({ where: { providerName: 'youpi', providerRef: gatewayPaymentId }, select: { id: true } })
+        ? await prisma.payment.findFirst({ where: { providerName: 'youpi', providerRef: gatewayPaymentId }, select: { id: true, providerRef: true } })
         : null) ??
       // Gateway orderId is attempt-specific (orderId-1, orderId-2, ...).
       // In the create→persist race the local Payment.providerRef still holds
