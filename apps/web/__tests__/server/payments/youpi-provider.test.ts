@@ -122,6 +122,12 @@ describe('youpiProvider.createOrder', () => {
     expect(createYoupiPayment).not.toHaveBeenCalled();
     expect(assertUnderCap).not.toHaveBeenCalled();
   });
+  it('uses the distinct gateway merchant order id for each retry attempt', async () => {
+    createYoupiPayment.mockResolvedValue({ paymentId: 'p3', checkoutUrl: 'https://pay.example/p3' });
+    await youpiProvider(cfg).createOrder({ ...baseArgs, merchantOrderId: 'o1-3' });
+    expect(createYoupiPayment.mock.calls[0][1].orderId).toBe('o1-3');
+  });
+
   it('does not create payment when cap throws', async () => {
     assertUnderCap.mockRejectedValue(new Error('cap'));
     await expect(youpiProvider(cfg).createOrder(baseArgs)).rejects.toThrow('cap');
@@ -148,6 +154,22 @@ describe('paymentProvider selection', () => {
   const env = process.env.NODE_ENV;
   afterEach(() => {
     (process.env as any).NODE_ENV = env;
+  });
+
+  it('defaults to disabled for NEW production checkouts without changing reconciliation config', async () => {
+    const prior = process.env.FLAVRLY_PG_NEW_PAYMENTS_ENABLED;
+    try {
+      wire();
+      (process.env as any).NODE_ENV = 'production';
+      delete process.env.FLAVRLY_PG_NEW_PAYMENTS_ENABLED;
+      expect(await youpiEnabledForRestaurant('r1')).toBe(false);
+      await expect(paymentProvider('r1', { prefer: 'youpi' })).rejects.toThrow(/disabled/);
+      // Existing in-flight reconciliation may still fetch the current credentials.
+      expect(await resolveYoupiConfig('r1')).not.toBeNull();
+    } finally {
+      if (prior === undefined) delete process.env.FLAVRLY_PG_NEW_PAYMENTS_ENABLED;
+      else process.env.FLAVRLY_PG_NEW_PAYMENTS_ENABLED = prior;
+    }
   });
 
   it('prefer youpi + config -> youpi provider', async () => {
