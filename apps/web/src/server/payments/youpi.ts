@@ -83,7 +83,9 @@ export function youpiProvider(cfg: YoupiConfig): PaymentProvider {
       await assertUnderCap(args.restaurantId, amountPaise, cfg);
 
       const { paymentId, checkoutUrl } = await createYoupiPayment(cfg, {
-        orderId: args.orderId,
+        // Gateway order identifiers MUST be attempt-unique. A retry of an
+        // expired checkout must not rediscover the previous gateway session.
+        orderId: args.merchantOrderId ?? args.orderId,
         amountPaise,
         customer: args.customer,
         redirectUrl: args.redirectUrl,
