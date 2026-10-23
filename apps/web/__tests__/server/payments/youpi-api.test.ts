@@ -22,11 +22,20 @@ describe('createYoupiPayment', () => {
     expect(init.method).toBe('POST');
     const headers = init.headers as Record<string, string>;
     expect(headers['X-Merchant-Id']).toBe('mrc_123');
+    expect(headers['X-Merchant-Key']).toBe(cfg.webhookSecret);
     expect(headers['Idempotency-Key']).toBe('o1');
     expect(headers.authorization).toBeUndefined(); // Flavrly PG has no Bearer auth
     // Amount goes as an INR string, not paise.
     expect(JSON.parse(init.body as string)).toMatchObject({ orderId: 'o1', amount: '123.00', currency: 'INR' });
     expect(init.signal).toBeDefined();
+  });
+
+  it('uses a separately rotated merchant API key when configured', async () => {
+    const spy = mockFetch(201, { paymentId: 'p1', checkoutUrl: 'https://pay.example/p1' });
+    await createYoupiPayment({ ...cfg, merchantKey: 'dedicated-merchant-key' }, { orderId: 'o1-2', amountPaise: 500 });
+    const [, init] = spy.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)['X-Merchant-Key']).toBe('dedicated-merchant-key');
+    expect((init.headers as Record<string, string>)['Idempotency-Key']).toBe('o1-2');
   });
 
   it('accepts a 200 (existing idempotent session) response', async () => {
