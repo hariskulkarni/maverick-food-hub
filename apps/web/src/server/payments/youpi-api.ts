@@ -31,6 +31,8 @@ export type YoupiConfig = {
   baseUrl: string;
   merchantId: string;
   webhookSecret: string;
+  /** Distinct credential for upstream create API; defaults to the existing merchant key. */
+  merchantKey?: string;
   receivingVpa?: string;
   dailyLimit?: number;
   maxAmountPaise?: number;
@@ -87,6 +89,9 @@ export async function createYoupiPayment(
       headers: {
         'content-type': 'application/json',
         'X-Merchant-Id': cfg.merchantId,
+        // The current upstream rejects non-default merchant create without this.
+        // Server-to-server ONLY: never expose merchant keys to the browser.
+        'X-Merchant-Key': cfg.merchantKey || cfg.webhookSecret,
         // Idempotent on our orderId: a retried create returns the existing session.
         'Idempotency-Key': args.orderId,
       },
