@@ -114,6 +114,9 @@ export interface PlaceOrderInput {
 }
 
 export async function placeOrder(input: PlaceOrderInput) {
+  // Targeted safety correction. Legacy PhonePe/Razorpay and COD flows are
+  // intentionally untouched until their shared lifecycle tests are hardened.
+  const directUpiAwaitingBank = input.paymentRail === 'youpi' && isOnlineMethod(input.paymentMethod);
   const branch = await prisma.branch.findUniqueOrThrow({
     where: { id: input.branchId },
     include: { hours: true } as any,
@@ -546,7 +549,7 @@ export async function placeOrder(input: PlaceOrderInput) {
         branchId: branch.id,
         customerId: input.customerId,
         addressId: address?.id ?? null,
-        status: OrderStatus.RECEIVED,
+        status: directUpiAwaitingBank ? OrderStatus.PAYMENT_PENDING : OrderStatus.RECEIVED,
         subtotal: priced.subtotal as any,
         taxAmount: priced.taxAmount as any,
         deliveryFee: priced.deliveryFee as any,
@@ -567,7 +570,7 @@ export async function placeOrder(input: PlaceOrderInput) {
         reservationDepositApplied: reservationDepositApplied as any,
         freebieRuleId: grantedFreebieRuleId,
         items: { create: itemCreates },
-        statusEvents: { create: [{ status: OrderStatus.RECEIVED, note: 'Placed by customer' }] }
+        statusEvents: { create: [{ status: directUpiAwaitingBank ? OrderStatus.PAYMENT_PENDING : OrderStatus.RECEIVED, note: directUpiAwaitingBank ? 'Awaiting bank-verified Flavrly PG payment' : 'Placed by customer' }] }
       }
     });
     // Mark the reservation redeemed + seated within the same transaction so two
@@ -647,10 +650,14 @@ export async function placeOrder(input: PlaceOrderInput) {
   // parent restaurant's unified board receives orders from every child. The
   // root is the restaurant's parent when it's a child, else itself (so a solo
   // restaurant's group channel is simply its own id — no behaviour change).
-  publish(`branch:${branch.id}:orders`, { kind: 'order:new', orderId: order.id, branchId: branch.id });
-  const groupRootId = branchWithRestaurant?.restaurant?.parentId ?? branch.restaurantId;
-  publish(groupOrderChannel(groupRootId), { kind: 'order:new', orderId: order.id, branchId: branch.id });
-  publish(`order:${order.id}`, { kind: 'status', orderId: order.id, status: 'RECEIVED', at: new Date().toISOString() });
+  // Do not place an unpaid Flavrly PG order on the kitchen/admin work queue.
+  // The server-side verified capture transition will publish RECEIVED later.
+  if (!directUpiAwaitingBank) {
+    publish(`branch:${branch.id}:orders`, { kind: 'order:new', orderId: order.id, branchId: branch.id });
+    const groupRootId = branchWithRestaurant?.restaurant?.parentId ?? branch.restaurantId;
+    publish(groupOrderChannel(groupRootId), { kind: 'order:new', orderId: order.id, branchId: branch.id });
+  }
+  publish(`order:${order.id}`, { kind: 'status', orderId: order.id, status: directUpiAwaitingBank ? 'PAYMENT_PENDING' : 'RECEIVED', at: new Date().toISOString() });
 
   // Audit each applied offer. audit() is best-effort and never throws — we
   // intentionally fire these AFTER the order txn commits so a log failure
@@ -698,7 +705,9 @@ export async function placeOrder(input: PlaceOrderInput) {
       userId: customer.id,
       template: 'order.placed',
       restaurantId: branch.restaurantId,
-      body: `${brand.name}: Order ${order.code} received. We'll start cooking once accepted.`
+      body: directUpiAwaitingBank
+        ? `${brand.name}: Order ${order.code} is awaiting payment verification. Please do not pay again while confirmation is pending.`
+        : `${brand.name}: Order ${order.code} received. We'll start cooking once accepted.`
     }).catch((e) => log.error({ err: (e as Error).message, orderId: order.id }, 'order.placed sms failed'));
   }
 
