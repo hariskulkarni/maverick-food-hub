@@ -19,6 +19,8 @@ const Body = z.object({
   // Flavrly PG: public merchant UUID (X-Merchant-Id) + merchant key (X-Merchant-Key = webhookSecret).
   merchantId: z.string().min(1).max(500),
   webhookSecret: z.string().min(1).max(500),
+  // Optional dedicated upstream merchant creation API key (never sent to browser).
+  merchantKey: z.string().min(1).max(500).optional(),
   dailyLimit: z.number().int().positive().optional(),
   maxAmountPaise: z.number().int().positive().optional(),
 });
@@ -62,6 +64,7 @@ export async function POST(req: NextRequest) {
     merchantId: d.merchantId,
     webhookSecret: d.webhookSecret,
   };
+  if (d.merchantKey) config.merchantKey = d.merchantKey;
   if (d.dailyLimit !== undefined) config.dailyLimit = String(d.dailyLimit);
   if (d.maxAmountPaise !== undefined) config.maxAmountPaise = String(d.maxAmountPaise);
 
