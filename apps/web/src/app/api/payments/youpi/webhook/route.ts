@@ -122,13 +122,29 @@ export async function POST(req: NextRequest) {
       (gatewayPaymentId
         ? await prisma.payment.findFirst({ where: { providerName: 'youpi', providerRef: gatewayPaymentId }, select: { id: true } })
         : null) ??
+      // Gateway orderId is attempt-specific (orderId-1, orderId-2, ...).
+      // In the create→persist race the local Payment.providerRef still holds
+      // that key even if the gateway paymentId has not yet been written.
       (gatewayOrderId
-        ? await prisma.payment.findFirst({ where: { providerName: 'youpi', orderId: gatewayOrderId }, orderBy: { createdAt: 'desc' }, select: { id: true } })
+        ? await prisma.payment.findFirst({ where: { providerName: 'youpi', providerRef: gatewayOrderId }, orderBy: { createdAt: 'desc' }, select: { id: true, providerRef: true } })
+        : null) ??
+      // Legacy integration sent the bare internal orderId. Keep read support
+      // for already-created payments; do not regress their webhook processing.
+      (gatewayOrderId
+        ? await prisma.payment.findFirst({ where: { providerName: 'youpi', orderId: gatewayOrderId }, orderBy: { createdAt: 'desc' }, select: { id: true, providerRef: true } })
         : null);
 
     if (!payment) {
       log.warn({ deliveryId }, 'youpi.webhook.no_matching_payment');
     } else {
+      if (gatewayOrderId && gatewayPaymentId && payment.providerRef === gatewayOrderId) {
+        // Resolve the create→local-persist race using the authenticated webhook.
+        // Do not modify already-linked references from older sessions.
+        await prisma.payment.updateMany({
+          where: { id: payment.id, providerName: 'youpi', providerRef: gatewayOrderId, status: 'PENDING' },
+          data: { providerRef: gatewayPaymentId },
+        });
+      }
       await reconcileYoupiPayment(payment.id);
     }
     await prisma.paymentWebhookEvent.update({
