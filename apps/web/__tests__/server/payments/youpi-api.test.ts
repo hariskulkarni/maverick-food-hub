@@ -57,6 +57,25 @@ describe('createYoupiPayment', () => {
     }
   });
 
+  it('fails closed when a checkout is bound to the wrong receiving account', async () => {
+    const prior = process.env.FLAVRLY_PG_CHECKOUT_ORIGIN;
+    process.env.FLAVRLY_PG_CHECKOUT_ORIGIN = 'https://pay.flavrly.in';
+    try {
+      vi.spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response(JSON.stringify({ paymentId: 'p1', checkoutUrl: 'https://pay.flavrly.in/checkout/p1' }), { status: 201 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          orderId: 'o1', amountPaise: '50000', currency: 'INR',
+          metadata: { receivingAccountSnapshot: { upiId: 'different@bank' } },
+        }), { status: 200 }));
+      await expect(createYoupiPayment({ ...cfg, receivingVpa: 'right@bank', requireReceiverMatch: true }, {
+        orderId: 'o1', amountPaise: 50000,
+      })).rejects.toThrow(/receiver/);
+    } finally {
+      if (prior === undefined) delete process.env.FLAVRLY_PG_CHECKOUT_ORIGIN;
+      else process.env.FLAVRLY_PG_CHECKOUT_ORIGIN = prior;
+    }
+  });
+
   it('accepts a 200 (existing idempotent session) response', async () => {
     mockFetch(200, { paymentId: 'p2', checkoutUrl: 'http://pay/p2' });
     expect(await createYoupiPayment(cfg, { orderId: 'o', amountPaise: 1 })).toEqual({
