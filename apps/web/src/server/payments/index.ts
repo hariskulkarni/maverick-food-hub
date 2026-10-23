@@ -164,6 +164,15 @@ export async function resolveGatewayKey(restaurantId?: string | null): Promise<G
  *   2. Env-configured gateway (PAYMENT_PROVIDER).
  *   3. Mock (auto-confirms, dev only).
  */
+/**
+ * Safety switch affects NEW Flavrly PG payments only. Existing webhook and
+ * reconciliation paths deliberately do not consult this switch, so emergency
+ * disablement never abandons funds already sent by customers.
+ */
+export function youpiNewPaymentsEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production' || process.env.FLAVRLY_PG_NEW_PAYMENTS_ENABLED === 'true';
+}
+
 export async function paymentProvider(
   restaurantId?: string | null,
   opts?: { prefer?: 'youpi' },
@@ -171,6 +180,9 @@ export async function paymentProvider(
   // Flavrly PG is opt-in per call. An explicit Flavrly PG request never falls back to
   // another gateway: if it is not APPROVED/configured we fail loud.
   if (opts?.prefer === 'youpi') {
+    if (!youpiNewPaymentsEnabled()) {
+      throw new Error('Flavrly PG new checkout is disabled (FLAVRLY_PG_NEW_PAYMENTS_ENABLED is not true)');
+    }
     const ycfg = await resolveYoupiConfig(restaurantId);
     if (ycfg) return youpiProvider(ycfg);
     throw new Error(
@@ -217,7 +229,7 @@ export async function paymentProvider(
 
 /** Whether to offer Flavrly PG at checkout: APPROVED + platform connection + restaurant VPA. */
 export async function youpiEnabledForRestaurant(restaurantId?: string | null): Promise<boolean> {
-  return !!(await resolveYoupiConfig(restaurantId));
+  return youpiNewPaymentsEnabled() && !!(await resolveYoupiConfig(restaurantId));
 }
 
 /** True when a stored `Payment.providerName` denotes the PhonePe rail. */
