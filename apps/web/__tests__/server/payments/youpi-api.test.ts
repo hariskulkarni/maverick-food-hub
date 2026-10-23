@@ -38,6 +38,25 @@ describe('createYoupiPayment', () => {
     expect((init.headers as Record<string, string>)['Idempotency-Key']).toBe('o1-2');
   });
 
+  it('requires an exact private receiver snapshot before returning a production checkout', async () => {
+    const prev = process.env.FLAVRLY_PG_CHECKOUT_ORIGIN;
+    process.env.FLAVRLY_PG_CHECKOUT_ORIGIN = 'https://pay.flavrly.in';
+    try {
+      vi.spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response(JSON.stringify({ paymentId: 'p1', checkoutUrl: 'https://pay.flavrly.in/checkout/p1' }), { status: 201 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          orderId: 'o1', amountPaise: '50000', currency: 'INR',
+          metadata: { receivingAccountSnapshot: { upiId: 'right@bank' } },
+        }), { status: 200 }));
+      expect(await createYoupiPayment({ ...cfg, receivingVpa: 'right@bank', requireReceiverMatch: true }, {
+        orderId: 'o1', amountPaise: 50000,
+      })).toMatchObject({ paymentId: 'p1' });
+    } finally {
+      if (prev === undefined) delete process.env.FLAVRLY_PG_CHECKOUT_ORIGIN;
+      else process.env.FLAVRLY_PG_CHECKOUT_ORIGIN = prev;
+    }
+  });
+
   it('accepts a 200 (existing idempotent session) response', async () => {
     mockFetch(200, { paymentId: 'p2', checkoutUrl: 'http://pay/p2' });
     expect(await createYoupiPayment(cfg, { orderId: 'o', amountPaise: 1 })).toEqual({
