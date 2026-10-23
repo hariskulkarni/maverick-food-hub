@@ -52,6 +52,10 @@ export async function resolveYoupiConfig(restaurantId?: string | null): Promise<
       webhookSecret: platform.webhookSecret,
       ...(platform.merchantKey ? { merchantKey: platform.merchantKey } : {}),
       receivingVpa: rest.receivingVpa,
+      // Only newly created production payment sessions call the strict
+      // receiver readback in createYoupiPayment(); reconciling older sessions
+      // remains possible even while new checkouts are disabled.
+      ...(process.env.NODE_ENV === 'production' ? { requireReceiverMatch: true } : {}),
       // Caps only tighten: a restaurant may lower, never raise, platform limits.
       dailyLimit: Math.min(num(platform.dailyLimit) ?? DEFAULT_DAILY_LIMIT, num(rest.dailyLimit) ?? Infinity),
       maxAmountPaise: Math.min(
