@@ -13,6 +13,7 @@ import { notify } from './notifications';
 import { genDeliveryOtp, genOrderCode, STATUS_LABELS } from '@/lib/utils';
 import { pricing, type OfferReward } from './pricing';
 import { isOnlineMethod, startOnlinePayment } from './payments/online';
+import { isDirectUpiPrepayment } from './payments/youpi-order-policy';
 import { isCategoryAvailableNow } from './category-availability';
 import { log } from './log';
 import { brand } from '@/lib/brand';
@@ -116,7 +117,7 @@ export interface PlaceOrderInput {
 export async function placeOrder(input: PlaceOrderInput) {
   // Targeted safety correction. Legacy PhonePe/Razorpay and COD flows are
   // intentionally untouched until their shared lifecycle tests are hardened.
-  const directUpiAwaitingBank = input.paymentRail === 'youpi' && isOnlineMethod(input.paymentMethod);
+  const directUpiAwaitingBank = isDirectUpiPrepayment(input.paymentMethod, input.paymentRail);
   const branch = await prisma.branch.findUniqueOrThrow({
     where: { id: input.branchId },
     include: { hours: true } as any,
