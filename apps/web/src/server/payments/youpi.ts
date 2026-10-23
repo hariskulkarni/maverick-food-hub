@@ -50,6 +50,7 @@ export async function resolveYoupiConfig(restaurantId?: string | null): Promise<
       baseUrl: platform.baseUrl,
       merchantId: platform.merchantId,
       webhookSecret: platform.webhookSecret,
+      ...(platform.merchantKey ? { merchantKey: platform.merchantKey } : {}),
       receivingVpa: rest.receivingVpa,
       // Caps only tighten: a restaurant may lower, never raise, platform limits.
       dailyLimit: Math.min(num(platform.dailyLimit) ?? DEFAULT_DAILY_LIMIT, num(rest.dailyLimit) ?? Infinity),
