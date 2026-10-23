@@ -139,10 +139,10 @@ export function PaymentStatusView() {
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {isYoupi
-                ? 'We’re waiting for your bank to confirm the UPI payment. Your order is not confirmed until then — this can take a minute.'
+                ? 'We are checking your UPI transfer. A bank alert is not final settlement proof, so your order remains pending until it is independently reconciled.'
                 : 'This usually takes a few seconds. If you paid by UPI collect, approve the request in your UPI app.'}
             </p>
-            <p className="mt-4 text-xs text-muted-foreground">Please don’t close this page.</p>
+            <p className="mt-4 text-xs text-muted-foreground">{isYoupi ? "You can return to your order later. If the amount was debited, please do not pay again until the first payment has been checked." : "Please don’t close this page."}</p>
           </>
         )}
 
@@ -162,13 +162,16 @@ export function PaymentStatusView() {
             <h1 className="mt-4 text-lg font-semibold">Payment didn’t go through</h1>
             <p className="mt-2 text-sm text-muted-foreground">{error}</p>
             <p className="mt-2 text-xs text-muted-foreground">
-              You haven’t been charged. If money did leave your account, it is auto-reversed by your bank — usually
-              within 3–5 working days.
+              {isYoupi
+                ? 'A failed checkout does not prove that no bank debit occurred. If you paid, contact support with your UPI reference (UTR/RRN). Do not pay again until the first transfer has been checked.'
+                : 'Please check your bank statement before trying again. If you were debited, contact your payment provider or our support team.'}
             </p>
             <div className="mt-6 grid gap-2">
-              <Button onClick={retry} disabled={retrying}>
-                {retrying ? 'Starting…' : 'Try payment again'}
-              </Button>
+              {!isYoupi && (
+                <Button onClick={retry} disabled={retrying}>
+                  {retrying ? 'Starting…' : 'Try payment again'}
+                </Button>
+              )}
               <Button variant="outline" asChild>
                 <Link href={`/orders/${orderId}`}>View order</Link>
               </Button>
