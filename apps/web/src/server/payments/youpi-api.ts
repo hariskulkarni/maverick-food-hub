@@ -36,6 +36,8 @@ export type YoupiConfig = {
   receivingVpa?: string;
   dailyLimit?: number;
   maxAmountPaise?: number;
+  /** Fail closed on the gateway's actual bound bank receiving account before exposing checkout. */
+  requireReceiverMatch?: boolean;
 };
 
 export type YoupiVerifyStatus = 'CAPTURED' | 'PENDING' | 'FAILED' | 'UNKNOWN';
@@ -122,6 +124,44 @@ export async function createYoupiPayment(
   const checkoutUrl = str(data?.checkoutUrl);
   if (!paymentId || !checkoutUrl) {
     throw new Error(safeMsg(`Flavrly PG create: unexpected response: ${text}`, cfg.webhookSecret));
+  }
+  if (cfg.requireReceiverMatch) {
+    // Upstream chooses the receiving account by merchantId, not by the
+    // 'receivingVpa' in Flavrly. Never expose a payable checkout URL unless
+    // the private session's immutable receiver snapshot agrees.
+    if (!cfg.receivingVpa) throw new Error('Flavrly PG: missing verified receiving UPI ID');
+    const expectedOrigin = process.env.FLAVRLY_PG_CHECKOUT_ORIGIN;
+    const checkout = new URL(checkoutUrl);
+    if (!expectedOrigin || checkout.protocol !== 'https:' || checkout.origin !== new URL(expectedOrigin).origin) {
+      throw new Error('Flavrly PG: checkout origin is not allowlisted');
+    }
+    let actual: Record<string, unknown>;
+    try {
+      const probe = await fetch(url(cfg, `/api/v1/payments/${encodeURIComponent(paymentId)}`), {
+        method: 'GET',
+        headers: { 'X-Merchant-Key': cfg.merchantKey || cfg.webhookSecret },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!probe.ok) throw new Error(`private status HTTP ${probe.status}`);
+      actual = (await probe.json()) as Record<string, unknown>;
+    } catch {
+      throw new Error('Flavrly PG: cannot independently read back receiving account');
+    }
+    const metadata = actual.metadata as Record<string, unknown> | null;
+    const receiver = metadata?.receivingAccountSnapshot as Record<string, unknown> | undefined;
+    const actualVpa = typeof receiver?.upiId === 'string' ? receiver.upiId.trim().toLowerCase() : '';
+    const actualAmount = toPaise(actual.amountPaise);
+    if (
+      !actualVpa ||
+      actualVpa !== cfg.receivingVpa.trim().toLowerCase() ||
+      actual.orderId !== args.orderId ||
+      actual.currency !== 'INR' ||
+      actualAmount !== args.amountPaise
+    ) {
+      // A gateway session may already exist but must never be returned to the
+      // buyer when bank routing is unknown/mismatched. Operator review required.
+      throw new Error('Flavrly PG: gateway receiver, amount, or order identity mismatch');
+    }
   }
   return { paymentId, checkoutUrl };
 }
