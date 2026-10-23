@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   evCreate: vi.fn(),
   evUpdate: vi.fn(),
   payFind: vi.fn(),
+  payUpdate: vi.fn(),
 }));
 vi.mock('@/server/integrations', () => ({ getConfig: h.getConfig }));
 vi.mock('@/server/payments/youpi-reconcile', () => ({ reconcileYoupiPayment: h.reconcile }));
@@ -15,7 +16,7 @@ vi.mock('@/server/log', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.
 vi.mock('@/server/db', () => ({
   prisma: {
     paymentWebhookEvent: { findUnique: h.evFind, create: h.evCreate, update: h.evUpdate },
-    payment: { findFirst: h.payFind },
+    payment: { findFirst: h.payFind, updateMany: h.payUpdate },
   },
 }));
 
@@ -41,6 +42,7 @@ beforeEach(() => {
   h.evCreate.mockResolvedValue({ id: 'ev1' });
   h.evUpdate.mockResolvedValue({});
   h.payFind.mockResolvedValue({ id: 'pay_internal', orderId: 'ord_1' });
+  h.payUpdate.mockResolvedValue({ count: 1 });
   h.reconcile.mockResolvedValue({ captured: true });
 });
 
@@ -127,6 +129,23 @@ describe('POST /api/payments/youpi/webhook', () => {
     const res = await POST(req());
     expect(res.status).toBe(200);
     expect(h.reconcile).not.toHaveBeenCalled();
+  });
+
+  it('recovers a signed webhook received before gateway paymentId was persisted', async () => {
+    const attemptBody = JSON.stringify({
+      event: 'SUCCESS', paymentId: 'yp_3', orderId: 'ord_1-2',
+      amountPaise: 100, utr: '123456789012',
+    });
+    h.payFind.mockImplementation(async (opts: any) => opts.where?.providerRef === 'ord_1-2'
+      ? { id: 'pay_internal', providerRef: 'ord_1-2', orderId: 'ord_1' }
+      : null);
+    const res = await POST(req(attemptBody, { id: 'fresh-2' }));
+    expect(res.status).toBe(200);
+    expect(h.payUpdate).toHaveBeenCalledWith({
+      where: { id: 'pay_internal', providerName: 'youpi', providerRef: 'ord_1-2', status: 'PENDING' },
+      data: { providerRef: 'yp_3' },
+    });
+    expect(h.reconcile).toHaveBeenCalledWith('pay_internal');
   });
 
   it('unknown payment: 200, no reconcile', async () => {
