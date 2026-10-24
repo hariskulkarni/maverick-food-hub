@@ -19,6 +19,7 @@ import { inboxMetrics, redactOldWebhookPayloads, runInbox } from '@/server/pg/in
 import { outboxMetrics, runOutbox } from '@/server/pg/outbox';
 import { withJobLease } from '@/server/pg/job-lease';
 import { expireStaleAttempts } from '@/server/pg/attempts';
+import { retryUnmatchedCredits } from '@/server/pg/reconcile-engine';
 import { runYoupiReconcileSweep } from '@/server/jobs/youpi-reconcile-sweep';
 
 export const runtime = 'nodejs';
@@ -55,6 +56,8 @@ export async function POST(req: NextRequest) {
   const outbox = await stage('outbox', () => runOutbox());
   // Unknown-outcome resolution + expiry of never-paid sessions (never expires OBSERVED/REVIEW_REQUIRED).
   const expiry = await stage('expiry', () => expireStaleAttempts());
+  // Re-offer UNMATCHED credits whose reference now matches an observed UTR (crash/race recovery).
+  const credits = await stage('credits', () => retryUnmatchedCredits());
   const retention = await stage('retention', () => redactOldWebhookPayloads());
   // The sweep takes its own 'youpi-reconcile-sweep' lease (shared with the legacy cron route).
   let sweep: Record<string, unknown>;
@@ -83,6 +86,6 @@ export async function POST(req: NextRequest) {
     log.error({ err: (e as Error).message }, 'pg.worker.metrics_failed');
   }
 
-  return Response.json({ ok: true, inbox, outbox, expiry, retention, sweep, metrics, at: new Date().toISOString() });
+  return Response.json({ ok: true, inbox, outbox, expiry, credits, retention, sweep, metrics, at: new Date().toISOString() });
 }
 
