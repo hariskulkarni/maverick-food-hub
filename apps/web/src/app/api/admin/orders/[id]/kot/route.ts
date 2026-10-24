@@ -9,6 +9,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if ('error' in scope) return scope.error;
   const o = await prisma.order.findFirst({ where: orderScopeWhere(id, scope.scopeRestaurantId), include: { items: true, branch: true } });
   if (!o) return Response.json({ error: 'Order not found.', reason: 'not_found' }, { status: 404 });
+  // An unpaid prepaid order must not reach the kitchen, including via a printed ticket.
+  if (o.status === 'PAYMENT_PENDING' || o.status === 'PAYMENT_FAILED') {
+    return Response.json({ error: 'Order is awaiting payment.', reason: 'awaiting_payment' }, { status: 409 });
+  }
   // Plain HTML KOT, auto-print on load
   const rows = o.items.map((i) => `<tr><td>${i.quantity}</td><td>${escape(i.name)}${i.notes ? `<div style="font-size:12px;color:#555">${escape(i.notes)}</div>` : ''}</td></tr>`).join('');
   const html = `<!doctype html>

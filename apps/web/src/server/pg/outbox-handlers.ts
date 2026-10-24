@@ -17,4 +17,11 @@ export interface OutboxHandlerContext {
 
 export type OutboxHandler = (payload: unknown, ctx: OutboxHandlerContext) => Promise<void>;
 
-export const outboxHandlers: Record<string, OutboxHandler> = {};
+import { handleOrderRelease, type OrderReleasePayload } from './fulfillment';
+
+export const outboxHandlers: Record<string, OutboxHandler> = {
+  // LATE_PAYMENT is a definitive outcome (exception recorded), not a retryable error.
+  ORDER_RELEASE: async (payload) => {
+    await handleOrderRelease(payload as OrderReleasePayload);
+  },
+};

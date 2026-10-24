@@ -12,6 +12,7 @@
  * (same as /api/platform/jobs/youpi-reconcile/run).
  */
 import { NextRequest } from 'next/server';
+import { timingSafeEqual } from 'node:crypto';
 import { auth } from '@/server/auth';
 import { log } from '@/server/log';
 import { inboxMetrics, runInbox } from '@/server/pg/inbox';
@@ -34,12 +35,18 @@ async function stage<T>(name: string, fn: () => Promise<T>) {
   }
 }
 
+function safeEqual(a: string, b: string): boolean {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+
 export async function POST(req: NextRequest) {
   const internalSecret = process.env.INTERNAL_CRON_SECRET;
   const headerSecret = req.headers.get('x-internal-secret');
   const session = await auth();
   const allowed =
-    (internalSecret && headerSecret === internalSecret) ||
+    (internalSecret && headerSecret && safeEqual(headerSecret, internalSecret)) ||
     session?.user?.role === 'SUPER_ADMIN';
   if (!allowed) return new Response('Forbidden', { status: 403 });
 
