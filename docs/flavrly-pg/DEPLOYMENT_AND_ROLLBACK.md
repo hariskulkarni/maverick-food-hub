@@ -76,6 +76,22 @@ curl -fsS http://127.0.0.1:3000/api/system/health
 
 Then install or refresh the cron (§6), and confirm the jobs log shows `pg.worker.metrics` lines within 2 minutes.
 
+### 3.1 GitHub deploy secrets (T-24)
+
+`.github/workflows/deploy.yml` needs `VPS_SSH_KEY`, `VPS_USER`, `VPS_HOST` and, since pg/ops-r2, **`VPS_KNOWN_HOSTS`**.
+The job **fails** in "Configure SSH" if `VPS_KNOWN_HOSTS` is missing, and SSH runs with `StrictHostKeyChecking=yes`
+(no `ssh-keyscan` trust-on-first-use). **Owner action before the next merge to `main`:** add the secret, or the
+automatic deploy stops at that step.
+
+1. On the VPS console: `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` and note the fingerprint.
+2. From your machine: `ssh-keyscan -t ed25519 <VPS_HOST> > vps_known_hosts`, then `ssh-keygen -lf vps_known_hosts`. The fingerprints must match.
+   The host field must be the exact value of the `VPS_HOST` secret (IP or name).
+3. `gh secret set VPS_KNOWN_HOSTS < vps_known_hosts` (one or more `known_hosts` lines).
+4. Update the secret after any host key rotation on the VPS.
+
+Workflow hardening in the same change: top-level `permissions: contents: read` in `deploy.yml` (and `ci.yml`), and
+every action in `ci.yml` is pinned to a full commit SHA with a version comment (`deploy.yml` uses no actions).
+
 ## 4. Rollback
 
 | What | How | Safe because |
