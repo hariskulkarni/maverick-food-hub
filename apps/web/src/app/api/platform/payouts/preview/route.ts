@@ -29,7 +29,7 @@ const Scenario = z.object({
 });
 
 const Body = z.object({
-  rule: z.record(z.any()),
+  rule: z.record(z.string(), z.any()),
   scenarios: z.array(Scenario).min(1).max(10)
 });
 
