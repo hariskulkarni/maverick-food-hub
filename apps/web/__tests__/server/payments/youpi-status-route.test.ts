@@ -38,9 +38,9 @@ beforeEach(() => {
 });
 
 describe('GET /api/payments/youpi/status tenant scoping', () => {
-  it('non-owner CUSTOMER -> 403 and no attempt data read', async () => {
+  it('non-owner CUSTOMER -> 404 (uniform) and no attempt data read', async () => {
     h.auth.mockResolvedValue({ user: { id: 'other', role: 'CUSTOMER' } });
-    expect((await call()).status).toBe(403);
+    expect((await call()).status).toBe(404);
     expect(h.canAccess).not.toHaveBeenCalled();
     expect(h.attempts).not.toHaveBeenCalled();
   });
@@ -50,10 +50,10 @@ describe('GET /api/payments/youpi/status tenant scoping', () => {
     expect((await call()).status).toBe(200);
   });
 
-  it('admin who does NOT manage the order restaurant -> 403', async () => {
+  it('admin who does NOT manage the order restaurant -> 404 (uniform)', async () => {
     h.auth.mockResolvedValue({ user: { id: 'adm1', role: 'ADMIN' } });
     h.canAccess.mockResolvedValue(false);
-    expect((await call()).status).toBe(403);
+    expect((await call()).status).toBe(404);
     expect(h.canAccess).toHaveBeenCalledWith('adm1', 'r1');
   });
 

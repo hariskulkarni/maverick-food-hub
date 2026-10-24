@@ -77,7 +77,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const message = (err as Error).message || 'Failed to place order';
-    log.error({ err: message, body, stack: (err as Error).stack }, 'placeOrder failed');
+    // Ids only: the request body carries customer address/phone (PII).
+    log.error({ err: message, branchId: (body as { branchId?: unknown } | null)?.branchId ?? null, stack: (err as Error).stack }, 'placeOrder failed');
     return Response.json({ error: 'Failed to place order', detail: message }, { status: 500 });
   }
 }

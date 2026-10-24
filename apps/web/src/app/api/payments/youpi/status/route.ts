@@ -45,10 +45,10 @@ export async function GET(req: NextRequest) {
   });
   if (!order) return new Response('Not found', { status: 404 });
   if (session.user.role === 'CUSTOMER') {
-    if (order.customerId !== session.user.id) return new Response('Forbidden', { status: 403 });
+    if (order.customerId !== session.user.id) return new Response('Not found', { status: 404 }); // uniform: no order-existence oracle
   } else if (session.user.role !== 'SUPER_ADMIN') {
     const ok = await userCanAccessRestaurant(session.user.id, order.branch.restaurantId);
-    if (!ok) return new Response('Forbidden', { status: 403 });
+    if (!ok) return new Response('Not found', { status: 404 }); // uniform: no order-existence oracle
   }
 
   const attempts = await prisma.pgPaymentAttempt.findMany({
