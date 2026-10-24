@@ -1,4 +1,4 @@
-# Flavrly PG — test evidence (DRAFT, Agent H independent QA; lead finalizes)
+# Flavrly PG — test evidence
 
 Date: 2026-10-24. Code under test: `pg/lead` @ `b59f9a2` (`pg/h-qa` = that + H tests; includes
 Agents A, B, C, D, E, F, G).
@@ -69,3 +69,28 @@ Fixed during this run: H-07 (second session while an attempt is OBSERVED/CREATE_
 - **Real gateway / real bank:** none. Gateway is a stub reproducing the documented contract
   (`docs/flavrly-pg/UPSTREAM_CONTRACT.md`); no authorized bank feed exists (contract D4).
 - **Fork paise offset end-to-end through the webhook route:** covered at engine level by `lead-paise-offset.test.ts`, not through a signed Standard-Webhooks body in H tests.
+
+
+## Final integrated gate (lead)
+
+Branch `pg/lead` @ `cc9fef2`, lead machine (macOS, Node v20.20.2, Postgres 16.15 on :55432, fresh DB per run).
+Command: `~/flavrly-pg-evidence/bin/gate.sh` (logs `~/flavrly-pg-evidence/2026-10-24/gate-integ2/`).
+
+| Step | Command | Result |
+|---|---|---|
+| Prisma client / schema | `prisma generate`, `prisma validate` | exit 0 / exit 0 |
+| Migrations from empty | `prisma migrate deploy` | exit 0 (17 migrations) |
+| Drift | `prisma migrate diff --from-migrations … --to-schema-datamodel … --exit-code` | exit 0 (no drift) |
+| Typecheck | `npm run typecheck` | exit 0 |
+| Lint | `npm run lint` | exit 0 (pre-existing warnings only) |
+| Responsive guardrail | `npm run check:responsive` | exit 0 |
+| Unit/route tests | `npm run test:ci` | 151 files, **1542 passed**, 0 failed |
+| Real-Postgres tests | `npm run test:db` | 18 files, **170 passed**, 0 failed |
+| Production build | `npm run build` | exit 0 |
+
+Baseline before this work (PR #29 head `eebd11f`): 137 files / 1304 unit tests passed, no DB test suite.
+
+Defects found by independent QA (H-01…H-10, H-07) were each reproduced by a failing test first; all now pass on `cc9fef2`.
+Not covered by automation: browser rendering of the new admin/platform pages (Playwright not run — see §gaps),
+Redis outage, a real gateway/bank feed (external blocker), real SIGKILL of the app (simulated via lease expiry here;
+see STAGING_UAT_REPORT.md for process-level drills).
