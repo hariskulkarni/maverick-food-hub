@@ -9,6 +9,7 @@ import { prisma } from '@/server/db';
 import { saveConfig } from '@/server/integrations';
 import { audit } from '@/server/audit';
 import { requireSuperAdmin } from '@/server/tenancy';
+import { validateGatewayBaseUrl } from '@/server/pg/security';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,8 +60,11 @@ export async function POST(req: NextRequest) {
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'Invalid body', issues: parsed.error.issues.map((i) => i.path.join('.')) }, { status: 400 });
   const d = parsed.data;
+  // SSRF guard: https public host (or explicitly allowed loopback); never echoes the URL back.
+  const base = await validateGatewayBaseUrl(d.baseUrl);
+  if (!base.ok) return Response.json({ error: base.error, issues: ['baseUrl'] }, { status: 400 });
   const config: Record<string, string> = {
-    baseUrl: d.baseUrl.replace(/\/+$/, ''),
+    baseUrl: base.url,
     merchantId: d.merchantId,
     webhookSecret: d.webhookSecret,
   };
