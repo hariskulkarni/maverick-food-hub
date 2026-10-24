@@ -101,10 +101,10 @@ describe('H attempts: one payable session per order, CREATE_UNKNOWN blocks', () 
     expect(a.gatewayPaymentId).toBe(s.gatewayPaymentId);
   });
 
-  it('pending-session cap per receiving account holds under 8 parallel starts from different customers', async () => {
+  it('pending-session cap per receiving account holds under 30 parallel starts from different customers', async () => {
     const U = await makeTenant();
     const orders = [];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 30; i++) {
       const c = await prisma.user.create({ data: { email: `c${i}-${uid()}@example.test`, role: 'CUSTOMER' } });
       const o = await prisma.order.create({
         data: { code: `HC-${uid()}`, branchId: U.branchId, customerId: c.id, status: 'PAYMENT_PENDING', subtotal: '100.00', total: '100.00', paymentMethod: 'RAZORPAY' },
@@ -113,7 +113,7 @@ describe('H attempts: one payable session per order, CREATE_UNKNOWN blocks', () 
     }
     const results = await Promise.allSettled(orders.map(({ o, c }) => start(U, o.id, 10000, c.id)));
     const created = results.filter((r) => r.status === 'fulfilled').length;
-    expect(created).toBe(5); // DEFAULT_MAX_PENDING_PER_ACCOUNT
+    expect(created).toBe(15); // DEFAULT_MAX_PENDING_PER_ACCOUNT (raised from 5; stays below the 20/day cap so it binds)
     for (const r of results) if (r.status === 'rejected') expect((r.reason as { code?: string }).code).toBe('PENDING_CAP');
   });
 });
