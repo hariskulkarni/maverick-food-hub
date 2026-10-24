@@ -107,3 +107,41 @@ Severity reflects impact on money or tenant isolation. "Owner" is from the contr
 - `FLAVRLY_PG_NEW_PAYMENTS_ENABLED` defaults off in production (`src/server/payments/index.ts:172-185`).
 - Global API rate limit in middleware.
 - gitleaks over full history in CI.
+
+## Resolution status after integration (lead, 2026-10-24, branch `pg/lead`)
+
+The table above is Agent G's review of the pre-integration code. Status on the integrated branch:
+
+| ID | Status | Evidence |
+|---|---|---|
+| T-01 | FIXED | Gateway SUCCESS maps to `OBSERVED` (`youpi-api.ts` mapStatus); `Payment.CAPTURED` written only in `allocateBankCredit` (`pg/reconcile-engine.ts`); tests `tests/db/youpi-reconcile.test.ts`, `tests/db/h-adversarial.test.ts` |
+| T-02 | FIXED | Row locks + partial unique indexes (migration `20261024000100_flavrly_pg_financial_layer`); 20-way concurrency test `tests/db/reconcile-engine.test.ts` |
+| T-03 | FIXED | Integrations `/test` refuses YOUPI (Agent F); SSRF validator `pg/security.ts` |
+| T-04 | FIXED | Tenant VPA change becomes a pending request needing super-admin verification (Agent F); `tests/db/f-merchant.test.ts` |
+| T-05 | FIXED | `resolveBinding(..., { forNew:false })` keeps SUSPENDED/disabled accounts reconcilable (`pg/merchant-binding.ts`) |
+| T-06 | MITIGATED | One VERIFIED account per gateway merchant (partial unique index) + per-restaurant credentials; upstream #89 still prevents real per-merchant provisioning → one restaurant per gateway merchant |
+| T-07 | FIXED | `redirect:'error'` on every gateway fetch |
+| T-08 | FIXED | Both keys masked; customers see generic messages |
+| T-09 | FIXED | Only timestamp-binding signatures accepted; dedupe on delivery id (`pg/webhook-auth.ts`, route); `tests/db/h-adversarial.test.ts` |
+| T-10 | FIXED | 64 KiB cap before HMAC; exact webhook path allowlist in middleware |
+| T-11 | FIXED | Per-customer velocity before account reservation; account-scoped reservations (`pg/limits.ts`) |
+| T-12 | FIXED | `/api/orders/[id]/pay` caller scope (lead, `__tests__/server/order-pay-route.test.ts`) |
+| T-13 | FIXED | `CREATE_UNKNOWN` + cuid attempt keys; second session refused (`tests/db/h-retry-guard.test.ts`) |
+| T-14 | FIXED | `PgJobLease` replaces advisory lock; sweep fairness fix (H-05) |
+| T-15 | FIXED | Request/VPA routes audited; super-admin RESET after rejection |
+| T-16 | FIXED | Exact webhook path set (`src/middleware.ts`) |
+| T-17 | FIXED | Job routes POST-only, `timingSafeEqual` |
+| T-18 | FIXED | placeOrder logs ids only; webhook payload redaction after 90 days (`redactOldWebhookPayloads`, `tests/db/lead-retention.test.ts`) |
+| T-19 | FIXED | Uniform 404; status route no longer probes the gateway |
+| T-20 | OPEN (owner) | `next`/`next-auth` majors need a separate regression-tested PR; not mixed into payments work |
+| T-21 | FIXED in code / OPS step open | Catch-up + Pg migrations, CI `migrate deploy` + drift check, scripts use `migrate deploy`; production baselining per DATABASE_MIGRATIONS.md must be run by the owner |
+| T-22 | OPEN (ops) | Use an encrypted rclone remote (`rclone crypt`) or encrypt before upload; restore drill per OPERATIONS_RUNBOOK |
+| T-23 | OPEN (ops) | Confirm live pm2 process list on the VPS; demo must not run the PG worker cron |
+| T-24 | PARTIAL | `ci.yml` `permissions: contents: read`; host-key pinning in `deploy.yml` left to owner (touches the live deploy path) |
+| T-25 | OPEN (owner, read-only check on gateway host) | Run the `sqlite_master` check in UPSTREAM_PARITY_AND_ISSUES.md |
+
+Additional findings from independent QA (Agent H) H-01…H-10 are all fixed with failing-first tests now passing
+(`tests/db/h-*.test.ts`). Accepted design risk: a restaurant ADMIN can upload its own bank statement CSV, which counts as
+bank evidence for that restaurant's own receiving account (single-person; audited per user). A fabricated statement can
+only release that restaurant's own orders without payment (self-harm / internal fraud against the restaurant), never
+move funds or affect another tenant.
