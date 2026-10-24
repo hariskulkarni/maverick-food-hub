@@ -83,7 +83,7 @@ export async function loadMerchantPgDashboard(restaurantId: string, opts: Mercha
     ...(opts.bucket ? { state: { in: [...ATTEMPT_BUCKETS[opts.bucket]] } } : {}),
   };
 
-  const [stateGroups, attempts, unmatchedCredits, exceptions, imports, staleObserved, lastWebhook, releaseRows] =
+  const [stateGroups, attempts, unmatchedCredits, exceptions, imports, staleObserved, lastWebhook, releaseRows, refunds] =
     await Promise.all([
       prisma.pgPaymentAttempt.groupBy({ by: ['state'], where: { restaurantId }, _count: { _all: true } }),
       prisma.pgPaymentAttempt.findMany({
@@ -162,12 +162,37 @@ export async function loadMerchantPgDashboard(restaurantId: string, opts: Mercha
         WHERE o."topic" = 'ORDER_RELEASE'
           AND o."status" IN ('PENDING', 'DEAD')
           AND o."aggregateId" IN (SELECT a."orderId" FROM "PgPaymentAttempt" a WHERE a."restaurantId" = ${restaurantId})`,
+      prisma.pgRefundRecord.findMany({
+        where: { refund: { status: 'PENDING', order: { branch: { restaurantId } } } },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: {
+          refundId: true,
+          method: true,
+          amountPaise: true,
+          destinationRef: true,
+          requestedById: true,
+          approvedById: true,
+          createdAt: true,
+          refund: { select: { orderId: true, reason: true } },
+        },
+      }),
     ]);
 
   const orderCodes = new Map(
     (
       await prisma.order.findMany({
-        where: { id: { in: [...new Set(attempts.map((a) => a.orderId).concat(exceptions.flatMap((e) => (e.orderId ? [e.orderId] : []))))] } },
+        where: {
+          id: {
+            in: [
+              ...new Set([
+                ...attempts.map((a) => a.orderId),
+                ...exceptions.flatMap((e) => (e.orderId ? [e.orderId] : [])),
+                ...refunds.map((r) => r.refund.orderId),
+              ]),
+            ],
+          },
+        },
         select: { id: true, code: true },
       })
     ).map((o) => [o.id, o.code]),
@@ -187,6 +212,17 @@ export async function loadMerchantPgDashboard(restaurantId: string, opts: Mercha
     unmatchedCredits,
     exceptions: exceptions.map((e) => ({ ...e, orderCode: e.orderId ? (orderCodes.get(e.orderId) ?? null) : null })),
     imports,
+    refunds: refunds.map((r) => ({
+      refundId: r.refundId,
+      method: r.method,
+      amountPaise: r.amountPaise,
+      destinationRef: r.destinationRef,
+      requestedById: r.requestedById,
+      approvedById: r.approvedById,
+      reason: r.refund.reason,
+      createdAt: r.createdAt,
+      orderCode: orderCodes.get(r.refund.orderId) ?? null,
+    })),
     health: {
       staleObserved,
       lastWebhookAt: lastWebhook?.processedAt ?? null,

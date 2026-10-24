@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { StatementUpload } from './statement-upload';
+import { RefundsPanel } from './refunds-panel';
 
 export const metadata = { title: 'Admin · Flavrly PG payments' };
 export const dynamic = 'force-dynamic';
@@ -52,6 +53,9 @@ export default async function FlavrlyPgPaymentsPage({ searchParams }: { searchPa
   const fr = await prisma.youpiFeatureRequest.findUnique({ where: { restaurantId: restaurant.id }, select: { status: true } });
   const d = await loadMerchantPgDashboard(restaurant.id, { q, bucket });
   const verified = d.accounts.find((a) => a.status === 'VERIFIED');
+  const istDay = (t: number) => new Date(t + 330 * 60_000).toISOString().slice(0, 10);
+  const reportTo = istDay(Date.now());
+  const reportFrom = istDay(Date.now() - 30 * 86_400_000);
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-6xl">
@@ -191,13 +195,23 @@ export default async function FlavrlyPgPaymentsPage({ searchParams }: { searchPa
         </CardContent>
       </Card>
 
+      <RefundsPanel
+        currentUserId={gate.session.user.id}
+        refunds={d.refunds.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }))}
+      />
+
       <Card>
         <CardContent className="p-4 sm:p-6 space-y-3">
-          <h2 className="font-semibold">Refunds</h2>
-          {/* GAP(agent-F -> agent-E): refund list/actions wait for pg/refunds.ts on pg/lead. */}
-          <p className="text-sm text-muted-foreground">
-            Refund pending: {d.counts.refunds}. Refund tracking for Flavrly PG payments is not available on this page yet.
+          <h2 className="font-semibold">Export reconciliation (CSV)</h2>
+          <p className="text-xs text-muted-foreground">
+            One row per payment: expected, bank-confirmed, refunds, platform commission receivable. Money goes straight to your bank,
+            so there is no gateway fee or Flavrly payout.
           </p>
+          <form method="get" action="/api/admin/pg/report" className="flex flex-wrap items-end gap-2">
+            <label className="text-xs">From<Input type="date" name="from" required defaultValue={reportFrom} /></label>
+            <label className="text-xs">To<Input type="date" name="to" required defaultValue={reportTo} /></label>
+            <Button type="submit" variant="outline">Download CSV</Button>
+          </form>
         </CardContent>
       </Card>
 

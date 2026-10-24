@@ -37,6 +37,8 @@ import { POST as proposePOST } from '@/app/api/platform/youpi/allocations/route'
 import { POST as allocApprovePOST } from '@/app/api/platform/youpi/allocations/[proposalId]/approve/route';
 import { POST as statementsPOST } from '@/app/api/admin/pg/statements/route';
 import { POST as vpaPOST } from '@/app/api/admin/youpi/vpa/route';
+import { POST as refundPOST } from '@/app/api/admin/pg/refunds/[refundId]/route';
+import { requestPgRefund } from '@/server/pg/refunds';
 
 const ACCOUNT_NO = '001234567890123';
 const req = (body: unknown) => new Request('http://x/api', { method: 'POST', body: JSON.stringify(body) });
@@ -279,5 +281,33 @@ describe('CRM: a Flavrly PG order earns loyalty exactly once', () => {
     await expect(transitionOrder(orderId, 'RECEIVED')).rejects.toThrow(/bank-verified/);
     await expect(transitionOrder(orderId, 'DELIVERED')).rejects.toThrow();
     expect(await prisma.loyaltyTransaction.count({ where: { orderId } })).toBe(0);
+  });
+});
+
+describe('merchant refund actions (pg/refunds via the tenant route)', () => {
+  it('requester cannot approve, another restaurant cannot see it, a second admin approves and completes', async () => {
+    const acc = await makeAccount();
+    const utr = `UTR${uid().toUpperCase()}`;
+    const { attempt, orderId } = await makeAttempt(acc, { amountPaise: 25000, observedUtr: utr });
+    const credit = await makeCredit(acc, { amountPaise: 25000, reference: utr });
+    expect((await tryAllocateBankTxn(credit.id)).outcome).toBe('CAPTURED');
+    await handleOrderRelease({ orderId, attemptId: attempt.id, paymentId: attempt.paymentId });
+    for (const s of ['ACCEPTED', 'PREPARING', 'READY', 'DELIVERED'] as const) await transitionOrder(orderId, s);
+
+    const owner = (await prisma.restaurant.findUniqueOrThrow({ where: { id: acc.restaurant.id } })).ownerUserId!;
+    const second = await prisma.user.create({ data: { email: `adm2-${uid()}@example.test`, role: 'ADMIN' } });
+    await prisma.restaurantUser.create({ data: { restaurantId: acc.restaurant.id, userId: second.id, role: 'ADMIN' } });
+    const r = await requestPgRefund({ orderId, amountPaise: 10000, reason: 'cold food', actor: { id: owner, role: 'ADMIN' }, kind: 'ORDER' });
+
+    as({ id: owner, role: 'ADMIN' });
+    expect((await refundPOST(req({ action: 'APPROVE' }), ctx('refundId', r.refundId))).status).toBe(403);
+    const stranger = await restaurant();
+    as({ id: stranger.owner.id, role: 'ADMIN' });
+    expect((await refundPOST(req({ action: 'APPROVE' }), ctx('refundId', r.refundId))).status).toBe(404);
+    as({ id: second.id, role: 'ADMIN' });
+    expect((await refundPOST(req({ action: 'APPROVE' }), ctx('refundId', r.refundId))).status).toBe(200);
+    const done = await refundPOST(req({ action: 'COMPLETE', bankReference: `RF${uid().toUpperCase()}`, note: 'NEFT from current a/c' }), ctx('refundId', r.refundId));
+    expect(done.status).toBe(200);
+    expect(await done.json()).toMatchObject({ status: 'COMPLETED', approved: true });
   });
 });

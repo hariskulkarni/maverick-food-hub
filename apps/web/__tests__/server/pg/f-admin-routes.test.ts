@@ -18,6 +18,8 @@ const h = vi.hoisted(() => ({
   approveAlloc: vi.fn(),
   resolveException: vi.fn(),
   testConfig: vi.fn(),
+  approveRefund: vi.fn(),
+  buildReport: vi.fn(),
 }));
 vi.mock('@/server/auth', () => ({ auth: h.auth }));
 vi.mock('@/server/tenancy', () => ({
@@ -42,6 +44,13 @@ vi.mock('@/server/pg/bank-ingest', () => ({
 }));
 vi.mock('@/server/pg/reconcile-engine', () => ({ proposeManualAllocation: h.propose, approveManualAllocation: h.approveAlloc }));
 vi.mock('@/server/pg/exceptions', () => ({ resolveException: h.resolveException }));
+vi.mock('@/server/pg/refunds', () => ({
+  PgRefundError: class extends Error {},
+  approvePgRefund: h.approveRefund,
+  completePgRefund: vi.fn(),
+  failPgRefund: vi.fn(),
+}));
+vi.mock('@/server/pg/reports', () => ({ buildPgReconciliationReport: h.buildReport, pgReconciliationCsv: () => 'a,b\n' }));
 
 import { POST as statementsPOST } from '@/app/api/admin/pg/statements/route';
 import { POST as accountsPOST } from '@/app/api/platform/youpi/accounts/route';
@@ -52,6 +61,8 @@ import { POST as entryApprovePOST } from '@/app/api/platform/youpi/bank-entries/
 import { POST as proposePOST } from '@/app/api/platform/youpi/allocations/route';
 import { POST as allocApprovePOST } from '@/app/api/platform/youpi/allocations/[proposalId]/approve/route';
 import { POST as integrationTestPOST } from '@/app/api/admin/integrations/[provider]/test/route';
+import { POST as refundPOST } from '@/app/api/admin/pg/refunds/[refundId]/route';
+import { GET as reportGET } from '@/app/api/admin/pg/report/route';
 
 const req = (body: unknown) => new Request('http://x/api', { method: 'POST', body: JSON.stringify(body) });
 const ctx = <K extends string>(k: K, v: string) => ({ params: Promise.resolve({ [k]: v } as Record<K, string>) });
@@ -161,5 +172,29 @@ describe('integrations /test blocks YOUPI (T-03)', () => {
     const res = await integrationTestPOST(r, { params: Promise.resolve({ provider: 'YOUPI' }) });
     expect(res.status).toBe(403);
     expect(h.testConfig).not.toHaveBeenCalled();
+  });
+});
+
+describe('merchant refund + report routes', () => {
+  it('KITCHEN cannot act on refunds or export the report', async () => {
+    asUser('KITCHEN');
+    expect((await refundPOST(req({ action: 'APPROVE' }), ctx('refundId', 'rf1'))).status).toBe(403);
+    expect((await reportGET(new Request('http://x/api?from=2026-10-01&to=2026-10-24'))).status).toBe(403);
+    expect(h.approveRefund).not.toHaveBeenCalled();
+    expect(h.buildReport).not.toHaveBeenCalled();
+  });
+  it('refund actions are scoped to the caller\'s restaurant', async () => {
+    h.approveRefund.mockResolvedValue({ refundId: 'rf1', status: 'PENDING', approved: true });
+    expect((await refundPOST(req({ action: 'APPROVE' }), ctx('refundId', 'rf1'))).status).toBe(200);
+    expect(h.approveRefund).toHaveBeenCalledWith({ refundId: 'rf1', actor: { id: 'u1', role: 'ADMIN' }, scopeRestaurantId: 'r1' });
+  });
+  it('report: own restaurant only, bounded period, CSV attachment', async () => {
+    h.buildReport.mockResolvedValue({});
+    expect((await reportGET(new Request('http://x/api?from=2026-01-01&to=2026-10-24'))).status).toBe(400);
+    expect((await reportGET(new Request('http://x/api?from=bad&to=2026-10-24'))).status).toBe(400);
+    const res = await reportGET(new Request('http://x/api?from=2026-10-01&to=2026-10-24&restaurantId=r2'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toMatch(/text\/csv/);
+    expect(h.buildReport.mock.calls[0][0].restaurantId).toBe('r1');
   });
 });
