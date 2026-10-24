@@ -1,6 +1,6 @@
 # Flavrly PG — Final GO / NO-GO
 
-Date: 2026-10-24. Code: `pg/lead` (gate fully green at `cc9fef2`; later commits are docs). Author: lead (Claude Code), for owner decision.
+Date: 2026-10-24. Code: `pg/lead` (gate fully green at `2036bf5`; later commits are docs). Author: lead (Claude Code), for owner decision.
 
 ## Recommendation
 
@@ -21,7 +21,8 @@ This is not a claim of bank, NPCI, RBI or licence approval. None exists in evide
 - Unpaid direct-UPI orders never reach kitchen, KOT, rider dispatch, auto-accept or GMV.
 - Webhooks are authenticated (timestamp-bound HMAC, per merchant), durably stored before 200, processed by a leased worker
   with retries and dead-letter; job overlap is guarded by DB leases.
-- Existing PhonePe / Razorpay / COD / wallet behaviour: full unit suite green (1542), no regressions found by independent QA.
+- Local synthetic UAT 9/9 PASS with the real fork gateway: signed webhooks, gateway and app SIGKILL, real expiry, refund, backup/restore, flag-off (STAGING_UAT_REPORT.md). Not a production or bank test.
+- Existing PhonePe / Razorpay / COD / wallet behaviour: full unit suite green (1545), no regressions found by independent QA.
 - Migrations reproduce the schema exactly from empty (drift check in CI).
 
 ## What blocks production (owner / external — cannot be solved in code)

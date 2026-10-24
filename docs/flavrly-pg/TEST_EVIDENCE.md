@@ -73,8 +73,8 @@ Fixed during this run: H-07 (second session while an attempt is OBSERVED/CREATE_
 
 ## Final integrated gate (lead)
 
-Branch `pg/lead` @ `cc9fef2`, lead machine (macOS, Node v20.20.2, Postgres 16.15 on :55432, fresh DB per run).
-Command: `~/flavrly-pg-evidence/bin/gate.sh` (logs `~/flavrly-pg-evidence/2026-10-24/gate-integ2/`).
+Branch `pg/lead` @ `2036bf5` (after the UAT fixes), lead machine (macOS, Node v20.20.2, Postgres 16.15 on :55432, fresh DB per run).
+Command: `~/flavrly-pg-evidence/bin/gate.sh` (logs `~/flavrly-pg-evidence/2026-10-24/gate-final4/`; earlier run at `cc9fef2`: `gate-integ2/`, 1542 unit / 170 DB).
 
 | Step | Command | Result |
 |---|---|---|
@@ -84,8 +84,8 @@ Command: `~/flavrly-pg-evidence/bin/gate.sh` (logs `~/flavrly-pg-evidence/2026-1
 | Typecheck | `npm run typecheck` | exit 0 |
 | Lint | `npm run lint` | exit 0 (pre-existing warnings only) |
 | Responsive guardrail | `npm run check:responsive` | exit 0 |
-| Unit/route tests | `npm run test:ci` | 151 files, **1542 passed**, 0 failed |
-| Real-Postgres tests | `npm run test:db` | 18 files, **170 passed**, 0 failed |
+| Unit/route tests | `npm run test:ci` | 152 files, **1545 passed**, 0 failed |
+| Real-Postgres tests | `npm run test:db` | 19 files, **172 passed**, 0 failed |
 | Production build | `npm run build` | exit 0 |
 
 Baseline before this work (PR #29 head `eebd11f`): 137 files / 1304 unit tests passed, no DB test suite.
@@ -94,3 +94,9 @@ Defects found by independent QA (H-01…H-10, H-07) were each reproduced by a fa
 Not covered by automation: browser rendering of the new admin/platform pages (Playwright not run — see §gaps),
 Redis outage, a real gateway/bank feed (external blocker), real SIGKILL of the app (simulated via lease expiry here;
 see STAGING_UAT_REPORT.md for process-level drills).
+
+### Local synthetic UAT (Agent S)
+9/9 scenarios PASS at `5d321f0`, two full passes from scratch (real app build under `next start`, real fork gateway, signed
+webhooks, SIGKILL of gateway and app, real wall-clock expiry, backup/restore drill, flag-off). Report: STAGING_UAT_REPORT.md.
+No real money, no production host. Its three findings were fixed in `9236900` with tests (see that report's lead section);
+one test assumption in the new DB test was corrected in `2036bf5` (the shared test DB may already hold the sentinel row).

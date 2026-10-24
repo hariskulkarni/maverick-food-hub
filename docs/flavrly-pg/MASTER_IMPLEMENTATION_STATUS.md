@@ -10,8 +10,9 @@ lead machine `~/flavrly-pg-evidence/2026-10-24/` (gate logs, per-agent logs, #86
 generate/validate/db push/typecheck/lint/responsive OK; 137 files / 1304 unit tests; build OK; GitHub CI green.
 No real-database tests existed; the PR author had not run any tests (SAFE_PILOT_HARDENING.md).
 
-## Final gate (`pg/lead` @ `cc9fef2`)
-migrate deploy from empty OK, drift 0, typecheck/lint/responsive OK, **1542 unit tests**, **170 real-Postgres tests**, build OK.
+## Final gate (`pg/lead` @ `2036bf5`)
+migrate deploy from empty OK, drift 0, typecheck/lint/responsive OK, **1545 unit tests**, **172 real-Postgres tests**, build OK.
+Local synthetic UAT: 9/9 PASS (STAGING_UAT_REPORT.md).
 
 ## Findings matrix (prior audit P0/P1 → fresh verification → status)
 
@@ -49,7 +50,7 @@ migrate deploy from empty OK, drift 0, typecheck/lint/responsive OK, **1542 unit
 | F | onboarding, merchant/ops UI, CRM check | `pg/f-merchant` | yes | CRM: loyalty fires only on DELIVERED (`orders.ts`), once-only proven in `tests/db/f-merchant.test.ts` |
 | G | security, CI, upstream matrix, APK, compliance, ops docs | `pg/g-security` | yes | |
 | H | independent QA | `pg/h-qa` | yes | 10 defects found, all fixed |
-| S | local synthetic UAT | `pg/s-uat` | see STAGING_UAT_REPORT.md | |
+| S | local synthetic UAT | `pg/s-uat` | yes | 9/9 scenarios PASS; 1 defect + 2 observations, all fixed by lead (`9236900`) |
 
 ## Deliberate decisions (recorded)
 - FIRST_ORDER offers still count PAYMENT_PENDING orders: excluding them would let one customer stack first-order discounts across several unpaid orders and then pay all.

@@ -59,3 +59,13 @@ Scenario 9 limit: the source DB was already fully migrated, so "apply migrations
 
 ## Helper scripts (`scripts/pg-uat/`)
 `env.sh`, `start-gateway.sh`, `start-app.sh`, `tls-proxy.mjs`, `tap-proxy.mjs`, `gw-setup.mjs`, `setup-fixtures.ts`, `uat-lib.mjs`, `flow.mjs`, `s00…s09*`, `run-all.sh`. None contains secrets. They read them from `$UAT_DIR`.
+
+## Lead resolution (after this report)
+Fixed in `9236900` on `pg/lead`, full gate green at `2036bf5` (1545 unit, 172 real-DB, build):
+- DEFECT-1: `ensurePlatformRestaurant` is exported and called by `POST /api/platform/youpi/config` before `saveConfig`.
+  Tests: `youpi-admin-routes.test.ts` (sentinel created before save), `tests/db/lead-uat-fixes.test.ts` (real FK).
+- O-1: `placeOrder` throws `PgUnavailableError`; `/api/orders` returns 409 with the reason. Other failures stay 500.
+  Test: `__tests__/server/orders-route-pg-refusal.test.ts`. The checkout client treats any non-OK status the same way.
+- O-3: the OBSERVED (48 h) and REVIEW_REQUIRED stale alerts are measured from `createdAt`, not `updatedAt`.
+  Test: `tests/db/lead-uat-fixes.test.ts` (old attempt with fresh updatedAt is flagged).
+The UAT scenarios were not re-run after these fixes; they touch setup, an error status code and alert timing only.
