@@ -140,11 +140,16 @@ interface RefundMeta {
   idempotencyKey: string | null;
 }
 
-function metaOf(providerData: Prisma.JsonValue | null): RefundMeta | null {
-  const d = providerData as Record<string, unknown> | null;
-  if (!d || d.rail !== 'DIRECT_TO_MERCHANT' || typeof d.pgKind !== 'string') return null;
+const KIND_OF_POT = Object.fromEntries(Object.entries(POT).map(([k, v]) => [v, k])) as Record<PgAllocationKind, PgRefundKind>;
+
+/** Kind comes from PgRefundRecord.allocationKind; rows written before that column fall back to providerData.pgKind. */
+function metaOf(rec: { allocationKind?: PgAllocationKind | null; refund: { providerData: Prisma.JsonValue | null } }): RefundMeta | null {
+  const d = rec.refund.providerData as Record<string, unknown> | null;
+  if (!d || d.rail !== 'DIRECT_TO_MERCHANT') return null;
+  const pgKind = rec.allocationKind ? KIND_OF_POT[rec.allocationKind] : typeof d.pgKind === 'string' ? (d.pgKind as PgRefundKind) : null;
+  if (!pgKind) return null;
   return {
-    pgKind: d.pgKind as PgRefundKind,
+    pgKind,
     method: (d.method as PgRefundMethodChoice) ?? 'MANUAL_BANK',
     idempotencyKey: typeof d.idempotencyKey === 'string' ? d.idempotencyKey : null,
   };
@@ -161,7 +166,7 @@ async function potPaise(tx: Tx, attemptId: string, kind: PgRefundKind): Promise<
 /** All PG refund records on the attempt with their Refund row and parsed meta. */
 async function refundsOfAttempt(tx: Tx, attemptId: string) {
   const recs = await tx.pgRefundRecord.findMany({ where: { attemptId }, include: { refund: true } });
-  return recs.map((r) => ({ rec: r, meta: metaOf(r.refund.providerData) })).filter((x) => x.meta);
+  return recs.map((r) => ({ rec: r, meta: metaOf(r) })).filter((x) => x.meta);
 }
 
 function view(
@@ -356,7 +361,7 @@ async function loadForUpdate(tx: Tx, refundId: string, scopeRestaurantId?: strin
   const a = await lockAttempt(tx, first.attemptId);
   if (!a || (scopeRestaurantId && a.restaurantId !== scopeRestaurantId)) throw new PgRefundError('Flavrly PG refund not found.', 404);
   const rec = await tx.pgRefundRecord.findUniqueOrThrow({ where: { refundId }, include: { refund: true } });
-  const meta = metaOf(rec.refund.providerData);
+  const meta = metaOf(rec);
   if (!meta) throw new PgRefundError('Flavrly PG refund not found.', 404);
   return { a, rec, meta };
 }
@@ -421,6 +426,32 @@ export async function completePgRefund(input: CompletePgRefundInput): Promise<Pg
     if (bankReference) {
       const reused = await tx.pgRefundRecord.findFirst({ where: { bankReference, id: { not: rec.id } }, select: { refundId: true } });
       if (reused) throw new PgRefundError('That bank reference is already recorded on another refund.', 409);
+      // H-09: a refund is a DEBIT. A credit reference on this account (e.g. the customer's original
+      // payment UTR) is not proof that money went back.
+      const credit = await tx.pgBankTransaction.findFirst({
+        where: { receivingAccountId: a.receivingAccountId, direction: 'CREDIT', bankReference },
+        select: { id: true },
+      });
+      if (credit || a.observedUtr?.trim().toUpperCase() === bankReference) {
+        throw new PgRefundError(
+          'That reference belongs to an incoming payment (the customer\'s original UTR), not to the refund. Enter the reference of the refund transfer.',
+          409,
+        );
+      }
+    }
+    // H-08: the bank-confirmed money may have changed since the request (e.g. a reversal/chargeback).
+    // Re-check under the attempt lock that every non-FAILED refund of this kind still fits the pot.
+    const potNow = await potPaise(tx, a.id, meta.pgKind);
+    const committed = (await refundsOfAttempt(tx, a.id))
+      .filter((x) => x.meta!.pgKind === meta.pgKind && x.rec.refund.status !== RefundStatus.FAILED)
+      .reduce((s, x) => s + x.rec.amountPaise, 0);
+    if (committed > potNow) {
+      throw new PgRefundError(
+        `The bank-confirmed ${POT[meta.pgKind]} money behind this refund changed (for example a reversal): ` +
+          `${paiseToInrString(potNow)} INR confirmed vs ${paiseToInrString(committed)} INR of open/completed refunds. ` +
+          'Nothing was completed; review the reversal, then mark this refund failed or re-request it.',
+        409,
+      );
     }
 
     if (meta.method === 'WALLET') {
