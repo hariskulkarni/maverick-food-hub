@@ -290,3 +290,25 @@ export async function inboxMetrics(): Promise<{ pending: number; retrying: numbe
     deadLettered: row?.dead ?? 0,
   };
 }
+
+/**
+ * DPDP data minimisation (threat model T-18): processed or dead-lettered Flavrly PG
+ * webhook bodies (payer name/VPA, UTR) are replaced by a redaction marker after the
+ * retention window. Identifiers needed for audit stay in their own columns, and the
+ * UTR/amount already live in PgPaymentEvidence.
+ */
+export const WEBHOOK_PAYLOAD_RETENTION_DAYS = Number(process.env.PG_WEBHOOK_PAYLOAD_RETENTION_DAYS ?? 90);
+
+export async function redactOldWebhookPayloads(now: Date = new Date()): Promise<{ redacted: number }> {
+  const cutoff = new Date(now.getTime() - WEBHOOK_PAYLOAD_RETENTION_DAYS * 86_400_000);
+  const r = await prisma.paymentWebhookEvent.updateMany({
+    where: {
+      provider: 'youpi',
+      createdAt: { lt: cutoff },
+      OR: [{ processed: true }, { deadLetteredAt: { not: null } }],
+      NOT: { rawPayload: { path: ['redacted'], equals: true } },
+    },
+    data: { rawPayload: { redacted: true, redactedAt: now.toISOString() } },
+  });
+  return { redacted: r.count };
+}

@@ -15,7 +15,7 @@ import { NextRequest } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
 import { auth } from '@/server/auth';
 import { log } from '@/server/log';
-import { inboxMetrics, runInbox } from '@/server/pg/inbox';
+import { inboxMetrics, redactOldWebhookPayloads, runInbox } from '@/server/pg/inbox';
 import { outboxMetrics, runOutbox } from '@/server/pg/outbox';
 import { withJobLease } from '@/server/pg/job-lease';
 import { expireStaleAttempts } from '@/server/pg/attempts';
@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
   const outbox = await stage('outbox', () => runOutbox());
   // Unknown-outcome resolution + expiry of never-paid sessions (never expires OBSERVED/REVIEW_REQUIRED).
   const expiry = await stage('expiry', () => expireStaleAttempts());
+  const retention = await stage('retention', () => redactOldWebhookPayloads());
   // The sweep takes its own 'youpi-reconcile-sweep' lease (shared with the legacy cron route).
   let sweep: Record<string, unknown>;
   try {
@@ -82,6 +83,6 @@ export async function POST(req: NextRequest) {
     log.error({ err: (e as Error).message }, 'pg.worker.metrics_failed');
   }
 
-  return Response.json({ ok: true, inbox, outbox, expiry, sweep, metrics, at: new Date().toISOString() });
+  return Response.json({ ok: true, inbox, outbox, expiry, retention, sweep, metrics, at: new Date().toISOString() });
 }
 

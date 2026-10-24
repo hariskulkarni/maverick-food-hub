@@ -11,7 +11,7 @@ const h = vi.hoisted(() => ({
 }));
 vi.mock('@/server/auth', () => ({ auth: h.auth }));
 vi.mock('@/server/log', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
-vi.mock('@/server/pg/inbox', () => ({ runInbox: h.runInbox, inboxMetrics: h.inboxMetrics }));
+vi.mock('@/server/pg/inbox', () => ({ runInbox: h.runInbox, inboxMetrics: h.inboxMetrics, redactOldWebhookPayloads: async () => ({ redacted: 0 }) }));
 vi.mock('@/server/pg/outbox', () => ({ runOutbox: h.runOutbox, outboxMetrics: h.outboxMetrics }));
 vi.mock('@/server/pg/job-lease', () => ({ withJobLease: h.lease }));
 vi.mock('@/server/jobs/youpi-reconcile-sweep', () => ({ runYoupiReconcileSweep: h.sweep }));
@@ -45,7 +45,7 @@ describe('POST /api/platform/jobs/pg-worker/run', () => {
     const res = await POST(authed());
     expect(res.status).toBe(200);
     const j = await res.json();
-    expect(h.lease.mock.calls.map((c) => c[0])).toEqual(['pg-worker:inbox', 'pg-worker:outbox', 'pg-worker:expiry']);
+    expect(h.lease.mock.calls.map((c) => c[0])).toEqual(['pg-worker:inbox', 'pg-worker:outbox', 'pg-worker:expiry', 'pg-worker:retention']);
     expect(j.inbox).toMatchObject({ ran: true, processed: 2 });
     expect(j.outbox).toMatchObject({ ran: true, done: 1 });
     expect(j.sweep).toMatchObject({ scanned: 3 });
