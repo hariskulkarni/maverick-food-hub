@@ -90,3 +90,34 @@ PgReceivingAccount, CHECK amount>0, append-only trigger on PgFinancialEvent.
 
 Rule: never edit a file you do not own. Need a change elsewhere -> report to lead.
 Rule: schema change needed -> request to lead/C, do not edit prisma/.
+
+## 4. As-built data flow (integration, 2026-10-24)
+
+```
+Customer checkout (rail=youpi, flag on, binding VERIFIED)
+  -> placeOrder: Order PAYMENT_PENDING (no kitchen publish)                      src/server/orders.ts
+  -> createPgAttempt: tx{Payment PENDING, PgPaymentAttempt CREATED, PgLimitReservation}
+     -> gateway POST /api/v1/payments (X-Merchant-Key, redirect:'error')        src/server/pg/attempts.ts
+     -> private readback: receiver VPA + amount + attemptKey must match          (else REVIEW_REQUIRED, no URL)
+     -> AWAITING_PAYMENT, checkout URL to browser (timeout/5xx -> CREATE_UNKNOWN, blocks new sessions)
+Customer pays by UPI -> money lands directly in the restaurant's bank account
+Gateway observes -> signed webhook (Standard Webhooks / V2)
+  -> /api/payments/youpi/webhook: 64KiB cap, per-merchant HMAC, freshness, dedupe
+     -> PaymentWebhookEvent stored -> 200                                       app/api/payments/youpi/webhook/route.ts
+  -> pg-worker (cron 1/min, PgJobLease per stage)                               app/api/platform/jobs/pg-worker/run
+     inbox: recordObservation(GATEWAY_WEBHOOK, UTR, payable paise) -> attempt OBSERVED   src/server/pg/inbox.ts
+     sweep: status probe -> GATEWAY_STATUS evidence (never capture)             src/server/payments/youpi-reconcile.ts
+Bank evidence: merchant/ops CSV statement import or dual-control manual entry -> PgBankTransaction UNMATCHED
+  -> allocateBankCredit (row locks; account, CREDIT, exact payable paise, ref == UTR, window)
+     tx{PgAllocation, txn ALLOCATED, attempt CAPTURED, Payment CAPTURED, limit consumed,
+        PgFinancialEvent, PgOutbox ORDER_RELEASE}                               src/server/pg/reconcile-engine.ts
+     (second credit -> OVERCOLLECTION; after cancel/expiry -> LATE_PAYMENT; ambiguity -> PgReconException)
+  -> outbox: handleOrderRelease -> transitionOrder(RECEIVED, pgRelease) -> kitchen, notifications, auto-accept
+                                                                                src/server/pg/fulfillment.ts
+  -> normal order lifecycle; loyalty on DELIVERED (once)                        src/server/orders.ts
+Refunds: request -> approve (different user) -> complete with human-entered bank ref   src/server/pg/refunds.ts
+Reports: DIRECT_TO_MERCHANT settlement (no PSP fee, commission receivable); reconciliation CSV   src/server/pg/reports.ts
+Recovery: expiry of never-paid sessions, unmatched-credit retry, webhook payload retention, dead-letter queues.
+Emergency switch: FLAVRLY_PG_NEW_PAYMENTS_ENABLED=false (new checkouts only) or per-account disabledForNewAt;
+reconciliation of in-flight attempts continues.
+```
