@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
-import { placeOrder } from '@/server/orders';
+import { placeOrder, PgUnavailableError } from '@/server/orders';
 import { PaymentMethod, FulfillmentType } from '@prisma/client';
 import { log } from '@/server/log';
 import { parseOrJsonError } from '@/server/zod-helpers';
@@ -77,7 +77,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const message = (err as Error).message || 'Failed to place order';
-    log.error({ err: message, body, stack: (err as Error).stack }, 'placeOrder failed');
+    // Ids only: the request body carries customer address/phone (PII).
+    log.error({ err: message, branchId: (body as { branchId?: unknown } | null)?.branchId ?? null, stack: (err as Error).stack }, 'placeOrder failed');
+    if (err instanceof PgUnavailableError) return Response.json({ error: message }, { status: 409 });
     return Response.json({ error: 'Failed to place order', detail: message }, { status: 500 });
   }
 }

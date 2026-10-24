@@ -1999,6 +1999,7 @@ model Payment {
 
   order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   refunds Refund[]
+  pgAttempt PgPaymentAttempt?
 
   @@index([orderId])
   @@index([providerRef])
@@ -2038,6 +2039,7 @@ model Refund {
   payment Payment? @relation(fields: [paymentId], references: [id], onDelete: Cascade)
   order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  pgRecord PgRefundRecord?
   @@index([orderId])
 }
 
@@ -2551,9 +2553,17 @@ model PaymentWebhookEvent {
   error           String?
   createdAt       DateTime  @default(now())
   processedAt     DateTime?
+  // Flavrly PG durable inbox (nullable/defaulted: other providers ignore them)
+  restaurantId    String?
+  attempts        Int       @default(0)
+  leaseOwner      String?
+  leaseExpiresAt  DateTime?
+  nextAttemptAt   DateTime?
+  deadLetteredAt  DateTime?
 
   @@index([provider, eventType, createdAt])
   @@index([orderId])
+  @@index([provider, processed, nextAttemptAt])
 }
 
 // Append-only audit log for sensitive admin actions. Never updated, never
@@ -3463,4 +3473,385 @@ model YoupiFeatureRequest {
   note          String?
   updatedAt     DateTime           @updatedAt
   restaurant    Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+// ==== Flavrly PG financial layer ====
+// Contract: docs/flavrly-pg/ARCHITECTURE_AND_DATA_FLOWS.md. Amounts are integer paise.
+// Restaurant/Order are referenced by id without FK on purpose: financial records
+// must never cascade-delete with a tenant or order.
+
+enum PgReceivingAccountStatus {
+  PENDING_VERIFICATION
+  VERIFIED
+  SUSPENDED
+  REVOKED
+}
+
+enum PgAttemptState {
+  CREATED
+  CREATE_UNKNOWN // create call outcome unknown (timeout/5xx); blocks new sessions until resolved
+  AWAITING_PAYMENT
+  OBSERVED // gateway/observer says paid; not bank-verified
+  BANK_VERIFIED
+  CAPTURED
+  REVIEW_REQUIRED
+  FAILED
+  EXPIRED
+  CANCELLED
+  REFUND_PENDING
+  REFUNDED
+}
+
+enum PgEvidenceSource {
+  GATEWAY_WEBHOOK
+  GATEWAY_STATUS
+  OBSERVER
+  BANK_FEED
+  PROVIDER_SETTLEMENT
+  STATEMENT_IMPORT
+  MANUAL
+}
+
+enum PgEvidenceStatus {
+  RECORDED
+  MATCHED
+  REJECTED
+  SUPERSEDED
+}
+
+enum PgTxnDirection {
+  CREDIT
+  DEBIT
+}
+
+enum PgBankSource {
+  BANK_FEED
+  PROVIDER_SETTLEMENT
+  STATEMENT_IMPORT
+  MANUAL
+}
+
+enum PgBankTxnStatus {
+  PENDING_APPROVAL // manual entry awaiting second approver
+  UNMATCHED
+  ALLOCATED
+  REVIEW_REQUIRED
+  IGNORED
+  REVERSED
+}
+
+enum PgAllocationKind {
+  ORDER_PAYMENT
+  OVERCOLLECTION
+  LATE_PAYMENT
+}
+
+enum PgExceptionKind {
+  UNMATCHED_CREDIT
+  DUPLICATE_CREDIT
+  AMBIGUOUS_MATCH
+  AMOUNT_MISMATCH
+  WRONG_ACCOUNT
+  LATE_PAYMENT
+  OVERCOLLECTION
+  MISSING_UTR
+  STALE_PENDING
+  CREATE_UNKNOWN
+  REVERSAL
+  RECEIVER_MISMATCH
+  REFUND_FAILED
+  WEBHOOK_DEAD_LETTER
+  OUTBOX_DEAD_LETTER
+}
+
+enum PgExceptionStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum PgOutboxStatus {
+  PENDING
+  DONE
+  DEAD
+}
+
+enum PgReservationState {
+  RESERVED
+  CONSUMED
+  RELEASED
+}
+
+enum PgRefundMethod {
+  MANUAL_BANK
+  SOURCE_API
+  WALLET
+}
+
+model PgReceivingAccount {
+  id                 String                   @id @default(cuid())
+  restaurantId       String
+  gatewayMerchantId  String
+  vpa                String
+  vpaNormalized      String
+  // sha256 of normalized bank identity (IFSC + account no. or VPA); never the raw account no.
+  accountFingerprint String
+  accountLast4       String?
+  ifsc               String?
+  legalEntityName    String
+  status             PgReceivingAccountStatus @default(PENDING_VERIFICATION)
+  verificationMethod String?
+  verificationNote   String?
+  verifiedAt         DateTime?
+  verifiedById       String?
+  disabledForNewAt   DateTime?
+  dailyCountLimit    Int?
+  maxAmountPaise     Int?
+  createdById        String?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  attempts         PgPaymentAttempt[]
+  bankTransactions PgBankTransaction[]
+
+  @@unique([restaurantId, vpaNormalized])
+  @@index([gatewayMerchantId])
+  @@index([accountFingerprint])
+}
+
+model PgPaymentAttempt {
+  id                  String         @id @default(cuid())
+  paymentId           String         @unique
+  orderId             String
+  restaurantId        String
+  receivingAccountId  String
+  attemptKey          String         @unique // gateway orderId sent upstream
+  idempotencyKey      String         @unique
+  gatewayMerchantId   String
+  gatewayPaymentId    String?        @unique
+  expectedAmountPaise Int
+  // Exact amount the gateway asked the payer for (fork adds a 0..99 paise offset); set only
+  // from an authenticated gateway event. Bank matching uses it when present.
+  payableAmountPaise  Int?
+  currency            String         @default("INR")
+  state               PgAttemptState @default(CREATED)
+  expiresAt           DateTime?
+  lastGatewayStatus   String?
+  lastStatusAt        DateTime?
+  observedUtr         String?
+  reviewReason        String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  payment          Payment             @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  receivingAccount PgReceivingAccount  @relation(fields: [receivingAccountId], references: [id], onDelete: Restrict)
+  evidence         PgPaymentEvidence[]
+  allocations      PgAllocation[]
+  reservation      PgLimitReservation?
+
+  @@index([orderId])
+  @@index([state, updatedAt])
+  @@index([receivingAccountId, createdAt])
+}
+
+model PgPaymentEvidence {
+  id                  String           @id @default(cuid())
+  attemptId           String?
+  restaurantId        String
+  receivingAccountId  String?
+  gatewayPaymentId    String?
+  source              PgEvidenceSource
+  utr                 String?
+  observedAmountPaise Int?
+  currency            String?
+  sourceAuthenticated Boolean          @default(false)
+  verificationMethod  String
+  eventAt             DateTime?
+  processedAt         DateTime         @default(now())
+  matchConfidence     String?
+  status              PgEvidenceStatus @default(RECORDED)
+  dedupeKey           String           @unique
+  meta                Json? // redacted only: never raw SMS/bank text or secrets
+
+  attempt PgPaymentAttempt? @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+
+  @@index([attemptId])
+  @@index([receivingAccountId, utr])
+}
+
+model PgStatementImport {
+  id                 String   @id @default(cuid())
+  receivingAccountId String
+  uploadedById       String
+  fileName           String
+  fileSha256         String
+  rowCount           Int      @default(0)
+  insertedCount      Int      @default(0)
+  duplicateCount     Int      @default(0)
+  rejectedCount      Int      @default(0)
+  status             String   @default("COMPLETED")
+  createdAt          DateTime @default(now())
+
+  @@unique([receivingAccountId, fileSha256])
+}
+
+model PgBankTransaction {
+  id                 String          @id @default(cuid())
+  receivingAccountId String
+  direction          PgTxnDirection
+  amountPaise        Int
+  currency           String          @default("INR")
+  bankReference      String // normalized UTR/RRN; unique per account+direction, not globally
+  valueAt            DateTime
+  source             PgBankSource
+  importId           String?
+  sourceRowHash      String
+  status             PgBankTxnStatus @default(UNMATCHED)
+  counterpartyMasked String?
+  narrationRedacted  String?
+  enteredById        String?
+  approvedById       String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  receivingAccount PgReceivingAccount @relation(fields: [receivingAccountId], references: [id], onDelete: Restrict)
+  allocation       PgAllocation?
+
+  @@unique([receivingAccountId, direction, bankReference])
+  @@index([receivingAccountId, status, valueAt])
+}
+
+model PgAllocation {
+  id                String           @id @default(cuid())
+  bankTransactionId String           @unique // one bank credit is allocated at most once
+  attemptId         String?
+  orderId           String?
+  kind              PgAllocationKind
+  amountPaise       Int
+  createdById       String?
+  approvedById      String?
+  reversedAt        DateTime?
+  reversalReason    String?
+  createdAt         DateTime         @default(now())
+
+  bankTransaction PgBankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Restrict)
+  attempt         PgPaymentAttempt? @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([attemptId])
+}
+
+model PgReconException {
+  id                 String            @id @default(cuid())
+  kind               PgExceptionKind
+  status             PgExceptionStatus @default(OPEN)
+  restaurantId       String?
+  receivingAccountId String?
+  attemptId          String?
+  orderId            String?
+  bankTransactionId  String?
+  amountPaise        Int?
+  detail             Json?
+  dedupeKey          String            @unique
+  resolution         String?
+  resolvedById       String?
+  resolvedAt         DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([restaurantId, status, createdAt])
+  @@index([kind, status])
+}
+
+// Append-only (UPDATE/DELETE blocked by trigger in migration).
+model PgFinancialEvent {
+  id                String   @id @default(cuid())
+  kind              String
+  restaurantId      String?
+  attemptId         String?
+  orderId           String?
+  bankTransactionId String?
+  allocationId      String?
+  refundId          String?
+  amountPaise       Int?
+  actorId           String?
+  dedupeKey         String?  @unique
+  data              Json?
+  createdAt         DateTime @default(now())
+
+  @@index([restaurantId, createdAt])
+  @@index([orderId])
+}
+
+model PgOutbox {
+  id             String         @id @default(cuid())
+  topic          String
+  aggregateId    String
+  dedupeKey      String         @unique
+  payload        Json
+  status         PgOutboxStatus @default(PENDING)
+  attempts       Int            @default(0)
+  nextAttemptAt  DateTime       @default(now())
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  lastError      String?
+  createdAt      DateTime       @default(now())
+  doneAt         DateTime?
+
+  @@index([status, nextAttemptAt])
+}
+
+model PgJobLease {
+  name      String   @id
+  owner     String
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+}
+
+model PgAccountDailyUsage {
+  id                 String   @id @default(cuid())
+  receivingAccountId String
+  day                DateTime @db.Date
+  reserved           Int      @default(0)
+  updatedAt          DateTime @updatedAt
+
+  @@unique([receivingAccountId, day])
+}
+
+model PgLimitReservation {
+  id                 String             @id @default(cuid())
+  attemptId          String             @unique
+  receivingAccountId String
+  day                DateTime           @db.Date
+  amountPaise        Int
+  state              PgReservationState @default(RESERVED)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  attempt PgPaymentAttempt @relation(fields: [attemptId], references: [id], onDelete: Restrict)
+
+  @@index([receivingAccountId, day])
+}
+
+model PgRefundRecord {
+  id             String         @id @default(cuid())
+  refundId       String         @unique
+  attemptId      String?
+  method         PgRefundMethod
+  allocationKind PgAllocationKind @default(ORDER_PAYMENT)
+  amountPaise    Int
+  destinationRef String? // masked customer VPA/account
+  bankReference  String? // refund UTR from the bank; never invented
+  requestedById  String
+  approvedById   String?
+  completedById  String?
+  completedAt    DateTime?
+  failureReason  String?
+  evidence       Json?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  refund Refund @relation(fields: [refundId], references: [id], onDelete: Restrict)
+
+  @@index([attemptId])
 }

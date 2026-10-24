@@ -33,7 +33,7 @@ export function PaymentStatusView() {
   const params = useSearchParams();
   const router = useRouter();
   const orderId = params.get('orderId') ?? '';
-  // Flavrly PG stays PENDING until our server reconciles (status + UTR + amount); the
+  // Flavrly PG stays PENDING until a bank credit is allocated server-side; the
   // browser returning here proves nothing.
   const isYoupi = params.get('provider') === 'youpi';
 
@@ -41,6 +41,10 @@ export function PaymentStatusView() {
   const [error, setError] = useState<string | null>(null);
   const [orderCode, setOrderCode] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  // Flavrly PG: server-provided customer-safe message + whether a new attempt is safe.
+  const [youpiMessage, setYoupiMessage] = useState<string | null>(null);
+  const [canRetry, setCanRetry] = useState(false);
+  const retryInFlight = useRef(false);
   const startedAt = useRef(Date.now());
   const attempt = useRef(0);
 
@@ -65,6 +69,10 @@ export function PaymentStatusView() {
         if (cancelled) return;
 
         if (data.orderCode) setOrderCode(data.orderCode);
+        if (isYoupi) {
+          if (typeof data.message === 'string') setYoupiMessage(data.message);
+          setCanRetry(data.canRetry === true);
+        }
 
         if (data.state === 'COMPLETED') {
           setPhase('COMPLETED');
@@ -103,6 +111,8 @@ export function PaymentStatusView() {
 
   /** Mint a fresh PayPage — the previous merchantOrderId cannot be reused. */
   const retry = useCallback(async () => {
+    if (retryInFlight.current) return; // duplicate-click guard
+    retryInFlight.current = true;
     setRetrying(true);
     try {
       const res = await fetch(`/api/orders/${orderId}/pay`, { method: 'POST' });
@@ -112,7 +122,7 @@ export function PaymentStatusView() {
       if (!p?.redirectUrl) throw new Error('The payment gateway did not return a checkout link.');
       if (p.providerName === 'youpi') {
         window.location.href = p.redirectUrl; // full redirect to Flavrly PG checkout
-        return;
+        return; // keep the button disabled while the browser navigates away
       }
       await openPhonePeCheckout({ tokenUrl: p.redirectUrl, scriptUrl: p.checkoutScriptUrl });
       // Whatever the PayPage reports, the server decides — restart polling.
@@ -121,9 +131,11 @@ export function PaymentStatusView() {
       setPhase('PENDING');
       setError(null);
       router.refresh();
+      retryInFlight.current = false;
+      setRetrying(false);
     } catch (e) {
       toast.error((e as Error).message);
-    } finally {
+      retryInFlight.current = false;
       setRetrying(false);
     }
   }, [orderId, router]);
@@ -139,10 +151,10 @@ export function PaymentStatusView() {
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {isYoupi
-                ? 'We’re waiting for your bank to confirm the UPI payment. Your order is not confirmed until then — this can take a minute.'
+                ? youpiMessage ?? 'We are checking your UPI transfer. Your order stays pending until the bank credit is confirmed.'
                 : 'This usually takes a few seconds. If you paid by UPI collect, approve the request in your UPI app.'}
             </p>
-            <p className="mt-4 text-xs text-muted-foreground">Please don’t close this page.</p>
+            <p className="mt-4 text-xs text-muted-foreground">{isYoupi ? "You can return to your order later. If the amount was debited, please do not pay again until the first payment has been checked." : "Please don’t close this page."}</p>
           </>
         )}
 
@@ -159,16 +171,19 @@ export function PaymentStatusView() {
         {phase === 'FAILED' && (
           <>
             <XCircle className="mx-auto size-10 text-destructive" />
-            <h1 className="mt-4 text-lg font-semibold">Payment didn’t go through</h1>
-            <p className="mt-2 text-sm text-muted-foreground">{error}</p>
+            <h1 className="mt-4 text-lg font-semibold">{isYoupi ? 'Payment not confirmed' : 'Payment didn’t go through'}</h1>
+            <p className="mt-2 text-sm text-muted-foreground">{isYoupi ? youpiMessage ?? error : error}</p>
             <p className="mt-2 text-xs text-muted-foreground">
-              You haven’t been charged. If money did leave your account, it is auto-reversed by your bank — usually
-              within 3–5 working days.
+              {isYoupi
+                ? 'A failed checkout does not prove that no bank debit occurred. If you paid, contact support with your UPI reference (UTR/RRN). Do not pay again until the first transfer has been checked.'
+                : 'Please check your bank statement before trying again. If you were debited, contact your payment provider or our support team.'}
             </p>
             <div className="mt-6 grid gap-2">
-              <Button onClick={retry} disabled={retrying}>
-                {retrying ? 'Starting…' : 'Try payment again'}
-              </Button>
+              {(!isYoupi || canRetry) && (
+                <Button onClick={retry} disabled={retrying}>
+                  {retrying ? 'Starting…' : 'Try payment again'}
+                </Button>
+              )}
               <Button variant="outline" asChild>
                 <Link href={`/orders/${orderId}`}>View order</Link>
               </Button>

@@ -10,6 +10,8 @@ const h = vi.hoisted(() => ({
   reqUpsert: vi.fn(async (a: any) => ({ id: 'yr1', restaurantId: a.where.restaurantId, status: a.update.status })),
   reqFind: vi.fn(async (): Promise<any> => ({ id: 'yr1', status: 'REQUESTED' })),
   restFind: vi.fn(async (): Promise<any> => ({ id: 'r1' })),
+  restUpsert: vi.fn(async (): Promise<any> => ({ id: '__platform__' })),
+  userFindFirst: vi.fn(async (): Promise<any> => ({ id: 'sa1' })),
 }));
 
 vi.mock('@/server/auth', () => ({
@@ -17,9 +19,12 @@ vi.mock('@/server/auth', () => ({
 }));
 vi.mock('@/server/integrations', () => ({ saveConfig: h.saveConfig, getConfig: h.getConfig }));
 vi.mock('@/server/audit', () => ({ audit: h.audit }));
+// Gateway baseUrl SSRF guard resolves DNS; keep tests offline and deterministic.
+vi.mock('node:dns/promises', () => ({ lookup: vi.fn(async () => [{ address: '93.184.215.14', family: 4 }]) }));
 vi.mock('@/server/db', () => ({
   prisma: {
-    restaurant: { findUnique: h.restFind },
+    restaurant: { findUnique: h.restFind, upsert: h.restUpsert },
+    user: { findFirst: h.userFindFirst },
     integrationCredential: { findUnique: h.credFind },
     youpiFeatureRequest: { findMany: h.reqFindMany, upsert: h.reqUpsert, findUnique: h.reqFind },
   },
@@ -89,6 +94,41 @@ describe('config', () => {
     expect(h.saveConfig).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'http://169.254.169.254/latest/meta-data',
+    'http://10.0.0.5:6100',
+    'http://127.0.0.1:6100',
+    'https://admin:hunter2pass@pg.example.com',
+    'https://pg.example.com/?x=1',
+  ])('POST rejects unsafe gateway baseUrl %s without saving or echoing it', async (baseUrl) => {
+    const res = await cfgPOST(mk({ ...goodCfg, baseUrl }));
+    expect(res.status).toBe(400);
+    expect(h.saveConfig).not.toHaveBeenCalled();
+    const text = JSON.stringify(await res.json());
+    expect(text).not.toContain('hunter2pass');
+    expect(text).not.toContain('SECRET456');
+  });
+
+  it('POST accepts loopback gateway only with FLAVRLY_PG_ALLOW_LOOPBACK_GATEWAY=true', async () => {
+    vi.stubEnv('FLAVRLY_PG_ALLOW_LOOPBACK_GATEWAY', 'true');
+    try {
+      const res = await cfgPOST(mk({ ...goodCfg, baseUrl: 'http://127.0.0.1:6100/' }));
+      expect(res.status).toBe(200);
+      expect(h.saveConfig).toHaveBeenCalledWith('__platform__', 'YOUPI', expect.objectContaining({ baseUrl: 'http://127.0.0.1:6100' }), expect.anything());
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('POST response and audit never contain merchantKey or webhookSecret', async () => {
+    h.credFind.mockResolvedValue({ status: 'CONNECTED', summary: { baseUrl: goodCfg.baseUrl, merchantId: goodCfg.merchantId } });
+    const res = await cfgPOST(mk({ ...goodCfg, merchantKey: 'mk_TOPSECRET789' }));
+    expect(res.status).toBe(200);
+    const text = JSON.stringify(await res.json()) + JSON.stringify(h.audit.mock.calls);
+    expect(text).not.toContain('TOPSECRET789');
+    expect(text).not.toContain('SECRET456');
+  });
+
   it('GET returns masked summary, never raw secrets', async () => {
     h.credFind.mockResolvedValue({
       status: 'CONNECTED',
@@ -150,5 +190,15 @@ describe('decision', () => {
   it('bad decision -> 400', async () => {
     const res = await decide(mk({ decision: 'NUKE' }), ctx);
     expect(res.status).toBe(400);
+  });
+});
+
+describe('config POST on a fresh DB (UAT DEFECT-1)', () => {
+  it('creates the __platform__ sentinel restaurant before saving the credential', async () => {
+    h.restFind.mockResolvedValue(null);
+    const res = await cfgPOST(mk(goodCfg));
+    expect(res.status).toBe(200);
+    expect(h.restUpsert).toHaveBeenCalledWith(expect.objectContaining({ where: { id: '__platform__' } }));
+    expect(h.restUpsert.mock.invocationCallOrder[0]).toBeLessThan(h.saveConfig.mock.invocationCallOrder[0]);
   });
 });

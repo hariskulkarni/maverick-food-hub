@@ -92,3 +92,12 @@ describe('C3: payment verify route', () => {
     expect(payment.providerRef).toBe('merchant-order-1'); // not overwritten with pp1
   });
 });
+
+describe('Flavrly PG payments are never captured by browser verify', () => {
+  it('409 and payment untouched for providerName youpi', async () => {
+    payment = { id: 'pay1', status: 'PENDING', providerName: 'youpi', providerData: {} };
+    const res = await post();
+    expect(res.status).toBe(409);
+    expect(payment.status).toBe('PENDING');
+  });
+});

@@ -7,18 +7,26 @@
  * Auth: SUPER_ADMIN session OR x-internal-secret matching INTERNAL_CRON_SECRET.
  */
 import { NextRequest } from 'next/server';
+import { timingSafeEqual } from 'node:crypto';
 import { auth } from '@/server/auth';
 import { runYoupiReconcileSweep } from '@/server/jobs/youpi-reconcile-sweep';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function safeEqual(a: string, b: string): boolean {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+
+// POST only: a GET alias let a link/prefetch with a super-admin cookie trigger the sweep.
 export async function POST(req: NextRequest) {
   const internalSecret = process.env.INTERNAL_CRON_SECRET;
   const headerSecret = req.headers.get('x-internal-secret');
   const session = await auth();
   const allowed =
-    (internalSecret && headerSecret === internalSecret) ||
+    (internalSecret && headerSecret && safeEqual(headerSecret, internalSecret)) ||
     session?.user?.role === 'SUPER_ADMIN';
   if (!allowed) return new Response('Forbidden', { status: 403 });
 
@@ -26,4 +34,3 @@ export async function POST(req: NextRequest) {
   return Response.json({ ok: true, ...result, at: new Date().toISOString() });
 }
 
-export const GET = POST;

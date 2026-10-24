@@ -13,6 +13,8 @@ vi.mock('@/server/auth', () => ({ auth: async () => session }));
 vi.mock('@/server/http/rate-limit', () => ({ rateLimit: async () => ({ ok: true }) }));
 vi.mock('@/server/log', () => ({ log: { error: vi.fn() } }));
 vi.mock('@/server/db', () => ({ prisma: { order: { findUnique: async () => order } } }));
+let staffRestaurant: any = null;
+vi.mock('@/server/tenancy', () => ({ currentRestaurant: async () => staffRestaurant }));
 vi.mock('@/server/payments/online', () => ({
   startOnlinePayment: (...a: any[]) => startOnlinePayment(...a),
   isOnlineMethod: () => true,
@@ -26,7 +28,8 @@ const post = () =>
 
 beforeEach(() => {
   session = { user: { id: 'c1', role: 'CUSTOMER' } };
-  order = { id: 'o1', customerId: 'c1', status: 'PAYMENT_PENDING', paymentMethod: 'PHONEPE' };
+  order = { id: 'o1', customerId: 'c1', status: 'PAYMENT_PENDING', paymentMethod: 'PHONEPE', branch: { restaurantId: 'r1' } };
+  staffRestaurant = null;
   startOnlinePayment.mockReset().mockResolvedValue({ paymentId: 'p1' });
 });
 
@@ -43,5 +46,31 @@ describe('H14: pay-now status guard', () => {
     const res = await post();
     expect(res.status).toBe(200);
     expect(startOnlinePayment).toHaveBeenCalled();
+  });
+});
+
+describe('pay-now caller scope', () => {
+  it('403 for another customer', async () => {
+    session = { user: { id: 'c2', role: 'CUSTOMER' } };
+    expect((await post()).status).toBe(403);
+  });
+  it('403 for staff of a different restaurant', async () => {
+    session = { user: { id: 'a1', role: 'ADMIN' } };
+    staffRestaurant = { id: 'r2' };
+    expect((await post()).status).toBe(403);
+    expect(startOnlinePayment).not.toHaveBeenCalled();
+  });
+  it('403 for unrelated roles (rider, QA)', async () => {
+    for (const role of ['RIDER', 'QA', 'GUEST']) {
+      session = { user: { id: 'x', role } };
+      expect((await post()).status).toBe(403);
+    }
+  });
+  it('allows own-restaurant staff and super-admin', async () => {
+    session = { user: { id: 'a1', role: 'ADMIN' } };
+    staffRestaurant = { id: 'r1' };
+    expect((await post()).status).toBe(200);
+    session = { user: { id: 's1', role: 'SUPER_ADMIN' } };
+    expect((await post()).status).toBe(200);
   });
 });

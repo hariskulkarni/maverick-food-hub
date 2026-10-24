@@ -1,6 +1,6 @@
 'use client';
 import type React from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
@@ -73,6 +73,24 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
   const [notes, setNotes] = useState('');
   const [pricing, setPricing] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+  // Flavrly PG duplicate-click guard: a ref blocks a second click that lands
+  // before React re-renders the disabled button, and stays set while the
+  // browser redirects to the gateway so a second order/session is never started.
+  const youpiStarting = useRef(false);
+  const youpiPlacedOrderId = useRef<string | null>(null);
+  useEffect(() => {
+    // Back button from the gateway can restore this page from bfcache. The order
+    // already exists, so send the customer to its status page instead of
+    // re-enabling "Place order" (which would create a second order).
+    const onShow = (e: PageTransitionEvent) => {
+      const id = youpiPlacedOrderId.current;
+      if (e.persisted && id) {
+        router.replace(`/checkout/payment-status?orderId=${encodeURIComponent(id)}&provider=youpi`);
+      }
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, [router]);
 
   // Carry a coupon applied in the cart through to checkout so its discount is
   // reflected in the real order total (the cart stashes it in localStorage).
@@ -175,7 +193,12 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
       scheduledForIso = when.toISOString();
     }
 
+    if (useYoupi) {
+      if (youpiStarting.current) return;
+      youpiStarting.current = true;
+    }
     setBusy(true);
+    let redirecting = false;
     try {
       const res = await fetch('/api/orders', {
         method: 'POST',
@@ -242,6 +265,8 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
       if (payment.providerName === 'youpi' && payment.redirectUrl) {
         // Full redirect to Flavrly PG's checkout. The order stays unpaid until the
         // server reconciles; the return page only polls.
+        redirecting = true;
+        youpiPlacedOrderId.current = data.orderId;
         window.location.href = payment.redirectUrl;
         return;
       }
@@ -269,7 +294,11 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
-      setBusy(false);
+      // Stay disabled while navigating to the Flavrly PG checkout.
+      if (!redirecting) {
+        youpiStarting.current = false;
+        setBusy(false);
+      }
     }
   }
 

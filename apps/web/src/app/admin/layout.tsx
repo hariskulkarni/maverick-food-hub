@@ -6,6 +6,7 @@ import {
   LayoutDashboard, ScrollText, CalendarClock, Armchair, Radio, Building2,
   Bike, ShieldAlert, MessagesSquare, BarChart3, History, MessageSquare,
   Settings, Paintbrush, Star, MapPinned,
+  Landmark,
 } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { RestaurantSwitcher } from './restaurant-switcher';
@@ -34,6 +35,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/safety',         icon: <ShieldAlert className={ICON} />,     label: 'Rider Safety' },
       { href: '/admin/messages',       icon: <MessagesSquare className={ICON} />,  label: 'Messages' },
       { href: '/admin/reports',        icon: <BarChart3 className={ICON} />,       label: 'Reports' },
+      { href: '/admin/flavrly-pg',     icon: <Landmark className={ICON} />,        label: 'Flavrly PG' },
       { href: '/admin/activity',       icon: <History className={ICON} />,         label: 'Activity' },
       { href: '/admin/feedback',       icon: <MessageSquare className={ICON} />,   label: 'Feedback' },
       { href: '/admin/reviews',        icon: <Star className={ICON} />,            label: 'Reviews' },

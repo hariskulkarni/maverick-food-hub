@@ -13,6 +13,8 @@ import { notify } from './notifications';
 import { genDeliveryOtp, genOrderCode, STATUS_LABELS } from '@/lib/utils';
 import { pricing, type OfferReward } from './pricing';
 import { isOnlineMethod, startOnlinePayment } from './payments/online';
+import { isDirectUpiPrepayment } from './payments/youpi-order-policy';
+import { youpiEnabledForRestaurant } from './payments';
 import { isCategoryAvailableNow } from './category-availability';
 import { log } from './log';
 import { brand } from '@/lib/brand';
@@ -73,6 +75,8 @@ export const ALLOWED_NEXT: Record<OrderStatus, OrderStatus[]> = {
 };
 
 export class OrderTransitionError extends Error {}
+/** Direct-UPI checkout refused for this restaurant (disabled/unconfigured). Client error, not a server fault. */
+export class PgUnavailableError extends Error {}
 
 export interface PlaceOrderInput {
   branchId: string;
@@ -114,6 +118,9 @@ export interface PlaceOrderInput {
 }
 
 export async function placeOrder(input: PlaceOrderInput) {
+  // Targeted safety correction. Legacy PhonePe/Razorpay and COD flows are
+  // intentionally untouched until their shared lifecycle tests are hardened.
+  const directUpiAwaitingBank = isDirectUpiPrepayment(input.paymentMethod, input.paymentRail);
   const branch = await prisma.branch.findUniqueOrThrow({
     where: { id: input.branchId },
     include: { hours: true } as any,
@@ -123,6 +130,11 @@ export async function placeOrder(input: PlaceOrderInput) {
     // through transitionOrder unaffected. validate-address surfaces this earlier
     // in the funnel but a direct POST to /api/orders must still be guarded.
     throw new Error('Branch is not accepting new orders right now');
+  }
+  // Flavrly PG: refuse BEFORE committing an order. Otherwise a disabled or
+  // unconfigured restaurant would leave a PAYMENT_PENDING order with no session.
+  if (directUpiAwaitingBank && !(await youpiEnabledForRestaurant(branch.restaurantId))) {
+    throw new PgUnavailableError('Flavrly PG is not available for this restaurant.');
   }
 
   // Operating-hours guard. Same data the customer storefront uses to render
@@ -546,7 +558,7 @@ export async function placeOrder(input: PlaceOrderInput) {
         branchId: branch.id,
         customerId: input.customerId,
         addressId: address?.id ?? null,
-        status: OrderStatus.RECEIVED,
+        status: directUpiAwaitingBank ? OrderStatus.PAYMENT_PENDING : OrderStatus.RECEIVED,
         subtotal: priced.subtotal as any,
         taxAmount: priced.taxAmount as any,
         deliveryFee: priced.deliveryFee as any,
@@ -567,7 +579,7 @@ export async function placeOrder(input: PlaceOrderInput) {
         reservationDepositApplied: reservationDepositApplied as any,
         freebieRuleId: grantedFreebieRuleId,
         items: { create: itemCreates },
-        statusEvents: { create: [{ status: OrderStatus.RECEIVED, note: 'Placed by customer' }] }
+        statusEvents: { create: [{ status: directUpiAwaitingBank ? OrderStatus.PAYMENT_PENDING : OrderStatus.RECEIVED, note: directUpiAwaitingBank ? 'Awaiting bank-verified Flavrly PG payment' : 'Placed by customer' }] }
       }
     });
     // Mark the reservation redeemed + seated within the same transaction so two
@@ -647,10 +659,14 @@ export async function placeOrder(input: PlaceOrderInput) {
   // parent restaurant's unified board receives orders from every child. The
   // root is the restaurant's parent when it's a child, else itself (so a solo
   // restaurant's group channel is simply its own id — no behaviour change).
-  publish(`branch:${branch.id}:orders`, { kind: 'order:new', orderId: order.id, branchId: branch.id });
-  const groupRootId = branchWithRestaurant?.restaurant?.parentId ?? branch.restaurantId;
-  publish(groupOrderChannel(groupRootId), { kind: 'order:new', orderId: order.id, branchId: branch.id });
-  publish(`order:${order.id}`, { kind: 'status', orderId: order.id, status: 'RECEIVED', at: new Date().toISOString() });
+  // Do not place an unpaid Flavrly PG order on the kitchen/admin work queue.
+  // The server-side verified capture transition will publish RECEIVED later.
+  if (!directUpiAwaitingBank) {
+    publish(`branch:${branch.id}:orders`, { kind: 'order:new', orderId: order.id, branchId: branch.id });
+    const groupRootId = branchWithRestaurant?.restaurant?.parentId ?? branch.restaurantId;
+    publish(groupOrderChannel(groupRootId), { kind: 'order:new', orderId: order.id, branchId: branch.id });
+  }
+  publish(`order:${order.id}`, { kind: 'status', orderId: order.id, status: directUpiAwaitingBank ? 'PAYMENT_PENDING' : 'RECEIVED', at: new Date().toISOString() });
 
   // Audit each applied offer. audit() is best-effort and never throws — we
   // intentionally fire these AFTER the order txn commits so a log failure
@@ -698,7 +714,9 @@ export async function placeOrder(input: PlaceOrderInput) {
       userId: customer.id,
       template: 'order.placed',
       restaurantId: branch.restaurantId,
-      body: `${brand.name}: Order ${order.code} received. We'll start cooking once accepted.`
+      body: directUpiAwaitingBank
+        ? `${brand.name}: Order ${order.code} is awaiting payment verification. Please do not pay again while confirmation is pending.`
+        : `${brand.name}: Order ${order.code} received. We'll start cooking once accepted.`
     }).catch((e) => log.error({ err: (e as Error).message, orderId: order.id }, 'order.placed sms failed'));
   }
 
@@ -774,7 +792,13 @@ export async function maybeAutoAccept(orderId: string, restaurantId: string, act
 export async function transitionOrder(
   orderId: string,
   next: OrderStatus,
-  opts: { actorId?: string; note?: string; scopeRestaurantId?: string } = {}
+  opts: {
+    actorId?: string;
+    note?: string;
+    scopeRestaurantId?: string;
+    /** Set ONLY by pg/fulfillment.ts after a bank-verified allocation (D3/D6). */
+    pgRelease?: boolean;
+  } = {}
 ) {
   // C12: when an untrusted (tenant-admin) caller passes scopeRestaurantId, the
   // lookup is constrained to that restaurant so a cross-tenant id throws rather
@@ -788,6 +812,16 @@ export async function transitionOrder(
   if (order.status === next) return order;
   if (!ALLOWED_NEXT[order.status].includes(next)) {
     throw new OrderTransitionError(`Cannot transition ${order.status} → ${next}`);
+  }
+  // Flavrly PG: an unpaid direct-UPI order reaches the kitchen only through the
+  // bank-verified release handler, never via an admin/manual or legacy path.
+  if (
+    next === OrderStatus.RECEIVED &&
+    (order.status === OrderStatus.PAYMENT_PENDING || order.status === OrderStatus.PAYMENT_FAILED) &&
+    !opts.pgRelease &&
+    (await prisma.payment.count({ where: { orderId, providerName: 'youpi' } })) > 0
+  ) {
+    throw new OrderTransitionError('Flavrly PG orders are released only after bank-verified payment.');
   }
   const stamp: Partial<Record<keyof typeof Prisma.OrderScalarFieldEnum, Date>> = {};
   switch (next) {
