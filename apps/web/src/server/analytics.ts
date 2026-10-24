@@ -12,7 +12,7 @@ export async function dashboardKpis(branchId: string) {
     prisma.order.count({ where: { branchId, placedAt: { gte: today, lte: todayEnd } } }),
     prisma.order.aggregate({
       _sum: { total: true },
-      where: { branchId, placedAt: { gte: today, lte: todayEnd }, status: { notIn: [OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED] } }
+      where: { branchId, placedAt: { gte: today, lte: todayEnd }, status: { notIn: [OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED, OrderStatus.PAYMENT_PENDING] } }
     }),
     prisma.order.count({ where: { branchId, status: { in: [OrderStatus.RECEIVED] } } }),
     prisma.order.count({ where: { branchId, status: OrderStatus.OUT_FOR_DELIVERY } })
@@ -28,7 +28,7 @@ export async function dashboardKpis(branchId: string) {
 export async function salesSeries(branchId: string, days = 14) {
   const since = daysAgo(days);
   const rows = await prisma.order.findMany({
-    where: { branchId, placedAt: { gte: since }, status: { notIn: [OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED] } },
+    where: { branchId, placedAt: { gte: since }, status: { notIn: [OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED, OrderStatus.PAYMENT_PENDING] } },
     select: { placedAt: true, total: true }
   });
   const buckets = new Map<string, number>();
@@ -47,7 +47,7 @@ export async function bestSellers(branchId: string, limit = 8) {
   const rows = await prisma.orderItem.groupBy({
     by: ['name'],
     _sum: { quantity: true },
-    where: { order: { branchId, status: { notIn: [OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED] } } },
+    where: { order: { branchId, status: { notIn: [OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED, OrderStatus.PAYMENT_PENDING] } } },
     orderBy: { _sum: { quantity: 'desc' } },
     take: limit
   });
@@ -123,7 +123,7 @@ export async function customerInsights(branchId: string) {
     by: ['customerId'],
     _count: { _all: true },
     _sum: { total: true },
-    where: { branchId, status: { notIn: [OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED] } }
+    where: { branchId, status: { notIn: [OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED, OrderStatus.PAYMENT_PENDING] } }
   });
   const totalOrders = rows.reduce((s, r) => s + r._count._all, 0);
   const repeatRate = rows.length ? rows.filter((r) => r._count._all > 1).length / rows.length : 0;

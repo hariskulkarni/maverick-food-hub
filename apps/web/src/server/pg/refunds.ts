@@ -316,6 +316,7 @@ export async function requestPgRefund(input: RequestPgRefundInput): Promise<PgRe
         refundId: refund.id,
         attemptId: a.id,
         method: method === 'WALLET' ? PgRefundMethod.WALLET : PgRefundMethod.MANUAL_BANK,
+        allocationKind: POT[input.kind],
         amountPaise: input.amountPaise,
         destinationRef: input.destinationRef?.trim() || null,
         requestedById: actorId,
