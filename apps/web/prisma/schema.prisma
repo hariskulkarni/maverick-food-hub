@@ -559,6 +559,11 @@ model Restaurant {
   couponCampaigns   CouponCampaign[]
   youpiDailyUsage     YoupiDailyUsage[]
   youpiFeatureRequest YoupiFeatureRequest?
+  // Review response & insights
+  reviewResponseSettings ReviewResponseSettings?
+  reviewReplyTemplates   ReviewReplyTemplate[]
+  reviewAnalyses         ReviewAnalysis[]
+  reviewInsights         ReviewInsightsSnapshot?
 
   @@index([status])
   @@index([brandId])
@@ -1331,6 +1336,78 @@ model OrderFeedback {
   @@index([deliveryRating])
   @@index([overallRating])
 }
+
+// ==== Review response & insights ====
+// Owner-tunable reply rules, alerts/SLA, weekly digest and Google location
+// totals (one row per restaurant). Kept separate from ReviewAutoReplyConfig.
+model ReviewResponseSettings {
+  id                     String    @id @default(cuid())
+  restaurantId           String    @unique
+  // Never auto-post when the review mentions one of these (case-insensitive).
+  skipKeywords           String[]  @default(["food poisoning", "allergy", "allergic", "refund", "legal", "lawyer", "sick", "hospital", "hair in"])
+  // Style learned from the restaurant's last ~20 posted replies (deterministic summary).
+  brandVoiceSummary      String?
+  brandVoiceUpdatedAt    DateTime?
+  // Negative-review alerts.
+  alertEnabled           Boolean   @default(true)
+  alertMaxRating         Int       @default(2)
+  alertSms               Boolean   @default(false)
+  alertWhatsapp          Boolean   @default(false)
+  // Reply SLA + single escalation to a second recipient.
+  slaHours               Int       @default(24)
+  escalationEmail        String?
+  escalationPhone        String?
+  // Weekly digest (Mondays 09:00 IST).
+  digestEnabled          Boolean   @default(false)
+  digestSms              Boolean   @default(false)
+  digestWhatsapp         Boolean   @default(false)
+  digestLastSentAt       DateTime?
+  // True location totals reported by Google (reviews.list averageRating/totalReviewCount).
+  googleAverageRating    Float?
+  googleTotalReviewCount Int?
+  googleStatsAt          DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  restaurant             Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+// Owner-editable reply snippets; variables {name} and {dish}.
+model ReviewReplyTemplate {
+  id           String   @id @default(cuid())
+  restaurantId String
+  name         String
+  body         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  @@index([restaurantId])
+}
+
+// Per-review topic/sentiment extraction (LLM or keyword fallback).
+model ReviewAnalysis {
+  id           String   @id @default(cuid())
+  reviewId     String   @unique
+  restaurantId String
+  sentiment    String   // positive | neutral | negative
+  issues       String[] // cold | late | packaging | portion | price | staff
+  dishes       Json     // [{ name, sentiment }] — names are the restaurant's own menu dishes
+  staff        String[] // first names mentioned (passive trend only)
+  method       String   // llm | keyword
+  analyzedAt   DateTime @default(now())
+  review       GoogleReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  @@index([restaurantId])
+}
+
+// Cached per-restaurant insights, recomputed by the Google reviews sweep.
+model ReviewInsightsSnapshot {
+  id           String   @id @default(cuid())
+  restaurantId String   @unique
+  data         Json
+  computedAt   DateTime @default(now())
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+// ==== end Review response & insights ====
 
 model OrderItem {
   id                  String  @id @default(cuid())
@@ -3391,6 +3468,15 @@ model GoogleReview {
   reviewCreatedAt DateTime
   syncedAt        DateTime @default(now())
   source          String   @default("gbp") // 'gbp' (Business Profile API) | 'places' (Places API, read-only)
+  // ---- Review response & insights ----
+  reviewUpdatedAt DateTime? // Google updateTime (edited reviews)
+  media           Json?     // [{ url, thumbnailUrl, type }] review photos/videos from GBP
+  matchedOrderId  String?   // best fuzzy order match (admin-only context, never public)
+  matchConfidence Float?
+  matchCheckedAt  DateTime?
+  alertedAt       DateTime? // negative-review alert sent (claimed once)
+  escalatedAt     DateTime? // SLA escalation sent (claimed once)
+  analysis        ReviewAnalysis?
   reply           ReviewReply?
   restaurant      Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   @@index([restaurantId, reviewCreatedAt])
@@ -3408,6 +3494,11 @@ model ReviewReply {
   llmModel     String?
   postedAt     DateTime?
   error        String?
+  // ---- Review response & insights ----
+  holdReason       String?   // why it was held/skipped (rule, keyword, safety filter)
+  moderationState  String?   // GBP reply moderation state (e.g. PENDING, APPROVED, REJECTED)
+  policyViolation  String?   // GBP reason when a reply is rejected
+  reviewReplyUrl   String?   // public URL of the reply on Google
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   review       GoogleReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
