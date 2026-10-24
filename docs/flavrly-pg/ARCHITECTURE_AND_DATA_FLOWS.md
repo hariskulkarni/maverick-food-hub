@@ -63,7 +63,7 @@ PgReceivingAccount, CHECK amount>0, append-only trigger on PgFinancialEvent.
 
 | File | Owner | Exports |
 |---|---|---|
-| money.ts | C | `decimalToPaise(d)`, `paiseToInrString(p)` |
+| money.ts | Lead (shared, done) | `decimalToPaise(d)`, `paiseToInrString(p)` |
 | ledger.ts | C | `appendFinancialEvent(tx, e)` |
 | bank-source.ts | C | `BankTransactionSource`, `NormalizedBankTxn`, `parseStatementCsv()` |
 | bank-ingest.ts | C | `ingestBankTransactions(accountId, source, rows, actor)` |
