@@ -1,7 +1,7 @@
 # Flavrly PG — test evidence (DRAFT, Agent H independent QA; lead finalizes)
 
-Date: 2026-10-24. Code under test: `pg/lead` @ `34a5ba5` (fast-forwarded into `pg/h-qa`; includes
-Agents A, B, C, D, E, G). Agent F (merchant/platform PG admin routes and UI) is **not** merged.
+Date: 2026-10-24. Code under test: `pg/lead` @ `b59f9a2` (`pg/h-qa` = that + H tests; includes
+Agents A, B, C, D, E, F, G).
 
 Evidence here is what Agent H re-ran. Earlier reports from other agents were not used as evidence.
 
@@ -26,16 +26,16 @@ Evidence here is what Agent H re-ran. Earlier reports from other agents were not
 | `h-faults.test.ts` | 13 | Crash after allocation commit (outbox lease expiry -> released once), crash after transitionOrder before DONE, inbox crash reclaim, handler failure backoff -> DEAD + exception, webhook dead-letter, DB failures in the webhook route -> 503; import and allocation failure modes; liveness gaps. |
 | `h-concurrency.test.ts` | 8 | Webhook vs 2 sweeps vs 2 inbox workers on one attempt; 20 independent parallel allocations; 20 parallel allocations of one credit; 20 attempts on one order; same file x5 in parallel; 5 overlapping files; 5 concurrent approvers; mixed overlapping workers. |
 | `h-attempts-refunds.test.ts` | 8 | 10 parallel session starts for one order; CREATE_UNKNOWN blocks a second session until resolved; lost-response resolution; per-account pending cap under parallel starts; 5 parallel refunds; refund after reversal; refund reference reuse; worker expiry-stage liveness. |
-| `h-tenant.test.ts` | 7 | Every PG route present (`payments/youpi/status`, `admin/youpi/{vpa,request}`, `platform/youpi/*`, `platform/jobs/{pg-worker,youpi-reconcile}/run`, PG guards on `orders/[id]/pay` and `admin/orders/[id]/kot`) refuses cross-tenant / wrong-role access. |
+| `h-tenant.test.ts` | 11 | Every PG route present (`payments/youpi/status`, `admin/youpi/{vpa,request}`, `admin/pg/{statements,report,refunds/[refundId]}`, `platform/youpi/*` incl. accounts/allocations/bank-entries/exceptions, `platform/jobs/{pg-worker,youpi-reconcile}/run`, PG guards on `orders/[id]/pay` and `admin/orders/[id]/kot`) refuses cross-tenant / wrong-role access; B's data never appears in A's report CSV. |
 | `h-retry-guard.test.ts` | 3 | Server refuses a second session while an attempt is OBSERVED or CREATE_UNKNOWN; status page retry offer. |
-| total | **73** | **63 pass, 10 fail. Every failure is a reported defect (section 4); none is a harness problem.** |
+| total | **77** | **67 pass, 10 fail. Every failure is a reported defect (section 4); none is a harness problem.** |
 
-## 3. Commands and results (Agent H, `pg/h-qa` = `pg/lead` @ 34a5ba5 + H tests)
+## 3. Commands and results (Agent H, `pg/h-qa` = `pg/lead` @ b59f9a2 + H tests)
 
 | Command (from `apps/web`) | Exit | Result |
 |---|---|---|
-| `DATABASE_URL=...ci_h npm run test:db` | 1 | 16 files, 151 tests: 141 pass, 10 fail (all 10 are the H defect tests below; all non-H DB tests pass) |
-| `npm run test:ci` | 0 | 150 files, 1519 tests pass (includes PhonePe, Razorpay, refunds, wallet, verify-route, youpi suites) |
+| `DATABASE_URL=...ci_h npm run test:db` | 1 | 17 files, 169 tests: 159 pass, 10 fail (all 10 are the H defect tests below; all non-H DB tests pass) |
+| `npm run test:ci` | 0 | 151 files, 1539 tests pass (includes PhonePe, Razorpay, refunds, wallet, verify-route, youpi suites) |
 | `npm run typecheck` | 0 | clean |
 | `npm run lint` | 0 | warnings only (pre-existing `no-explicit-any`) |
 | Playwright e2e | not run | see section 5 |
@@ -56,15 +56,14 @@ Evidence here is what Agent H re-ran. Earlier reports from other agents were not
 | H-05 | Low | `h-faults` "sweep is not starved by 100 older long-pending payments" | `jobs/youpi-reconcile-sweep.ts:38-47` |
 
 Fixed during this run: H-07 (second session while an attempt is OBSERVED/CREATE_UNKNOWN) failed on
-`2512c44` and passes on `34a5ba5` after Agent A's `createPgAttempt`.
+`2512c44` and passes on `b59f9a2` after Agent A's `createPgAttempt`.
 
 ## 5. Not covered, and why
 
 - **Playwright e2e:** not run. A `next dev` server plus Chromium against `ci_h` was not reasonable on
   the shared machine at the time (load average 14-26 on 8 cores, 16 GB) and the brief forbids heavy
-  builds. The PG admin screens (statement import, exceptions, manual allocation, refund approve/complete)
-  do not exist yet (Agent F not merged), so the UI journeys in master prompt §19 cannot be exercised
-  end-to-end anyway. The server side of those journeys is covered by the route- and DB-level tests above.
+  builds. Agent F's screens landed late in this run (`b59f9a2`); their API routes are covered by the
+  route-level tests above, the React pages are not exercised by any H test.
 - **Real SIGKILL:** crashes are simulated by persisted lease state, not by killing a process.
 - **Redis unavailable:** tests run with `REDIS_URL` unset (in-process cache only).
 - **Real gateway / real bank:** none. Gateway is a stub reproducing the documented contract
