@@ -30,7 +30,7 @@ describe('runYoupiReconcileSweep', () => {
   });
 
   it('one payment throwing does not abort; counts outcomes; runs under the job lease (no advisory lock)', async () => {
-    h.db.payment.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }]);
+    h.db.payment.findMany.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }]).mockResolvedValueOnce([]);
     h.db.payment.count.mockResolvedValue(2);
     h.reconcile
       .mockResolvedValueOnce({ status: 'CAPTURED' })

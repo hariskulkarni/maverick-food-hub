@@ -29,22 +29,34 @@ const LEASE_MS = 5 * 60_000;
 const MIN_AGE_MS = 90_000;
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const BATCH = 100;
+const LEGACY_BATCH = 10;
 
 export async function runYoupiReconcileSweep(): Promise<YoupiSweepResult> {
   const now = Date.now();
   const result: YoupiSweepResult = { scanned: 0, reconciled: 0, captured: 0, failed: 0, abandoned: 0 };
 
   const run = await withJobLease(SWEEP_LEASE_NAME, LEASE_MS, async () => {
-    const pending = await prisma.payment.findMany({
-      where: {
-        providerName: YOUPI_PROVIDER_NAME,
-        status: { in: [PaymentStatus.PENDING, PaymentStatus.AUTHORIZED] },
-        createdAt: { lt: new Date(now - MIN_AGE_MS), gt: new Date(now - MAX_AGE_MS) },
-      },
+    const base = {
+      providerName: YOUPI_PROVIDER_NAME,
+      status: { in: [PaymentStatus.PENDING, PaymentStatus.AUTHORIZED] },
+      createdAt: { lt: new Date(now - MIN_AGE_MS), gt: new Date(now - MAX_AGE_MS) },
+    };
+    // Least-recently-probed first, so long-pending rows (awaiting a bank statement)
+    // cannot starve newer sessions. Legacy rows without an attempt can never be
+    // captured (they only raise an exception), so they get a small separate batch.
+    const withAttempt = await prisma.payment.findMany({
+      where: { ...base, pgAttempt: { isNot: null } },
       select: { id: true },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { pgAttempt: { lastStatusAt: { sort: 'asc', nulls: 'first' } } },
       take: BATCH,
     });
+    const legacy = await prisma.payment.findMany({
+      where: { ...base, pgAttempt: { is: null } },
+      select: { id: true },
+      orderBy: { updatedAt: 'asc' },
+      take: LEGACY_BATCH,
+    });
+    const pending = [...withAttempt, ...legacy];
 
     for (const p of pending) {
       result.scanned += 1;
