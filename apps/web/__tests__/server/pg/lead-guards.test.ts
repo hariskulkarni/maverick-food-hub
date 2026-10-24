@@ -34,3 +34,15 @@ describe('outbox registry', () => {
     expect(handleOrderRelease).toHaveBeenCalledWith(p);
   });
 });
+
+describe('cron job routes are POST-only', () => {
+  it('pg-worker and youpi-reconcile export no GET and compare secrets in constant time', async () => {
+    const { readFileSync } = await import('node:fs');
+    for (const f of ['src/app/api/platform/jobs/pg-worker/run/route.ts', 'src/app/api/platform/jobs/youpi-reconcile/run/route.ts']) {
+      const src = readFileSync(f, 'utf8');
+      expect(src).not.toMatch(/export\s+(const|async function)\s+GET/);
+      expect(src).toContain('timingSafeEqual');
+      expect(src).not.toContain('headerSecret === internalSecret');
+    }
+  });
+});

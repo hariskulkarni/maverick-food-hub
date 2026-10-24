@@ -4,7 +4,7 @@
 # Invoked by scripts/deploy.sh over SSH, but you can also run it directly
 # after SSHing in:  bash /opt/restaurant-manager/scripts/deploy-remote.sh [--migrate]
 #
-# Pass --migrate to apply schema changes (prisma db push) — only needed when a
+# Pass --migrate to apply schema changes (prisma migrate deploy) — only needed when a
 # deploy includes a schema change. Most deploys don't.
 #
 # Always builds from apps/web (a monorepo — there is no package.json at the repo
@@ -65,8 +65,11 @@ echo "==> [2/5] npm install (idempotent; never use --omit=optional on this repo)
 npm install --no-audit --no-fund
 
 if [ "$MIGRATE" = true ]; then
-  echo "==> [3/5] prisma db push (applying schema change)"
-  npx prisma db push
+  # Versioned migrations only: `db push` skips the raw-SQL money invariants
+  # (partial unique indexes, CHECKs, append-only trigger) in prisma/migrations.
+  # First run on a db-pushed DB: see docs/flavrly-pg/DATABASE_MIGRATIONS.md.
+  echo "==> [3/5] prisma migrate deploy (applying schema change)"
+  npx prisma migrate deploy
 else
   # C14.2: don't silently deploy new code against the old schema. Detect whether
   # the committed Prisma schema would change the live DB and, if so, abort loudly

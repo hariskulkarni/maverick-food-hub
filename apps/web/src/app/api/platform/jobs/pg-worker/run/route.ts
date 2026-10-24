@@ -82,4 +82,3 @@ export async function POST(req: NextRequest) {
   return Response.json({ ok: true, inbox, outbox, sweep, metrics, at: new Date().toISOString() });
 }
 
-export const GET = POST;

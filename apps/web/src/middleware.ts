@@ -62,12 +62,24 @@ function rlIsAuthPath(p: string): boolean {
  *   • NextAuth (/api/auth) has its own CSRF token; webhooks are signature-verified.
  *   • Unparseable Origin → allowed (SameSite=Lax cookies still protect).
  */
+// Exact provider webhook endpoints (signature-verified). A substring match on
+// '/webhook' let any future route containing it skip CSRF and rate limiting.
+const WEBHOOK_PATHS = new Set([
+  '/api/payments/webhook',
+  '/api/payments/razorpay/webhook',
+  '/api/payments/phonepe/webhook',
+  '/api/payments/youpi/webhook',
+]);
+function isWebhookPath(path: string): boolean {
+  return WEBHOOK_PATHS.has(path.replace(/\/+$/, ''));
+}
+
 function csrfGuard(req: NextRequest, path: string): NextResponse | null {
   const method = req.method.toUpperCase();
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return null;
   const authz = req.headers.get('authorization');
   if (authz && authz.startsWith('Bearer ')) return null;
-  if (path.startsWith('/api/auth') || path.includes('/webhook')) return null;
+  if (path.startsWith('/api/auth') || isWebhookPath(path)) return null;
   const origin = req.headers.get('origin');
   if (!origin) return null;
   try {
@@ -83,7 +95,7 @@ function csrfGuard(req: NextRequest, path: string): NextResponse | null {
 
 async function apiRateLimit(req: NextRequest, path: string): Promise<NextResponse | null> {
   try {
-    if (RL_EXEMPT_PREFIX.some((e) => path.startsWith(e)) || path.includes('/webhook')) return null;
+    if (RL_EXEMPT_PREFIX.some((e) => path.startsWith(e)) || isWebhookPath(path)) return null;
     const now = Date.now();
     rlSweep(now);
     const ip = rlClientIp(req);
