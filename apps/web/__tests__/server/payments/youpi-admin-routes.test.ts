@@ -17,6 +17,8 @@ vi.mock('@/server/auth', () => ({
 }));
 vi.mock('@/server/integrations', () => ({ saveConfig: h.saveConfig, getConfig: h.getConfig }));
 vi.mock('@/server/audit', () => ({ audit: h.audit }));
+// Gateway baseUrl SSRF guard resolves DNS; keep tests offline and deterministic.
+vi.mock('node:dns/promises', () => ({ lookup: vi.fn(async () => [{ address: '93.184.215.14', family: 4 }]) }));
 vi.mock('@/server/db', () => ({
   prisma: {
     restaurant: { findUnique: h.restFind },
@@ -87,6 +89,41 @@ describe('config', () => {
     const res = await cfgPOST(mk({ baseUrl: 'nope' }));
     expect(res.status).toBe(400);
     expect(h.saveConfig).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'http://169.254.169.254/latest/meta-data',
+    'http://10.0.0.5:6100',
+    'http://127.0.0.1:6100',
+    'https://admin:hunter2pass@pg.example.com',
+    'https://pg.example.com/?x=1',
+  ])('POST rejects unsafe gateway baseUrl %s without saving or echoing it', async (baseUrl) => {
+    const res = await cfgPOST(mk({ ...goodCfg, baseUrl }));
+    expect(res.status).toBe(400);
+    expect(h.saveConfig).not.toHaveBeenCalled();
+    const text = JSON.stringify(await res.json());
+    expect(text).not.toContain('hunter2pass');
+    expect(text).not.toContain('SECRET456');
+  });
+
+  it('POST accepts loopback gateway only with FLAVRLY_PG_ALLOW_LOOPBACK_GATEWAY=true', async () => {
+    vi.stubEnv('FLAVRLY_PG_ALLOW_LOOPBACK_GATEWAY', 'true');
+    try {
+      const res = await cfgPOST(mk({ ...goodCfg, baseUrl: 'http://127.0.0.1:6100/' }));
+      expect(res.status).toBe(200);
+      expect(h.saveConfig).toHaveBeenCalledWith('__platform__', 'YOUPI', expect.objectContaining({ baseUrl: 'http://127.0.0.1:6100' }), expect.anything());
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('POST response and audit never contain merchantKey or webhookSecret', async () => {
+    h.credFind.mockResolvedValue({ status: 'CONNECTED', summary: { baseUrl: goodCfg.baseUrl, merchantId: goodCfg.merchantId } });
+    const res = await cfgPOST(mk({ ...goodCfg, merchantKey: 'mk_TOPSECRET789' }));
+    expect(res.status).toBe(200);
+    const text = JSON.stringify(await res.json()) + JSON.stringify(h.audit.mock.calls);
+    expect(text).not.toContain('TOPSECRET789');
+    expect(text).not.toContain('SECRET456');
   });
 
   it('GET returns masked summary, never raw secrets', async () => {
