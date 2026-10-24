@@ -183,11 +183,11 @@ export async function paymentProvider(
     if (!youpiNewPaymentsEnabled()) {
       throw new Error('Flavrly PG new checkout is disabled (FLAVRLY_PG_NEW_PAYMENTS_ENABLED is not true)');
     }
-    const ycfg = await resolveYoupiConfig(restaurantId);
+    const ycfg = await resolveYoupiConfig(restaurantId, { forNew: true });
     if (ycfg) return youpiProvider(ycfg);
     throw new Error(
       `Flavrly PG was requested for restaurant ${restaurantId ?? '(none)'} but is not available ` +
-        `(feature not APPROVED, platform connection missing, or no receiving VPA); ` +
+        `(feature not APPROVED, or no verified receiving-account binding with matching credentials); ` +
         `refusing to fall back to another payment gateway.`
     );
   }
@@ -227,9 +227,9 @@ export async function paymentProvider(
   return mockProvider();
 }
 
-/** Whether to offer Flavrly PG at checkout: APPROVED + platform connection + restaurant VPA. */
+/** Whether to offer Flavrly PG at checkout: APPROVED + verified, enabled merchant binding. */
 export async function youpiEnabledForRestaurant(restaurantId?: string | null): Promise<boolean> {
-  return youpiNewPaymentsEnabled() && !!(await resolveYoupiConfig(restaurantId));
+  return youpiNewPaymentsEnabled() && !!(await resolveYoupiConfig(restaurantId, { forNew: true }));
 }
 
 /** True when a stored `Payment.providerName` denotes the PhonePe rail. */
