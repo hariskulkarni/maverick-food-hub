@@ -12,6 +12,7 @@
  */
 import { NextRequest } from 'next/server';
 import { auth } from '@/server/auth';
+import { secretMatches } from '@/server/http/secret-compare';
 import { runPhonePeReconcileSweep } from '@/server/jobs/phonepe-reconcile-sweep';
 
 export const runtime = 'nodejs';
@@ -22,12 +23,10 @@ export async function POST(req: NextRequest) {
   const headerSecret = req.headers.get('x-internal-secret');
   const session = await auth();
   const allowed =
-    (internalSecret && headerSecret === internalSecret) ||
+    secretMatches(headerSecret, internalSecret) ||
     session?.user?.role === 'SUPER_ADMIN';
   if (!allowed) return new Response('Forbidden', { status: 403 });
 
   const result = await runPhonePeReconcileSweep();
   return Response.json({ ok: true, ...result, at: new Date().toISOString() });
 }
-
-export const GET = POST;
