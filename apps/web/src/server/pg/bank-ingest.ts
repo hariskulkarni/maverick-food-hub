@@ -24,11 +24,14 @@ import {
   type StatementColumnMapping,
 } from './bank-source';
 import { tryAllocateBankTxn } from './reconcile-engine';
+import { log } from '../log';
 
 export interface IngestResult {
   insertedIds: string[];
   duplicateCount: number;
   conflictCount: number;
+  /** Credits whose immediate allocation threw; left UNMATCHED for retryUnmatchedCredits(). */
+  allocationFailedIds: string[];
 }
 
 export interface IngestOptions {
@@ -61,7 +64,7 @@ export async function ingestBankTransactions(
   if (!account) throw new Error(`ingestBankTransactions: receiving account ${accountId} not found`);
   rows.forEach(assertRow);
 
-  const result: IngestResult = { insertedIds: [], duplicateCount: 0, conflictCount: 0 };
+  const result: IngestResult = { insertedIds: [], duplicateCount: 0, conflictCount: 0, allocationFailedIds: [] };
   const status = source === PgBankSource.MANUAL ? PgBankTxnStatus.PENDING_APPROVAL : PgBankTxnStatus.UNMATCHED;
 
   for (const r of rows) {
@@ -127,10 +130,22 @@ export async function ingestBankTransactions(
   }
 
   if (opts.autoAllocate !== false && status === PgBankTxnStatus.UNMATCHED) {
-    for (const id of result.insertedIds) await tryAllocateBankTxn(id);
+    // H-02b: one failing allocation must not strand the others; failures stay UNMATCHED and
+    // are retried by retryUnmatchedCredits() (pg worker).
+    for (const id of result.insertedIds) {
+      try {
+        await tryAllocateBankTxn(id);
+      } catch (e) {
+        result.allocationFailedIds.push(id);
+        log.warn({ bankTransactionId: id, err: (e as Error).message }, 'pg.ingest.allocate_failed');
+      }
+    }
   }
   return result;
 }
+
+/** A PROCESSING import older than this is presumed abandoned (process crash) and may be resumed. */
+export const STALE_IMPORT_MS = 15 * 60_000;
 
 export interface StatementImportResult {
   importId: string;
@@ -141,7 +156,11 @@ export interface StatementImportResult {
   rejected: RejectedRow[];
 }
 
-/** Import a CSV statement once per (account, file sha256). Re-uploading the same file is a no-op. */
+/**
+ * Import a CSV statement once per (account, file sha256). Re-uploading a COMPLETED file is a no-op.
+ * H-02: an import that did not reach COMPLETED (crash / DB error mid-way) is RESUMED by re-uploading
+ * the same file: rows are idempotent by account+direction+reference, and COMPLETED is written last.
+ */
 export async function importStatementCsv(input: {
   receivingAccountId: string;
   fileName: string;
@@ -154,49 +173,78 @@ export async function importStatementCsv(input: {
   const existing = await prisma.pgStatementImport.findUnique({
     where: { receivingAccountId_fileSha256: { receivingAccountId: input.receivingAccountId, fileSha256 } },
   });
+  const noop = (importId: string): StatementImportResult => ({
+    importId,
+    duplicateFile: true,
+    insertedCount: 0,
+    duplicateCount: 0,
+    conflictCount: 0,
+    rejected: [],
+  });
   if (existing) {
-    return {
-      importId: existing.id,
-      duplicateFile: true,
-      insertedCount: 0,
-      duplicateCount: 0,
-      conflictCount: 0,
-      rejected: [],
-    };
+    // Resume only a FAILED import, or a PROCESSING one old enough that its process must have died.
+    // The claim is atomic, so parallel uploads of the same file resume it at most once at a time;
+    // a fresh PROCESSING import (another upload in flight) is answered as a duplicate.
+    const claimed = await prisma.pgStatementImport.updateMany({
+      where: {
+        id: existing.id,
+        OR: [
+          { status: 'FAILED' },
+          { status: 'PROCESSING', createdAt: { lt: new Date(Date.now() - STALE_IMPORT_MS) } },
+        ],
+      },
+      data: { status: 'PROCESSING' },
+    });
+    if (claimed.count === 0) return noop(existing.id);
   }
   const parsed = parseStatementCsv(input.content, input.mapping);
   let imp: { id: string };
-  try {
-    imp = await prisma.pgStatementImport.create({
-      data: {
-        receivingAccountId: input.receivingAccountId,
-        uploadedById: input.uploadedById,
-        fileName: input.fileName.slice(0, 200),
-        fileSha256,
-        rowCount: parsed.rows.length + parsed.rejected.length,
-        rejectedCount: parsed.rejected.length,
-        status: 'PROCESSING',
-      },
-      select: { id: true },
-    });
-  } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-      // A concurrent upload of the same file won the race.
-      return importStatementCsv(input);
+  if (existing) {
+    imp = { id: existing.id };
+    log.warn({ importId: existing.id, status: existing.status }, 'pg.statement_import.resume');
+  } else {
+    try {
+      imp = await prisma.pgStatementImport.create({
+        data: {
+          receivingAccountId: input.receivingAccountId,
+          uploadedById: input.uploadedById,
+          fileName: input.fileName.slice(0, 200),
+          fileSha256,
+          rowCount: parsed.rows.length + parsed.rejected.length,
+          rejectedCount: parsed.rejected.length,
+          status: 'PROCESSING',
+        },
+        select: { id: true },
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        // A concurrent upload of the same file won the race: resume/no-op through the path above.
+        return importStatementCsv(input);
+      }
+      throw e;
     }
+  }
+  let res: IngestResult;
+  try {
+    res = await ingestBankTransactions(
+      input.receivingAccountId,
+      PgBankSource.STATEMENT_IMPORT,
+      parsed.rows,
+      input.uploadedById,
+      { importId: imp.id },
+    );
+  } catch (e) {
+    // Leave the import resumable by a re-upload of the same file (COMPLETED is written last).
+    await prisma.pgStatementImport
+      .update({ where: { id: imp.id }, data: { status: 'FAILED' } })
+      .catch((err) => log.error({ importId: imp.id, err: (err as Error).message }, 'pg.statement_import.mark_failed'));
     throw e;
   }
-  const res = await ingestBankTransactions(
-    input.receivingAccountId,
-    PgBankSource.STATEMENT_IMPORT,
-    parsed.rows,
-    input.uploadedById,
-    { importId: imp.id },
-  );
   await prisma.pgStatementImport.update({
     where: { id: imp.id },
     data: {
-      insertedCount: res.insertedIds.length,
+      // Counts rows from every (possibly resumed) run of this import.
+      insertedCount: await prisma.pgBankTransaction.count({ where: { importId: imp.id } }),
       duplicateCount: res.duplicateCount + res.conflictCount,
       status: 'COMPLETED',
     },

@@ -66,7 +66,12 @@ Ingest (`ingestBankTransactions`, `bank-ingest.ts:49`):
 - Every insert appends `BANK_TXN_INGESTED` to `PgFinancialEvent`.
 - New UNMATCHED rows are offered to `tryAllocateBankTxn`.
 - Credits that match no attempt stay UNMATCHED and visible (they are never deleted or
-  hidden because an order expired).
+  hidden because an order expired) and open a deduped `UNMATCHED_CREDIT:<txnId>` exception,
+  auto-resolved when the credit is later allocated.
+- One failing allocation does not stop the others; failed credits stay UNMATCHED and are
+  retried by `retryUnmatchedCredits()` (reconcile-engine, called by the pg worker), which
+  also covers a credit that arrived before the UTR-bearing webhook. `recordObservation`
+  additionally tries allocation right after it sets `observedUtr`.
 
 ### CSV statement import (`parseStatementCsv`, `bank-source.ts:173`)
 
@@ -85,7 +90,10 @@ and `dateFormat` (`DD/MM/YYYY`, `DD-MM-YYYY`, `YYYY-MM-DD`, `DD-MMM-YYYY`, `DD M
   64 characters (`redactNarration`, :70).
 - Rejected rows are returned with line number and reason; nothing is guessed.
 - File dedupe: `PgStatementImport` unique `(receivingAccountId, fileSha256)`; re-uploading the
-  same bytes returns the original import id and inserts nothing.
+  same bytes of a COMPLETED import returns the original import id and inserts nothing.
+  COMPLETED is written last. An import that failed (status FAILED) or is PROCESSING for more than
+  15 minutes (`STALE_IMPORT_MS`, presumed crashed) is resumed by re-uploading the same file; the
+  claim is an atomic conditional update, and rows are idempotent anyway.
 
 ### Manual entries (dual control)
 
