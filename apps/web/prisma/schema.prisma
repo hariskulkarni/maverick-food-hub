@@ -3562,6 +3562,7 @@ enum PgExceptionKind {
   REFUND_FAILED
   WEBHOOK_DEAD_LETTER
   OUTBOX_DEAD_LETTER
+  RELEASE_HELD // captured money, order held for restaurant confirmation (stale release / accepted late payment)
 }
 
 enum PgExceptionStatus {
@@ -3848,6 +3849,8 @@ model PgRefundRecord {
   completedAt    DateTime?
   failureReason  String?
   evidence       Json?
+  // DEBIT bank row proving the refund left the account (linked by reference, never guessed)
+  bankTransactionId String? @unique
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
