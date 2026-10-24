@@ -19,6 +19,7 @@
  * Gateway SUCCESS is never treated as capture here (D2). Secrets never leave the server.
  */
 
+import { openException as openReconException } from './exceptions';
 import crypto from 'node:crypto';
 import type { PaymentMethod, PgAttemptState, PgExceptionKind, Prisma } from '@prisma/client';
 import { prisma } from '@/server/db';
@@ -107,21 +108,15 @@ async function openException(
   a: { id: string; restaurantId: string; receivingAccountId: string; orderId: string; expectedAmountPaise: number },
   detail: Record<string, unknown>,
 ): Promise<void> {
-  // TODO(lead): switch to pg/exceptions.ts openException() once Agent C's module lands.
-  const dedupeKey = `${kind}:${a.id}`;
-  await tx.pgReconException.upsert({
-    where: { dedupeKey },
-    create: {
-      kind,
-      restaurantId: a.restaurantId,
-      receivingAccountId: a.receivingAccountId,
-      attemptId: a.id,
-      orderId: a.orderId,
-      amountPaise: a.expectedAmountPaise,
-      detail: detail as Prisma.InputJsonValue,
-      dedupeKey,
-    },
-    update: {},
+  await openReconException(tx, {
+    kind,
+    dedupeKey: `${kind}:${a.id}`,
+    restaurantId: a.restaurantId,
+    receivingAccountId: a.receivingAccountId,
+    attemptId: a.id,
+    orderId: a.orderId,
+    amountPaise: a.expectedAmountPaise,
+    detail: detail as Prisma.InputJsonValue,
   });
 }
 

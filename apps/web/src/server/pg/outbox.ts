@@ -6,6 +6,7 @@
  * delivers rows to handlers from outbox-handlers.ts with the same lease /
  * backoff / dead-letter semantics as the inbound inbox (see inbox.ts).
  */
+import { openException } from './exceptions';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { log } from '../log';
@@ -80,15 +81,11 @@ async function markDead(row: OutboxRow, owner: string, error: string): Promise<b
     });
     if (r.count !== 1) return false;
     const dedupeKey = `OUTBOX_DEAD_LETTER:${row.id}`;
-    await tx.pgReconException.upsert({
-      where: { dedupeKey },
-      create: {
+    await openException(tx, {
         kind: 'OUTBOX_DEAD_LETTER',
         dedupeKey,
         detail: { outboxId: row.id, topic: row.topic, aggregateId: row.aggregateId, attempts: row.attempts, lastError: error },
-      },
-      update: {},
-    });
+      });
     return true;
   });
 }

@@ -1,4 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+// Exceptions module routed through the fake client's upsert so assertions on the stored row hold.
+vi.mock('@/server/pg/exceptions', () => ({
+  openException: async (client: any, input: any) => {
+    const row = await client.pgReconException.upsert({ where: { dedupeKey: input.dedupeKey }, create: input, update: {} });
+    return { id: row?.id ?? input.dedupeKey, created: true };
+  },
+}));
+
 
 const h = vi.hoisted(() => {
   class OrderTransitionError extends Error {}

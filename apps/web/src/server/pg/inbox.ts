@@ -18,6 +18,7 @@
  * The body's status is never acted on: processing records the authenticated
  * UTR/amount as an observation and asks the gateway/ledger (reconcile).
  */
+import { openException } from './exceptions';
 import { recordObservation } from './reconcile-engine';
 import { PgEvidenceSource } from '@prisma/client';
 import { Prisma } from '@prisma/client';
@@ -200,16 +201,12 @@ async function deadLetter(ev: InboxEvent, owner: string, error: string): Promise
     });
     if (r.count !== 1) return false;
     const dedupeKey = `WEBHOOK_DEAD_LETTER:${ev.id}`;
-    await tx.pgReconException.upsert({
-      where: { dedupeKey },
-      create: {
+    await openException(tx, {
         kind: 'WEBHOOK_DEAD_LETTER',
         restaurantId: ev.restaurantId,
         dedupeKey,
         detail: { webhookEventId: ev.id, providerEventId: ev.providerEventId, attempts: ev.attempts, lastError: error },
-      },
-      update: {},
-    });
+      });
     return true;
   });
 }

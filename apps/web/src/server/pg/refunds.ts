@@ -19,6 +19,8 @@
  * WALLET credit instead of a bank refund is possible only when
  * FLAVRLY_PG_ALLOW_WALLET_REFUND=true AND the admin explicitly picks it.
  */
+import { appendFinancialEvent } from './ledger';
+import { openException } from './exceptions';
 import {
   OrderStatus,
   PaymentStatus,
@@ -107,25 +109,21 @@ async function appendEvent(
   tx: Tx,
   e: { kind: string; restaurantId: string; attemptId: string; orderId: string; refundId: string; amountPaise: number; actorId: string; dedupeKey: string; data?: Prisma.InputJsonValue },
 ): Promise<void> {
-  await tx.pgFinancialEvent.createMany({ data: [e], skipDuplicates: true });
+  await appendFinancialEvent(tx, e);
 }
 
 async function openRefundFailedException(
   tx: Tx,
   e: { restaurantId: string; attemptId: string; orderId: string; amountPaise: number; refundId: string; reason: string },
 ): Promise<void> {
-  await tx.pgReconException.upsert({
-    where: { dedupeKey: `${PgExceptionKind.REFUND_FAILED}:${e.refundId}` },
-    update: {},
-    create: {
-      kind: PgExceptionKind.REFUND_FAILED,
-      dedupeKey: `${PgExceptionKind.REFUND_FAILED}:${e.refundId}`,
-      restaurantId: e.restaurantId,
-      attemptId: e.attemptId,
-      orderId: e.orderId,
-      amountPaise: e.amountPaise,
-      detail: { refundId: e.refundId, reason: e.reason },
-    },
+  await openException(tx, {
+    kind: PgExceptionKind.REFUND_FAILED,
+    dedupeKey: `${PgExceptionKind.REFUND_FAILED}:${e.refundId}`,
+    restaurantId: e.restaurantId,
+    attemptId: e.attemptId,
+    orderId: e.orderId,
+    amountPaise: e.amountPaise,
+    detail: { refundId: e.refundId, reason: e.reason },
   });
 }
 

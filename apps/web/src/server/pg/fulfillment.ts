@@ -29,6 +29,7 @@
  *   is itself guarded), which closes the crash window for that step.
  */
 
+import { openException } from './exceptions';
 import { OrderStatus, PaymentStatus, PgAttemptState } from '@prisma/client';
 import { prisma } from '../db';
 import { log } from '../log';
@@ -112,10 +113,7 @@ export async function handleOrderRelease(payload: OrderReleasePayload): Promise<
 
     if (NOT_RELEASABLE.has(order.status) && !(await wasEverReleased(orderId))) {
       const exceptionDedupeKey = lateExceptionDedupeKey(attemptId);
-      // TODO(lead): swap for pg/exceptions.ts openException() at integration.
-      await prisma.pgReconException.upsert({
-        where: { dedupeKey: exceptionDedupeKey },
-        create: {
+      await openException(prisma, {
           kind: 'LATE_PAYMENT',
           dedupeKey: exceptionDedupeKey,
           restaurantId: attempt.restaurantId,
@@ -124,9 +122,7 @@ export async function handleOrderRelease(payload: OrderReleasePayload): Promise<
           orderId,
           amountPaise: attempt.expectedAmountPaise,
           detail: { orderStatus: order.status, paymentId, reason: 'captured after order left PAYMENT_PENDING' },
-        },
-        update: {},
-      });
+        });
       log.warn({ orderId, attemptId, orderStatus: order.status }, 'pg.release.late_payment');
       return { outcome: 'LATE_PAYMENT', orderId, orderStatus: order.status, exceptionDedupeKey };
     }
