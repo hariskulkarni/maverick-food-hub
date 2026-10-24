@@ -1,38 +1,58 @@
-# Flavrly PG — Master implementation status & task board
+# Flavrly PG — Master implementation status
 
-Lead branch: `pg/lead` (base `fix/flavrly-pg-safe-pilot-20261022` @ eebd11f, PR #29).
-Contract: [ARCHITECTURE_AND_DATA_FLOWS.md](ARCHITECTURE_AND_DATA_FLOWS.md). Evidence: `~/flavrly-pg-evidence/2026-10-24/` (lead machine).
+**Verdict: ENGINEERING COMPLETE (pilot scope) / PRODUCTION BLOCKED** — see [FINAL_GO_NO_GO.md](FINAL_GO_NO_GO.md).
 
-## Phase 0 baseline (2026-10-24, lead machine, Node v20.20.2, Postgres 16.15 local)
-| Step | Result |
-|---|---|
-| prisma generate / validate | exit 0 / exit 0 |
-| prisma db push (fresh DB) | exit 0 |
-| typecheck / lint / check:responsive | exit 0 / 0 / 0 |
-| test:ci | 137 files, 1304 tests passed |
-| build | exit 0 |
-| GitHub CI on PR #29 head eebd11f | Web, Security, Rider: SUCCESS |
+Integration branch: `pg/lead` (pushed as `pg/integration-20261024`, then to PR #29 head). Base: PR #29 head `eebd11f`.
+Contract: [ARCHITECTURE_AND_DATA_FLOWS.md](ARCHITECTURE_AND_DATA_FLOWS.md). Evidence: [TEST_EVIDENCE.md](TEST_EVIDENCE.md),
+lead machine `~/flavrly-pg-evidence/2026-10-24/` (gate logs, per-agent logs, #86 SIGKILL repro, APK build).
 
-Baseline findings (fresh, file-level evidence):
-- Prisma migrations do not contain the YouPI models (`YoupiFeatureRequest`, `YoupiDailyUsage`); CI uses `db push`, production `deploy/deploy.sh:82` runs `migrate deploy` → schema drift (P1, Agent C).
-- Existing vitest suite mocks Prisma entirely; no real-DB test protects money invariants (Agent C/H).
-- `youpi-reconcile.ts` requires UTR from status API, which upstream never returns (P0 functional, Agent C).
-- Capture guard `findFirst` + `updateMany` is non-atomic across attempts (P0, Agent C).
-- Attempt number `count+1` (`payments/online.ts:141`) collides under concurrent starts (P1, Agent A).
-- Advisory lock in `jobs/youpi-reconcile-sweep.ts` taken on a pooled connection (P1, Agent B).
-- Webhook replay uses the `error` column as claim marker (P1, Agent B).
-- Caps keyed by restaurant, slots never released (P1, Agent A).
-- Upstream fork deployed (`flavrly/pg-hardening` @ 7720b49) is 96 commits behind upstream main d7b0741 (Agent G/B).
+## Phase 0 baseline (PR #29 head `eebd11f`)
+generate/validate/db push/typecheck/lint/responsive OK; 137 files / 1304 unit tests; build OK; GitHub CI green.
+No real-database tests existed; the PR author had not run any tests (SAFE_PILOT_HARDENING.md).
+
+## Final gate (`pg/lead` @ `cc9fef2`)
+migrate deploy from empty OK, drift 0, typecheck/lint/responsive OK, **1542 unit tests**, **170 real-Postgres tests**, build OK.
+
+## Findings matrix (prior audit P0/P1 → fresh verification → status)
+
+| # | Finding (prior audit) | Fresh evidence at `eebd11f` | Status now | Where |
+|---|---|---|---|---|
+| P0-1 | Missing UTR in gateway status | Confirmed: status view has no UTR (UPSTREAM_CONTRACT.md); reconcile required it → nothing could ever capture | FIXED: UTR comes from HMAC-verified webhook as evidence; capture needs a bank credit | `pg/inbox.ts`, `pg/reconcile-engine.ts` |
+| P0-2 | Restaurant VPA ≠ upstream merchant's bank account | Confirmed: gateway pays the merchant's single active VPA; Flavrly VPA was a label | FIXED/MITIGATED: VERIFIED `PgReceivingAccount` binding, unique per gateway merchant, readback must match before checkout; one restaurant per gateway merchant until upstream #89 | `pg/merchant-binding.ts`, `pg/attempts.ts`, `pg/receiving-accounts.ts` |
+| P0-3 | Auth mismatch on create | Confirmed: upstream requires X-Merchant-Key (PR #78); fork does not check | FIXED: server-side key, `redirect:'error'`, masked | `payments/youpi-api.ts` |
+| P0-4 | Orders to kitchen before payment | Partly fixed on PR #29 (PAYMENT_PENDING) but admin could release manually, KOT printable | FIXED: release only via outbox after allocation; manual release blocked; KOT refuses | `orders.ts`, `pg/fulfillment.ts`, KOT route |
+| P0-5 | Non-atomic duplicate capture | Confirmed (`findFirst` + `updateMany`) | FIXED: row locks + partial unique indexes; 20-way concurrency test | migration `…000100`, `tests/db/reconcile-engine.test.ts` |
+| P0-6 | Observer success treated as settlement | Confirmed: status SUCCESS + UTR captured | FIXED: SUCCESS = OBSERVED only | `youpi-api.ts` mapStatus |
+| P0-7 | Cross-tenant attribution | Confirmed: global webhook lookup, platform secret | FIXED: per-merchant secrets, attempt-scoped lookup, tenant tests | `pg/webhook-auth.ts`, `tests/db/h-tenant.test.ts` |
+| P1-1 | Retry identity collisions | Confirmed (`count+1`) | FIXED: cuid attempt keys, CREATE_UNKNOWN blocks | `pg/attempts.ts` |
+| P1-2 | Lost webhooks | Upstream #86 reproduced by SIGKILL; fork mostly durable, 2 gaps | Flavrly side FIXED (durable inbox, sweep, expiry); fork patch local only (licence) | `pg/inbox.ts`, evidence `agent-b/b86/` |
+| P1-3 | Replay/idempotency | Confirmed (body-only HMAC) | FIXED: timestamp-bound signatures, dedupe | webhook route |
+| P1-4 | Worker locking | Confirmed (pooled advisory lock) | FIXED: `PgJobLease` + row leases | `pg/job-lease.ts` |
+| P1-5 | Stale pending | Confirmed (never expired) | FIXED: expiry stage, STALE_PENDING exceptions | `expireStaleAttempts` |
+| P1-6 | Limits per restaurant | Confirmed | FIXED: per receiving account + per customer, released only when provably unpaid | `pg/limits.ts` |
+| P1-7 | Refund inconsistencies | Confirmed (fake COMPLETED in dev) | FIXED: two-person manual bank refund with human-entered bank reference | `pg/refunds.ts` |
+| P1-8 | Payment-mode/settlement gaps | Confirmed (PSP fee on direct UPI; unpaid in GMV) | FIXED: DIRECT_TO_MERCHANT settlement, unpaid excluded from GMV | `settlement.ts`, reports, analytics |
+| P1-9 | Schema migration drift | Confirmed: 26 tables missing from migrations | FIXED in code: idempotent catch-up + Pg migration, CI drift check; prod baselining is an owner step | `prisma/migrations`, DATABASE_MIGRATIONS.md |
+| P1-10 | No financial ops visibility | Confirmed | FIXED: merchant + platform ops pages, exception queue, worker metrics | `app/admin/flavrly-pg`, `app/platform/youpi/ops` |
+| new | Fork 0–99 paise payable offset | Found by Agent A | FIXED: signed `payableAmountPaise`, exact match, DB CHECK | BANK_RECONCILIATION_SPEC.md addendum |
 
 ## Task board
-| Agent | Scope | Branch | Depends on | Status | Commits | Integration | Open risks |
-|---|---|---|---|---|---|---|---|
-| Lead | contract, schema v1, money helper, integration, final docs | pg/lead | — | contract done (5355b47, 58c338b) | | — | |
-| A | binding, attempts, limits, gateway client | pg/a-core | contract | in progress | | | |
-| B | webhook inbox/outbox, leases, #86 fork | pg/b-webhooks | contract | in progress | | | |
-| C | migrations, ledger, bank ingest, reconcile engine | pg/c-ledger | contract | in progress | | | |
-| D | fulfillment, order release, status UX | pg/d-checkout | contract | in progress | | | |
-| E | refunds, settlement, reports | pg/e-refunds | C | queued (wave 2) | | | |
-| F | merchant/platform UI, CRM events | pg/f-merchant | C, E | queued (wave 2) | | | |
-| G | security, CI, upstream, Android, ops docs | pg/g-security | — | in progress | | | |
-| H | independent QA, adversarial, regression | pg/h-qa | integration | queued (wave 3) | | | |
+
+| Agent | Scope | Branch (final) | Integrated | Notes |
+|---|---|---|---|---|
+| Lead | contract, schema v1, integration, cross-cutting fixes, docs | `pg/lead` | — | ~20 lead commits (pay-route scope, KOT, middleware, cron, retention, offset, sweep fairness) |
+| A | binding, attempts, limits, gateway client, expiry | `pg/a-core` | yes (2 rounds) | UPSTREAM_CONTRACT.md |
+| B | webhook route, inbox/outbox, leases, worker, #86 | `pg/b-webhooks` | yes | fork patch on `flavrly/b86-verify` (local) |
+| C | migrations, ledger, ingest, engine | `pg/c-ledger` | yes (2 rounds) | FINANCIAL_INVARIANTS, BANK_RECONCILIATION_SPEC, DATABASE_MIGRATIONS |
+| D | fulfillment, status UX, kitchen audit | `pg/d-checkout` | yes | |
+| E | refunds, settlement, reports | `pg/e-refunds` | yes (2 rounds) | REFUNDS_AND_SETTLEMENTS |
+| F | onboarding, merchant/ops UI, CRM check | `pg/f-merchant` | yes | CRM: loyalty fires only on DELIVERED (`orders.ts`), once-only proven in `tests/db/f-merchant.test.ts` |
+| G | security, CI, upstream matrix, APK, compliance, ops docs | `pg/g-security` | yes | |
+| H | independent QA | `pg/h-qa` | yes | 10 defects found, all fixed |
+| S | local synthetic UAT | `pg/s-uat` | see STAGING_UAT_REPORT.md | |
+
+## Deliberate decisions (recorded)
+- FIRST_ORDER offers still count PAYMENT_PENDING orders: excluding them would let one customer stack first-order discounts across several unpaid orders and then pay all.
+- Merchant ADMIN statement upload counts as bank evidence for its own account (audited, single-person); see threat model addendum.
+- Session caps: 15 open per receiving account (below the 20/day pilot cap), 3 per customer; platform-config overridable.
+- `next`/`next-auth` security upgrades kept out of this PR (separate regression-tested change).
