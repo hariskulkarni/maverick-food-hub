@@ -23,7 +23,7 @@ Owner: Agent G. This is based on the scripts as they exist in the repo on 2026-1
 | Postgres | VPS | — | `deploy/backup.sh` |
 | Cron | `/etc/cron.d/flavrly-jobs` | — | `deploy/flavrly-jobs.cron` |
 
-**Action (ops):** run `pm2 ls` on the VPS and record which ecosystem is live. `scripts/deploy-remote.sh` restarts `rm-web`. If the live processes are `flavrly-prod` and `flavrly-demo`, that script restarts nothing useful. Keep **one** definition (threat model T-23). The demo process must have `FLAVRLY_PG_NEW_PAYMENTS_ENABLED` unset and must have no PG cron.
+**Action (ops):** run `pm2 ls` on the VPS and record which ecosystem is live. `scripts/deploy-remote.sh` restarts `rm-web`. If the live processes are `flavrly-prod` and `flavrly-demo`, that script restarts nothing useful. Keep **one** definition (threat model T-23). The demo process must have `FLAVRLY_PG_NEW_PAYMENTS_ENABLED` off and must have no PG cron; root `ecosystem.config.js` now sets it to `false` explicitly for `flavrly-demo` (applies after `pm2 startOrReload ecosystem.config.js --only flavrly-demo --update-env`).
 
 ## 1. Pre-deploy checklist
 
@@ -107,7 +107,8 @@ Never `git reset --hard` away unpushed work on the VPS, and never force-push.
 ## 5. Backups and restore drill
 
 - `deploy/backup.sh` does `pg_dump -Fc | gzip`, keeps 7 daily and 4 weekly, and runs an optional `rclone` copy.
-  - **Gap:** dumps are not encrypted before leaving the host (T-22). Add `age -r <ops-pubkey>` or `gpg --encrypt` before rclone. The private key is held offline by the owner.
+  - Encryption (T-22): with `BACKUP_AGE_RECIPIENT` (or `BACKUP_GPG_RECIPIENT`) set it also writes `rm-<date>.dump.gz.age` (`.gpg`) and rclone uploads **only** the encrypted files. With `RCLONE_REMOTE` set and no recipient it keeps the local dump, refuses the upload and exits 3, unless `BACKUP_ALLOW_PLAINTEXT_OFFHOST=1`. The private key is held offline by the owner.
+  - `deploy/restore-drill.sh <throwaway_db> [--keep]` automates steps 1, 2, 4 (counts and the `PgAllocation` duplicate check) and 6 below; see OPERATIONS_RUNBOOK.md §5.
 - Gateway SQLite: `sqlite3 data/youpi_pg.sqlite "VACUUM INTO 'data/backups/youpi_pg.$(date +%Y%m%d-%H%M%S).sqlite'"`, which gives a consistent copy while running.
 - **Restore drill** (before every schema release, and at least quarterly; record the results in `~/flavrly-pg-evidence/<date>/restore-drill.md`):
   1. `createdb flavrly_restore_<date>` on a **non-production** server or port.

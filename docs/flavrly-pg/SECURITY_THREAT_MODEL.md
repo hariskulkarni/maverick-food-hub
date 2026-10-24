@@ -129,15 +129,15 @@ The table above is Agent G's review of the pre-integration code. Status on the i
 | T-13 | FIXED | `CREATE_UNKNOWN` + cuid attempt keys; second session refused (`tests/db/h-retry-guard.test.ts`) |
 | T-14 | FIXED | `PgJobLease` replaces advisory lock; sweep fairness fix (H-05) |
 | T-15 | FIXED | Request/VPA routes audited; super-admin RESET after rejection |
-| T-16 | FIXED | Exact webhook path set (`src/middleware.ts`) |
-| T-17 | FIXED | Job routes POST-only, `timingSafeEqual` |
+| T-16 | FIXED | Exact webhook path set; state-changing non-Bearer requests with `Sec-Fetch-Site: cross-site` are refused even with no/unparseable Origin (`src/server/http/csrf.ts`, `__tests__/server/http/csrf.test.ts`). A missing Origin with no cross-site marker is still allowed (native/server clients) |
+| T-17 | FIXED | All `platform/jobs/*/run` routes are POST-only and every cron route uses `secretMatches()` (`timingSafeEqual`, `src/server/http/secret-compare.ts`; `__tests__/server/http/cron-secret-routes.test.ts`). Repo callers (cron file, `phonepe-setup.sh`, UI, UAT) all use POST. `platform/escalations/scan` and `platform/rider-heartbeat/sweep` keep a GET alias (constant-time secret, but callers not in the repo); owner to confirm their trigger, then drop GET |
 | T-18 | FIXED | placeOrder logs ids only; webhook payload redaction after 90 days (`redactOldWebhookPayloads`, `tests/db/lead-retention.test.ts`) |
 | T-19 | FIXED | Uniform 404; status route no longer probes the gateway |
 | T-20 | OPEN (owner) | `next`/`next-auth` majors need a separate regression-tested PR; not mixed into payments work |
 | T-21 | FIXED in code / OPS step open | Catch-up + Pg migrations, CI `migrate deploy` + drift check, scripts use `migrate deploy`; production baselining per DATABASE_MIGRATIONS.md must be run by the owner |
-| T-22 | OPEN (ops) | Use an encrypted rclone remote (`rclone crypt`) or encrypt before upload; restore drill per OPERATIONS_RUNBOOK |
-| T-23 | OPEN (ops) | Confirm live pm2 process list on the VPS; demo must not run the PG worker cron |
-| T-24 | PARTIAL | `ci.yml` `permissions: contents: read`; host-key pinning in `deploy.yml` left to owner (touches the live deploy path) |
+| T-22 | FIXED in code / OPS step open | `deploy/backup.sh` encrypts with age/gpg and uploads only the encrypted copy; refuses a plaintext off-host copy unless `BACKUP_ALLOW_PLAINTEXT_OFFHOST=1`. `deploy/restore-drill.sh` scripted (tested locally: age, gpg, plaintext). Owner: set the recipient on the VPS, purge old plaintext remote dumps, run the first drill (OPERATIONS_RUNBOOK §5) |
+| T-23 | MITIGATED in code / OPS step open | `flavrly-demo` in `ecosystem.config.js` pins `FLAVRLY_PG_NEW_PAYMENTS_ENABLED=false` (effective after a restart from the ecosystem file). Owner: confirm the live pm2 list, keep one ecosystem file; the demo has no PG cron line in `deploy/flavrly-jobs.cron` |
+| T-24 | FIXED in code / OPS step open | `deploy.yml`: known_hosts from the `VPS_KNOWN_HOSTS` secret (job fails if missing), `StrictHostKeyChecking=yes`, top-level `permissions: contents: read`. `ci.yml` actions pinned to commit SHAs. Owner: add `VPS_KNOWN_HOSTS` before the next merge to `main` (DEPLOYMENT_AND_ROLLBACK.md §3.1) |
 | T-25 | OPEN (owner, read-only check on gateway host) | Run the `sqlite_master` check in UPSTREAM_PARITY_AND_ISSUES.md |
 
 Additional findings from independent QA (Agent H) H-01…H-10 are all fixed with failing-first tests now passing
