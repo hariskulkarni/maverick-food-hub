@@ -4,6 +4,7 @@ import { authEdgeConfig } from '@/server/auth.config';
 import { PLATFORM_ROLES, pageGateFor, can } from '@/server/permissions';
 import { PUBLIC_HOST, PORTAL_HOST, isPortalHost, hostSplitActive, isStaffPath } from '@/server/hosts';
 import { clientIp } from '@/server/http/client-ip';
+import { csrfGuard, isWebhookPath } from '@/server/http/csrf';
 
 const { auth } = NextAuth(authEdgeConfig);
 
@@ -51,46 +52,6 @@ function rlTooMany(retryAfterSec: number): NextResponse {
 }
 function rlIsAuthPath(p: string): boolean {
   return p.includes('/auth/') || /(login|signin|otp|verify|password|2fa)/i.test(p);
-}
-
-/**
- * CSRF defense-in-depth for the cookie-authenticated (browser) surface.
- * Rejects state-changing requests whose Origin doesn't match the host. Safe by
- * construction:
- *   • Bearer-token requests (native rider app) are skipped — not cookie-CSRF-able.
- *   • Requests with no Origin header (native/server clients) are allowed.
- *   • NextAuth (/api/auth) has its own CSRF token; webhooks are signature-verified.
- *   • Unparseable Origin → allowed (SameSite=Lax cookies still protect).
- */
-// Exact provider webhook endpoints (signature-verified). A substring match on
-// '/webhook' let any future route containing it skip CSRF and rate limiting.
-const WEBHOOK_PATHS = new Set([
-  '/api/payments/webhook',
-  '/api/payments/razorpay/webhook',
-  '/api/payments/phonepe/webhook',
-  '/api/payments/youpi/webhook',
-]);
-function isWebhookPath(path: string): boolean {
-  return WEBHOOK_PATHS.has(path.replace(/\/+$/, ''));
-}
-
-function csrfGuard(req: NextRequest, path: string): NextResponse | null {
-  const method = req.method.toUpperCase();
-  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return null;
-  const authz = req.headers.get('authorization');
-  if (authz && authz.startsWith('Bearer ')) return null;
-  if (path.startsWith('/api/auth') || isWebhookPath(path)) return null;
-  const origin = req.headers.get('origin');
-  if (!origin) return null;
-  try {
-    if (new URL(origin).host !== req.headers.get('host')) {
-      return new NextResponse(JSON.stringify({ error: 'Cross-origin request blocked.' }),
-        { status: 403, headers: { 'content-type': 'application/json', 'Cache-Control': 'no-store' } });
-    }
-  } catch {
-    return null;
-  }
-  return null;
 }
 
 async function apiRateLimit(req: NextRequest, path: string): Promise<NextResponse | null> {
