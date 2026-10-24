@@ -32,10 +32,15 @@ export async function POST(req: NextRequest) {
     return new Response('Not found', { status: 404 });
   }
 
-  const provider = await paymentProvider(orderRow.branch?.restaurantId);
-  const verified = await provider.verifyPayment({ providerOrderId: data.providerOrderId, providerPaymentId: data.providerPaymentId, signature: data.signature });
   const payment = await prisma.payment.findFirst({ where: { orderId: data.orderId, providerRef: data.providerOrderId } });
   if (!payment) return new Response('Payment not found', { status: 404 });
+  // Flavrly PG (direct UPI) is captured only by bank-evidence allocation, never
+  // by a browser-driven verify call against the tenant's default gateway.
+  if (payment.providerName === 'youpi') {
+    return Response.json({ ok: false, error: 'This payment is verified by bank reconciliation.' }, { status: 409 });
+  }
+  const provider = await paymentProvider(orderRow.branch?.restaurantId);
+  const verified = await provider.verifyPayment({ providerOrderId: data.providerOrderId, providerPaymentId: data.providerPaymentId, signature: data.signature });
 
   if (!verified.ok) {
     // C3: an indeterminate result (gateway unreachable / UNKNOWN) is NOT a
