@@ -7,6 +7,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { saveConfig } from '@/server/integrations';
+import { ensurePlatformRestaurant } from '@/server/2fa';
 import { audit } from '@/server/audit';
 import { requireSuperAdmin } from '@/server/tenancy';
 import { validateGatewayBaseUrl } from '@/server/pg/security';
@@ -72,6 +73,8 @@ export async function POST(req: NextRequest) {
   if (d.dailyLimit !== undefined) config.dailyLimit = String(d.dailyLimit);
   if (d.maxAmountPaise !== undefined) config.maxAmountPaise = String(d.maxAmountPaise);
 
+  // Fresh DB: the sentinel Restaurant row may not exist yet (FK on IntegrationCredential).
+  await ensurePlatformRestaurant();
   await saveConfig(PLATFORM_ID, 'YOUPI', config, { status: 'CONNECTED', userId: g.session!.user.id });
   await audit('integration.connect', {
     actorId: g.session!.user.id,

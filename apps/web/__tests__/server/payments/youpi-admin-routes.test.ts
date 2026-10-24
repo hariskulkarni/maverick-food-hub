@@ -10,6 +10,8 @@ const h = vi.hoisted(() => ({
   reqUpsert: vi.fn(async (a: any) => ({ id: 'yr1', restaurantId: a.where.restaurantId, status: a.update.status })),
   reqFind: vi.fn(async (): Promise<any> => ({ id: 'yr1', status: 'REQUESTED' })),
   restFind: vi.fn(async (): Promise<any> => ({ id: 'r1' })),
+  restUpsert: vi.fn(async (): Promise<any> => ({ id: '__platform__' })),
+  userFindFirst: vi.fn(async (): Promise<any> => ({ id: 'sa1' })),
 }));
 
 vi.mock('@/server/auth', () => ({
@@ -21,7 +23,8 @@ vi.mock('@/server/audit', () => ({ audit: h.audit }));
 vi.mock('node:dns/promises', () => ({ lookup: vi.fn(async () => [{ address: '93.184.215.14', family: 4 }]) }));
 vi.mock('@/server/db', () => ({
   prisma: {
-    restaurant: { findUnique: h.restFind },
+    restaurant: { findUnique: h.restFind, upsert: h.restUpsert },
+    user: { findFirst: h.userFindFirst },
     integrationCredential: { findUnique: h.credFind },
     youpiFeatureRequest: { findMany: h.reqFindMany, upsert: h.reqUpsert, findUnique: h.reqFind },
   },
@@ -187,5 +190,15 @@ describe('decision', () => {
   it('bad decision -> 400', async () => {
     const res = await decide(mk({ decision: 'NUKE' }), ctx);
     expect(res.status).toBe(400);
+  });
+});
+
+describe('config POST on a fresh DB (UAT DEFECT-1)', () => {
+  it('creates the __platform__ sentinel restaurant before saving the credential', async () => {
+    h.restFind.mockResolvedValue(null);
+    const res = await cfgPOST(mk(goodCfg));
+    expect(res.status).toBe(200);
+    expect(h.restUpsert).toHaveBeenCalledWith(expect.objectContaining({ where: { id: '__platform__' } }));
+    expect(h.restUpsert.mock.invocationCallOrder[0]).toBeLessThan(h.saveConfig.mock.invocationCallOrder[0]);
   });
 });

@@ -532,8 +532,9 @@ export async function expireStaleAttempts(
     const batch = await prisma.pgPaymentAttempt.findMany({
       where: {
         OR: [
-          { state: 'REVIEW_REQUIRED', updatedAt: { lt: cutoff } },
-          { state: 'OBSERVED', updatedAt: { lt: new Date(now.getTime() - OBSERVED_STALE_MS) } },
+          // createdAt, not updatedAt: every sweep probe bumps updatedAt, so the alert would never fire.
+          { state: 'REVIEW_REQUIRED', createdAt: { lt: cutoff } },
+          { state: 'OBSERVED', createdAt: { lt: new Date(now.getTime() - OBSERVED_STALE_MS) } },
         ],
         ...(afterId ? { id: { gt: afterId } } : {}),
       },
@@ -551,7 +552,7 @@ export async function expireStaleAttempts(
     );
     for (const a of batch) {
       if (done.has(a.id) || flagged >= limit) continue;
-      await prisma.$transaction((tx) => openException(tx, 'STALE_PENDING', a, { state: a.state, since: a.updatedAt.toISOString() }));
+      await prisma.$transaction((tx) => openException(tx, 'STALE_PENDING', a, { state: a.state, since: a.createdAt.toISOString() }));
       res.flagged++;
       flagged++;
     }

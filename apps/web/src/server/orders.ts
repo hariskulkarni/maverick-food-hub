@@ -75,6 +75,8 @@ export const ALLOWED_NEXT: Record<OrderStatus, OrderStatus[]> = {
 };
 
 export class OrderTransitionError extends Error {}
+/** Direct-UPI checkout refused for this restaurant (disabled/unconfigured). Client error, not a server fault. */
+export class PgUnavailableError extends Error {}
 
 export interface PlaceOrderInput {
   branchId: string;
@@ -132,7 +134,7 @@ export async function placeOrder(input: PlaceOrderInput) {
   // Flavrly PG: refuse BEFORE committing an order. Otherwise a disabled or
   // unconfigured restaurant would leave a PAYMENT_PENDING order with no session.
   if (directUpiAwaitingBank && !(await youpiEnabledForRestaurant(branch.restaurantId))) {
-    throw new Error('Flavrly PG is not available for this restaurant.');
+    throw new PgUnavailableError('Flavrly PG is not available for this restaurant.');
   }
 
   // Operating-hours guard. Same data the customer storefront uses to render
