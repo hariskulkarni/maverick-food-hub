@@ -2563,6 +2563,7 @@ model PaymentWebhookEvent {
 
   @@index([provider, eventType, createdAt])
   @@index([orderId])
+  @@index([provider, processed, nextAttemptAt])
 }
 
 // Append-only audit log for sensitive admin actions. Never updated, never
@@ -3629,6 +3630,9 @@ model PgPaymentAttempt {
   gatewayMerchantId   String
   gatewayPaymentId    String?        @unique
   expectedAmountPaise Int
+  // Exact amount the gateway asked the payer for (fork adds a 0..99 paise offset); set only
+  // from an authenticated gateway event. Bank matching uses it when present.
+  payableAmountPaise  Int?
   currency            String         @default("INR")
   state               PgAttemptState @default(CREATED)
   expiresAt           DateTime?
@@ -3834,6 +3838,7 @@ model PgRefundRecord {
   refundId       String         @unique
   attemptId      String?
   method         PgRefundMethod
+  allocationKind PgAllocationKind @default(ORDER_PAYMENT)
   amountPaise    Int
   destinationRef String? // masked customer VPA/account
   bankReference  String? // refund UTR from the bank; never invented

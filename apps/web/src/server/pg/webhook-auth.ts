@@ -71,6 +71,8 @@ export interface WebhookBodyIdentity {
   attemptKey: string | null;
   utr: string | null;
   amountPaise: number | null;
+  /** FORK only: exact amount the payer was asked for (order amount + 0..99 paise offset). */
+  paidAmountPaise: number | null;
 }
 
 /** Extracts routing identity from either the legacy flat body or the v2 envelope. Pure. */
@@ -82,6 +84,7 @@ export function parseWebhookBody(body: unknown): WebhookBodyIdentity {
   const envelope = inner !== null;
   const o: Obj = inner ?? b;
   const amount = o.amountPaise;
+  const paid = o.paidAmountPaise;
   return {
     bodyDeliveryId: envelope ? str(b.id) : str(b.deliveryId),
     bodyTimestamp: b.timestamp === undefined || b.timestamp === null ? null : String(b.timestamp),
@@ -90,6 +93,7 @@ export function parseWebhookBody(body: unknown): WebhookBodyIdentity {
     attemptKey: str(o.orderId),
     utr: str(o.utr),
     amountPaise: typeof amount === 'number' && Number.isSafeInteger(amount) && amount > 0 ? amount : null,
+    paidAmountPaise: typeof paid === 'number' && Number.isSafeInteger(paid) && paid > 0 ? paid : null,
   };
 }
 

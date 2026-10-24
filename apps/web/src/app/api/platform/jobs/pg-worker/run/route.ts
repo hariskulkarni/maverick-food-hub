@@ -18,6 +18,7 @@ import { log } from '@/server/log';
 import { inboxMetrics, runInbox } from '@/server/pg/inbox';
 import { outboxMetrics, runOutbox } from '@/server/pg/outbox';
 import { withJobLease } from '@/server/pg/job-lease';
+import { expireStaleAttempts } from '@/server/pg/attempts';
 import { runYoupiReconcileSweep } from '@/server/jobs/youpi-reconcile-sweep';
 
 export const runtime = 'nodejs';
@@ -52,6 +53,8 @@ export async function POST(req: NextRequest) {
 
   const inbox = await stage('inbox', () => runInbox());
   const outbox = await stage('outbox', () => runOutbox());
+  // Unknown-outcome resolution + expiry of never-paid sessions (never expires OBSERVED/REVIEW_REQUIRED).
+  const expiry = await stage('expiry', () => expireStaleAttempts());
   // The sweep takes its own 'youpi-reconcile-sweep' lease (shared with the legacy cron route).
   let sweep: Record<string, unknown>;
   try {
@@ -79,6 +82,6 @@ export async function POST(req: NextRequest) {
     log.error({ err: (e as Error).message }, 'pg.worker.metrics_failed');
   }
 
-  return Response.json({ ok: true, inbox, outbox, sweep, metrics, at: new Date().toISOString() });
+  return Response.json({ ok: true, inbox, outbox, expiry, sweep, metrics, at: new Date().toISOString() });
 }
 

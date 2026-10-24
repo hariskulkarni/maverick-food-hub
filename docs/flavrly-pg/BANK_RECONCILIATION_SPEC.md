@@ -148,3 +148,20 @@ The order and Payment are not changed; an operator decides (refund/recovery) via
   (`resolveException`), manual allocation propose/approve.
 - Agent A: attempts must be created with `expectedAmountPaise`, `receivingAccountId`, and state
   AWAITING_PAYMENT once payable; limit release on FAILED.
+
+## Addendum (lead, integration): fork paise offset
+
+The deployed fork (`flavrly/pg-hardening` @ 7720b49) asks the payer for `order amount + k` paise, `k ∈ 0..99`
+(`packages/db/src/repositories/payment-session.repository.js:6` `MAX_PAISE_OFFSET = 99`). The bank credit therefore
+equals that payable amount, not `expectedAmountPaise`. The fork exposes it only as `paidAmountPaise` in the Standard
+Webhooks envelope body (`packages/db/src/repositories/webhook.repository.js:186-187`).
+
+- `PgPaymentAttempt.payableAmountPaise` is set only from an authenticated webhook (`recordObservation`), only when
+  `expected ≤ payable ≤ expected + 99` (also a DB CHECK, migration `20261024000200_flavrly_pg_followups`), and never
+  overwritten with a different value (that opens AMOUNT_MISMATCH).
+- `allocateBankCredit` matches `credit.amountPaise === payableAmountPaise ?? expectedAmountPaise` (exact).
+- **Operational requirement:** the fork's webhook endpoint for Flavrly must use the Standard Webhooks envelope, not
+  `legacy_format=1`; otherwise `paidAmountPaise` is absent and every offset credit lands in AMOUNT_MISMATCH for manual
+  (dual-control) allocation. Upstream main has no offset.
+- The ≤ 99 paise excess is retained by the merchant as part of the allocated credit; refunds are bounded by the
+  allocated amount. Tests: `tests/db/lead-paise-offset.test.ts`.

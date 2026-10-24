@@ -45,6 +45,9 @@ const CANCELLED_ORDER: OrderStatus[] = [
 /** Interactive-transaction limits: allocation waits on row locks under contention. */
 export const TX_OPTS = { maxWait: 10_000, timeout: 20_000 } as const;
 
+/** Fork gateways ask for order amount + k paise, k in 0..99 (fork MAX_PAISE_OFFSET). */
+export const MAX_GATEWAY_PAISE_OFFSET = 99;
+
 const OBSERVABLE: PgAttemptState[] = [PgAttemptState.CREATED, PgAttemptState.AWAITING_PAYMENT, PgAttemptState.CREATE_UNKNOWN];
 
 async function lockAttempt(tx: Tx, id: string) {
@@ -59,6 +62,8 @@ export interface ObservationInput {
   source: PgEvidenceSource;
   utr?: string | null;
   amountPaise?: number | null;
+  /** Gateway-signed exact payable amount (order amount + fork paise offset, 0..99). */
+  payableAmountPaise?: number | null;
   /** True only for HMAC-verified webhooks / merchant-authenticated status reads. */
   authenticated: boolean;
   eventAt?: Date | null;
@@ -118,7 +123,13 @@ export async function recordObservation(input: ObservationInput): Promise<Observ
     });
 
     if (!input.authenticated) return { ...unchanged, duplicate: false };
-    if (!amountOk) {
+    const payable = input.payableAmountPaise;
+    const payableOk =
+      payable == null ||
+      (payable >= a.expectedAmountPaise &&
+        payable <= a.expectedAmountPaise + MAX_GATEWAY_PAISE_OFFSET &&
+        (a.payableAmountPaise == null || a.payableAmountPaise === payable));
+    if (!amountOk || !payableOk) {
       await openException(tx, {
         kind: PgExceptionKind.AMOUNT_MISMATCH,
         dedupeKey: `AMOUNT_MISMATCH:evidence:${ev.id}`,
@@ -127,7 +138,7 @@ export async function recordObservation(input: ObservationInput): Promise<Observ
         attemptId: a.id,
         orderId: a.orderId,
         amountPaise: input.amountPaise ?? null,
-        detail: { expectedPaise: a.expectedAmountPaise, observedPaise: input.amountPaise ?? null, source: input.source },
+        detail: { expectedPaise: a.expectedAmountPaise, observedPaise: input.amountPaise ?? null, payablePaise: payable ?? null, source: input.source },
       });
       return { ...unchanged, duplicate: false };
     }
@@ -149,6 +160,7 @@ export async function recordObservation(input: ObservationInput): Promise<Observ
     // A late observation on a dead attempt still records the UTR so a late bank credit can be
     // identified (and allocated as LATE_PAYMENT), but the attempt state does not change.
     if (utr && !a.observedUtr) data.observedUtr = utr;
+    if (input.payableAmountPaise != null && a.payableAmountPaise == null) data.payableAmountPaise = input.payableAmountPaise;
     if (Object.keys(data).length === 0) return { ...unchanged, duplicate: false };
     if (data.observedUtr) {
       // A status SUCCESS that raced ahead of the UTR-bearing webhook opened MISSING_UTR; close it.
@@ -258,7 +270,7 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
     if (t.receivingAccountId !== a.receivingAccountId) return reject(PgExceptionKind.WRONG_ACCOUNT, 'different receiving account');
     if (t.direction !== PgTxnDirection.CREDIT) return reject(PgExceptionKind.AMBIGUOUS_MATCH, 'not a credit');
     if (t.currency !== 'INR' || a.currency !== 'INR') return reject(PgExceptionKind.AMOUNT_MISMATCH, 'currency is not INR');
-    if (t.amountPaise !== a.expectedAmountPaise) {
+    if (t.amountPaise !== (a.payableAmountPaise ?? a.expectedAmountPaise)) {
       return reject(PgExceptionKind.AMOUNT_MISMATCH, 'amount differs from expected', {
         expectedPaise: a.expectedAmountPaise,
         creditPaise: t.amountPaise,

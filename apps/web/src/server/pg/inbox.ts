@@ -63,6 +63,7 @@ export function webhookObservation(ev: InboxEvent) {
     eventType: body.bodyEventType ?? ev.eventType,
     utr: body.utr,
     amountPaise: body.amountPaise,
+    payableAmountPaise: body.paidAmountPaise,
     dedupeKey: `webhook:${ev.providerEventId ?? ev.id}`,
   };
 }
@@ -87,6 +88,7 @@ export async function applyWebhookObservation(ev: InboxEvent, paymentId: string)
       source: PgEvidenceSource.GATEWAY_WEBHOOK,
       utr: obs.utr,
       amountPaise: obs.amountPaise,
+      payableAmountPaise: obs.payableAmountPaise,
       authenticated: obs.sourceAuthenticated,
       verificationMethod: obs.verificationMethod,
       dedupeKey: obs.dedupeKey,
