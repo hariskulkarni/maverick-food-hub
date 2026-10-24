@@ -18,6 +18,15 @@
  *   Net additions (D)    = recoveries / credits (0 in v1)
  *   Payout (E)           = A − C + D
  *
+ * Flavrly PG (Payment.providerName 'youpi') is DIRECT_TO_MERCHANT money movement:
+ * the customer's UPI transfer lands in the restaurant's own bank account, so
+ * Flavrly holds nothing and pays nothing out. For those orders:
+ *   Payment fee          = 0 (no PSP in the money path; the generic % is not applied)
+ *   Collected by merchant (F) = A
+ *   Receivable (G)       = C − D  (commission + fees + taxes the restaurant owes Flavrly)
+ *   Payout (E)           = 0
+ * so E = A − C + D − F + G holds for every line.
+ *
  * Tax rates are sensible Indian defaults and are configurable per restaurant /
  * globally; they are NOT tax advice. Confirm treatment with finance/CA.
  */
@@ -55,7 +64,11 @@ export interface OrderLike {
   discountAmount: number;     // restaurant promo/coupon discount
   signupBonusApplied: number; // new-customer credit
   taxAmount: number;          // GST collected from customer
+  /** Flavrly PG direct UPI: money went straight to the restaurant's bank account. */
+  directToMerchant?: boolean;
 }
+
+export type SettlementMode = 'PLATFORM_COLLECTED' | 'DIRECT_TO_MERCHANT';
 
 export interface SettlementLine {
   orderId: string;
@@ -85,6 +98,9 @@ export interface SettlementLine {
   netDeductions: number;       // C
   netAdditions: number;        // D
   payout: number;              // E
+  settlementMode: SettlementMode;
+  collectedByMerchant: number; // F (direct UPI only)
+  commissionReceivable: number; // G (direct UPI only): owed by the restaurant to Flavrly
 }
 
 /** Pure: compute a settlement line from one order + config. */
@@ -100,6 +116,7 @@ export function computeSettlementLine(o: OrderLike, cfg: SettlementConfig): Sett
   const bonus = num(o.signupBonusApplied);
   const gst = num(o.taxAmount);
   const delivered = o.status === DELIVERED;
+  const settlementMode: SettlementMode = o.directToMerchant ? 'DIRECT_TO_MERCHANT' : 'PLATFORM_COLLECTED';
 
   // Non-delivered (cancelled/failed) orders carry no settlement value in v1.
   if (!delivered) {
@@ -111,13 +128,15 @@ export function computeSettlementLine(o: OrderLike, cfg: SettlementConfig): Sett
       netOrderValue: 0, commissionableValue: 0, commissionPct: cfg.commissionPct, commission: 0,
       paymentFee: 0, feeSubtotal: 0, gstOnFee: 0, tcs: 0, tds: 0, govtCharges: 0,
       netDeductions: 0, netAdditions: 0, payout: 0,
+      settlementMode, collectedByMerchant: 0, commissionReceivable: 0,
     };
   }
 
   const netOrderValue = r2(subtotal + packaging + delivery - promo - bonus + gst);
   const commissionableValue = r2(Math.max(0, subtotal - promo - bonus));
   const commission = r2(commissionableValue * (cfg.commissionPct / 100));
-  const isOnline = o.paymentMethod !== 'COD';
+  // No PSP fee on direct UPI: no aggregator touched the money (contract D14).
+  const isOnline = o.paymentMethod !== 'COD' && !o.directToMerchant;
   const paymentFee = isOnline ? r2(netOrderValue * (cfg.paymentFeePct / 100)) : 0;
   const feeSubtotal = r2(commission + paymentFee);
   const gstOnFee = r2(feeSubtotal * (gstFeePct / 100));
@@ -127,7 +146,10 @@ export function computeSettlementLine(o: OrderLike, cfg: SettlementConfig): Sett
   const govtCharges = r2(gstOnFee + tcs + tds);
   const netDeductions = r2(feeSubtotal + gstOnFee + tcs + tds);
   const netAdditions = 0;
-  const payout = r2(netOrderValue - netDeductions + netAdditions);
+  const direct = settlementMode === 'DIRECT_TO_MERCHANT';
+  const payout = direct ? 0 : r2(netOrderValue - netDeductions + netAdditions);
+  const collectedByMerchant = direct ? netOrderValue : 0;
+  const commissionReceivable = direct ? r2(netDeductions - netAdditions) : 0;
 
   return {
     orderId: o.id, code: o.code, date: o.placedAt.toISOString().slice(0, 10),
@@ -137,13 +159,14 @@ export function computeSettlementLine(o: OrderLike, cfg: SettlementConfig): Sett
     netOrderValue, commissionableValue, commissionPct: cfg.commissionPct, commission,
     paymentFee, feeSubtotal, gstOnFee, tcs, tds, govtCharges,
     netDeductions, netAdditions, payout,
+    settlementMode, collectedByMerchant, commissionReceivable,
   };
 }
 
 export interface SettlementReport {
   restaurant: { id: string; name: string; legalName: string | null; gstin: string | null; pan: string | null; bankAccountLast4: string | null; settlementCycle: string; commissionPct: number; paymentFeePct: number };
   period: { from: string; to: string };
-  summary: { deliveredOrders: number; cancelledOrders: number; totalOrders: number; netOrderValue: number; netDeductions: number; netAdditions: number; netPayout: number };
+  summary: { deliveredOrders: number; cancelledOrders: number; totalOrders: number; netOrderValue: number; netDeductions: number; netAdditions: number; netPayout: number; directToMerchantOrders: number; collectedByMerchant: number; commissionReceivable: number };
   payoutBreakup: { sno: string; particular: string; delivered: number; cancelled: number; total: number }[];
   lines: SettlementLine[];
   discountsSummary: { construct: string; orders: number; subtotal: number; discountGiven: number; discountPerOrder: number; effectivePct: number }[];
@@ -175,7 +198,10 @@ export async function buildSettlementReport(restaurantId: string, from: Date, to
   const orders = await prisma.order.findMany({
     where: { branchId: { in: branchIds }, placedAt: { gte: from, lte: to } },
     orderBy: { placedAt: 'asc' },
-    include: { offerRedemptions: { include: { offer: true } }, couponRedemption: true },
+    include: {
+      offerRedemptions: { include: { offer: true } }, couponRedemption: true,
+      payments: { select: { providerName: true, status: true } },
+    },
   });
 
   const lines = orders.map((o) =>
@@ -186,6 +212,7 @@ export async function buildSettlementReport(restaurantId: string, from: Date, to
         discountConstruct: constructOf(o),
         subtotal: num(o.subtotal), packagingFee: num(o.packagingFee), deliveryFee: num(o.deliveryFee),
         discountAmount: num(o.discountAmount), signupBonusApplied: num(o.signupBonusApplied), taxAmount: num(o.taxAmount),
+        directToMerchant: o.payments.some((p) => p.providerName === 'youpi' && (p.status === 'CAPTURED' || p.status === 'REFUNDED')),
       },
       cfg,
     ),
@@ -203,6 +230,9 @@ export async function buildSettlementReport(restaurantId: string, from: Date, to
     netDeductions: sum(delivered, 'netDeductions'),
     netAdditions: sum(delivered, 'netAdditions'),
     netPayout: sum(delivered, 'payout'),
+    directToMerchantOrders: delivered.filter((l) => l.settlementMode === 'DIRECT_TO_MERCHANT').length,
+    collectedByMerchant: sum(delivered, 'collectedByMerchant'),
+    commissionReceivable: sum(delivered, 'commissionReceivable'),
   };
 
   const row = (sno: string, particular: string, k: keyof SettlementLine) => ({
@@ -223,7 +253,9 @@ export async function buildSettlementReport(restaurantId: string, from: Date, to
     row('10', 'TDS 194O (1%)', 'tds'),
     row('C', 'Net deductions (C)', 'netDeductions'),
     row('D', 'Net additions (D)', 'netAdditions'),
-    row('E', 'Net payout (A − C + D)', 'payout'),
+    row('F', 'Collected directly by restaurant (direct UPI)', 'collectedByMerchant'),
+    row('G', 'Receivable from restaurant (direct UPI)', 'commissionReceivable'),
+    row('E', 'Net payout by Flavrly (A − C + D − F + G)', 'payout'),
   ];
 
   // Discounts summary grouped by construct (delivered orders).
@@ -242,7 +274,7 @@ export async function buildSettlementReport(restaurantId: string, from: Date, to
   const tax = [
     { component: 'GST collected from customer', basis: 'On food (customer)', rate: 'as charged', total: sum(delivered, 'gstCollected') },
     { component: 'Commission / service fee', basis: 'Commissionable value', rate: `${cfg.commissionPct}%`, total: sum(delivered, 'commission') },
-    { component: 'Payment mechanism fee', basis: 'Net order value (online)', rate: `${cfg.paymentFeePct}%`, total: sum(delivered, 'paymentFee') },
+    { component: 'Payment mechanism fee', basis: 'Net order value (online, excl. direct UPI)', rate: `${cfg.paymentFeePct}%`, total: sum(delivered, 'paymentFee') },
     { component: 'GST on platform fees', basis: 'Commission + payment fee', rate: `${GST_ON_FEE_PCT}%`, total: sum(delivered, 'gstOnFee') },
     { component: 'TCS under GST (Sec 52)', basis: 'Net order value', rate: `${TCS_PCT}%`, total: sum(delivered, 'tcs') },
     { component: 'TDS under IT (Sec 194O)', basis: 'Gross order value', rate: `${TDS_PCT}%`, total: sum(delivered, 'tds') },
