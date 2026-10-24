@@ -137,3 +137,22 @@ Every runbook ends the same way:
 ## 5. Data protection in operations
 - Never paste UTR, payer VPA, phone numbers or webhook bodies into chat, tickets or commits. Refer to records by id.
 - Evidence files live under `~/flavrly-pg-evidence/`, never `/tmp` (it is wiped on reboot).
+- **Backups (T-22).** `deploy/backup.sh` uploads off-host only an encrypted copy. Set `BACKUP_AGE_RECIPIENT`
+  (preferred) or `BACKUP_GPG_RECIPIENT` in the cron environment; the private key stays offline with the owner. With
+  `RCLONE_REMOTE` set and no recipient, the script keeps the local dump but refuses the upload and exits 3
+  (override only with `BACKUP_ALLOW_PLAINTEXT_OFFHOST=1`). Owner action: delete any older **plaintext**
+  `rm-*.dump.gz` already on the remote (the script now uploads only `*.age`/`*.gpg`; the remote retention sweep
+  removes old files by age within 7 days daily / 28 days weekly).
+- **Restore drill (T-22), quarterly and before every schema release:** on a non-production server/port run
+  `DB_HOST=… DB_PORT=… DB_USER=… DB_NAME=<prod db name> BACKUP_AGE_IDENTITY=<key file> deploy/restore-drill.sh flavrly_drill_<yyyymmdd>`.
+  It refuses the production DB name, restores the newest backup (decrypting if needed), prints counts for
+  `Order`, `Payment`, `PgPaymentAttempt`, `PgAllocation`, `PgFinancialEvent`, fails on a duplicate
+  `PgAllocation.bankTransactionId`, and drops the database unless `--keep`. Record the output and the restore time in
+  `~/flavrly-pg-evidence/<date>/restore-drill.md`. The fuller manual checklist is DEPLOYMENT_AND_ROLLBACK.md §5.
+- **Demo process (T-23).** Root `ecosystem.config.js` pins `FLAVRLY_PG_NEW_PAYMENTS_ENABLED=false` on `flavrly-demo`
+  (pm2 `env`, which wins over the `.env` files Next.js loads from the shared `apps/web`). It takes effect only when the
+  demo is (re)started from the ecosystem file: `pm2 startOrReload ecosystem.config.js --only flavrly-demo --update-env`.
+  Verify with `pm2 env <demo id> | grep FLAVRLY_PG` and confirm `deploy/flavrly-jobs.cron` has no line for the demo
+  host. Still an owner check: run `pm2 ls` and record which ecosystem is live (`rm-web` from
+  `deploy/ecosystem.config.cjs`, or `flavrly-prod`/`flavrly-demo`); `scripts/deploy-remote.sh` restarts only `rm-web`
+  (`PM2_APP`). Neither file has been deleted.
