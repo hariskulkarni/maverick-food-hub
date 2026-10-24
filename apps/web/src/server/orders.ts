@@ -14,6 +14,7 @@ import { genDeliveryOtp, genOrderCode, STATUS_LABELS } from '@/lib/utils';
 import { pricing, type OfferReward } from './pricing';
 import { isOnlineMethod, startOnlinePayment } from './payments/online';
 import { isDirectUpiPrepayment } from './payments/youpi-order-policy';
+import { youpiEnabledForRestaurant } from './payments';
 import { isCategoryAvailableNow } from './category-availability';
 import { log } from './log';
 import { brand } from '@/lib/brand';
@@ -127,6 +128,11 @@ export async function placeOrder(input: PlaceOrderInput) {
     // through transitionOrder unaffected. validate-address surfaces this earlier
     // in the funnel but a direct POST to /api/orders must still be guarded.
     throw new Error('Branch is not accepting new orders right now');
+  }
+  // Flavrly PG: refuse BEFORE committing an order. Otherwise a disabled or
+  // unconfigured restaurant would leave a PAYMENT_PENDING order with no session.
+  if (directUpiAwaitingBank && !(await youpiEnabledForRestaurant(branch.restaurantId))) {
+    throw new Error('Flavrly PG is not available for this restaurant.');
   }
 
   // Operating-hours guard. Same data the customer storefront uses to render
@@ -784,7 +790,13 @@ export async function maybeAutoAccept(orderId: string, restaurantId: string, act
 export async function transitionOrder(
   orderId: string,
   next: OrderStatus,
-  opts: { actorId?: string; note?: string; scopeRestaurantId?: string } = {}
+  opts: {
+    actorId?: string;
+    note?: string;
+    scopeRestaurantId?: string;
+    /** Set ONLY by pg/fulfillment.ts after a bank-verified allocation (D3/D6). */
+    pgRelease?: boolean;
+  } = {}
 ) {
   // C12: when an untrusted (tenant-admin) caller passes scopeRestaurantId, the
   // lookup is constrained to that restaurant so a cross-tenant id throws rather
@@ -798,6 +810,16 @@ export async function transitionOrder(
   if (order.status === next) return order;
   if (!ALLOWED_NEXT[order.status].includes(next)) {
     throw new OrderTransitionError(`Cannot transition ${order.status} → ${next}`);
+  }
+  // Flavrly PG: an unpaid direct-UPI order reaches the kitchen only through the
+  // bank-verified release handler, never via an admin/manual or legacy path.
+  if (
+    next === OrderStatus.RECEIVED &&
+    (order.status === OrderStatus.PAYMENT_PENDING || order.status === OrderStatus.PAYMENT_FAILED) &&
+    !opts.pgRelease &&
+    (await prisma.payment.count({ where: { orderId, providerName: 'youpi' } })) > 0
+  ) {
+    throw new OrderTransitionError('Flavrly PG orders are released only after bank-verified payment.');
   }
   const stamp: Partial<Record<keyof typeof Prisma.OrderScalarFieldEnum, Date>> = {};
   switch (next) {

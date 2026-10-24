@@ -1,18 +1,18 @@
 /**
  * GET /api/payments/youpi/status?orderId=…
  *
- * Customer-driven status poll for the payment-status page. Mirrors the PhonePe
- * status route but delegates to reconcileYoupiPayment, the single writer that
- * may capture a Flavrly PG payment (status + UTR + exact amount verified). This
- * route never marks anything paid itself.
+ * Customer-facing status for the payment-status page. Read-only: it derives a
+ * customer-safe view from PgPaymentAttempt.state and never calls the gateway,
+ * never captures and never releases an order (D2/D3 — capture happens only in
+ * allocateBankCredit(); background jobs do the probing). It never tells a
+ * customer they were not charged.
  */
 import { NextRequest } from 'next/server';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { rateLimit } from '@/server/http/rate-limit';
-import { reconcileYoupiPayment } from '@/server/payments/youpi-reconcile';
 import { userCanAccessRestaurant } from '@/server/tenancy';
-import { PaymentStatus } from '@prisma/client';
+import { customerPaymentView } from '@/server/pg/customer-status';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
         where: { providerName: 'youpi' },
         orderBy: { createdAt: 'desc' },
         take: 1,
-        select: { id: true, status: true, errorMessage: true },
+        select: { status: true },
       },
     },
   });
@@ -51,24 +51,19 @@ export async function GET(req: NextRequest) {
     if (!ok) return new Response('Forbidden', { status: 403 });
   }
 
-  const payment = order.payments[0];
-  if (!payment) {
-    return Response.json({ orderId: order.id, orderCode: order.code, state: 'NONE', orderStatus: order.status });
-  }
-
-  if (payment.status === PaymentStatus.CAPTURED || payment.status === PaymentStatus.REFUNDED) {
-    return Response.json({ orderId: order.id, orderCode: order.code, state: 'COMPLETED', paymentStatus: payment.status });
-  }
-
-  const outcome = await reconcileYoupiPayment(payment.id);
-  return Response.json({
-    orderId: order.id,
-    orderCode: order.code,
-    // Only a verified CAPTURED is COMPLETED; everything else stays PENDING/FAILED.
-    state:
-      outcome.status === PaymentStatus.CAPTURED ? 'COMPLETED' : outcome.status === PaymentStatus.FAILED ? 'FAILED' : 'PENDING',
-    paymentStatus: outcome.status,
-    indeterminate: Boolean(outcome.indeterminate),
-    error: payment.errorMessage ?? undefined,
+  const attempts = await prisma.pgPaymentAttempt.findMany({
+    where: { orderId: order.id },
+    orderBy: { createdAt: 'desc' },
+    select: { state: true, expiresAt: true },
   });
+
+  const view = customerPaymentView({
+    orderStatus: order.status,
+    attempts,
+    legacyPaymentStatus: order.payments[0]?.status ?? null,
+  });
+  return Response.json(
+    { orderId: order.id, orderCode: order.code, orderStatus: order.status, ...view },
+    { headers: { 'Cache-Control': 'no-store' } },
+  );
 }
