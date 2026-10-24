@@ -11,10 +11,12 @@ afterAll(async () => {
 describe('platform sentinel restaurant (real DB)', () => {
   it('ensurePlatformRestaurant creates the row once, so a platform credential can be stored', async () => {
     await prisma.user.create({ data: { email: `sa-${uid()}@example.test`, role: 'SUPER_ADMIN' } });
+    // Other suites in this shared DB may already have created the row (h-support).
+    const existed = await prisma.restaurant.findUnique({ where: { id: PLATFORM_RESTAURANT_ID } });
     await ensurePlatformRestaurant();
     await ensurePlatformRestaurant(); // idempotent
     const row = await prisma.restaurant.findUniqueOrThrow({ where: { id: PLATFORM_RESTAURANT_ID } });
-    expect(row.status).toBe('SUSPENDED');
+    if (!existed) expect(row.status).toBe('SUSPENDED'); // never serves orders
     await expect(
       prisma.integrationCredential.upsert({
         where: { restaurantId_provider: { restaurantId: PLATFORM_RESTAURANT_ID, provider: 'YOUPI' } },
