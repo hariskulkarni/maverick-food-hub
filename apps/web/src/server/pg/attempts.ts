@@ -537,9 +537,11 @@ export async function expireStalePgAttempts(
     }
     if (r.view.status === 'OBSERVED') {
       // The gateway saw a payment: never expire. Let the reconcile path record the observation.
-      await reconcileYoupiPayment(a.paymentId).catch((e) =>
-        log.warn({ attemptId: a.id, err: (e as Error).message }, 'pg.expiry.reconcile_failed'),
-      );
+      try {
+        await reconcileYoupiPayment(a.paymentId);
+      } catch (e) {
+        log.warn({ attemptId: a.id, err: (e as Error).message }, 'pg.expiry.reconcile_failed');
+      }
       res.skipped++;
       continue;
     }
