@@ -18,6 +18,8 @@
  * The body's status is never acted on: processing records the authenticated
  * UTR/amount as an observation and asks the gateway/ledger (reconcile).
  */
+import { recordObservation } from './reconcile-engine';
+import { PgEvidenceSource } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { log } from '../log';
@@ -70,8 +72,26 @@ export function webhookObservation(ev: InboxEvent) {
  * pg/reconcile-engine.ts, then reconcile. Until that exists it only reconciles
  * through the gateway status API, exactly as before.
  */
+/** Gateway events that claim money arrived. Upstream: 'SUCCESS'; fork: payment.* names. */
+const PAID_EVENTS = new Set(['SUCCESS', 'PAYMENT.SUCCEEDED', 'PAYMENT.LATE_RECEIVED', 'PAYMENT.VERIFICATION_UPGRADED']);
+
 export async function applyWebhookObservation(ev: InboxEvent, paymentId: string): Promise<YoupiReconcileOutcome> {
-  // Lead, at integration: `await recordObservation({ ...webhookObservation(ev), paymentId });`
+  const obs = webhookObservation(ev);
+  const attempt = await prisma.pgPaymentAttempt.findUnique({ where: { paymentId }, select: { id: true } });
+  // The signed webhook is the only place the gateway reports a UTR. Store it as an
+  // OBSERVATION (never capture); allocation still needs an independent bank credit.
+  if (attempt && PAID_EVENTS.has((obs.eventType ?? '').toUpperCase())) {
+    await recordObservation({
+      attemptId: attempt.id,
+      source: PgEvidenceSource.GATEWAY_WEBHOOK,
+      utr: obs.utr,
+      amountPaise: obs.amountPaise,
+      authenticated: obs.sourceAuthenticated,
+      verificationMethod: obs.verificationMethod,
+      dedupeKey: obs.dedupeKey,
+      meta: { eventType: obs.eventType ?? null },
+    });
+  }
   return reconcileYoupiPayment(paymentId);
 }
 

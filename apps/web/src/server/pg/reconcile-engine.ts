@@ -11,6 +11,7 @@
  * - Manual allocation requires two different users (propose + approve).
  * - recordReversal(): bank reversal of an allocated credit; never touches the order.
  */
+import { enqueueOutbox } from './outbox';
 import {
   OrderStatus,
   PaymentStatus,
@@ -20,6 +21,7 @@ import {
   PgBankTxnStatus,
   PgEvidenceSource,
   PgExceptionKind,
+  PgExceptionStatus,
   PgTxnDirection,
   Prisma,
 } from '@prisma/client';
@@ -148,6 +150,13 @@ export async function recordObservation(input: ObservationInput): Promise<Observ
     // identified (and allocated as LATE_PAYMENT), but the attempt state does not change.
     if (utr && !a.observedUtr) data.observedUtr = utr;
     if (Object.keys(data).length === 0) return { ...unchanged, duplicate: false };
+    if (data.observedUtr) {
+      // A status SUCCESS that raced ahead of the UTR-bearing webhook opened MISSING_UTR; close it.
+      await tx.pgReconException.updateMany({
+        where: { dedupeKey: `MISSING_UTR:${a.id}`, status: { not: PgExceptionStatus.RESOLVED } },
+        data: { status: PgExceptionStatus.RESOLVED, resolution: 'UTR observed later (automatic)', resolvedAt: new Date() },
+      });
+    }
     const u = await tx.pgPaymentAttempt.update({ where: { id: a.id }, data });
     await appendFinancialEvent(tx, {
       kind: 'ATTEMPT_OBSERVED',
@@ -341,14 +350,11 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
       dedupeKey: `PAYMENT_CAPTURED:${a.paymentId}`,
       data: { paymentId: a.paymentId },
     });
-    // B owns pg/outbox.ts (enqueueOutbox); direct insert keeps this phase unblocked.
-    await tx.pgOutbox.create({
-      data: {
-        topic: 'ORDER_RELEASE',
-        aggregateId: a.orderId,
-        dedupeKey: `ORDER_RELEASE:${a.orderId}`,
-        payload: { orderId: a.orderId, attemptId: a.id, paymentId: a.paymentId },
-      },
+    await enqueueOutbox(tx, {
+      topic: 'ORDER_RELEASE',
+      aggregateId: a.orderId,
+      dedupeKey: `ORDER_RELEASE:${a.orderId}`,
+      payload: { orderId: a.orderId, attemptId: a.id, paymentId: a.paymentId },
     });
     return { outcome: 'CAPTURED', allocationId: alloc.id };
   }, TX_OPTS);
