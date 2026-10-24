@@ -12,6 +12,8 @@
  * - recordReversal(): bank reversal of an allocated credit; never touches the order.
  */
 import { enqueueOutbox } from './outbox';
+import { consumeLimit } from './limits';
+import { log } from '../log';
 import {
   OrderStatus,
   PaymentStatus,
@@ -82,7 +84,8 @@ export interface ObservationResult {
 /** Store evidence; authenticated + exact-amount evidence moves CREATED/AWAITING_PAYMENT -> OBSERVED. Never CAPTURED. */
 export async function recordObservation(input: ObservationInput): Promise<ObservationResult> {
   const utr = input.utr ? normalizeBankReference(input.utr) || null : null;
-  return prisma.$transaction(async (tx) => {
+  let utrSet = false;
+  const res = await prisma.$transaction(async (tx): Promise<ObservationResult> => {
     const a = await lockAttempt(tx, input.attemptId);
     if (!a) throw new Error(`recordObservation: attempt ${input.attemptId} not found`);
     const amountOk = input.amountPaise == null || input.amountPaise === a.expectedAmountPaise;
@@ -163,6 +166,7 @@ export async function recordObservation(input: ObservationInput): Promise<Observ
     if (input.payableAmountPaise != null && a.payableAmountPaise == null) data.payableAmountPaise = input.payableAmountPaise;
     if (Object.keys(data).length === 0) return { ...unchanged, duplicate: false };
     if (data.observedUtr) {
+      utrSet = true;
       // A status SUCCESS that raced ahead of the UTR-bearing webhook opened MISSING_UTR; close it.
       await tx.pgReconException.updateMany({
         where: { dedupeKey: `MISSING_UTR:${a.id}`, status: { not: PgExceptionStatus.RESOLVED } },
@@ -180,6 +184,17 @@ export async function recordObservation(input: ObservationInput): Promise<Observ
     });
     return { evidenceId: ev.id, duplicate: false, state: u.state, observedUtr: u.observedUtr };
   }, TX_OPTS);
+  // H-04: a credit may already be waiting for this UTR (statement imported before the webhook).
+  // Try allocation now, after the observation committed; failures stay retryable via
+  // retryUnmatchedCredits() and must not fail the observation itself.
+  if (utrSet) {
+    try {
+      await tryAllocateForAttempt(input.attemptId);
+    } catch (e) {
+      log.warn({ attemptId: input.attemptId, err: (e as Error).message }, 'pg.observation.allocate_failed');
+    }
+  }
+  return res;
 }
 
 // ───────────────────────────── allocation ─────────────────────────────
@@ -298,6 +313,19 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
         ? PgAllocationKind.OVERCOLLECTION
         : PgAllocationKind.ORDER_PAYMENT;
 
+    if (
+      kind === PgAllocationKind.ORDER_PAYMENT &&
+      a.payment.status !== PaymentStatus.PENDING &&
+      a.payment.status !== PaymentStatus.AUTHORIZED
+    ) {
+      // H-01: live attempt but the Payment row cannot move to CAPTURED -> operator review,
+      // credit stays UNMATCHED (nothing is rolled back silently).
+      return reject(PgExceptionKind.AMBIGUOUS_MATCH, `payment is ${a.payment.status}, cannot capture`, {
+        paymentId: a.paymentId,
+        paymentStatus: a.payment.status,
+      });
+    }
+
     const alloc = await tx.pgAllocation.create({
       data: {
         bankTransactionId: t.id,
@@ -311,6 +339,16 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
       select: { id: true },
     });
     await tx.pgBankTransaction.update({ where: { id: t.id }, data: { status: PgBankTxnStatus.ALLOCATED } });
+    // H-03: the credit is no longer unmatched.
+    await tx.pgReconException.updateMany({
+      where: { dedupeKey: `UNMATCHED_CREDIT:${t.id}`, status: { not: PgExceptionStatus.RESOLVED } },
+      data: {
+        status: PgExceptionStatus.RESOLVED,
+        resolution: `allocated as ${kind} (automatic)`,
+        resolvedById: manual?.approvedById ?? null,
+        resolvedAt: new Date(),
+      },
+    });
     await appendFinancialEvent(tx, {
       kind: `ALLOCATION_${kind}`,
       restaurantId: a.restaurantId,
@@ -350,6 +388,7 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
       data: { status: PaymentStatus.CAPTURED },
     });
     if (pay.count !== 1) throw new Error(`allocateBankCredit: payment ${a.paymentId} is ${a.payment.status}, cannot capture`);
+    await consumeLimit(tx, a.id);
     await appendFinancialEvent(tx, {
       kind: 'PAYMENT_CAPTURED',
       restaurantId: a.restaurantId,
@@ -418,7 +457,18 @@ export async function tryAllocateBankTxn(bankTransactionId: string): Promise<All
     select: { id: true },
     take: 5,
   });
-  if (candidates.length === 0) return { outcome: 'NO_CANDIDATE', reason: 'no attempt observed this reference' };
+  if (candidates.length === 0) {
+    const ex = await openException(prisma, {
+      kind: PgExceptionKind.UNMATCHED_CREDIT,
+      dedupeKey: `UNMATCHED_CREDIT:${t.id}`,
+      restaurantId: t.receivingAccount.restaurantId,
+      receivingAccountId: t.receivingAccountId,
+      bankTransactionId: t.id,
+      amountPaise: t.amountPaise,
+      detail: { reason: 'no attempt observed this reference', source: t.source },
+    });
+    return { outcome: 'NO_CANDIDATE', reason: 'no attempt observed this reference', exceptionId: ex.id };
+  }
   if (candidates.length > 1) {
     const ex = await openException(prisma, {
       kind: PgExceptionKind.AMBIGUOUS_MATCH,
@@ -432,6 +482,33 @@ export async function tryAllocateBankTxn(bankTransactionId: string): Promise<All
     return { outcome: 'AMBIGUOUS', exceptionId: ex.id };
   }
   return allocateBankCredit({ attemptId: candidates[0].id, bankTransactionId: t.id });
+}
+
+/**
+ * Worker step: re-offer UNMATCHED credits that now have a candidate attempt (same account,
+ * observedUtr == reference). Covers a credit that arrived before the UTR and any allocation
+ * that failed transiently (lock timeout, connection reset). Per-credit failures are logged and
+ * retried on the next run.
+ */
+export async function retryUnmatchedCredits(limit = 200): Promise<{ tried: number; captured: number; failed: number }> {
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT t.id FROM "PgBankTransaction" t
+    WHERE t.status = 'UNMATCHED' AND t.direction = 'CREDIT'
+      AND EXISTS (SELECT 1 FROM "PgPaymentAttempt" a
+                  WHERE a."receivingAccountId" = t."receivingAccountId" AND a."observedUtr" = t."bankReference")
+    ORDER BY t."createdAt" ASC
+    LIMIT ${limit}`;
+  let captured = 0;
+  let failed = 0;
+  for (const { id } of rows) {
+    try {
+      if ((await tryAllocateBankTxn(id)).outcome === 'CAPTURED') captured++;
+    } catch (e) {
+      failed++;
+      log.warn({ bankTransactionId: id, err: (e as Error).message }, 'pg.retry_unmatched.allocate_failed');
+    }
+  }
+  return { tried: rows.length, captured, failed };
 }
 
 // ───────────────────────────── manual allocation (dual control) ─────────────────────────────
