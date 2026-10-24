@@ -35,7 +35,7 @@ const METHODS = ['Penny-drop / bank letter', 'Cancelled cheque + KYC', 'Gateway 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 const selectCls = 'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm';
 
-async function postJson(url: string, body: unknown): Promise<{ ok: boolean; data: any }> {
+async function postJson(url: string, body: unknown): Promise<{ ok: boolean; data: { error?: string } }> {
   const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return { ok: res.ok, data: await res.json().catch(() => ({})) };
 }

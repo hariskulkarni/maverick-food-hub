@@ -19,7 +19,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-IN'
 const age = (sec: number) => (sec < 120 ? `${sec}s` : sec < 7200 ? `${Math.round(sec / 60)}m` : `${Math.round(sec / 3600)}h`);
 const selectCls = 'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm';
 
-async function postJson(url: string, body?: unknown): Promise<{ ok: boolean; data: any }> {
+async function postJson(url: string, body?: unknown): Promise<{ ok: boolean; data: { error?: string } }> {
   const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
   return { ok: res.ok, data: await res.json().catch(() => ({})) };
 }
