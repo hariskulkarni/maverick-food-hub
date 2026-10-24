@@ -71,7 +71,6 @@ describe('youpiProvider.createOrder', () => {
 describe('youpiProvider.verifyPayment never reports a capture (D2)', () => {
   it.each([
     ['OBSERVED', 'UNKNOWN'],
-    ['CAPTURED', 'UNKNOWN'],
     ['PENDING', 'PENDING'],
     ['FAILED', 'FAILED'],
     ['UNKNOWN', 'UNKNOWN'],

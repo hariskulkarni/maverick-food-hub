@@ -58,7 +58,7 @@ export function youpiProvider(cfg: YoupiConfig): PaymentProvider {
         // Never ok: callers treat ok as "capture". A gateway SUCCESS stays indeterminate
         // ('UNKNOWN') until bank evidence is allocated by the reconciliation engine.
         ok: false,
-        status: r.status === 'OBSERVED' || r.status === 'CAPTURED' ? 'UNKNOWN' : r.status,
+        status: r.status === 'OBSERVED' ? 'UNKNOWN' : r.status,
         amount: typeof r.amountPaise === 'number' ? r.amountPaise / 100 : undefined,
         raw: { gatewayStatus: r.gatewayStatus ?? null, observed: r.status === 'OBSERVED', utr: r.utr ?? null },
       };

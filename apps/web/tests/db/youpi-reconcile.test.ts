@@ -17,7 +17,7 @@ describe('reconcileYoupiPayment (real DB)', () => {
   it('status SUCCESS alone never captures; it captures once the matching bank credit exists', async () => {
     const acc = await makeAccount();
     const { attempt, payment, orderId } = await makeAttempt(acc, { state: 'AWAITING_PAYMENT', observedUtr: null });
-    h.status.mockResolvedValue({ status: 'CAPTURED', utr: 'UTRSTATUS1', amountPaise: 25000 });
+    h.status.mockResolvedValue({ status: 'OBSERVED', utr: 'UTRSTATUS1', amountPaise: 25000 });
 
     const first = await reconcileYoupiPayment(payment.id);
     expect(first).toMatchObject({ status: 'PENDING', captured: false });
@@ -39,7 +39,7 @@ describe('reconcileYoupiPayment (real DB)', () => {
     const legacy = await prisma.payment.create({
       data: { orderId, method: 'RAZORPAY', amount: '250.00', providerName: 'youpi', providerRef: 'yp_legacy' },
     });
-    h.status.mockResolvedValue({ status: 'CAPTURED', utr: 'U', amountPaise: 25000 });
+    h.status.mockResolvedValue({ status: 'OBSERVED', utr: 'U', amountPaise: 25000 });
     const r = await reconcileYoupiPayment(legacy.id);
     expect(r).toMatchObject({ status: 'PENDING', captured: false, indeterminate: true });
     expect(h.status).not.toHaveBeenCalled();

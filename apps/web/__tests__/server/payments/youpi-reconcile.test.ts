@@ -67,7 +67,7 @@ beforeEach(() => {
 
 describe('reconcileYoupiPayment (status SUCCESS = observation only)', () => {
   it('SUCCESS records authenticated GATEWAY_STATUS evidence and reports CAPTURED only when the engine allocated a bank credit', async () => {
-    h.status.mockResolvedValue({ status: 'CAPTURED', utr: 'UTR1', amountPaise: 25000 });
+    h.status.mockResolvedValue({ status: 'OBSERVED', utr: 'UTR1', amountPaise: 25000 });
     h.allocate.mockResolvedValue({ outcome: 'CAPTURED', allocationId: 'al1' });
     const r = await reconcileYoupiPayment('p1');
     expect(r).toMatchObject({ status: 'CAPTURED', captured: true });
@@ -87,7 +87,7 @@ describe('reconcileYoupiPayment (status SUCCESS = observation only)', () => {
   });
 
   it('SUCCESS + exact amount + UTR but no bank credit yet -> stays PENDING (no capture from status)', async () => {
-    h.status.mockResolvedValue({ status: 'CAPTURED', utr: 'UTR1', amountPaise: 25000 });
+    h.status.mockResolvedValue({ status: 'OBSERVED', utr: 'UTR1', amountPaise: 25000 });
     const r = await reconcileYoupiPayment('p1');
     expect(r).toMatchObject({ status: 'PENDING', captured: false });
     expect(h.observe).toHaveBeenCalledTimes(1);
@@ -95,7 +95,7 @@ describe('reconcileYoupiPayment (status SUCCESS = observation only)', () => {
   });
 
   it('a concurrent engine run already captured -> CAPTURED but captured=false', async () => {
-    h.status.mockResolvedValue({ status: 'CAPTURED', utr: 'UTR1', amountPaise: 25000 });
+    h.status.mockResolvedValue({ status: 'OBSERVED', utr: 'UTR1', amountPaise: 25000 });
     h.allocate.mockResolvedValue({ outcome: 'ALREADY_ALLOCATED' });
     h.db.payment.findUnique.mockImplementation(async (args: any) => (args.select ? { status: 'CAPTURED' } : pay()));
     const r = await reconcileYoupiPayment('p1');
@@ -103,7 +103,7 @@ describe('reconcileYoupiPayment (status SUCCESS = observation only)', () => {
   });
 
   it('SUCCESS with amount mismatch is passed to the engine as evidence; result stays PENDING', async () => {
-    h.status.mockResolvedValue({ status: 'CAPTURED', utr: 'UTR1', amountPaise: 24999 });
+    h.status.mockResolvedValue({ status: 'OBSERVED', utr: 'UTR1', amountPaise: 24999 });
     h.allocate.mockResolvedValue({ outcome: 'REJECTED', reason: 'amount differs from expected' });
     const r = await reconcileYoupiPayment('p1');
     expect(r).toMatchObject({ status: 'PENDING', captured: false });
@@ -112,7 +112,7 @@ describe('reconcileYoupiPayment (status SUCCESS = observation only)', () => {
   });
 
   it.each([[null], [undefined]])('SUCCESS without UTR (utr=%s) is still recorded; no capture', async (utr) => {
-    h.status.mockResolvedValue({ status: 'CAPTURED', utr, amountPaise: 25000 });
+    h.status.mockResolvedValue({ status: 'OBSERVED', utr, amountPaise: 25000 });
     h.allocate.mockResolvedValue({ outcome: 'NO_UTR' });
     const r = await reconcileYoupiPayment('p1');
     expect(r).toMatchObject({ status: 'PENDING', captured: false });
@@ -121,7 +121,7 @@ describe('reconcileYoupiPayment (status SUCCESS = observation only)', () => {
   });
 
   it('order already paid by another credit -> engine OVERCOLLECTION -> PENDING, no capture here', async () => {
-    h.status.mockResolvedValue({ status: 'CAPTURED', utr: 'UTR1', amountPaise: 25000 });
+    h.status.mockResolvedValue({ status: 'OBSERVED', utr: 'UTR1', amountPaise: 25000 });
     h.allocate.mockResolvedValue({ outcome: 'OVERCOLLECTION', allocationId: 'al2' });
     const r = await reconcileYoupiPayment('p1');
     expect(r.captured).toBe(false);
@@ -190,7 +190,7 @@ describe('reconcileYoupiPayment (guards)', () => {
 
   it('legacy youpi payment without PgPaymentAttempt is never auto-captured: STALE_PENDING exception, no gateway call', async () => {
     h.db.payment.findUnique.mockResolvedValue(pay({ pgAttempt: null }));
-    h.status.mockResolvedValue({ status: 'CAPTURED', utr: 'UTR1', amountPaise: 25000 });
+    h.status.mockResolvedValue({ status: 'OBSERVED', utr: 'UTR1', amountPaise: 25000 });
     const r = await reconcileYoupiPayment('p1');
     expect(r).toMatchObject({ status: 'PENDING', captured: false, indeterminate: true });
     expect(h.status).not.toHaveBeenCalled();

@@ -84,7 +84,7 @@ export async function reconcileYoupiPayment(paymentId: string): Promise<YoupiRec
     data: { lastGatewayStatus: s.status, lastStatusAt: new Date() },
   });
 
-  if (s.status === 'CAPTURED') {
+  if (s.status === 'OBSERVED') {
     await recordObservation({
       attemptId: attempt.id,
       source: PgEvidenceSource.GATEWAY_STATUS,

@@ -46,7 +46,7 @@ export type YoupiConfig = {
  * 'CAPTURED' is never returned (contract D2). It stays in the union only so legacy
  * callers that compare against it keep compiling until they migrate.
  */
-export type YoupiVerifyStatus = 'OBSERVED' | 'PENDING' | 'FAILED' | 'UNKNOWN' | 'CAPTURED';
+export type YoupiVerifyStatus = 'OBSERVED' | 'PENDING' | 'FAILED' | 'UNKNOWN';
 
 /** Parsed gateway payment view (public or merchant-private). */
 export type YoupiPaymentView = {
