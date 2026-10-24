@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,11 +12,11 @@ import { AlertTriangle } from 'lucide-react';
 
 type Status = 'NONE' | 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'DISABLED';
 
-export function YoupiRequest({ status, receivingVpa }: { status: Status; receivingVpa: string }) {
+export function YoupiRequest({ status, receivingVpa, pendingVpa = '' }: { status: Status; receivingVpa: string; pendingVpa?: string }) {
   const router = useRouter();
   const [ack, setAck] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [vpa, setVpa] = useState(receivingVpa);
+  const [vpa, setVpa] = useState(pendingVpa || receivingVpa);
 
   async function post(url: string, body: object, ok: string) {
     setBusy(true);
@@ -54,9 +55,11 @@ export function YoupiRequest({ status, receivingVpa }: { status: Status; receivi
 
       <Card>
         <CardContent className="grid gap-4 p-4 sm:p-5">
-          {(status === 'NONE' || status === 'REJECTED') && (
+          {status === 'REJECTED' && (
+            <p className="text-sm text-destructive">Your request was rejected. Contact the platform team; they can reset it so you can request again.</p>
+          )}
+          {status === 'NONE' && (
             <>
-              {status === 'REJECTED' && <p className="text-sm text-destructive">Your previous request was rejected. You may request again.</p>}
               <label className="flex items-start gap-3 text-sm">
                 <input type="checkbox" className="mt-0.5 size-4" checked={ack} onChange={(e) => setAck(e.target.checked)} />
                 <span>I have read the caution above and accept the experimental risk.</span>
@@ -71,15 +74,26 @@ export function YoupiRequest({ status, receivingVpa }: { status: Status; receivi
           {status === 'DISABLED' && <p className="text-sm font-medium text-muted-foreground">Disabled by platform admin.</p>}
           {status === 'APPROVED' && (
             <>
+              <p className="text-sm">
+                Active receiving UPI ID: <span className="font-mono">{receivingVpa || 'not set'}</span>
+              </p>
+              {pendingVpa && (
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  Change requested to <span className="font-mono">{pendingVpa}</span>. It takes effect only after the platform team verifies the bank account.
+                </p>
+              )}
               <div className="grid gap-1.5">
-                <Label htmlFor="vpa">Receiving UPI VPA</Label>
+                <Label htmlFor="vpa">Request a new receiving UPI ID</Label>
                 <Input id="vpa" value={vpa} placeholder="name@bank" onChange={(e) => setVpa(e.target.value)} />
               </div>
               <Button className="w-full sm:w-auto" disabled={busy || !vpa.trim()}
-                onClick={() => post('/api/admin/youpi/vpa', { receivingVpa: vpa }, 'UPI ID saved')}>
-                Save
+                onClick={() => post('/api/admin/youpi/vpa', { receivingVpa: vpa }, 'Request sent for verification')}>
+                Request change
               </Button>
-              <p className="text-xs text-muted-foreground">Payments stay PENDING until the bank credit is confirmed. A per-day transaction cap applies.</p>
+              <p className="text-xs text-muted-foreground">
+                Payments stay pending until the bank credit is confirmed on your statement. A per-day transaction cap applies.{' '}
+                <Link href="/admin/flavrly-pg" className="text-primary underline">View Flavrly PG payments</Link>
+              </p>
             </>
           )}
         </CardContent>

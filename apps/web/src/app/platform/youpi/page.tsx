@@ -1,5 +1,6 @@
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
+import Link from 'next/link';
 import { YoupiAdminClient } from './youpi-client';
 
 export const metadata = { title: 'Platform · Flavrly PG' };
@@ -28,6 +29,14 @@ export default async function PlatformYoupiPage() {
         <p className="text-sm text-muted-foreground mt-1">
           Experimental UPI gateway pilot. Configure the shared connection, then approve restaurants.
         </p>
+        <nav className="mt-3 flex flex-wrap gap-2 text-sm">
+          <Link href="/platform/youpi/accounts" className="inline-flex min-h-[44px] items-center rounded-md border px-3 font-medium text-primary hover:bg-accent">
+            Receiving accounts
+          </Link>
+          <Link href="/platform/youpi/ops" className="inline-flex min-h-[44px] items-center rounded-md border px-3 font-medium text-primary hover:bg-accent">
+            Reconciliation ops
+          </Link>
+        </nav>
       </header>
       <YoupiAdminClient
         configured={cred?.status === 'CONNECTED'}

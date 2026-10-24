@@ -54,7 +54,7 @@ export function YoupiAdminClient({
     } catch { toast.error('Network error.'); } finally { setSaving(false); }
   }
 
-  async function decide(r: Req, decision: 'APPROVE' | 'REJECT' | 'DISABLE') {
+  async function decide(r: Req, decision: 'APPROVE' | 'REJECT' | 'DISABLE' | 'RESET') {
     setBusy(r.id + decision);
     try {
       const res = await fetch(`/api/platform/youpi/${r.restaurantId}/decision`, {
@@ -165,6 +165,11 @@ export function YoupiAdminClient({
                     <Button size="sm" variant="outline" className="text-destructive" disabled={!!busy || r.status === 'DISABLED'} onClick={() => decide(r, 'DISABLE')}>
                       <Ban className="size-4 mr-1" />Disable
                     </Button>
+                    {(r.status === 'REJECTED' || r.status === 'DISABLED') && (
+                      <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => decide(r, 'RESET')} title="Allow the restaurant to request again">
+                        Reset
+                      </Button>
+                    )}
                   </div>
                 </li>
               ))}

@@ -15,6 +15,7 @@ export default async function YoupiSettingsPage() {
       <YoupiRequest
         status={(fr?.status ?? 'NONE') as 'NONE' | 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'DISABLED'}
         receivingVpa={cfg?.receivingVpa ?? ''}
+        pendingVpa={cfg?.pendingReceivingVpa ?? ''}
       />
     </div>
   );
