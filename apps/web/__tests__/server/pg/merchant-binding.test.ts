@@ -118,7 +118,7 @@ describe('resolveBinding', () => {
     const b = await resolveBinding('r1', { forNew: true });
     expect(b!.limits).toEqual({
       dailyLimit: 8, maxAmountPaise: 300000, maxPendingPerAccount: 2,
-      customerMaxPending: 3, customerWindowMinutes: 15, sessionTtlMinutes: 15,
+      customerMaxPending: 2, customerWindowMinutes: 15, sessionTtlMinutes: 15,
     });
   });
 

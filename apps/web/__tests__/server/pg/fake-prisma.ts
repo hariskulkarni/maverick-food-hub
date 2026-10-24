@@ -68,7 +68,11 @@ function model(store: Store, table: keyof Store, prefix: string, extra: Row = {}
         out = [...out].sort((a, b) => (a[k] < b[k] ? -1 : a[k] > b[k] ? 1 : 0) * (dir === 'desc' ? -1 : 1));
       }
       if (take) out = out.slice(0, take);
-      return out.map((r) => (include?.payment ? { ...r, payment: store.payments.find((p) => p.id === r.paymentId) } : { ...r }));
+      return out.map((r) => ({
+        ...r,
+        ...(include?.payment ? { payment: store.payments.find((p) => p.id === r.paymentId) } : {}),
+        ...(include?.allocations ? { allocations: store.allocations.filter((x) => x.attemptId === r.id && !x.reversedAt) } : {}),
+      }));
     },
     count: async ({ where }: Row = {}) => rows().filter((r) => matches(r, where, store)).length,
     create: async ({ data }: Row) => {

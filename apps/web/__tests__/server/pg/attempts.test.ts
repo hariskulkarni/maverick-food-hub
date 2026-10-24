@@ -135,6 +135,17 @@ describe('createPgAttempt', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('refuses a new session when an expired/failed attempt already has a (late) bank allocation (H-06)', async () => {
+    s().attempts.push({ id: 'x', orderId: 'o1', state: 'EXPIRED', createdAt: new Date() });
+    s().allocations.push({ id: 'al', attemptId: 'x', kind: 'LATE_PAYMENT', reversedAt: null });
+    const calls = gateway({});
+    await expect(createPgAttempt(order(), opts)).rejects.toMatchObject({ status: 409, code: 'LATE_PAYMENT_RECEIVED' });
+    expect(calls).toHaveLength(0);
+    // A reversed allocation no longer blocks.
+    s().allocations[0].reversedAt = new Date();
+    await expect(createPgAttempt(order(), opts)).resolves.toMatchObject({ reused: false });
+  });
+
   it.each(['BANK_VERIFIED', 'CAPTURED'])('refuses as paid when a %s attempt exists', async (state) => {
     s().attempts.push({ id: 'x', orderId: 'o1', state, createdAt: new Date() });
     await expect(createPgAttempt(order(), opts)).rejects.toMatchObject({ code: 'ALREADY_PAID' });
@@ -384,14 +395,31 @@ describe('expireStaleAttempts', () => {
 
   it('never expires CREATE_UNKNOWN / OBSERVED / REVIEW_REQUIRED: STALE_PENDING instead', async () => {
     const old = new Date(Date.now() - 2 * 3600_000);
-    for (const [id, state] of [['u', 'CREATE_UNKNOWN'], ['ob', 'OBSERVED'], ['rv', 'REVIEW_REQUIRED']]) {
-      s().attempts.push({ id, orderId: `o-${id}`, restaurantId: 'r1', receivingAccountId: 'acc1', gatewayMerchantId: 'gm1', attemptKey: `o-${id}-k`, expectedAmountPaise: 100, state, createdAt: old, updatedAt: old });
+    const veryOld = new Date(Date.now() - 49 * 3600_000);
+    const rows: [string, string, Date][] = [['u', 'CREATE_UNKNOWN', old], ['ob', 'OBSERVED', old], ['ob2', 'OBSERVED', veryOld], ['rv', 'REVIEW_REQUIRED', old]];
+    for (const [id, state, at] of rows) {
+      s().attempts.push({ id, orderId: `o-${id}`, restaurantId: 'r1', receivingAccountId: 'acc1', gatewayMerchantId: 'gm1', attemptKey: `o-${id}-k`, expectedAmountPaise: 100, state, createdAt: at, updatedAt: at });
     }
     gateway({ read: () => json(503, {}) });
     expect(await expireStaleAttempts()).toMatchObject({ flagged: 3, expired: 0 });
-    expect(s().attempts.map((a) => a.state)).toEqual(['CREATE_UNKNOWN', 'OBSERVED', 'REVIEW_REQUIRED']);
-    expect(s().exceptions.map((e) => e.kind)).toEqual(['STALE_PENDING', 'STALE_PENDING', 'STALE_PENDING']);
+    expect(s().attempts.map((a) => a.state)).toEqual(['CREATE_UNKNOWN', 'OBSERVED', 'OBSERVED', 'REVIEW_REQUIRED']);
+    // OBSERVED waiting < 48h for the bank statement is normal: not flagged.
+    expect(s().exceptions.map((e) => e.attemptId).sort()).toEqual(['ob2', 'rv', 'u']);
+    expect(s().exceptions.every((e) => e.kind === 'STALE_PENDING')).toBe(true);
     await expireStaleAttempts();
     expect(s().exceptions).toHaveLength(3); // deduped
+  });
+
+  it('a backlog of flagged REVIEW/OBSERVED attempts never starves unknown creates (H-10)', async () => {
+    const veryOld = new Date(Date.now() - 30 * 24 * 3600_000);
+    for (let i = 0; i < 5; i++) {
+      s().attempts.push({ id: `ob${i}`, orderId: `o-ob${i}`, restaurantId: 'r1', receivingAccountId: 'acc1', gatewayMerchantId: 'gm1', attemptKey: `k${i}`, expectedAmountPaise: 100, state: 'OBSERVED', createdAt: veryOld, updatedAt: veryOld });
+    }
+    const old = new Date(Date.now() - 2 * 3600_000);
+    s().payments.push({ id: 'pu', orderId: 'o-u', status: 'PENDING' });
+    s().attempts.push({ id: 'u', paymentId: 'pu', orderId: 'o-u', restaurantId: 'r1', receivingAccountId: 'acc1', gatewayMerchantId: 'gm1', attemptKey: 'o-u-k', gatewayPaymentId: null, expectedAmountPaise: 100, state: 'CREATE_UNKNOWN', createdAt: old, updatedAt: old });
+    gateway({ read: () => json(404, {}) });
+    await expireStaleAttempts({ limit: 5 });
+    expect(s().attempts.find((a) => a.id === 'u')!.state).toBe('FAILED');
   });
 });

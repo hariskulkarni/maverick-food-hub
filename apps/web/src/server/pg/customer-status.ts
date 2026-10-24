@@ -13,6 +13,7 @@ export type CustomerPaymentPhase =
   | 'CONFIRMING'
   | 'VERIFYING'
   | 'CONFIRMED'
+  | 'LATE_RECEIVED'
   | 'NOT_CONFIRMED';
 
 /** Coarse state kept for the existing status page contract. */
@@ -32,6 +33,8 @@ export const CUSTOMER_MESSAGES: Record<CustomerPaymentPhase, string> = {
   CONFIRMING: 'Payment seen, waiting for bank confirmation. Please do not pay again.',
   VERIFYING: 'We are verifying your payment. Please do not pay again.',
   CONFIRMED: 'Payment confirmed.',
+  LATE_RECEIVED:
+    'Your payment was received after the payment window closed. We are reviewing it and will confirm your order or refund you. Please do not pay again.',
   NOT_CONFIRMED:
     'Payment not confirmed. If your bank debited you, it will be reconciled — contact support with your UPI reference (UTR).',
 };
@@ -41,8 +44,10 @@ const PAID: ReadonlySet<PgAttemptState> = new Set(['CAPTURED', 'REFUND_PENDING',
 // Higher rank wins when an order has several attempts.
 // NOT_CONFIRMED ranks lowest, so it is shown only when NO attempt is paid or unresolved
 // (CREATED/CREATE_UNKNOWN, unexpired AWAITING_PAYMENT, OBSERVED/BANK_VERIFIED, REVIEW_REQUIRED).
-function rank(state: PgAttemptState, expired: boolean): { rank: number; phase: CustomerPaymentPhase } {
+function rank(state: PgAttemptState, expired: boolean, allocated: boolean): { rank: number; phase: CustomerPaymentPhase } {
   if (PAID.has(state)) return { rank: 6, phase: 'CONFIRMED' };
+  // A bank credit allocated to a non-paid attempt (LATE_PAYMENT / OVERCOLLECTION): money arrived (H-06).
+  if (allocated) return { rank: 5, phase: 'LATE_RECEIVED' };
   switch (state) {
     case 'REVIEW_REQUIRED':
       return { rank: 5, phase: 'VERIFYING' };
@@ -70,7 +75,7 @@ function toState(phase: CustomerPaymentPhase): CustomerPaymentState {
 
 export function customerPaymentView(input: {
   orderStatus: OrderStatus;
-  attempts: { state: PgAttemptState; expiresAt: Date | null }[];
+  attempts: { state: PgAttemptState; expiresAt: Date | null; allocated?: boolean }[];
   /** Latest youpi Payment.status, used only for pre-attempt (legacy) payments. */
   legacyPaymentStatus?: PaymentStatus | null;
   now?: Date;
@@ -92,7 +97,7 @@ export function customerPaymentView(input: {
 
   let best = { rank: 0, phase: 'NONE' as CustomerPaymentPhase };
   for (const a of input.attempts) {
-    const r = rank(a.state, a.expiresAt !== null && a.expiresAt.getTime() <= now);
+    const r = rank(a.state, a.expiresAt !== null && a.expiresAt.getTime() <= now, a.allocated === true);
     if (r.rank > best.rank) best = r;
   }
   const phase = best.phase;

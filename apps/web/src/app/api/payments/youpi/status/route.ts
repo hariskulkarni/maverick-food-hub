@@ -54,12 +54,12 @@ export async function GET(req: NextRequest) {
   const attempts = await prisma.pgPaymentAttempt.findMany({
     where: { orderId: order.id },
     orderBy: { createdAt: 'desc' },
-    select: { state: true, expiresAt: true },
+    select: { state: true, expiresAt: true, allocations: { where: { reversedAt: null }, select: { id: true }, take: 1 } },
   });
 
   const view = customerPaymentView({
     orderStatus: order.status,
-    attempts,
+    attempts: attempts.map((a) => ({ state: a.state, expiresAt: a.expiresAt, allocated: (a.allocations?.length ?? 0) > 0 })),
     legacyPaymentStatus: order.payments[0]?.status ?? null,
   });
   return Response.json(
