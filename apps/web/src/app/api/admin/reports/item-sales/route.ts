@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
       order: {
         branchId: { in: branchIds },
         placedAt: { gte: from, lte: to },
-        status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] }
+        status: { notIn: ['CANCELLED', 'PAYMENT_PENDING', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] }
       }
     },
     select: { menuItemId: true, comboId: true, name: true, quantity: true, unitPrice: true }
