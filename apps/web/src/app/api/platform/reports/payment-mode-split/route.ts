@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     _count: { _all: true },
     where: {
       placedAt: { gte: from, lte: to },
-      status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] }
+      status: { notIn: ['CANCELLED', 'PAYMENT_PENDING', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] }
     }
   });
 

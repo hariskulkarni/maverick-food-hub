@@ -25,6 +25,8 @@ import { isWithinRefundWindow, REFUND_WINDOW_DAYS } from './payments/phonepe-eve
 import { toMerchantId } from './payments/phonepe-api';
 import { OrderStatus, RefundDestination } from '@prisma/client';
 import { nanoid } from 'nanoid';
+import { requestPgRefund, PgRefundError, walletRefundAllowed } from './pg/refunds';
+import { decimalToPaise } from './pg/money';
 
 export type RefundDest = 'WALLET' | 'ORIGINAL_PAYMENT';
 
@@ -44,6 +46,8 @@ export interface RefundResult {
   status: 'PENDING' | 'COMPLETED' | 'FAILED';
   amount: number;
   walletCredited: number;
+  /** Operator guidance when the refund still needs human action (Flavrly PG manual bank refund). */
+  note?: string;
 }
 
 export class RefundError extends Error {
@@ -92,6 +96,40 @@ const REFUNDABLE: OrderStatus[] = [
   OrderStatus.REFUND_INITIATED
 ];
 
+async function refundFlavrlyPgOrder(input: RefundInput, amount: number, orderId: string): Promise<RefundResult> {
+  if (input.destination === 'WALLET' && !walletRefundAllowed()) {
+    throw new RefundError(
+      "This order was paid by direct UPI (Flavrly PG) straight into the restaurant's bank account, so wallet credit is " +
+        'disabled. Choose the original payment method to start a manual bank refund.',
+      409
+    );
+  }
+  if (!input.actorId) throw new RefundError('A signed-in admin is required to request a Flavrly PG refund.', 401);
+  try {
+    const v = await requestPgRefund({
+      orderId,
+      amountPaise: decimalToPaise(amount.toFixed(2)),
+      reason: input.reason?.trim() || 'Refund requested by admin',
+      actor: { id: input.actorId, role: input.actorRole },
+      kind: 'ORDER',
+      method: input.destination === 'WALLET' ? 'WALLET' : 'MANUAL_BANK'
+    });
+    return {
+      refundId: v.refundId,
+      destination: input.destination,
+      status: 'PENDING',
+      amount,
+      walletCredited: 0,
+      note:
+        'Manual refund recorded as PENDING. Nothing has been sent yet: a second admin must approve it, the money must be ' +
+        "returned from the restaurant's bank account, and the bank refund reference must then be recorded."
+    };
+  } catch (e) {
+    if (e instanceof PgRefundError) throw new RefundError(e.message, e.status);
+    throw e;
+  }
+}
+
 export async function refundOrder(input: RefundInput): Promise<RefundResult> {
   const amount = Math.round(input.amount * 100) / 100;
   if (!(amount > 0)) throw new RefundError('Refund amount must be greater than zero.');
@@ -101,6 +139,18 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
     include: { payments: true, refunds: true }
   });
   if (!order) throw new RefundError('Order not found.', 404);
+
+  // Flavrly PG (direct-to-merchant UPI): the money is in the restaurant's own bank
+  // account and the gateway has no refund API. Never credit the wallet by default
+  // or record a gateway refund; hand off to the manual two-person bank refund flow.
+  // Its own pot check (bank-allocated money minus non-FAILED refunds) replaces the
+  // order-total cap below. Decided by the captured payment's rail; with nothing
+  // captured, any Flavrly PG attempt routes here too (and is refused unless the
+  // bank-confirmed money exists) so unverified money is never wallet-credited.
+  const captured = order.payments.find((p) => p.status === 'CAPTURED');
+  if (captured ? captured.providerName === 'youpi' : order.payments.some((p) => p.providerName === 'youpi')) {
+    return refundFlavrlyPgOrder(input, amount, order.id);
+  }
 
   if (!REFUNDABLE.includes(order.status)) {
     throw new RefundError(`Order in status ${order.status} cannot be refunded.`);

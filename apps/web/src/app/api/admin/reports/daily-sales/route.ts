@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     where: {
       branchId: { in: branchIds },
       placedAt: { gte: from, lte: to },
-      status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] }
+      status: { notIn: ['CANCELLED', 'PAYMENT_PENDING', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] }
     },
     select: { placedAt: true, subtotal: true, total: true, taxAmount: true, deliveryFee: true }
   });

@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     }
   });
 
-  const ignored = new Set(['CANCELLED', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN']);
+  const ignored = new Set(['CANCELLED', 'PAYMENT_PENDING', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN']);
   const buckets = new Map<string, { orders: number; gmv: number; commission: number; deliveryFees: number; riderPayouts: number }>();
   for (const o of orders) {
     if (ignored.has(o.status)) continue;
