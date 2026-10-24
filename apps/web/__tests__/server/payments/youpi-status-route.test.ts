@@ -107,6 +107,6 @@ describe('GET /api/payments/youpi/status customer-safe view', () => {
     const body = await (await call()).json();
     expect(h.reconcile).not.toHaveBeenCalled();
     for (const k of ['observedUtr', 'utr', 'vpa', 'reviewReason', 'gatewayMerchantId']) expect(body).not.toHaveProperty(k);
-    expect(h.attempts).toHaveBeenCalledWith(expect.objectContaining({ where: { orderId: 'o1' }, select: { state: true, expiresAt: true } }));
+    expect(h.attempts).toHaveBeenCalledWith(expect.objectContaining({ where: { orderId: 'o1' }, select: { state: true, expiresAt: true, allocations: { where: { reversedAt: null }, select: { id: true }, take: 1 } } }));
   });
 });

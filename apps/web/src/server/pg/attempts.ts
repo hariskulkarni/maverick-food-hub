@@ -155,10 +155,22 @@ export async function createPgAttempt(
       const prior = await tx.pgPaymentAttempt.findMany({
         where: { orderId: order.id },
         orderBy: { createdAt: 'desc' },
-        include: { payment: { select: { id: true, providerData: true } } },
+        include: {
+          payment: { select: { id: true, providerData: true } },
+          allocations: { where: { reversedAt: null }, select: { id: true } },
+        },
       });
       for (const p of prior) {
         if (ALREADY_PAID.includes(p.state)) throw new PgAttemptError('This order is already paid.', 409, 'ALREADY_PAID');
+        // A bank credit already allocated to ANY attempt (e.g. LATE_PAYMENT on an expired one)
+        // means the customer's money arrived: never invite a second payment (H-06).
+        if (p.allocations.length > 0) {
+          throw new PgAttemptError(
+            'Your payment for this order was received after the payment window closed. We are reviewing it and will confirm the order or refund you.',
+            409,
+            'LATE_PAYMENT_RECEIVED',
+          );
+        }
         if (UNRESOLVED.includes(p.state)) {
           throw new PgAttemptError(
             'A previous payment attempt for this order is still being confirmed. Please wait before trying again.',
@@ -464,6 +476,9 @@ export async function resolveUnknownAttempt(attemptId: string, now: Date = new D
 
 /** Past-expiry slack before a quiet AWAITING_PAYMENT attempt is expired, and before a stuck attempt is flagged. */
 export const STALE_GRACE_MS = 30 * 60_000;
+/** OBSERVED is normal until the next bank statement: flag only after the bank-match window. */
+export const OBSERVED_STALE_MS = 48 * 3600_000;
+const FLAG_SCAN_PAGES = 10;
 
 const NOT_FINAL: PgAttemptState[] = ['CREATED', 'CREATE_UNKNOWN', 'AWAITING_PAYMENT', 'OBSERVED', 'BANK_VERIFIED', 'CAPTURED', 'REVIEW_REQUIRED'];
 
@@ -489,23 +504,59 @@ export async function expireStaleAttempts(
   const cutoff = new Date(now.getTime() - graceMs);
   const res = { expired: 0, released: 0, ordersFailed: 0, resolved: 0, flagged: 0, skipped: 0 };
 
-  // 1. Stuck attempts: try to resolve unknown creates, flag the rest.
-  const stuck = await prisma.pgPaymentAttempt.findMany({
-    where: { state: { in: ['CREATED', 'CREATE_UNKNOWN', 'OBSERVED', 'REVIEW_REQUIRED'] }, updatedAt: { lt: cutoff } },
+  // 1a. Unknown creates get their own query, so a backlog of OBSERVED/REVIEW attempts can never
+  //     starve them (H-10). An attempt we could not resolve is touched (updatedAt bumps), which
+  //     rotates it behind the others for the next tick.
+  const unknown = await prisma.pgPaymentAttempt.findMany({
+    where: { state: { in: ['CREATED', 'CREATE_UNKNOWN'] }, updatedAt: { lt: cutoff } },
     orderBy: { updatedAt: 'asc' },
     take: limit,
   });
-  for (const a of stuck) {
-    let state: PgAttemptState | null = a.state;
-    if (a.state === 'CREATED' || a.state === 'CREATE_UNKNOWN') {
-      state = await resolveUnknownAttempt(a.id, now).catch(() => a.state);
-      if (state !== a.state) {
-        res.resolved++;
-        continue;
-      }
+  for (const a of unknown) {
+    const state = await resolveUnknownAttempt(a.id, now).catch(() => a.state);
+    if (state !== a.state) {
+      res.resolved++;
+      continue;
     }
-    await prisma.$transaction((tx) => openException(tx, 'STALE_PENDING', a, { state, since: a.updatedAt.toISOString() }));
+    await prisma.$transaction(async (tx) => {
+      await tx.pgPaymentAttempt.updateMany({ where: { id: a.id, state: a.state }, data: { lastStatusAt: now } });
+      await openException(tx, 'STALE_PENDING', a, { state, since: a.createdAt.toISOString() });
+    });
     res.flagged++;
+  }
+
+  // 1b. REVIEW_REQUIRED past the grace, OBSERVED past the bank-match window: flag once each.
+  //     Already-flagged attempts are skipped while paging, so new ones always get flagged.
+  let afterId: string | undefined;
+  for (let page = 0, flagged = 0; page < FLAG_SCAN_PAGES && flagged < limit; page++) {
+    const batch = await prisma.pgPaymentAttempt.findMany({
+      where: {
+        OR: [
+          { state: 'REVIEW_REQUIRED', updatedAt: { lt: cutoff } },
+          { state: 'OBSERVED', updatedAt: { lt: new Date(now.getTime() - OBSERVED_STALE_MS) } },
+        ],
+        ...(afterId ? { id: { gt: afterId } } : {}),
+      },
+      orderBy: { id: 'asc' },
+      take: limit,
+    });
+    if (batch.length === 0) break;
+    const done = new Set(
+      (
+        await prisma.pgReconException.findMany({
+          where: { dedupeKey: { in: batch.map((a) => `STALE_PENDING:${a.id}`) } },
+          select: { attemptId: true },
+        })
+      ).map((e) => e.attemptId),
+    );
+    for (const a of batch) {
+      if (done.has(a.id) || flagged >= limit) continue;
+      await prisma.$transaction((tx) => openException(tx, 'STALE_PENDING', a, { state: a.state, since: a.updatedAt.toISOString() }));
+      res.flagged++;
+      flagged++;
+    }
+    if (batch.length < limit) break;
+    afterId = batch[batch.length - 1].id;
   }
 
   // 2. Quiet sessions past their window.

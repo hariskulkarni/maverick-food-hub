@@ -27,8 +27,8 @@ export const PLATFORM_ID = '__platform__';
 /** Conservative pilot ceilings used when nothing tighter is configured. */
 const DEFAULT_DAILY_LIMIT = 20;
 const DEFAULT_MAX_AMOUNT_PAISE = 500000; // Rs 5,000
-const DEFAULT_MAX_PENDING_PER_ACCOUNT = 5;
-const DEFAULT_CUSTOMER_MAX_PENDING = 3;
+const DEFAULT_MAX_PENDING_PER_ACCOUNT = 25;
+const DEFAULT_CUSTOMER_MAX_PENDING = 2;
 const DEFAULT_CUSTOMER_WINDOW_MIN = 15;
 const DEFAULT_SESSION_TTL_MIN = 15;
 

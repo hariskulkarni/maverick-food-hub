@@ -33,6 +33,14 @@ describe('customerPaymentView', () => {
     expect(CUSTOMER_MESSAGES.NOT_CONFIRMED).toMatch(/UTR/);
   });
 
+  it('a failed/expired attempt with an allocated bank credit shows LATE_RECEIVED and no retry (H-06)', () => {
+    for (const state of ['FAILED', 'EXPIRED'] as const) {
+      const v = view([{ state, expiresAt: null, allocated: true } as any], 'PAYMENT_FAILED');
+      expect(v).toMatchObject({ phase: 'LATE_RECEIVED', state: 'PENDING', canRetry: false });
+      expect(v.message).toMatch(/received after/i);
+    }
+  });
+
   it('never tells a customer they were not charged', () => {
     for (const m of Object.values(CUSTOMER_MESSAGES)) {
       expect(m).not.toMatch(/not (been )?(charged|debited)|no money|refunded automatically/i);
