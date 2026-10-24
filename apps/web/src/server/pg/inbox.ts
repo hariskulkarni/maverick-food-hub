@@ -300,15 +300,14 @@ export async function inboxMetrics(): Promise<{ pending: number; retrying: numbe
 export const WEBHOOK_PAYLOAD_RETENTION_DAYS = Number(process.env.PG_WEBHOOK_PAYLOAD_RETENTION_DAYS ?? 90);
 
 export async function redactOldWebhookPayloads(now: Date = new Date()): Promise<{ redacted: number }> {
-  const cutoff = new Date(now.getTime() - WEBHOOK_PAYLOAD_RETENTION_DAYS * 86_400_000);
-  const r = await prisma.paymentWebhookEvent.updateMany({
-    where: {
-      provider: 'youpi',
-      createdAt: { lt: cutoff },
-      OR: [{ processed: true }, { deadLetteredAt: { not: null } }],
-      NOT: { rawPayload: { path: ['redacted'], equals: true } },
-    },
-    data: { rawPayload: { redacted: true, redactedAt: now.toISOString() } },
-  });
-  return { redacted: r.count };
+  // Raw SQL: a Prisma JSON-path NOT filter skips rows lacking the key (NULL logic).
+  // createdAt is UTC `timestamp without time zone`, so compare against UTC now().
+  const redacted = await prisma.$executeRaw`
+    UPDATE "PaymentWebhookEvent"
+    SET "rawPayload" = jsonb_build_object('redacted', true, 'redactedAt', ${now.toISOString()}::text)
+    WHERE "provider" = 'youpi'
+      AND "createdAt" < timezone('utc', now()) - make_interval(days => ${WEBHOOK_PAYLOAD_RETENTION_DAYS}::int)
+      AND ("processed" = true OR "deadLetteredAt" IS NOT NULL)
+      AND NOT jsonb_exists("rawPayload", 'redacted')`;
+  return { redacted };
 }
