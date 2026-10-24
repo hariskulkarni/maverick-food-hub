@@ -25,6 +25,7 @@
  */
 
 import { paiseToInrString } from '@/server/pg/money';
+import { GATEWAY_FETCH_REDIRECT } from '@/server/pg/security';
 
 export type YoupiConfig = {
   baseUrl: string;
@@ -185,6 +186,8 @@ export async function createYoupiSession(
         returnUrl: args.redirectUrl,
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
+      // Never follow a redirect carrying X-Merchant-Key to another host (T-07).
+      redirect: GATEWAY_FETCH_REDIRECT,
     });
   } catch (e) {
     return { kind: 'unknown', error: safeMsg(`Flavrly PG create failed: ${errText(e)}`, cfg) };
@@ -212,7 +215,12 @@ export async function createYoupiSession(
 
 async function readView(cfg: YoupiConfig, path: string, headers: Record<string, string>): Promise<YoupiReadResult> {
   try {
-    const res = await fetch(url(cfg, path), { method: 'GET', headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    const res = await fetch(url(cfg, path), {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      redirect: GATEWAY_FETCH_REDIRECT,
+    });
     if (res.status === 404) return { kind: 'not_found' };
     if (!res.ok) return { kind: 'error', error: `HTTP ${res.status}` };
     const data = (await res.json()) as unknown;

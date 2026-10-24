@@ -78,14 +78,7 @@ export async function reserveLimit(
     throw new PgLimitError('AMOUNT_CAP', 'Flavrly PG max transaction amount exceeded');
   }
 
-  const pending = await tx.pgPaymentAttempt.count({
-    where: { receivingAccountId, id: { not: attemptId }, ...livePendingWhere(now) },
-  });
-  if (pending >= limits.maxPendingPerAccount) {
-    throw new PgLimitError('PENDING_CAP', 'Too many Flavrly PG payments are pending on this account; try again shortly');
-  }
-
-  // Per-customer velocity: live attempts on this customer's recent orders.
+  // Per-customer velocity FIRST, so one customer cannot exhaust the account's capacity (T-11).
   const since = new Date(now.getTime() - limits.customerWindowMinutes * 60_000);
   const orders = await tx.order.findMany({
     where: { customerId: args.customerId, createdAt: { gte: new Date(now.getTime() - 24 * 3600_000) } },
@@ -98,6 +91,13 @@ export async function reserveLimit(
     if (mine >= limits.customerMaxPending) {
       throw new PgLimitError('CUSTOMER_VELOCITY', 'Too many pending payment attempts; please complete or wait for the previous one');
     }
+  }
+
+  const pending = await tx.pgPaymentAttempt.count({
+    where: { receivingAccountId, id: { not: attemptId }, ...livePendingWhere(now) },
+  });
+  if (pending >= limits.maxPendingPerAccount) {
+    throw new PgLimitError('PENDING_CAP', 'Too many Flavrly PG payments are pending on this account; try again shortly');
   }
 
   const day = istDay(now);

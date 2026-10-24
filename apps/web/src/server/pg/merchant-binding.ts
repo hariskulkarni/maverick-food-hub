@@ -19,6 +19,7 @@
 import { prisma } from '@/server/db';
 import { getConfig } from '@/server/integrations';
 import { log } from '@/server/log';
+import { validateGatewayBaseUrl } from './security';
 
 /** Sentinel restaurantId for platform-level IntegrationCredential rows. */
 export const PLATFORM_ID = '__platform__';
@@ -117,8 +118,15 @@ export async function resolveBinding(
       log.warn({ restaurantId, receivingAccountId: account.id }, 'pg.binding.credential_merchant_mismatch');
       return null;
     }
-    const baseUrl = creds.baseUrl || platform?.baseUrl;
-    if (!baseUrl || !creds.webhookSecret) return null;
+    const rawBaseUrl = creds.baseUrl || platform?.baseUrl;
+    if (!rawBaseUrl || !creds.webhookSecret) return null;
+    // SSRF guard on the URL the merchant key will be sent to (also enforced at save time).
+    const base = await validateGatewayBaseUrl(rawBaseUrl);
+    if (!base.ok) {
+      log.warn({ restaurantId }, 'pg.binding.gateway_url_rejected');
+      return null;
+    }
+    const baseUrl = base.url;
 
     const accountVpa = normVpa(account.vpaNormalized || account.vpa);
     if (!accountVpa) return null;
@@ -133,7 +141,7 @@ export async function resolveBinding(
       receivingAccountId: account.id,
       gatewayMerchantId: account.gatewayMerchantId,
       vpa: accountVpa,
-      baseUrl: baseUrl.replace(/\/+$/, ''),
+      baseUrl,
       merchantId: creds.merchantId,
       ...(creds.merchantKey ? { merchantKey: creds.merchantKey } : {}),
       webhookSecret: creds.webhookSecret,

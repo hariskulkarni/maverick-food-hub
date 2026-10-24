@@ -34,6 +34,7 @@ describe('createYoupiSession', () => {
     // Amount goes as an exact INR string (no float maths), not paise.
     expect(JSON.parse(init.body as string)).toMatchObject({ orderId: 'o1-cabc', amount: '123.05', currency: 'INR' });
     expect(init.signal).toBeDefined();
+    expect(init.redirect).toBe('error'); // never forward X-Merchant-Key across a redirect
   });
 
   it('uses a separately rotated merchant API key when configured', async () => {
@@ -112,6 +113,7 @@ describe('readYoupiPayment / findYoupiPaymentByOrderId', () => {
     const [url, init] = spy.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('http://youpi.local:6100/api/v1/payments/p1');
     expect((init.headers as Record<string, string>)['X-Merchant-Key']).toBe('mk');
+    expect(init.redirect).toBe('error');
   });
 
   it('looks a session up by attemptKey with merchant id + key; 404 = not_found', async () => {

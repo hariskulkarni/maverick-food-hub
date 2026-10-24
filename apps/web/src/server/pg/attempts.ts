@@ -485,7 +485,7 @@ const NOT_FINAL: PgAttemptState[] = ['CREATED', 'CREATE_UNKNOWN', 'AWAITING_PAYM
  *    has no other non-final attempt, the order moves to PAYMENT_FAILED (markOrderPaymentFailed).
  *    A late bank credit after this is a LATE_PAYMENT for reconciliation (Agent C).
  */
-export async function expireStalePgAttempts(
+export async function expireStaleAttempts(
   opts: { now?: Date; graceMs?: number; limit?: number } = {},
 ): Promise<{ expired: number; released: number; ordersFailed: number; resolved: number; flagged: number; skipped: number }> {
   const now = opts.now ?? new Date();

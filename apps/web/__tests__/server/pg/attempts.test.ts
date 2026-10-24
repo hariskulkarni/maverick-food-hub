@@ -17,7 +17,7 @@ vi.mock('@/server/pg/merchant-binding', () => ({ resolveBinding: h.resolveBindin
 vi.mock('@/server/payments/youpi-reconcile', () => ({ reconcileYoupiPayment: h.reconcileYoupiPayment }));
 vi.mock('@/server/payments/reconcile', () => ({ markOrderPaymentFailed: h.markOrderPaymentFailed }));
 
-import { createPgAttempt, resolveUnknownAttempt, expireStalePgAttempts, PgAttemptError, UNKNOWN_GRACE_MS } from '@/server/pg/attempts';
+import { createPgAttempt, resolveUnknownAttempt, expireStaleAttempts, PgAttemptError, UNKNOWN_GRACE_MS } from '@/server/pg/attempts';
 
 // Obviously fake credentials.
 const binding = (over: any = {}) => ({
@@ -320,7 +320,7 @@ describe('resolveUnknownAttempt', () => {
   });
 });
 
-describe('expireStalePgAttempts', () => {
+describe('expireStaleAttempts', () => {
   async function awaiting() {
     gateway({});
     await createPgAttempt(order(), opts);
@@ -332,7 +332,7 @@ describe('expireStalePgAttempts', () => {
   it('gateway EXPIRED -> attempt EXPIRED, limit released, payment FAILED, order PAYMENT_FAILED', async () => {
     await awaiting();
     gateway({ read: (k) => json(200, view(k, { status: 'EXPIRED' })) });
-    const r = await expireStalePgAttempts({ now: pastExpiry() });
+    const r = await expireStaleAttempts({ now: pastExpiry() });
     expect(r).toMatchObject({ expired: 1, released: 1, ordersFailed: 1 });
     expect(attempt().state).toBe('EXPIRED');
     expect(s().payments[0].status).toBe('FAILED');
@@ -343,14 +343,14 @@ describe('expireStalePgAttempts', () => {
   it('gateway still INITIATED -> EXPIRED but the limit is kept', async () => {
     await awaiting();
     gateway({});
-    expect(await expireStalePgAttempts({ now: pastExpiry() })).toMatchObject({ expired: 1, released: 0 });
+    expect(await expireStaleAttempts({ now: pastExpiry() })).toMatchObject({ expired: 1, released: 0 });
     expect(s().reservations[0].state).toBe('RESERVED');
   });
 
   it('gateway SUCCESS -> never expired; handed to reconcileYoupiPayment', async () => {
     await awaiting();
     gateway({ read: (k) => json(200, view(k, { status: 'SUCCESS' })) });
-    expect(await expireStalePgAttempts({ now: pastExpiry() })).toMatchObject({ expired: 0 });
+    expect(await expireStaleAttempts({ now: pastExpiry() })).toMatchObject({ expired: 0 });
     expect(attempt().state).toBe('AWAITING_PAYMENT');
     expect(h.reconcileYoupiPayment).toHaveBeenCalledWith(attempt().paymentId);
     expect(h.markOrderPaymentFailed).not.toHaveBeenCalled();
@@ -359,18 +359,18 @@ describe('expireStalePgAttempts', () => {
   it('skips attempts with evidence, inside the grace window, or when the probe fails', async () => {
     const a = await awaiting();
     gateway({ read: () => json(500, {}) });
-    expect(await expireStalePgAttempts({ now: pastExpiry() })).toMatchObject({ expired: 0, skipped: 1 });
-    expect(await expireStalePgAttempts({ now: new Date(a.expiresAt.getTime() + 60_000) })).toMatchObject({ expired: 0, skipped: 0 });
+    expect(await expireStaleAttempts({ now: pastExpiry() })).toMatchObject({ expired: 0, skipped: 1 });
+    expect(await expireStaleAttempts({ now: new Date(a.expiresAt.getTime() + 60_000) })).toMatchObject({ expired: 0, skipped: 0 });
     s().evidence.push({ id: 'ev', attemptId: a.id, status: 'RECORDED' });
     gateway({ read: (k) => json(200, view(k, { status: 'EXPIRED' })) });
-    expect(await expireStalePgAttempts({ now: pastExpiry() })).toMatchObject({ expired: 0, skipped: 0 });
+    expect(await expireStaleAttempts({ now: pastExpiry() })).toMatchObject({ expired: 0, skipped: 0 });
   });
 
   it('does not fail the order while another attempt is unresolved', async () => {
     await awaiting();
     s().attempts.push({ id: 'other', orderId: 'o1', state: 'REVIEW_REQUIRED', createdAt: new Date(), updatedAt: new Date() });
     gateway({ read: (k) => json(200, view(k, { status: 'FAILED' })) });
-    await expireStalePgAttempts({ now: new Date(attempt().expiresAt.getTime() + 31 * 60_000) });
+    await expireStaleAttempts({ now: new Date(attempt().expiresAt.getTime() + 31 * 60_000) });
     expect(h.markOrderPaymentFailed).not.toHaveBeenCalled();
   });
 
@@ -380,10 +380,10 @@ describe('expireStalePgAttempts', () => {
       s().attempts.push({ id, orderId: `o-${id}`, restaurantId: 'r1', receivingAccountId: 'acc1', gatewayMerchantId: 'gm1', attemptKey: `o-${id}-k`, expectedAmountPaise: 100, state, createdAt: old, updatedAt: old });
     }
     gateway({ read: () => json(503, {}) });
-    expect(await expireStalePgAttempts()).toMatchObject({ flagged: 3, expired: 0 });
+    expect(await expireStaleAttempts()).toMatchObject({ flagged: 3, expired: 0 });
     expect(s().attempts.map((a) => a.state)).toEqual(['CREATE_UNKNOWN', 'OBSERVED', 'REVIEW_REQUIRED']);
     expect(s().exceptions.map((e) => e.kind)).toEqual(['STALE_PENDING', 'STALE_PENDING', 'STALE_PENDING']);
-    await expireStalePgAttempts();
+    await expireStaleAttempts();
     expect(s().exceptions).toHaveLength(3); // deduped
   });
 });

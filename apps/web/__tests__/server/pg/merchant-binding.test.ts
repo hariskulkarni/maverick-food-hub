@@ -10,6 +10,10 @@ vi.mock('@/server/db', () => ({
   prisma: { youpiFeatureRequest: { findUnique: h.fr }, pgReceivingAccount: { findMany: h.findMany, count: h.count } },
 }));
 vi.mock('@/server/integrations', () => ({ getConfig: h.getConfig }));
+vi.mock('@/server/pg/security', () => ({
+  validateGatewayBaseUrl: async (raw: string) =>
+    raw.includes('169.254') ? { ok: false, error: 'blocked' } : { ok: true, url: raw.replace(/\/+$/, '') },
+}));
 vi.mock('@/server/log', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 import { resolveBinding } from '@/server/pg/merchant-binding';
@@ -116,6 +120,11 @@ describe('resolveBinding', () => {
       dailyLimit: 8, maxAmountPaise: 300000, maxPendingPerAccount: 2,
       customerMaxPending: 3, customerWindowMinutes: 15, sessionTtlMinutes: 15,
     });
+  });
+
+  it('gateway base URL failing SSRF validation -> null', async () => {
+    wire({ rest: { ...restCreds, baseUrl: 'http://169.254.169.254' } });
+    expect(await resolveBinding('r1', { forNew: true })).toBeNull();
   });
 
   it('lookup errors fail closed', async () => {
