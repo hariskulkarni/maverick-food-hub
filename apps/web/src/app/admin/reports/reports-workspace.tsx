@@ -8,6 +8,7 @@ import { ReportRangePicker } from '@/app/_components/report-range-picker';
 import { resolveGroupReport, groupSalesSeries, childBreakdownRange } from './_group-metrics';
 import { Network, Info } from 'lucide-react';
 import { NoBranchNotice } from '../no-branch-notice';
+import { STAFF_BRANCH_ORDER } from '@/server/branch-pause';
 
 /**
  * ReportsWorkspace — the full reporting surface: a custom date-range report
@@ -29,7 +30,7 @@ export const REPORTS = [
 
 export async function ReportsWorkspace({ showHeader = true }: { showHeader?: boolean }) {
   const restaurant = await requireRestaurant();
-  const branch = await prisma.branch.findFirst({ where: { restaurantId: restaurant.id, isActive: true }, orderBy: { createdAt: 'asc' } });
+  const branch = await prisma.branch.findFirst({ where: { restaurantId: restaurant.id }, orderBy: STAFF_BRANCH_ORDER });
   if (!branch) return <NoBranchNotice />;
 
   // Group scope: roll the sales chart + per-restaurant breakdown up across the

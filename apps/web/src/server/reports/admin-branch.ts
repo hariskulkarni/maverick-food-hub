@@ -1,17 +1,19 @@
 /**
  * Resolve the admin's branch the same way every admin/* endpoint does:
- * pick the oldest active branch of the requireRestaurant() result.
+ * pick the restaurant's primary branch (active first, then oldest; a paused
+ * branch still counts) of the requireRestaurant() result.
  */
 
 import { prisma } from '../db';
 import { requireRestaurant } from '../tenancy';
 import { resolveGroupContext } from '../group-scope';
+import { STAFF_BRANCH_ORDER } from '@/server/branch-pause';
 
 export async function requireAdminBranch() {
   const restaurant = await requireRestaurant();
   const branch = await prisma.branch.findFirstOrThrow({
-    where: { restaurantId: restaurant.id, isActive: true },
-    orderBy: { createdAt: 'asc' }
+    where: { restaurantId: restaurant.id },
+    orderBy: STAFF_BRANCH_ORDER
   });
   return { restaurant, branch };
 }

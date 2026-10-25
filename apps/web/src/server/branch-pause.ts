@@ -11,6 +11,7 @@
  * back to active.
  */
 import { prisma } from './db';
+import type { Prisma } from '@prisma/client';
 
 export const BRANCH_PAUSE = 'BRANCH_PAUSE';
 
@@ -128,3 +129,11 @@ export async function sweepExpiredPauses() {
 
   return { processed: expired.length };
 }
+
+/**
+ * Ordering for "the restaurant's primary branch" on staff surfaces (dashboard,
+ * menu editor, combos, reports, imports). Pausing flips Branch.isActive=false,
+ * so filtering on isActive made a paused restaurant look like it had no branch.
+ * Prefer an active branch, then the oldest — but never drop a paused one.
+ */
+export const STAFF_BRANCH_ORDER: Prisma.BranchOrderByWithRelationInput[] = [{ isActive: 'desc' }, { createdAt: 'asc' }];

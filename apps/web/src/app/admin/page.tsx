@@ -12,6 +12,7 @@ import {
   resolveGroupReport, groupKpis, groupSalesSeries, groupPaymentMixToday, childBreakdownToday,
   type ChildBreakdownRow,
 } from './reports/_group-metrics';
+import { STAFF_BRANCH_ORDER } from '@/server/branch-pause';
 
 // CRITICAL: every other /admin page sets dynamic = 'force-dynamic' (see
 // orders/page.tsx, settings/page.tsx, etc.). This dashboard was missed,
@@ -27,7 +28,7 @@ export const metadata = { title: 'Admin · Dashboard' };
 export default async function AdminDashboardPage() {
   const session = await auth();
   const restaurant = await requireRestaurant();
-  const branch = await prisma.branch.findFirst({ where: { restaurantId: restaurant.id, isActive: true }, orderBy: { createdAt: 'asc' } });
+  const branch = await prisma.branch.findFirst({ where: { restaurantId: restaurant.id }, orderBy: STAFF_BRANCH_ORDER });
   if (!branch) return <NoBranchNotice />;
 
   // Group scope: when this restaurant is a parent with rollup enabled, headline
