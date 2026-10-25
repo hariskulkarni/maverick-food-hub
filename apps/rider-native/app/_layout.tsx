@@ -20,6 +20,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../lib/auth';
+// Registers the background delivery-location task at startup — required so the
+// task exists when the OS relaunches the app in the background to deliver GPS.
+import '../lib/background-location';
 import { colors, spacing, radius, font } from '../lib/theme';
 
 /**

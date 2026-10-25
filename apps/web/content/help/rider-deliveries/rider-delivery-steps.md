@@ -4,7 +4,7 @@ summary: The four steps on the delivery screen, from reaching the restaurant to 
 audience: RIDER
 appArea: rider.delivery
 tags: delivery, pickup, reached, navigate, steps, status
-related: rider-delivery-code-and-photo, rider-claim-orders-from-pool, rider-cash-on-delivery, rider-customer-unreachable
+related: rider-delivery-code-and-photo, rider-claim-orders-from-pool, rider-cash-on-delivery, rider-customer-unreachable, rider-navigation-and-background-location
 language: en
 ---
 ## Open your delivery
@@ -25,7 +25,7 @@ When it works, you'll see **Delivered!**. Tap **Back to home**.
 
 ## Helpful tools on the screen
 
-- **Navigate to pickup** / **Navigate to customer** opens Google Maps directions to your next stop.
+- **Navigate to pickup in Google Maps** / **Navigate to customer in Google Maps** opens driving directions to your next stop in the Google Maps app. Your location keeps being shared while you use it. See [Navigate with Google Maps and keep tracking on](help:rider-navigation-and-background-location).
 - Distance and an approximate time to your next stop, based on your live location.
 - **DROP** details: address, floor/flat, landmark, delivery note and the customer's name. Tap the phone icon to call the customer.
 - **CUSTOMER NOTE**, if the customer left one.
@@ -33,7 +33,7 @@ When it works, you'll see **Delivered!**. Tap **Back to home**.
 
 ## Good to know
 
-- Keep location access on. If it's off, the app warns you that your position won't appear on the customer's tracker.
+- Keep location access on. If it's off, the app warns you that your position won't appear on the customer's tracker. If background location isn't allowed, you'll see **Tracking pauses in the background** with a button to turn it on.
 - If a step fails, you'll see **Could not update**. Check your connection and tap again.
 - Can't reach the customer at the drop? Call them first, then tap **Customer unreachable** under the delivery code box to alert Flavrly support. See [When you can't reach the customer](help:rider-customer-unreachable).
 - For other problems, contact support from **Profile > Messages** or raise an **Order issue** ticket in **Help & Support**.

@@ -44,6 +44,9 @@ import { SuccessCelebration } from '../../components/success-celebration';
 import { CollectOnlineCard } from '../../components/collect-online-card';
 import { haversineKm, estimateEtaMinutes } from '../../lib/geo';
 import { orderHold } from '../../lib/order-hold';
+import { openNavigation, canNavigate } from '../../lib/maps-nav';
+import { useDeliveryTracking } from '../../lib/delivery-tracking';
+import { BackgroundLocationBanner } from '../../components/background-location-banner';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 
 type Step =
@@ -94,16 +97,22 @@ function rupees(s: string): string {
   return Number.isFinite(n) ? `₹${Math.round(n)}` : '₹0';
 }
 
-type Waypoint = { coords: { lat: number; lng: number } | null; label: string };
+type Waypoint = {
+  coords: { lat: number; lng: number } | null;
+  label: string;
+  /** Address text — a navigation label, or the search query when coords are missing. */
+  address: string | null;
+};
 
 /**
  * The next place the rider is heading for, given the current step:
- * the restaurant for the to_restaurant/at_restaurant steps, the customer
- * for the to_customer/at_customer steps.
+ * the restaurant for the accept/to_restaurant/at_restaurant steps (shown on a
+ * fresh offer too, so the rider can preview the pickup), the customer for the
+ * to_customer/at_customer steps.
  */
 function nextWaypoint(a: Assignment, step: Step): Waypoint | null {
   const o = a.order;
-  if (step === 'to_restaurant' || step === 'at_restaurant') {
+  if (step === 'accept' || step === 'to_restaurant' || step === 'at_restaurant') {
     const b = o.branch;
     return {
       label: 'pickup',
@@ -111,6 +120,9 @@ function nextWaypoint(a: Assignment, step: Step): Waypoint | null {
         b && b.latitude != null && b.longitude != null
           ? { lat: b.latitude, lng: b.longitude }
           : null,
+      address: b
+        ? [b.restaurantName ?? b.name, b.line1, b.city].filter(Boolean).join(', ')
+        : null,
     };
   }
   if (step === 'to_customer' || step === 'at_customer' || step === 'unreachable') {
@@ -121,17 +133,18 @@ function nextWaypoint(a: Assignment, step: Step): Waypoint | null {
         ad && ad.latitude != null && ad.longitude != null
           ? { lat: ad.latitude, lng: ad.longitude }
           : null,
+      address: ad ? [ad.line1, ad.line2, ad.city].filter(Boolean).join(', ') : null,
     };
   }
   return null;
 }
 
-/** Open external turn-by-turn navigation to a coordinate. */
-function openNavigation(coords: { lat: number; lng: number } | null) {
-  if (!coords) return;
-  Linking.openURL(
-    `https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}&travelmode=driving`
-  );
+/** Open the waypoint in the phone's Google Maps app (see lib/maps-nav.ts). */
+function navigateTo(wp: Waypoint | null) {
+  if (!wp) return;
+  openNavigation({ lat: wp.coords?.lat, lng: wp.coords?.lng, label: wp.address }).then((ok) => {
+    if (!ok) Alert.alert('Could not open maps', 'Install Google Maps or another maps app and try again.');
+  });
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -287,6 +300,18 @@ export default function DeliveryScreen() {
       !!assignment &&
       !delivered &&
       assignment.status !== 'DELIVERED' &&
+      orderHold(assignment) !== 'closed',
+  });
+
+  // Background tracking (keeps streaming while the rider is in Google Maps or
+  // the phone is locked) from acceptance until delivered / closed. Shows the
+  // prominent disclosure before asking for background permission.
+  const tracking = useDeliveryTracking({
+    orderId: assignment?.orderId ?? null,
+    active:
+      !!assignment &&
+      !delivered &&
+      (assignment.status === 'ACCEPTED' || assignment.status === 'PICKED_UP') &&
       orderHold(assignment) !== 'closed',
   });
 
@@ -573,31 +598,29 @@ export default function DeliveryScreen() {
               customer&apos;s tracker. Enable it in your phone&apos;s settings.
             </Text>
           ) : null}
-          {step === 'to_restaurant' || step === 'at_restaurant' ? (
+          {step !== 'accept' ? (
+            <BackgroundLocationBanner
+              status={tracking.status}
+              onEnable={tracking.openDisclosure}
+              onOpenSettings={tracking.openSettings}
+            />
+          ) : null}
+          {waypoint ? (
             <Pressable
               style={({ pressed }) => [
                 styles.navBtn,
                 pressed && styles.navBtnPressed,
-                !waypoint?.coords && styles.navBtnDisabled,
+                !canNavigate({ ...waypoint.coords, label: waypoint.address }) && styles.navBtnDisabled,
               ]}
-              onPress={() => openNavigation(waypoint?.coords ?? null)}
-              disabled={!waypoint?.coords}
+              onPress={() => navigateTo(waypoint)}
+              disabled={!canNavigate({ ...waypoint.coords, label: waypoint.address })}
+              accessibilityRole="button"
+              accessibilityHint="Opens Google Maps with driving directions"
             >
               <Ionicons name="navigate" size={18} color={colors.primary} />
-              <Text style={styles.navBtnText}>Navigate to pickup</Text>
-            </Pressable>
-          ) : step === 'to_customer' || step === 'at_customer' || step === 'unreachable' ? (
-            <Pressable
-              style={({ pressed }) => [
-                styles.navBtn,
-                pressed && styles.navBtnPressed,
-                !waypoint?.coords && styles.navBtnDisabled,
-              ]}
-              onPress={() => openNavigation(waypoint?.coords ?? null)}
-              disabled={!waypoint?.coords}
-            >
-              <Ionicons name="navigate" size={18} color={colors.primary} />
-              <Text style={styles.navBtnText}>Navigate to customer</Text>
+              <Text style={styles.navBtnText}>
+                {waypoint.label === 'pickup' ? 'Navigate to pickup' : 'Navigate to customer'} in Google Maps
+              </Text>
             </Pressable>
           ) : null}
           <Stepper activeIndex={idx} />
