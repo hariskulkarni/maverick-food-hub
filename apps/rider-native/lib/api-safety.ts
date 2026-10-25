@@ -6,7 +6,7 @@
  * this module just defines the typed request/response shapes and the `safety`
  * call surface the Safety Centre screens use.
  */
-import { apiRequest } from './api';
+import { apiRequest, getAuthToken, API_BASE, ApiError } from './api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -141,6 +141,26 @@ export const safety = {
   /** The rider's incident reports, newest first. */
   incidents: () =>
     apiRequest<{ incidents: IncidentReport[] }>('/api/rider/incidents'),
+
+  /**
+   * Upload an incident photo (multipart, Bearer auth). Returns the stored URL
+   * to send as `photoUrl` on `reportIncident`.
+   */
+  uploadIncidentPhoto: async (fileUri: string): Promise<{ url: string }> => {
+    const form = new FormData();
+    // React Native's FormData accepts this {uri,name,type} shape for file parts.
+    form.append('photo', { uri: fileUri, name: 'incident.jpg', type: 'image/jpeg' } as any);
+    const headers: Record<string, string> = {};
+    const token = getAuthToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    // No Content-Type header — fetch sets the multipart boundary itself.
+    const res = await fetch(`${API_BASE}/api/rider/incidents/photo`, { method: 'POST', headers, body: form });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new ApiError(text || `Photo upload failed (${res.status})`, res.status, text);
+    }
+    return res.json();
+  },
 
   /** File a new incident report. */
   reportIncident: (input: ReportIncidentInput) =>

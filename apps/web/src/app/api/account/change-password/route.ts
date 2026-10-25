@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   const passwordHash = await argon2.hash(newPassword);
   const now = new Date();
   await prisma.$transaction(async (tx) => {
-    await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
+    await tx.user.update({ where: { id: user.id }, data: { passwordHash, mustChangePassword: false } });
     await tx.userSession.updateMany({
       where: {
         userId: user.id,

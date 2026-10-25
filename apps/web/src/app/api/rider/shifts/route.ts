@@ -108,6 +108,25 @@ export async function POST(req: Request) {
   const zoneName =
     typeof b.zoneName === 'string' && b.zoneName.trim() ? b.zoneName.trim() : null;
 
+  // P2-19: no overlapping BOOKED/active shifts on the same day ("HH:MM"
+  // strings compare correctly lexicographically). Touching edges are fine.
+  const clash = await prisma.riderShift.findFirst({
+    where: {
+      riderId: profile.id,
+      date,
+      status: { notIn: ['CANCELLED', 'MISSED'] },
+      startTime: { lt: endTime },
+      endTime: { gt: startTime },
+    },
+    select: { startTime: true, endTime: true },
+  });
+  if (clash) {
+    return Response.json(
+      { error: `This overlaps your ${clash.startTime}–${clash.endTime} shift that day.` },
+      { status: 409 }
+    );
+  }
+
   const shift = await prisma.riderShift.create({
     data: {
       riderId: profile.id,

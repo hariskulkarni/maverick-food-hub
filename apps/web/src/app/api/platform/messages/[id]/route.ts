@@ -4,7 +4,7 @@
  * POST /api/platform/messages/[id] — { body } → append a SUPER_ADMIN reply.
  */
 import { NextRequest } from 'next/server';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { prisma } from '@/server/db';
 import { postMessage, serializeConversation } from '@/server/rider-messaging';
 
@@ -27,7 +27,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
 
   const conversation = await loadThread(id);
   if (!conversation || conversation.party !== 'SUPER_ADMIN') {
@@ -49,7 +50,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
 
   const existing = await prisma.riderConversation.findUnique({
     where: { id },

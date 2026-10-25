@@ -4,7 +4,7 @@
  * lines, discounts summary, tax) for a restaurant + date window. Super-admin.
  */
 import { NextRequest } from 'next/server';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { buildSettlementReport } from '@/server/settlement';
 
 export const runtime = 'nodejs';
@@ -22,7 +22,8 @@ function parseRange(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { restaurantId, from, to } = parseRange(req);
   if (!restaurantId) return Response.json({ ok: false, message: 'restaurantId required' }, { status: 400 });
   try {

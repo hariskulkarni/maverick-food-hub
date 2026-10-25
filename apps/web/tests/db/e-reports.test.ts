@@ -7,6 +7,8 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { NextRequest } from 'next/server';
 
 vi.mock('@/server/tenancy', () => ({ requireSuperAdmin: vi.fn(async () => ({ id: 'sa' })) }));
+// gmv-by-day gates via requireSuperAdminApi (api-auth -> auth); stub the session, keep the real gate.
+vi.mock('@/server/auth', () => ({ auth: vi.fn(async () => ({ user: { id: 'sa', role: 'SUPER_ADMIN' } })) }));
 
 import { prisma } from '@/server/db';
 import { buildSettlementReport } from '@/server/settlement';

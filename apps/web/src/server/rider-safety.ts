@@ -4,7 +4,7 @@
  * Kept dependency-free (Node's crypto only) so the route handlers stay thin and
  * the token-generation logic has a single home.
  */
-import crypto from 'node:crypto';
+import { randomStringFromAlphabet } from '@/server/secure-random';
 
 /** URL-safe alphabet — no look-alike characters (0/O, 1/l/I) to keep links readable. */
 const TOKEN_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
@@ -14,12 +14,7 @@ const TOKEN_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
  * Uses crypto-strong randomness so tokens aren't guessable.
  */
 export function genShareToken(length = 10): string {
-  const bytes = crypto.randomBytes(length);
-  let out = '';
-  for (let i = 0; i < length; i++) {
-    out += TOKEN_ALPHABET[bytes[i] % TOKEN_ALPHABET.length];
-  }
-  return out;
+  return randomStringFromAlphabet(TOKEN_ALPHABET, length);
 }
 
 /** How long a freshly-created live-trip share link stays valid. */
@@ -60,4 +55,27 @@ export function toTrimmedString(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined;
   const t = v.trim();
   return t.length > 0 ? t : undefined;
+}
+
+/** Storage folder for a rider's incident photos (files land at /uploads/<folder>/…). */
+export function incidentPhotoFolder(riderProfileId: string): string {
+  return `rider-incidents/${riderProfileId}`;
+}
+
+/**
+ * True when `url` is a photo this rider uploaded via POST
+ * /api/rider/incidents/photo — local `/uploads/rider-incidents/<id>/…` or the
+ * same key on the configured S3 bucket. Stops a report from carrying an
+ * arbitrary external URL into the ops review screen.
+ */
+export function isOwnIncidentPhotoUrl(url: string, riderProfileId: string): boolean {
+  if (url.includes('..') || /[\s"'<>]/.test(url)) return false;
+  const keyPrefix = `/uploads/${incidentPhotoFolder(riderProfileId)}/`;
+  if (url.startsWith(keyPrefix)) return true;
+  const bucket = process.env.S3_BUCKET;
+  const region = process.env.S3_REGION;
+  if (bucket && region) {
+    return url.startsWith(`https://${bucket}.s3.${region}.amazonaws.com${keyPrefix}`);
+  }
+  return false;
 }

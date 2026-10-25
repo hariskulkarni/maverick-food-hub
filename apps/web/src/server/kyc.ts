@@ -20,6 +20,7 @@ import { encryptJSON, decryptJSON, maskSecret } from './crypto';
 import { runLiveVerification } from './kyc-verifiers';
 import type { VerifyInput } from './kyc-verifiers/types';
 import { audit } from './audit';
+import { signedKycFileUrl } from './kyc-files';
 
 // ─── Validators ─────────────────────────────────────────────────────────────
 
@@ -150,7 +151,9 @@ export function toPublicDoc(doc: {
     status: doc.status,
     numberMasked: maskSecret(doc.numberLast4 ?? '', 4),
     numberLast4: doc.numberLast4,
-    fileUrl: doc.fileUrl,
+    // Never the storage location: a short-lived signed link to the
+    // authenticated file route (P1-14 — KYC files are private).
+    fileUrl: signedKycFileUrl(doc.id),
     fileName: doc.fileName,
     fileSize: doc.fileSize,
     fileMimeType: doc.fileMimeType,

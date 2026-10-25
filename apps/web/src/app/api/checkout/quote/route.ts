@@ -10,6 +10,7 @@ import { loadRulesForRestaurant, priceForItem, priceForCombo } from '@/server/ha
 import { clampTwo } from '@/lib/utils';
 import { parseOrJsonError } from '@/server/zod-helpers';
 import { previewSignupBonusForUser } from '@/server/signup-bonus';
+import { isLegacyCouponUsable } from '@/server/coupons';
 
 const Body = z.object({
   branchId: z.string(),
@@ -101,9 +102,12 @@ export async function POST(req: NextRequest) {
   // Legacy coupon path (kept for backward compatibility with /admin/coupons).
   let coupon = null as null | { flatOff?: number | null; percentOff?: number | null; minOrderAmount?: number | null; maxDiscount?: number | null };
   if (body.couponCode) {
-    const c = await prisma.coupon.findUnique({ where: { code: body.couponCode } });
-    // Same eligibility as placeOrder (active, not expired, usage left).
-    if (c && c.isActive && (!c.validTo || c.validTo > new Date()) && (!c.usageLimit || c.usedCount < c.usageLimit)) {
+    const c = await prisma.coupon.findUnique({
+      where: { code: body.couponCode },
+      include: { branch: { select: { restaurantId: true } } }
+    });
+    // Same eligibility as placeOrder(): restaurant scope, start/end date, usage limit.
+    if (c && isLegacyCouponUsable(c, { restaurantId: branch.restaurantId })) {
       coupon = {
         flatOff: c.flatOff ? Number(c.flatOff) : null,
         percentOff: c.percentOff,

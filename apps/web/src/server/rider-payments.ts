@@ -5,38 +5,45 @@
  * payout / incentive / surge / COD handlers stay thin. Prisma `Decimal`s are
  * always normalised to plain `number`s before they leave this module.
  */
+import type { Prisma } from '@prisma/client';
 import { prisma } from './db';
 import { audit } from './audit';
+import { codCashInHand } from './rider-cod';
+import { istDayKey, istParts, istStartOfDay, istStartOfWeek } from '@/lib/ist';
+
+type BalanceDb = Pick<Prisma.TransactionClient, 'riderProfile' | 'riderPayout' | 'codCollection'>;
 
 /**
  * A rider's withdrawable balance: lifetime earnings minus everything that has
- * already been paid out or is in flight. FAILED payouts are excluded — that
- * money never left, so it's still available.
+ * already been paid out or is in flight, minus COD cash the rider is still
+ * holding (P1-6 — that cash is platform money; it is netted against what we
+ * owe the rider until finance reconciles it). FAILED payouts are excluded —
+ * that money never left, so it's still available.
+ *
+ * Pass a transaction client to read inside a locked withdrawal transaction.
  */
-export async function computeAvailableBalance(riderProfileId: string): Promise<number> {
-  const profile = await prisma.riderProfile.findUnique({
+export async function computeAvailableBalance(riderProfileId: string, db: BalanceDb = prisma): Promise<number> {
+  const profile = await db.riderProfile.findUnique({
     where: { id: riderProfileId },
     select: { totalEarnings: true },
   });
   if (!profile) return 0;
 
-  const drawn = await prisma.riderPayout.aggregate({
+  const drawn = await db.riderPayout.aggregate({
     where: { riderId: riderProfileId, status: { not: 'FAILED' } },
     _sum: { amount: true },
   });
+  const cashHeld = await codCashInHand(db, riderProfileId);
 
   const lifetime = Number(profile.totalEarnings);
   const paidOrPending = Number(drawn._sum.amount ?? 0);
   // Never report a negative balance — clamp at zero.
-  return Math.max(0, Math.round((lifetime - paidOrPending) * 100) / 100);
+  return Math.max(0, Math.round((lifetime - paidOrPending - cashHeld) * 100) / 100);
 }
 
-/** Local calendar-day key, e.g. "2026-05-14". */
+/** IST calendar-day key, e.g. "2026-05-14" (P1-16: periods are IST, not server-local). */
 export function dayKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = `${d.getMonth() + 1}`.padStart(2, '0');
-  const day = `${d.getDate()}`.padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return istDayKey(d);
 }
 
 /**
@@ -44,7 +51,8 @@ export function dayKey(d: Date): string {
  * algorithm is the standard "Thursday of the current week" approach.
  */
 export function weekKey(d: Date): string {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const p = istParts(d);
+  const date = new Date(Date.UTC(p.year, p.month - 1, p.day));
   const dayNum = date.getUTCDay() || 7; // Sun → 7
   date.setUTCDate(date.getUTCDate() + 4 - dayNum); // shift to Thursday
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
@@ -52,19 +60,14 @@ export function weekKey(d: Date): string {
   return `${date.getUTCFullYear()}-W${`${week}`.padStart(2, '0')}`;
 }
 
-/** Start of the local calendar day for the given date. */
+/** Start of the IST calendar day containing `d`. */
 export function startOfDay(d: Date): Date {
-  const s = new Date(d);
-  s.setHours(0, 0, 0, 0);
-  return s;
+  return istStartOfDay(d);
 }
 
-/** Start of the local ISO week (Monday 00:00) for the given date. */
+/** Start of the IST ISO week (Monday 00:00 IST) containing `d`. */
 export function startOfWeek(d: Date): Date {
-  const s = startOfDay(d);
-  const dayNum = s.getDay() || 7; // Sun → 7
-  s.setDate(s.getDate() - (dayNum - 1));
-  return s;
+  return istStartOfWeek(d);
 }
 
 /**
@@ -144,9 +147,16 @@ export async function applyIncentivesForDelivery(riderProfileId: string, now = n
         update: {
           deliveriesDone,
           achieved: nowAchieved ? true : undefined,
-          achievedAt: nowAchieved ? now : undefined,
         },
       });
+      // P2-23: stamp achievedAt only on the first transition to achieved —
+      // later deliveries in the same period must not move it forward.
+      if (nowAchieved && !progress.achievedAt) {
+        await prisma.riderIncentiveProgress.updateMany({
+          where: { id: progress.id, achievedAt: null },
+          data: { achievedAt: now },
+        });
+      }
 
       let bonusCredited = 0;
       if (nowAchieved && !progress.bonusPaid && bonus > 0) {

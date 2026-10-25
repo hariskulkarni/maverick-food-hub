@@ -219,9 +219,10 @@ const TwoFactor: ProviderDef = {
   fields: [
     { key: 'apiKey',       label: 'API key',        type: 'password', required: true, secret: true, hint: 'From your 2Factor dashboard → API.' },
     { key: 'senderId',     label: 'Sender ID',      type: 'text',     placeholder: 'FLAVRLY', hint: 'Optional. DLT-approved 6-char header for branded SMS.' },
-    { key: 'templateName', label: 'OTP template',   type: 'text',     placeholder: 'OTP1', hint: 'Optional. The 2Factor template name to use for OTP sends.' }
+    { key: 'templateName', label: 'OTP template',   type: 'text',     placeholder: 'OTP1', hint: 'Optional. The 2Factor template name to use for OTP sends.' },
+    { key: 'tsmsTemplateName', label: 'Transactional template', type: 'text', placeholder: 'ALERTS1', hint: 'Optional. DLT-approved 2Factor transactional template for non-OTP SMS (alerts, SOS, review asks). Without it those go out on the plain transactional route.' }
   ],
-  buildSummary: (c) => ({ senderId: c.senderId || '(default)', templateName: c.templateName || '(default)', apiKey: maskSecret(c.apiKey) }),
+  buildSummary: (c) => ({ senderId: c.senderId || '(default)', templateName: c.templateName || '(default)', tsmsTemplateName: c.tsmsTemplateName || '(none)', apiKey: maskSecret(c.apiKey) }),
   async test(c) {
     const res = await checkTwoFactorBalance({ apiKey: c.apiKey, senderId: c.senderId, templateName: c.templateName });
     if (res.ok) return { ok: true, detail: `Authenticated. SMS balance: ${res.balance ?? 'unknown'}.` };

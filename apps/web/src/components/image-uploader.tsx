@@ -12,6 +12,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Upload, X, Image as ImageIcon, Loader2, AlertCircle, ExternalLink, Check } from 'lucide-react';
 import { toast } from 'sonner';
+import { safeBlobUrl, safeMediaUrl } from '@/lib/safe-media-url';
 
 interface Props {
   value?: string | null;
@@ -132,7 +133,12 @@ export function ImageUploader({
     setError(null);
   }
 
-  const displayUrl = localPreview || value;
+  // Only allow-listed URLs reach a media `src` / link `href`: the local preview
+  // must be our own blob: URL, the saved value relative / https / data:image.
+  // Anything else renders the "failed to load" panel instead.
+  const savedUrl = safeMediaUrl(value);
+  const displayUrl = safeBlobUrl(localPreview) || savedUrl;
+  const hasMedia = Boolean(localPreview || value);
 
   return (
     <div className={`space-y-1.5 ${className}`}>
@@ -152,12 +158,12 @@ export function ImageUploader({
         }}
         className={`group relative overflow-hidden rounded-xl border-2 border-dashed cursor-pointer transition-all ${ASPECT_CLS[aspect]} ${
           dragOver ? 'border-primary bg-primary/5'
-          : displayUrl ? 'border-transparent'
+          : hasMedia ? 'border-transparent'
           : 'border-border bg-muted/30 hover:border-primary hover:bg-primary/5'
         }`}
       >
-        {displayUrl ? (
-          imgLoadFailed ? (
+        {hasMedia ? (
+          imgLoadFailed || !displayUrl ? (
             // The <img> tried to load and failed (file moved, server 404, the
             // demo-gate middleware redirected an asset request, etc.). Show a
             // clear message instead of the silent broken-icon glyph so the
@@ -166,7 +172,7 @@ export function ImageUploader({
               <div className="text-center">
                 <AlertCircle className="size-5 mx-auto" />
                 <div className="mt-1 text-[11px] font-medium">{kind === 'video' ? 'Video failed to load' : 'Image failed to load'}</div>
-                <div className="mt-0.5 text-[10px] text-destructive/80 break-all line-clamp-2">{value || displayUrl}</div>
+                <div className="mt-0.5 text-[10px] text-destructive/80 break-all line-clamp-2">{value || localPreview}</div>
                 <div className="mt-1.5 inline-flex gap-1">
                   <button
                     type="button"
@@ -275,16 +281,20 @@ export function ImageUploader({
         <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-1.5 text-[11px]">
           <Check className="size-3.5 shrink-0 text-success" />
           <span className="text-muted-foreground shrink-0">Saved URL:</span>
-          <code className="flex-1 font-mono text-foreground truncate" title={value}>{value}</code>
-          <a
-            href={value}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-0.5 shrink-0 text-primary hover:underline font-medium"
-            onClick={(e) => e.stopPropagation()}
-          >
-            Open <ExternalLink className="size-3" />
-          </a>
+          {/* w-0 + flex-1: a long unbreakable URL must not set the row's
+              min-content width, or it blows out the parent grid on phones. */}
+          <code className="w-0 min-w-0 flex-1 font-mono text-foreground truncate" title={value}>{value}</code>
+          {savedUrl && (
+            <a
+              href={savedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-0.5 shrink-0 text-primary hover:underline font-medium"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Open <ExternalLink className="size-3" />
+            </a>
+          )}
         </div>
       )}
       {/* Recommended size stays visible even after upload, so editors can

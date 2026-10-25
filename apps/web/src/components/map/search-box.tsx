@@ -105,7 +105,7 @@ export function SearchBox({
         fetch(url, {
           headers: {
             // Browsers ignore User-Agent on fetch; included for parity if reused server-side.
-            'User-Agent': 'FoodHub Admin (foodhub@example.com)',
+            'User-Agent': 'Flavrly Admin (https://flavrly.in)',
             'Accept-Language': 'en'
           }
         }).then((r) => r.json() as Promise<NominatimResult[]>)

@@ -10,14 +10,19 @@
  *   3. Teach them the 5-step rider flow (Sign in → Online → Accept → Pickup →
  *      Deliver) so the first delivery isn't scary.
  *
+ * The APK comes from the active AppRelease (published at /platform/app-releases)
+ * via the counted /download/rider-app route; version, size, date, notes and
+ * SHA-256 are real release data (see components/rider/app-download-card).
+ *
  * SEO: full metadata + Open Graph so the link shares cleanly on WhatsApp / FB.
  * Mobile-first (riders are on phones); a desktop layout shows the QR alongside.
  */
 import { brand } from '@/lib/brand';
 import { qrPngDataUrl } from '@/server/qr-image';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { Download, Smartphone, MapPin, Wallet, ShieldCheck, Phone, MessageCircle, Sparkles } from 'lucide-react';
+import { Download, Smartphone, MapPin, Wallet, ShieldCheck, Phone, MessageCircle, Sparkles, LogIn } from 'lucide-react';
+import Link from 'next/link';
+import { downloadPath, formatBytes, getRiderAppDownloadInfo, publicBaseUrl } from '@/server/app-releases';
+import { AppDownloadCard } from '@/components/rider/app-download-card';
 import { BrandMark } from '@/components/brand-mark';
 import { InstallGuide } from './install-guide';
 import { UsageTutorial } from './usage-tutorial';
@@ -29,11 +34,9 @@ import { CopyLinkButton } from './copy-link-button';
 
 export const dynamic = 'force-dynamic';
 
-const APK_PATH = '/downloads/flavrly-rider.apk';
-
 export async function generateMetadata() {
   const title = `Become a ${brand.name} rider — download the app`;
-  const description = `Earn flexibly delivering with ${brand.name}. Set your own hours, get paid per delivery + tips + surge bonuses. Install the Android app in under a minute.`;
+  const description = `Earn flexibly delivering with ${brand.name}. Set your own hours, get paid per delivery + surge bonuses. Install the Android app in under a minute.`;
   return {
     title,
     description,
@@ -48,25 +51,16 @@ export async function generateMetadata() {
   };
 }
 
-async function getApkInfo() {
-  // Try to read the on-disk APK size so we show riders the real file size.
-  // Falls back gracefully if the file isn't deployed yet (CI / first-deploy).
-  try {
-    const p = path.join(process.cwd(), 'public', APK_PATH);
-    const stat = await fs.stat(p);
-    const sizeMb = Math.round((stat.size / (1024 * 1024)) * 10) / 10;
-    return { sizeMb, available: true };
-  } catch {
-    return { sizeMb: 85, available: false };
-  }
-}
-
-export default async function RiderAppPage() {
-  const [{ sizeMb, available }, qrPng] = await Promise.all([
-    getApkInfo(),
-    qrPngDataUrl(`${process.env.NEXT_PUBLIC_SITE_URL || 'https://flavrly.in'}${APK_PATH}`, 320),
-  ]);
-  const fullUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'https://flavrly.in'}${APK_PATH}`;
+export default async function RiderAppPage({ searchParams }: { searchParams: Promise<{ download?: string }> }) {
+  const { download } = await searchParams;
+  const info = await getRiderAppDownloadInfo();
+  const release = info.android;
+  // Counted download route when a release is published; the legacy static APK
+  // only as a fallback for deployments that haven't published one yet.
+  const apkHref = release ? downloadPath('ANDROID', 'STABLE') : info.legacy?.url ?? null;
+  const fullUrl = release ? release.downloadUrl : `${publicBaseUrl()}${info.legacy?.url ?? '/rider-app'}`;
+  const sizeLabel = formatBytes(release ? release.fileSize : info.legacy?.fileSize);
+  const qrPng = apkHref ? await qrPngDataUrl(fullUrl, 320) : null;
 
   return (
     <main className="min-h-dvh overflow-x-hidden">
@@ -82,37 +76,52 @@ export default async function RiderAppPage() {
             <div>
               <BrandMark className="text-xl mb-6" />
               <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                <Sparkles className="size-3.5" /> Android app · v1.0
+                <Sparkles className="size-3.5" /> Android app{release ? ` · v${release.versionName}` : ''}
               </div>
             </div>
             <h1 className="display mt-4 text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.05] tracking-tight">
               Deliver on your own time.<br />
-              <span className="text-primary">Get paid daily.</span>
+              <span className="text-primary">Withdraw anytime.</span>
             </h1>
             <p className="mt-5 text-base md:text-lg text-muted-foreground max-w-xl">
               Join hundreds of riders earning with {brand.name}. Set your own hours, get paid for every delivery
-              plus tips and surge bonuses — straight to your wallet, daily payouts to your bank.
+              plus surge bonuses — tracked in the app, withdraw to your UPI or bank whenever you like.
             </p>
 
             <div className="mt-7 flex flex-col sm:flex-row gap-3">
-              <a
-                href={APK_PATH}
-                download
-                className="group inline-flex items-center justify-center gap-3 rounded-full bg-primary px-7 py-4 text-base font-bold text-primary-foreground shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40 transition-shadow"
-              >
-                <Download className="size-5 group-hover:animate-bounce" />
-                Download the Rider app
-                <span className="hidden sm:inline text-xs font-medium opacity-80">· {sizeMb} MB · Android</span>
-              </a>
-              <CopyLinkButton url={fullUrl} />
+              {apkHref ? (
+                <a
+                  href={apkHref}
+                  className="group inline-flex items-center justify-center gap-3 rounded-full bg-primary px-7 py-4 text-base font-bold text-primary-foreground shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40 transition-shadow"
+                >
+                  <Download className="size-5 group-hover:animate-bounce" />
+                  Download the Rider app
+                  {sizeLabel && <span className="hidden sm:inline text-xs font-medium opacity-80">· {sizeLabel} · Android</span>}
+                </a>
+              ) : (
+                <a
+                  href="#download"
+                  className="inline-flex items-center justify-center gap-3 rounded-full bg-primary/60 px-7 py-4 text-base font-bold text-primary-foreground"
+                >
+                  <Download className="size-5" /> Download details
+                </a>
+              )}
+              {apkHref && <CopyLinkButton url={fullUrl} />}
             </div>
-            {!available && (
-              <p className="mt-2 text-xs text-warning flex items-center gap-1.5">
+            {(!apkHref || download === 'unavailable') && (
+              <p className="mt-2 text-xs text-warning flex items-center gap-1.5" role="status">
                 <span className="inline-block size-1.5 rounded-full bg-warning animate-pulse" />
-                APK build pending — link will go live shortly.
+                The app download is being updated — please try again shortly.
               </p>
             )}
-            <p className="mt-2 text-xs text-muted-foreground sm:hidden">{sizeMb} MB · Android only · Free</p>
+            {sizeLabel && <p className="mt-2 text-xs text-muted-foreground sm:hidden">{sizeLabel} · Android only · Free</p>}
+            <p className="mt-3 text-sm text-muted-foreground">
+              Already a rider?{' '}
+              <Link href="/rider/login" className="inline-flex items-center gap-1 font-semibold text-primary underline-offset-4 hover:underline">
+                <LogIn className="size-3.5" /> Sign in to the rider web portal
+              </Link>{' '}
+              for earnings, payouts, documents and shifts.
+            </p>
           </div>
 
           {/* Right: phone mockup + QR */}
@@ -148,12 +157,12 @@ export default async function RiderAppPage() {
 
               {/* QR for desktop visitors */}
               <div className="text-center sm:text-left">
-                <div className="hidden sm:block">
+                {qrPng && <div className="hidden sm:block">
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Scan to install</div>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={qrPng} alt={`QR code to download the ${brand.name} Rider app`} width={200} height={200} className="rounded-2xl border bg-white p-2 shadow-md" />
                   <p className="mt-2 text-[11px] text-muted-foreground max-w-[200px]">Point your Android phone&apos;s camera at this code.</p>
-                </div>
+                </div>}
                 <div className="sm:hidden inline-flex items-center gap-2 text-xs text-muted-foreground">
                   <Phone className="size-3.5" /> You&apos;re on a phone — tap the download button.
                 </div>
@@ -185,11 +194,12 @@ export default async function RiderAppPage() {
             <div className="text-xs font-semibold uppercase tracking-wider text-primary">Get set up</div>
             <h2 className="display mt-1 text-3xl md:text-4xl font-bold">Install in under a minute</h2>
             <p className="mt-3 text-muted-foreground">
-              Three taps. No Play Store required. Your data and progress carry over if you reinstall.
+              A few taps. No Play Store required. Your data and progress carry over if you reinstall — and the app tells you when an update is out.
             </p>
           </div>
         </Reveal>
-        <InstallGuide apkUrl={APK_PATH} sizeMb={sizeMb} />
+        <InstallGuide apkUrl={apkHref} sizeLabel={sizeLabel} sha256={release?.sha256 ?? null} versionName={release?.versionName ?? null} />
+        <AppDownloadCard id="download" info={info} className="mt-10 scroll-mt-24" />
       </section>
 
       {/* ─── USAGE TUTORIAL ────────────────────────────────────────────────── */}
@@ -262,11 +272,10 @@ export default async function RiderAppPage() {
             </p>
             <div className="mt-7 flex flex-col sm:flex-row gap-3 justify-center">
               <a
-                href={APK_PATH}
-                download
+                href={apkHref ?? '#download'}
                 className="inline-flex items-center justify-center gap-3 rounded-full bg-white px-7 py-4 text-base font-bold text-primary shadow-xl hover:scale-[1.02] transition-transform"
               >
-                <Download className="size-5" /> Download the Rider app · {sizeMb} MB
+                <Download className="size-5" /> Download the Rider app{sizeLabel ? ` · ${sizeLabel}` : ''}
               </a>
               <a
                 href="tel:+919213995005"

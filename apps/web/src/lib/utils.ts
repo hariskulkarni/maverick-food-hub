@@ -68,7 +68,17 @@ export function genOrderCode(): string {
  * that hard-coded a 4-wide UI won't silently render shorter codes.
  */
 export function genDeliveryOtp(): string {
-  return String(Math.floor(1000 + Math.random() * 9000)).padStart(4, '0');
+  // P1-5: CSPRNG, not Math.random (predictable). Web Crypto exists in Node 20
+  // and browsers, so this module stays client-safe. Rejection sampling keeps
+  // the 1000-9999 range uniform.
+  const buf = new Uint32Array(1);
+  const limit = Math.floor(0x100000000 / 9000) * 9000;
+  let n: number;
+  do {
+    globalThis.crypto.getRandomValues(buf);
+    n = buf[0];
+  } while (n >= limit);
+  return String(1000 + (n % 9000)).padStart(4, '0');
 }
 
 /**

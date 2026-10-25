@@ -187,6 +187,7 @@ enum EscalationType {
   CUSTOMER_UNREACHABLE
   PAYMENT_WEBHOOK_DELAY
   COD_NOT_RECONCILED
+  RIDER_STATIONARY // dispatch telemetry: on-task rider parked away from pickup/drop (server-side GPS check)
 }
 
 enum EscalationSeverity {
@@ -260,6 +261,14 @@ model User {
   totpSecret        String?   // active, verified secret (encrypted blob)
   totpPendingSecret String?   // secret awaiting first-time confirmation (encrypted)
   totpEnabledAt     DateTime? // set when enrollment is confirmed; null = not enrolled
+  // ---- F15 (platform-auth r3): TOTP replay guard ----
+  // Absolute 30s step (unix_seconds / 30) of the last code accepted at login.
+  // A login code must match a strictly newer step, so a code is single-use.
+  totpLastStep      Int?
+  // ---- platform-auth r3: super-admin issued password must be changed ----
+  // Set when a SUPER_ADMIN resets the password (temp or chosen); the next
+  // password login must set a new one before any session is granted.
+  mustChangePassword Boolean  @default(false)
   avatarUrl        String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -298,6 +307,10 @@ model User {
   approvalsRequested    ApprovalRequest[]    @relation("ApprovalRequester")
   approvalsReviewed     ApprovalRequest[]    @relation("ApprovalReviewer")
   webPushSubscriptions  WebPushSubscription[]
+  // Training library v2
+  trainingLessonCompletions TrainingLessonCompletion[]
+  trainingQuizAttempts      TrainingQuizAttempt[]
+  trainingCertificates      TrainingCertificate[]
 
   @@index([role])
   @@index([phone])
@@ -331,6 +344,10 @@ model UserSession {
   lastSeenAt    DateTime  @default(now())
   revokedAt     DateTime?
   revokedReason String? // "superseded" | "user_terminated" | "logout"
+  // Rider multi-session (2026-10-25): which rider surface owns this session —
+  // "rider-app" (native app, one phone at a time) or "rider-web" (the /rider
+  // portal). null = NextAuth web login / admin marker rows (single-session).
+  client        String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -551,6 +568,9 @@ model Restaurant {
   googleReviews       GoogleReview[]
   reviewReplies       ReviewReply[]
   reviewAutoReplyCfg  ReviewAutoReplyConfig?
+  reviewRequestCfg    ReviewRequestConfig?
+  reviewRequests      ReviewRequest[]
+  recoveryTickets     ServiceRecoveryTicket[]
   qrCodes           QrCode[]
   favoritedBy       FavoriteRestaurant[]
   offers            Offer[]
@@ -559,6 +579,13 @@ model Restaurant {
   couponCampaigns   CouponCampaign[]
   youpiDailyUsage     YoupiDailyUsage[]
   youpiFeatureRequest YoupiFeatureRequest?
+  // Guided "Get your restaurant live" onboarding (feat/onboarding-v2).
+  onboardingProgress  OnboardingProgress?
+  // Review response & insights
+  reviewResponseSettings ReviewResponseSettings?
+  reviewReplyTemplates   ReviewReplyTemplate[]
+  reviewAnalyses         ReviewAnalysis[]
+  reviewInsights         ReviewInsightsSnapshot?
 
   @@index([status])
   @@index([brandId])
@@ -1244,6 +1271,8 @@ model Order {
   batchInvitations  BatchInvitation[]
   reservation       Reservation?         @relation(fields: [reservationId], references: [id])
   freebieRule       FreebieRule?         @relation(fields: [freebieRuleId], references: [id])
+  reviewRequest     ReviewRequest?
+  recoveryTicket    ServiceRecoveryTicket?
 
   @@index([branchId, status])
   @@index([branchId, status, createdAt])
@@ -1331,6 +1360,7 @@ model OrderFeedback {
   @@index([deliveryRating])
   @@index([overallRating])
 }
+// ==== end Review response & insights ====
 
 model OrderItem {
   id                  String  @id @default(cuid())
@@ -2133,6 +2163,9 @@ model RiderAssignment {
   customerRating   Int?
   customerComment  String?
   notes            String?
+  // ── Rider audit r3 (2026-10-25) ── wrong delivery-OTP submissions on this
+  // assignment; the deliver route locks hand-over after 5 (brute-force cap).
+  deliveryOtpAttempts Int @default(0)
 
   order Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
   rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Restrict)
@@ -2632,6 +2665,7 @@ enum QrType {
   TABLE
   CAMPAIGN
   TAKEAWAY
+  REVIEW
 }
 
 // QR codes are how customers reach the storefront in Phase 1 (no customer app).
@@ -3118,6 +3152,10 @@ enum TrainingCategory {
   CUSTOMER_SERVICE
   EARNINGS
   APP_GUIDE
+  // ── Training library v2: restaurant-staff categories ──
+  HYGIENE
+  KITCHEN_OPS
+  RESTAURANT_OPS
 }
 
 /// A bite-sized training/certification module. `contentBody` is markdown shown
@@ -3151,7 +3189,37 @@ model TrainingModule {
 
   progress RiderTrainingProgress[]
 
+  // ── Training library v2 (feat/training-library) ──────────────────────────
+  // Ordered lessons + MCQ quiz, audience, versioning and certification. The
+  // legacy fields above stay populated (contentBlocks is regenerated from the
+  // lessons on save) so rider-native builds that predate v2 keep working.
+  /// Stable key used by the idempotent seed script.
+  slug               String?          @unique
+  audience           TrainingAudience @default(RIDER)
+  /// Content version. Bumping it invalidates older certificates (re-certification).
+  version            Int              @default(1)
+  versionPublishedAt DateTime         @default(now())
+  /// Base language of the content; other languages live in `translations`.
+  language           String           @default("en")
+  /// `{ hi: { title, summary } }`
+  translations       Json?
+  passMarkPct        Int              @default(80)
+  /// null = unlimited quiz attempts per version.
+  maxAttempts        Int?
+  retakeCooldownMin  Int              @default(0)
+  /// Days to finish a required module before it shows as overdue.
+  dueDays            Int              @default(7)
+  /// Safety-critical: blocks going online until passed (platform gate, default off).
+  blocksShift        Boolean          @default(false)
+
+  lessons           TrainingLesson[]
+  questions         TrainingQuestion[]
+  lessonCompletions TrainingLessonCompletion[]
+  quizAttempts      TrainingQuizAttempt[]
+  certificates      TrainingCertificate[]
+
   @@index([isActive, order])
+  @@index([audience, isActive, order])
 }
 
 model RiderTrainingProgress {
@@ -3296,10 +3364,16 @@ model ObsErrorLog {
   firstSeenAt DateTime  @default(now())
   lastSeenAt  DateTime  @default(now())
   resolvedAt  DateTime?
+  // ── Observability Center (round 2, additive) ──
+  kind        String    @default("SERVER") // SERVER | CLIENT | NATIVE (rider app)
+  route       String?                      // normalised route template, e.g. /api/orders/[id]
+  requestId   String?                      // sample request id (x-request-id) of the latest occurrence
+  release     String?                      // app version / commit SHA when last seen
 
   @@index([lastSeenAt])
   @@index([level])
   @@index([resolvedAt])
+  @@index([kind, lastSeenAt])
 }
 
 model ObsProbe {
@@ -3401,6 +3475,15 @@ model GoogleReview {
   reviewCreatedAt DateTime
   syncedAt        DateTime @default(now())
   source          String   @default("gbp") // 'gbp' (Business Profile API) | 'places' (Places API, read-only)
+  // ---- Review response & insights ----
+  reviewUpdatedAt DateTime? // Google updateTime (edited reviews)
+  media           Json?     // [{ url, thumbnailUrl, type }] review photos/videos from GBP
+  matchedOrderId  String?   // best fuzzy order match (admin-only context, never public)
+  matchConfidence Float?
+  matchCheckedAt  DateTime?
+  alertedAt       DateTime? // negative-review alert sent (claimed once)
+  escalatedAt     DateTime? // SLA escalation sent (claimed once)
+  analysis        ReviewAnalysis?
   reply           ReviewReply?
   restaurant      Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   @@index([restaurantId, reviewCreatedAt])
@@ -3418,6 +3501,11 @@ model ReviewReply {
   llmModel     String?
   postedAt     DateTime?
   error        String?
+  // ---- Review response & insights ----
+  holdReason       String?   // why it was held/skipped (rule, keyword, safety filter)
+  moderationState  String?   // GBP reply moderation state (e.g. PENDING, APPROVED, REJECTED)
+  policyViolation  String?   // GBP reason when a reply is rejected
+  reviewReplyUrl   String?   // public URL of the reply on Google
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   review       GoogleReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
@@ -3440,6 +3528,8 @@ model ReviewAutoReplyConfig {
   updatedAt         DateTime @updatedAt
   restaurant        Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 }
+
+// ==== /Review acquisition ====
 
 // ─── YouPI experimental PG pilot ───────────────────────────────────────────
 // Daily order-cap counter, incremented atomically per restaurant per UTC day.
@@ -3857,4 +3947,750 @@ model PgRefundRecord {
   refund Refund @relation(fields: [refundId], references: [id], onDelete: Restrict)
 
   @@index([attemptId])
+}
+
+// ==== Review response & insights ====
+// Owner-tunable reply rules, alerts/SLA, weekly digest and Google location
+// totals (one row per restaurant). Kept separate from ReviewAutoReplyConfig.
+model ReviewResponseSettings {
+  id                     String    @id @default(cuid())
+  restaurantId           String    @unique
+  // Never auto-post when the review mentions one of these (case-insensitive).
+  skipKeywords           String[]  @default(["food poisoning", "allergy", "allergic", "refund", "legal", "lawyer", "sick", "hospital", "hair in"])
+  // Style learned from the restaurant's last ~20 posted replies (deterministic summary).
+  brandVoiceSummary      String?
+  brandVoiceUpdatedAt    DateTime?
+  // Negative-review alerts.
+  alertEnabled           Boolean   @default(true)
+  alertMaxRating         Int       @default(2)
+  alertSms               Boolean   @default(false)
+  alertWhatsapp          Boolean   @default(false)
+  // Reply SLA + single escalation to a second recipient.
+  slaHours               Int       @default(24)
+  escalationEmail        String?
+  escalationPhone        String?
+  // Weekly digest (Mondays 09:00 IST).
+  digestEnabled          Boolean   @default(false)
+  digestSms              Boolean   @default(false)
+  digestWhatsapp         Boolean   @default(false)
+  digestLastSentAt       DateTime?
+  // True location totals reported by Google (reviews.list averageRating/totalReviewCount).
+  googleAverageRating    Float?
+  googleTotalReviewCount Int?
+  googleStatsAt          DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  restaurant             Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+// Owner-editable reply snippets; variables {name} and {dish}.
+model ReviewReplyTemplate {
+  id           String   @id @default(cuid())
+  restaurantId String
+  name         String
+  body         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  @@index([restaurantId])
+}
+
+// Per-review topic/sentiment extraction (LLM or keyword fallback).
+model ReviewAnalysis {
+  id           String   @id @default(cuid())
+  reviewId     String   @unique
+  restaurantId String
+  sentiment    String   // positive | neutral | negative
+  issues       String[] // cold | late | packaging | portion | price | staff
+  dishes       Json     // [{ name, sentiment }] — names are the restaurant's own menu dishes
+  staff        String[] // first names mentioned (passive trend only)
+  method       String   // llm | keyword
+  analyzedAt   DateTime @default(now())
+  review       GoogleReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  @@index([restaurantId])
+}
+
+// Cached per-restaurant insights, recomputed by the Google reviews sweep.
+model ReviewInsightsSnapshot {
+  id           String   @id @default(cuid())
+  restaurantId String   @unique
+  data         Json
+  computedAt   DateTime @default(now())
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+enum TrainingAudience {
+  RIDER
+  KITCHEN
+  RESTAURANT_ADMIN
+}
+
+enum TrainingLessonKind {
+  TEXT
+  IMAGE
+  VIDEO
+  CHECKLIST
+}
+
+/// One ordered lesson in a TrainingModule. `body` is markdown.
+model TrainingLesson {
+  id             String             @id @default(cuid())
+  moduleId       String
+  order          Int                @default(0)
+  kind           TrainingLessonKind @default(TEXT)
+  title          String
+  body           String             @default("")
+  /// Image URL (IMAGE) or video URL (VIDEO).
+  mediaUrl       String?
+  /// string[] for CHECKLIST lessons.
+  checklistItems Json?
+  /// `{ hi: { title, body, checklistItems } }`
+  translations   Json?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  module      TrainingModule             @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  completions TrainingLessonCompletion[]
+
+  @@index([moduleId, order])
+}
+
+/// Single-answer multiple-choice question in a module's quiz.
+model TrainingQuestion {
+  id           String   @id @default(cuid())
+  moduleId     String
+  order        Int      @default(0)
+  prompt       String
+  /// string[]
+  options      Json
+  correctIndex Int
+  explanation  String?
+  /// `{ hi: { prompt, options, explanation } }`
+  translations Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  module TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@index([moduleId, order])
+}
+
+/// A learner (any role) finished a lesson at a given module version.
+model TrainingLessonCompletion {
+  id            String   @id @default(cuid())
+  userId        String
+  moduleId      String
+  lessonId      String
+  moduleVersion Int
+  completedAt   DateTime @default(now())
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  lesson TrainingLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@index([userId, moduleId])
+}
+
+/// One graded quiz submission (server-graded; `source = legacy` means the
+/// score was reported by a pre-v2 rider app build).
+model TrainingQuizAttempt {
+  id            String   @id @default(cuid())
+  userId        String
+  moduleId      String
+  moduleVersion Int
+  scorePct      Int
+  correctCount  Int
+  totalCount    Int
+  passed        Boolean
+  /// { [questionId]: chosenIndex }
+  answers       Json?
+  source        String   @default("app")
+  createdAt     DateTime @default(now())
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@index([userId, moduleId, moduleVersion])
+  @@index([moduleId, createdAt])
+}
+
+/// Issued when a learner completes a module version (lessons + passing quiz).
+model TrainingCertificate {
+  id            String   @id @default(cuid())
+  userId        String
+  moduleId      String
+  moduleVersion Int
+  scorePct      Int?
+  /// Human-readable verification code, e.g. FLV-7K2M9QX4.
+  code          String   @unique
+  issuedAt      DateTime @default(now())
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleId, moduleVersion])
+  @@index([userId])
+  @@index([moduleId, moduleVersion])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Observability Center (round 2) — super-admin only. All tables are bounded by
+//  the obs-retention job (src/server/observability/retention.ts):
+//    ObsRequestMinute 30d · ObsEventMinute 30d · ObsJobRun 90d · ObsAlert 90d
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Golden signals per route, aggregated per minute (never one row per request).
+/// `hist` is a fixed-bucket latency histogram (see observability/histogram.ts)
+/// so P50/P95/P99 can be merged across minutes and processes.
+model ObsRequestMinute {
+  minute   DateTime // UTC, truncated to the minute
+  method   String
+  route    String   // normalised template (/api/orders/[id]); "other" past the cardinality cap
+  kind     String   @default("API") // API | PAGE
+  count    Int      @default(0)
+  s2xx     Int      @default(0)
+  s3xx     Int      @default(0)
+  s4xx     Int      @default(0)
+  s5xx     Int      @default(0)
+  s401     Int      @default(0)
+  s403     Int      @default(0)
+  s429     Int      @default(0)
+  durSumMs Float    @default(0)
+  durMaxMs Int      @default(0)
+  hist     Int[]
+
+  @@id([minute, method, route])
+  @@index([minute])
+  @@index([route, minute])
+}
+
+/// Generic per-minute counters: permission denials (route, role), webhook
+/// signature failures (provider), notification outcomes (channel, provider),
+/// client-error beacons (source), rate-limit hits (route, tier) …
+model ObsEventMinute {
+  minute DateTime
+  kind   String
+  dim1   String   @default("")
+  dim2   String   @default("")
+  count  Int      @default(0)
+
+  @@id([minute, kind, dim1, dim2])
+  @@index([kind, minute])
+}
+
+/// One row per scheduled-job execution (captured generically at the HTTP layer
+/// for every /api/platform/jobs/<name>/run call, or via withJobRun()).
+model ObsJobRun {
+  id         String    @id @default(cuid())
+  job        String
+  trigger    String    @default("CRON") // CRON | MANUAL
+  status     String    @default("RUNNING") // RUNNING | SUCCESS | FAILED
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  durationMs Int?
+  httpStatus Int?
+  summary    String?   // redacted, truncated response summary
+  error      String?   // redacted, truncated
+  requestId  String?
+
+  @@index([job, startedAt])
+  @@index([startedAt])
+  @@index([status])
+}
+
+/// Alert instances. One FIRING row per ruleKey at a time; resolved rows are history.
+model ObsAlert {
+  id             String    @id @default(cuid())
+  rule           String    // rule id, e.g. "job_overdue"
+  ruleKey        String    // rule + subject, e.g. "job_overdue:google-reviews"
+  severity       String    // CRITICAL | WARNING
+  state          String    @default("FIRING") // FIRING | RESOLVED
+  title          String
+  detail         String?
+  value          Float?
+  threshold      Float?
+  firstFiredAt   DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  resolvedAt     DateTime?
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  notifiedAt     DateTime?
+  notifyCount    Int       @default(0)
+
+  @@index([state, lastSeenAt])
+  @@index([ruleKey, state])
+  @@index([firstFiredAt])
+}
+
+/// Mutes suppress notifications (not evaluation) for a rule or a ruleKey until `until`.
+model ObsAlertMute {
+  key       String   @id // rule id ("stuck_orders") or exact ruleKey ("job_overdue:kyc-expiry")
+  until     DateTime
+  reason    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+}
+
+// ==== Review acquisition ====
+// Post-order Google review asks (SMS / WhatsApp / email), customer opt-outs,
+// tracked short links (/rv/<token>), QR review kit scans, and service-recovery
+// tickets for low ratings. Compliance: every customer is asked the same way and
+// the Google review link is shown at EVERY rating (no gating, no incentives).
+enum ReviewRequestChannel {
+  SMS
+  WHATSAPP
+  EMAIL
+  QR
+}
+
+enum ReviewRequestStatus {
+  SCHEDULED
+  SENT
+  CLICKED
+  FEEDBACK
+  SKIPPED
+  FAILED
+}
+
+enum RecoveryTicketStatus {
+  OPEN
+  CONTACTED
+  RESOLVED
+}
+
+model ReviewRequestConfig {
+  id                      String                 @id @default(cuid())
+  restaurantId            String                 @unique
+  enabled                 Boolean                @default(false)
+  // Priority order: the first channel the customer can be reached on is used.
+  channels                ReviewRequestChannel[] @default([SMS])
+  delayMinutes            Int                    @default(60)
+  // IST hours; no ask is sent while start <= hour < end (wraps midnight). Null = no quiet hours.
+  quietStartHour          Int?                   @default(21)
+  quietEndHour            Int?                   @default(9)
+  reminderEnabled         Boolean                @default(false)
+  reminderAfterHours      Int                    @default(24)
+  // At most one ask per customer per restaurant every N days.
+  frequencyCapDays        Int                    @default(30)
+  // Ratings <= this open a service-recovery ticket (Google link is still shown).
+  lowRatingThreshold      Int                    @default(3)
+  // Place ID resolved from the connected Google Business Profile location.
+  gbpPlaceId              String?
+  gbpReviewUrl            String?
+  // Manual override wins over every derived link.
+  googleReviewUrlOverride String?
+  // Approved Meta WhatsApp Utility template for review asks (owner action).
+  whatsappTemplateName    String?
+  whatsappTemplateLang    String?
+  updatedAt               DateTime               @updatedAt
+  restaurant              Restaurant             @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+model ReviewRequest {
+  id              String               @id @default(cuid())
+  restaurantId    String
+  // One ask per order (Postgres allows many NULLs for QR-kit rows).
+  orderId         String?              @unique
+  customerId      String?
+  qrCodeId        String?
+  channel         ReviewRequestChannel
+  token           String               @unique
+  status          ReviewRequestStatus  @default(SCHEDULED)
+  dueAt           DateTime?
+  sentAt          DateTime?
+  reminderDueAt   DateTime?
+  reminderAt      DateTime?
+  clickedAt       DateTime?
+  feedbackAt      DateTime?
+  googleClickedAt DateTime?
+  // QR-kit feedback has no order; rating/comment live here instead of OrderFeedback.
+  rating          Int?
+  comment         String?
+  error           String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  restaurant      Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  order           Order?               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status, dueAt])
+  @@index([status, reminderDueAt])
+  @@index([restaurantId, createdAt])
+  @@index([customerId, restaurantId, sentAt])
+}
+
+// restaurantId NULL = global opt-out (all restaurants on the platform).
+model ReviewRequestOptOut {
+  id                 String   @id @default(cuid())
+  customerId         String
+  restaurantId       String?
+  // Restaurant whose message carried the STOP link (for funnel stats).
+  sourceRestaurantId String?
+  createdAt          DateTime @default(now())
+
+  @@index([customerId])
+  @@index([sourceRestaurantId, createdAt])
+}
+
+model ServiceRecoveryTicket {
+  id              String               @id @default(cuid())
+  restaurantId    String
+  orderId         String?              @unique
+  reviewRequestId String?
+  customerId      String?
+  contactName     String?
+  contactPhone    String?
+  rating          Int
+  comment         String?
+  status          RecoveryTicketStatus @default(OPEN)
+  assigneeUserId  String?
+  notes           String?
+  // Unconditional goodwill gesture (never tied to a review).
+  goodwillNote    String?
+  goodwillAt      DateTime?
+  contactedAt     DateTime?
+  resolvedAt      DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  restaurant      Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  order           Order?               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, status, createdAt])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Knowledge base / help center (feat/knowledge-base)
+// Authored by SUPER_ADMIN in /platform/help; read by restaurant admins &
+// kitchen (/admin/help, /kitchen/help), riders (rider app Help screen) and
+// customers (/faq). Full-text search uses `searchVector` (tsvector kept fresh
+// by a trigger + GIN index created in the migration's raw SQL) with a pg_trgm
+// typo-tolerant fallback. See src/server/help/*.
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum HelpAudience {
+  RESTAURANT_ADMIN
+  KITCHEN
+  RIDER
+  CUSTOMER
+  ALL
+}
+
+enum HelpLanguage {
+  en
+  hi
+}
+
+enum HelpArticleStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model HelpCategory {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  title       String
+  description String?
+  /// Primary audience the category is listed for (ALL = everyone).
+  audience    HelpAudience  @default(ALL)
+  sortOrder   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  articles    HelpArticle[]
+}
+
+model HelpArticle {
+  id           String                @id @default(cuid())
+  slug         String
+  language     HelpLanguage          @default(en)
+  title        String
+  summary      String
+  /// Markdown (restricted subset — see src/lib/help-markdown.ts).
+  body         String
+  audience     HelpAudience[]
+  tags         String[]
+  status       HelpArticleStatus     @default(DRAFT)
+  /// Contextual-help key, e.g. "admin.orders" or "rider.earnings".
+  appArea      String?
+  /// Slugs of related articles (same language preferred).
+  relatedSlugs String[]
+  sortOrder    Int                   @default(0)
+  version      Int                   @default(1)
+  viewCount    Int                   @default(0)
+  publishedAt  DateTime?
+  categoryId   String?
+  category     HelpCategory?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdById  String?
+  updatedById  String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  /// Maintained by trigger "HelpArticle_search_vector_trg" (raw SQL migration).
+  searchVector Unsupported("tsvector")?
+  versions     HelpArticleVersion[]
+  feedback     HelpArticleFeedback[]
+
+  @@unique([slug, language])
+  @@index([status, language])
+  @@index([appArea])
+  @@index([categoryId])
+  @@index([searchVector], type: Gin)
+}
+
+/// Immutable snapshot written on every create / save / restore.
+model HelpArticleVersion {
+  id         String         @id @default(cuid())
+  articleId  String
+  article    HelpArticle    @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  version    Int
+  title      String
+  summary    String
+  body       String
+  audience   HelpAudience[]
+  tags       String[]
+  appArea    String?
+  categoryId String?
+  /// Free-text reason, e.g. "created", "edited", "restored from v3".
+  note       String?
+  authorId   String?
+  authorName String?
+  createdAt  DateTime       @default(now())
+
+  @@unique([articleId, version])
+}
+
+model HelpArticleFeedback {
+  id        String      @id @default(cuid())
+  articleId String
+  article   HelpArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId    String
+  role      String
+  helpful   Boolean
+  comment   String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([articleId, userId])
+  @@index([articleId, helpful])
+}
+
+/// One row per search, for content-gap reports (top zero-result queries).
+model HelpSearchLog {
+  id           String       @id @default(cuid())
+  /// Normalised (trimmed, lower-cased, whitespace-collapsed) query.
+  query        String
+  resultsCount Int
+  language     HelpLanguage @default(en)
+  /// "web" | "rider" | "public"
+  source       String
+  role         String?
+  userId       String?
+  createdAt    DateTime     @default(now())
+
+  @@index([createdAt])
+  @@index([resultsCount, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Guided restaurant onboarding (feat/onboarding-v2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Per-restaurant progress through the /admin/onboarding "Get your restaurant
+/// live" wizard, so an owner can leave and resume. Pure bookkeeping — the real
+/// configuration (menu, branches, zones, staff…) lives in its own tables and is
+/// written through the existing APIs; readiness is always re-computed live.
+model OnboardingProgress {
+  id           String    @id @default(cuid())
+  restaurantId String    @unique
+  /// { [stepKey]: "todo" | "done" | "skipped" }
+  steps        Json      @default("{}")
+  /// { [stepKey]: <unsaved form draft> } — capped server-side.
+  drafts       Json      @default("{}")
+  currentStep  String?
+  /// "Go live" pressed while every required readiness check passed.
+  completedAt  DateTime?
+  /// Dashboard checklist hidden by the owner (only allowed once completed).
+  dismissedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+// ---- F9 (platform-auth r3): job overlap-guard leases ----
+// One row per scheduled job. A run claims the lease until `expiresAt`; a
+// crashed run's lease just expires. Replaces session advisory locks, which on
+// pooled connections could be released on a different connection (no-op) and
+// stay held by the pooled one. See src/server/jobs/lease.ts.
+model JobLease {
+  name      String   @id
+  holder    String
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+}
+
+// ---- platform-auth r3: persisted password-login lockout ----
+// One row per lower-cased email (exists or not) with recent failures. Survives
+// restarts and is shared across PM2 instances. See src/server/2fa.ts.
+model LoginLockout {
+  email          String    @id
+  failures       Int       @default(0)
+  firstFailureAt DateTime  @default(now())
+  lockedUntil    DateTime?
+  updatedAt      DateTime  @updatedAt
+}
+
+// ---- platform-auth r3: Google Authenticator recovery codes ----
+// Generated at enrolment (shown once), stored as sha256, each usable once in
+// place of an authenticator code. Cleared on TOTP reset. See server/user-totp.ts.
+model TotpRecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Dispatch telemetry v1 (feat/dispatch-telemetry, 2026-10-24)
+// ─────────────────────────────────────────────────────────────────────────────
+// Additive only. No relations to existing models on purpose (keeps the Order /
+// Restaurant models untouched); every row carries the plain ids it needs.
+//
+//   OrderEvent         append-only dispatch milestones per order (src/server/dispatch/events.ts)
+//   OrderDispatchPlan  prep prediction + JIT rider-release plan per DELIVERY order
+//   RestaurantPrepStat nightly prep-time percentiles per restaurant × IST hour
+//   ZoneSupplyDemand   5-min H3 res-8 snapshot of open orders vs riders
+
+enum OrderEventType {
+  ACCEPTED
+  PREP_STARTED
+  FOOD_READY
+  INVITED
+  ASSIGNED
+  ARRIVED_RESTAURANT
+  PICKED_UP
+  ARRIVED_CUSTOMER
+  DELIVERED
+  CANCELLED
+}
+
+enum OrderEventSource {
+  SYSTEM
+  KITCHEN // restaurant staff (KITCHEN or restaurant ADMIN role)
+  RIDER
+  ADMIN // platform team
+}
+
+model OrderEvent {
+  id        String           @id @default(cuid())
+  orderId   String
+  type      OrderEventType
+  source    OrderEventSource
+  at        DateTime         @default(now())
+  actorId   String?
+  riderId   String?
+  lat       Float?
+  lng       Float?
+  // Once-only events set this (e.g. "FOOD_READY") so replays are no-ops via
+  // ON CONFLICT DO NOTHING; repeatable events (INVITED per rider, re-ASSIGNED)
+  // use a per-rider key or NULL (NULLs never conflict in Postgres).
+  dedupeKey String?
+  meta      Json?
+
+  @@unique([orderId, dedupeKey])
+  @@index([orderId, at])
+  @@index([type, at])
+}
+
+model OrderDispatchPlan {
+  orderId          String    @id
+  restaurantId     String
+  predictedPrepMin Float
+  prepSource       String // "hour" | "all" | "quoted"
+  prepSamples      Int       @default(0)
+  acceptedAt       DateTime
+  // JIT: when riders should be invited. NULL when JIT was off at accept time.
+  releaseAt        DateTime?
+  // When the order was offered to riders (JIT job, or food ready).
+  releasedAt       DateTime?
+  releaseReason    String? // "jit_due" | "no_rider_in_range" | "promise_at_risk" | "food_ready" | "jit_immediate"
+  jit              Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([jit, releasedAt, releaseAt])
+  @@index([restaurantId, acceptedAt])
+}
+
+model RestaurantPrepStat {
+  id           String   @id @default(cuid())
+  restaurantId String
+  hourBucket   Int // IST hour 0..23, or -1 = all hours
+  samples      Int
+  p50Min       Float
+  p60Min       Float
+  p90Min       Float
+  computedAt   DateTime @default(now())
+
+  @@unique([restaurantId, hourBucket])
+}
+
+model ZoneSupplyDemand {
+  id         String   @id @default(cuid())
+  bucketAt   DateTime // 5-minute bucket start (UTC)
+  h3Cell     String // H3 res-8 index, or "none" for riders with no fix
+  openOrders Int      @default(0)
+  idleRiders Int      @default(0)
+  busyRiders Int      @default(0)
+
+  @@unique([bucketAt, h3Cell])
+  @@index([bucketAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// App releases (2026-10-25, feat/rider-web-portal)
+//
+// Published builds of the native apps (today: the Expo rider app). A super-admin
+// uploads an APK to PRIVATE storage (fileRef = `private:<key>`, served only by
+// /download/rider-app) or registers an external URL (EAS artifact / store link).
+// Exactly one release per (app, platform, channel) is active at a time; that's
+// what /download/rider-app streams and /api/app/rider/latest reports to the
+// app's update check. Rollback = re-activating an earlier release.
+// ─────────────────────────────────────────────────────────────────────────────
+enum AppReleasePlatform {
+  ANDROID
+  IOS
+}
+
+enum AppReleaseChannel {
+  STABLE
+  BETA
+}
+
+model AppRelease {
+  id                      String             @id @default(cuid())
+  app                     String             @default("rider")
+  platform                AppReleasePlatform
+  channel                 AppReleaseChannel  @default(STABLE)
+  versionName             String
+  versionCode             Int
+  fileRef                 String? // private:<key> of an uploaded APK
+  fileName                String?
+  downloadUrl             String? // external download (EAS artifact, etc.) when no file
+  storeUrl                String? // optional Play Store / App Store listing
+  sha256                  String?
+  fileSize                Int?
+  releaseNotes            String?
+  minSupportedVersionCode Int                @default(0)
+  publishedAt             DateTime           @default(now())
+  isActive                Boolean            @default(false)
+  downloadCount           Int                @default(0)
+  createdById             String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  @@unique([app, platform, channel, versionCode])
+  @@index([app, platform, channel, isActive])
 }

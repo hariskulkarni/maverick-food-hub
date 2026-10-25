@@ -157,8 +157,8 @@ export default function EmergencyContactsScreen() {
       >
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Text style={styles.intro}>
-            When you trigger SOS, we alert your primary contact with your live
-            location. Add at least one person you trust.
+            When you trigger SOS, we alert the Flavrly safety team and text your
+            emergency contacts with your location. Add at least one person you trust.
           </Text>
 
           {loading ? (

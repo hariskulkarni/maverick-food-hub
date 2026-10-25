@@ -17,7 +17,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { getEffectivePayoutRule } from '@/server/payouts';
 import { parseOrJsonError } from '@/server/zod-helpers';
@@ -40,7 +40,8 @@ const Body = z.object({
 );
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { id } = await params;
   const rider = await prisma.riderProfile.findUnique({
     where: { id },
@@ -66,7 +67,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const { id } = await params;
   const parsed = parseOrJsonError(Body, await req.json());
   if (parsed instanceof Response) return parsed;
@@ -122,7 +124,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const { id } = await params;
 
   const before = await prisma.riderPayoutOverride.findFirst({ where: { riderId: id, isActive: true } });

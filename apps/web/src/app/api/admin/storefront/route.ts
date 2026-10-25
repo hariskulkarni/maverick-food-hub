@@ -6,7 +6,7 @@
 import { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/server/db';
-import { requireRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
 import { parseStorefrontConfig } from '@/server/storefront-cms';
@@ -14,7 +14,8 @@ import { parseStorefrontConfig } from '@/server/storefront-cms';
 export const runtime = 'nodejs';
 
 export async function PATCH(req: NextRequest) {
-  const restaurant = await requireRestaurant();
+  const restaurant = await tenantAdminOrError();
+  if (restaurant instanceof Response) return restaurant;
   const session = await auth();
   const body = await req.json().catch(() => ({}));
   const config = parseStorefrontConfig(body?.config ?? body);

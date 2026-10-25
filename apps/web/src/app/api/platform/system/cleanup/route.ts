@@ -12,6 +12,7 @@ import { requireSuperAdmin } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { log } from '@/server/log';
 import { previewCleanup, runSafeCleanup } from '@/server/system-cleanup';
+import { clientIp } from '@/server/http/client-ip';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
       diskBefore: report.diskBefore,
       diskAfter: report.diskAfter,
     },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+    ipAddress: clientIp(req.headers),
     userAgent: req.headers.get('user-agent') ?? undefined,
   }).catch((err) => log.error({ err }, 'audit platform.cache.cleanup failed'));
 

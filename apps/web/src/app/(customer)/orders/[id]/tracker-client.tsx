@@ -14,6 +14,7 @@ import { FeedbackDialog, type FeedbackLite } from '../feedback-dialog';
 import { useRouter } from 'next/navigation';
 import { canPayNow, apiErrorMessage } from '@/lib/checkout-helpers';
 import { launchPayment } from '@/lib/launch-payment';
+import { GoogleReviewBlock } from '@/components/reviews/google-review-button';
 
 // Equirectangular distance approximation in km between two lat/lng points.
 // Used for the saffron ETA pill ("arriving in ~N min · 0.8 km away").
@@ -32,12 +33,16 @@ export function OrderTrackerClient({
   order: initial,
   existingFeedback: initialFeedback = null,
   deliveredAt = null,
-  feedbackWindowEndsAt = null
+  feedbackWindowEndsAt = null,
+  googleReviewUrl = null,
+  reviewToken = null
 }: {
   order: any;
   existingFeedback?: FeedbackLite | null;
   deliveredAt?: string | null;
   feedbackWindowEndsAt?: string | null;
+  googleReviewUrl?: string | null;
+  reviewToken?: string | null;
 }) {
   const [order, setOrder] = useState(initial);
   const [feedback, setFeedback] = useState<FeedbackLite | null>(initialFeedback);
@@ -152,10 +157,14 @@ export function OrderTrackerClient({
         </div>
         {/* Support buttons — stack vertically on mobile, side-by-side on sm+.
             44×44 tap targets enforced on mobile. */}
-        <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex">
+        {(brand.supportPhone || brand.supportWhatsapp) && (
+        <div className={`grid ${brand.supportPhone && brand.supportWhatsapp ? 'grid-cols-2' : 'grid-cols-1'} gap-2 w-full sm:w-auto sm:flex`}>
+          {brand.supportPhone && (
           <a href={`tel:${brand.supportPhone}`} className="inline-flex h-11 sm:h-9 items-center justify-center gap-2 rounded-md border px-3 text-sm hover:bg-accent tap-press">
             <Phone className="size-4" /> Support
           </a>
+          )}
+          {brand.supportWhatsapp && (
           <a
             href={`https://wa.me/${brand.supportWhatsapp.replace(/\D/g, '')}?text=Order%20${encodeURIComponent(order.code)}`}
             target="_blank" rel="noreferrer"
@@ -163,7 +172,9 @@ export function OrderTrackerClient({
           >
             <MessageCircle className="size-4" /> WhatsApp
           </a>
+          )}
         </div>
+        )}
       </header>
 
       {/* ───────────────────────── Unpaid online order ───────────────────────── */}
@@ -216,6 +227,15 @@ export function OrderTrackerClient({
           windowClosed={feedbackWindowClosed}
           onOpen={() => setFeedbackOpen(true)}
         />
+      )}
+      {/* Same Google block at every rating, before and after feedback (no gating). */}
+      {isDelivered && googleReviewUrl && (
+        <div className="mb-6">
+          <GoogleReviewBlock
+            href={googleReviewUrl}
+            trackUrl={reviewToken ? `/api/review-requests/${encodeURIComponent(reviewToken)}/google` : undefined}
+          />
+        </div>
       )}
 
       {/* ───────────────────────── Live ETA pill + Map ───────────────────────── */}

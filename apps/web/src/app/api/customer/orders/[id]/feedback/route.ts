@@ -19,6 +19,8 @@ import { prisma } from '@/server/db';
 import { audit } from '@/server/audit';
 import { log } from '@/server/log';
 import { recomputeRiderRatingForOrder } from '@/server/reviews/rider-rating';
+import { createOrderFeedback } from '@/server/reviews/order-feedback-submit';
+import { onOrderFeedbackSaved } from '@/server/reviews/recovery';
 import {
   canSubmitFeedback,
   canEditFeedback,
@@ -133,58 +135,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return Response.json({ error: 'not_eligible', reason: elig.reason }, { status: 409 });
   }
 
-  // Window snapshot — order.deliveredAt is guaranteed non-null by canSubmit.
-  const deliveredAt = order.deliveredAt!;
-  const windowEndsAt = new Date(deliveredAt.getTime() + FEEDBACK_WINDOW_MS);
-
-  // Restaurant opted out of auto-publish => hold as HIDDEN until an admin publishes (R3).
-  const autoPublish = await prisma.order
-    .findUnique({ where: { id }, select: { branch: { select: { restaurant: { select: { autoPublishReviews: true } } } } } })
-    .then((o) => o?.branch?.restaurant?.autoPublishReviews !== false)
-    .catch(() => true);
-
-  const created = await (prisma as any).orderFeedback.create({
-    data: {
-      orderId: id,
-      customerId: session.user.id,
-      foodRating: data.foodRating ?? null,
-      deliveryRating: data.deliveryRating ?? null,
-      overallRating: data.overallRating ?? null,
-      comment: data.comment ?? null,
-      issueTags: data.issueTags ?? [],
-      imageUrl: data.imageUrl ?? null,
-      shareCommentWithRider: data.shareCommentWithRider ?? false,
-      sharePublicly: data.sharePublicly ?? false,
-      windowEndsAt,
-      moderationStatus: autoPublish ? 'PUBLISHED' : 'HIDDEN'
-    }
+  // order.deliveredAt is guaranteed non-null by canSubmit.
+  const { feedback: created } = await createOrderFeedback({
+    orderId: id,
+    orderCode: order.code,
+    customerId: session.user.id,
+    deliveredAt: order.deliveredAt!,
+    data,
+    via: 'order_page'
   });
-
-  // Post-commit audit — failures must NOT bubble up.
-  audit('order.feedback.submitted', {
-    actorId: session.user.id,
-    actorRole: 'CUSTOMER',
-    entityType: 'OrderFeedback',
-    entityId: created.id,
-    before: null,
-    after: {
-      orderId: id,
-      orderCode: order.code,
-      foodRating: created.foodRating,
-      deliveryRating: created.deliveryRating,
-      overallRating: created.overallRating,
-      issueTags: created.issueTags,
-      hasComment: !!created.comment,
-      hasImage: !!created.imageUrl,
-      shareCommentWithRider: created.shareCommentWithRider,
-      sharePublicly: created.sharePublicly
-    }
-  }).catch((e) => log.error({ err: e }, 'feedback submit audit failed'));
-
-  // Best-effort rider-rating refresh; never throws, never fails the write.
-  if (created.deliveryRating != null) {
-    await recomputeRiderRatingForOrder(id).catch((e) => log.error({ err: e }, 'rider rating refresh failed'));
-  }
 
   return Response.json({ feedback: created }, { status: 201 });
 }
@@ -256,6 +215,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (updated.deliveryRating != null || before.deliveryRating != null) {
     await recomputeRiderRatingForOrder(id).catch((e) => log.error({ err: e }, 'rider rating refresh failed'));
   }
+
+  await onOrderFeedbackSaved({
+    orderId: id,
+    customerId: session.user.id,
+    overallRating: updated.overallRating,
+    foodRating: updated.foodRating,
+    deliveryRating: updated.deliveryRating,
+    comment: updated.comment
+  });
 
   return Response.json({ feedback: updated });
 }

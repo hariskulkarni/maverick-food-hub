@@ -154,12 +154,11 @@ export default async function SystemHealthPage() {
         <CardContent className="p-5">
           <h2 className="font-semibold flex items-center gap-2 mb-3"><Server className="size-4 text-primary" /> Deployment</h2>
           <dl className="grid gap-3 text-sm md:grid-cols-2 lg:grid-cols-3">
-            <KV k="Phase" v={summary.phase} />
             <KV k="Deployment mode" v={summary.deploymentMode} />
-            <KV k="Storage provider" v={summary.storageProvider} />
-            <KV k="SMS provider" v={summary.smsProvider} />
-            <KV k="Email provider" v={summary.emailProvider} />
-            <KV k="Enabled flags" v={summary.enabledFlags.length > 0 ? summary.enabledFlags.join(', ') : 'none (lean defaults)'} />
+            <KV k="Storage (STORAGE_DRIVER)" v={summary.storageProvider} />
+            <KV k="SMS (NOTIFIER_SMS)" v={summary.smsProvider} />
+            <KV k="Email (NOTIFIER_EMAIL)" v={summary.emailProvider} />
+            <KV k="WhatsApp (NOTIFIER_WHATSAPP)" v={summary.whatsappProvider} />
           </dl>
         </CardContent>
       </Card>

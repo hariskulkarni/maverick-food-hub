@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDiscoveryConfig, defaultDiscoveryConfig } from '@/server/discovery-cms';
+import { parseDiscoveryConfig, defaultDiscoveryConfig, slugStr } from '@/server/discovery-cms';
 
 describe('discovery-cms config', () => {
   it('returns full defaults for null/garbage', () => {
@@ -85,5 +85,22 @@ describe('discovery-cms config', () => {
     expect(c.footer.columns).toHaveLength(1);
     expect(c.footer.columns[0].title).toBe('Company');
     expect(c.footer.columns[0].links).toHaveLength(1);
+  });
+});
+
+describe('slugStr', () => {
+  it('lowercases, hyphenates and trims dashes exactly as before', () => {
+    expect(slugStr('  Biryani & Kebabs ')).toBe('biryani-kebabs');
+    expect(slugStr('--North--Indian--')).toBe('north--indian');
+    expect(slugStr('---')).toBe('');
+    expect(slugStr(null)).toBe('');
+    expect(slugStr('a'.repeat(100))).toHaveLength(64);
+  });
+
+  it('stays linear on a long run of dashes (no ReDoS)', () => {
+    const evil = '-'.repeat(200_000) + '!';
+    const t0 = Date.now();
+    expect(slugStr(evil)).toBe('');
+    expect(Date.now() - t0).toBeLessThan(500);
   });
 });

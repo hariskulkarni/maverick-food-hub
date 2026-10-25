@@ -78,3 +78,77 @@ export async function sendDeliveryOtpSms(orderId: string): Promise<void> {
     );
   }
 }
+
+/** Max SMS recipients for one SOS — bounds cost/abuse if contacts pile up. */
+const SOS_MAX_RECIPIENTS = 5;
+
+/** Builds the SOS SMS body. Pure — exported for tests. */
+export function formatSosSms(a: { riderName: string; at: Date; lat: number | null; lng: number | null }): string {
+  const time = a.at.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  const where =
+    a.lat != null && a.lng != null
+      ? ` Location: https://maps.google.com/?q=${a.lat.toFixed(6)},${a.lng.toFixed(6)}`
+      : ' Location not available.';
+  return `${brand.name} SOS: ${a.riderName} triggered an emergency alert at ${time} IST.${where} Please call them now; dial 112 if needed.`;
+}
+
+/**
+ * Texts the rider's emergency contacts when an SOS alert is raised. Recipients
+ * are every RiderEmergencyContact plus RiderPreferences.emergencyPhone,
+ * de-duplicated and capped. The ops-side SosAlert row is created by the caller;
+ * this only adds the SMS fan-out. Never throws.
+ */
+export async function sendSosToEmergencyContacts(alertId: string): Promise<{ sent: number }> {
+  try {
+    const alert = await prisma.sosAlert.findUnique({
+      where: { id: alertId },
+      select: {
+        id: true,
+        lat: true,
+        lng: true,
+        triggeredAt: true,
+        rider: {
+          select: {
+            userId: true,
+            user: { select: { name: true, phone: true } },
+            emergencyContacts: { select: { phone: true }, orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }] },
+            preferences: { select: { emergencyPhone: true } }
+          }
+        }
+      }
+    });
+    if (!alert?.rider) return { sent: 0 };
+    const r = alert.rider;
+    const phones: string[] = [];
+    for (const p of [...r.emergencyContacts.map((c) => c.phone), r.preferences?.emergencyPhone ?? null]) {
+      const t = p?.trim();
+      if (t && !phones.includes(t)) phones.push(t);
+    }
+    if (phones.length === 0) {
+      log.info({ alertId }, 'sendSosToEmergencyContacts: no emergency contacts configured');
+      return { sent: 0 };
+    }
+    const riderName = r.user?.name?.trim() || `Your ${brand.name} rider${r.user?.phone ? ` (${r.user.phone})` : ''}`;
+    const body = formatSosSms({ riderName, at: alert.triggeredAt, lat: alert.lat, lng: alert.lng });
+    let sent = 0;
+    for (const to of phones.slice(0, SOS_MAX_RECIPIENTS)) {
+      try {
+        const res = await notify.sms({ to, body, template: 'rider.sos.emergency_contact', userId: r.userId, meta: { sosAlertId: alert.id } });
+        if (res?.ok) sent++;
+      } catch (e) {
+        log.error({ err: (e as Error).message, alertId }, 'sendSosToEmergencyContacts: sms failed');
+      }
+    }
+    return { sent };
+  } catch (e) {
+    log.error({ err: (e as Error).message, alertId }, 'sendSosToEmergencyContacts failed');
+    return { sent: 0 };
+  }
+}

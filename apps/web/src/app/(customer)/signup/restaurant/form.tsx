@@ -9,7 +9,9 @@
  *   4. Menu      — three starter items with photos (≥ 1 to enable submit)
  *   5. Submit    — review + confetti celebration on success
  *
- * State is persisted to localStorage so the user can resume.
+ * State is persisted to localStorage so the user can resume. Each step shows
+ * worked examples and inline errors; after approval the owner signs in and
+ * lands in the guided setup at /admin/onboarding.
  */
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -27,6 +29,7 @@ import {
   ChevronRight, ChevronLeft, Sparkles, ExternalLink, Plus, Trash2, Lock, Mail, Copy
 } from 'lucide-react';
 import { QrCard } from '@/components/qr-card';
+import { validateEmail, validateIndianPhone, validatePinCode, validateIndiaLatLng } from '@/lib/onboarding/validators';
 
 interface MenuItem { name: string; description: string; price: number; isVeg: boolean; imageUrl: string }
 interface Hours { dayOfWeek: number; openMin: number; closeMin: number; closed: boolean }
@@ -76,6 +79,7 @@ export function RestaurantSignupForm() {
   const [data, setData] = useState<FormData>(INITIAL);
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState<{ slug: string; email: string } | null>(null);
+  const [showErrors, setShowErrors] = useState(false);
 
   // Hydrate from localStorage on first mount
   useEffect(() => {
@@ -99,14 +103,19 @@ export function RestaurantSignupForm() {
 
   function update<K extends keyof FormData>(k: K, v: FormData[K]) { setData((p) => ({ ...p, [k]: v })); }
 
-  // ─── per-step validation ───
-  const canProceed = useMemo(() => {
-    if (step === 0) return !!data.ownerName.trim() && /\S+@\S+\.\S+/.test(data.ownerEmail) && data.ownerPassword.length >= 8;
-    if (step === 1) return !!data.restaurantName.trim();
-    if (step === 2) return !!data.branchName.trim() && !!data.line1.trim() && !!data.city.trim() && !!data.postalCode.trim();
-    if (step === 3) return data.menuItems.some((m) => m.name.trim() && m.price > 0);
-    return true;
-  }, [step, data]);
+  // ─── per-step validation (field → plain-language message) ───
+  const errors = useMemo(() => stepErrors(step, data), [step, data]);
+  const canProceed = Object.keys(errors).length === 0;
+
+  function next() {
+    if (!canProceed) {
+      setShowErrors(true);
+      toast.error(Object.values(errors)[0]);
+      return;
+    }
+    setShowErrors(false);
+    setStep((s) => s + 1);
+  }
 
   async function submit() {
     setBusy(true);
@@ -135,10 +144,10 @@ export function RestaurantSignupForm() {
         <ProgressHeader step={step} setStep={(s) => s <= step && setStep(s)} />
 
         <div className="p-6 md:p-8 reveal" key={step}>
-          {step === 0 && <StepAccount data={data} update={update} />}
-          {step === 1 && <StepIdentity data={data} update={update} />}
-          {step === 2 && <StepLocation data={data} update={update} />}
-          {step === 3 && <StepMenu data={data} update={update} />}
+          {step === 0 && <StepAccount data={data} update={update} errors={showErrors ? errors : {}} />}
+          {step === 1 && <StepIdentity data={data} update={update} errors={showErrors ? errors : {}} />}
+          {step === 2 && <StepLocation data={data} update={update} errors={showErrors ? errors : {}} />}
+          {step === 3 && <StepMenu data={data} update={update} errors={showErrors ? errors : {}} />}
           {step === 4 && <StepReview data={data} />}
         </div>
 
@@ -151,7 +160,7 @@ export function RestaurantSignupForm() {
             <ChevronLeft className="size-4" /> Back
           </Button>
           {step < STEPS.length - 1 ? (
-            <Button onClick={() => setStep((s) => s + 1)} disabled={!canProceed} className="tap-press">
+            <Button onClick={next} className="tap-press">
               Continue <ChevronRight className="size-4" />
             </Button>
           ) : (
@@ -198,6 +207,7 @@ function ProgressHeader({ step, setStep }: { step: number; setStep: (s: number) 
         <div className="h-full rounded-full bg-gradient-to-r from-primary via-warning to-primary transition-all duration-500" style={{ width: `${pct}%` }} />
       </div>
       <div className="mt-3">
+        <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Step {step + 1} of {STEPS.length} · about {Math.max(1, (STEPS.length - step - 1) * 2)} min left</div>
         <div className="display text-xl font-semibold">{STEPS[step].title}</div>
         <div className="text-xs text-muted-foreground">{STEPS[step].description}</div>
       </div>
@@ -206,20 +216,20 @@ function ProgressHeader({ step, setStep }: { step: number; setStep: (s: number) 
 }
 
 // ─── Step 1: Account ────────────────────────────────────────────────────────
-function StepAccount({ data, update }: { data: FormData; update: <K extends keyof FormData>(k: K, v: FormData[K]) => void }) {
+function StepAccount({ data, update, errors }: { data: FormData; update: <K extends keyof FormData>(k: K, v: FormData[K]) => void; errors: Errors }) {
   return (
     <div className="space-y-4 max-w-xl reveal-stagger">
       <div className="rounded-lg border bg-success/5 border-success/30 p-3 text-xs flex items-start gap-2">
         <Lock className="size-4 text-success mt-0.5 shrink-0" />
         <div><strong>You are creating an owner account.</strong> Your password is hashed with Argon2id. You'll sign in with this email after approval.</div>
       </div>
-      <Field label="Your name *" required>
+      <Field label="Your name" required error={errors.ownerName} hint="The owner or person responsible, e.g. Priya Sharma.">
         <Input value={data.ownerName} onChange={(e) => update('ownerName', e.target.value)} placeholder="e.g. Priya Sharma" autoFocus />
       </Field>
-      <Field label="Email *" required>
+      <Field label="Email" required error={errors.ownerEmail} hint="You sign in with this, and we email your approval here.">
         <Input type="email" value={data.ownerEmail} onChange={(e) => update('ownerEmail', e.target.value)} placeholder="you@yourrestaurant.com" />
       </Field>
-      <Field label="Password (min 8 characters) *" required>
+      <Field label="Password (min 8 characters)" required error={errors.ownerPassword} hint="Tip: a short phrase like “masala-dosa-at-7” is strong and easy to remember.">
         <Input type="password" value={data.ownerPassword} onChange={(e) => update('ownerPassword', e.target.value)} placeholder="Choose a strong password" />
         <PasswordStrength value={data.ownerPassword} />
       </Field>
@@ -245,7 +255,7 @@ function PasswordStrength({ value }: { value: string }) {
 }
 
 // ─── Step 2: Identity ───────────────────────────────────────────────────────
-function StepIdentity({ data, update }: { data: FormData; update: <K extends keyof FormData>(k: K, v: FormData[K]) => void }) {
+function StepIdentity({ data, update, errors }: { data: FormData; update: <K extends keyof FormData>(k: K, v: FormData[K]) => void; errors: Errors }) {
   return (
     <div className="space-y-5 reveal-stagger">
       {/* Live preview */}
@@ -276,22 +286,22 @@ function StepIdentity({ data, update }: { data: FormData; update: <K extends key
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Restaurant name *" required className="md:col-span-2">
+        <Field label="Restaurant name" required error={errors.restaurantName} hint="Exactly as on your signboard, e.g. The Saffron Kitchen." className="md:col-span-2">
           <Input value={data.restaurantName} onChange={(e) => update('restaurantName', e.target.value)} placeholder="The Saffron Kitchen" />
         </Field>
-        <Field label="Cuisine">
+        <Field label="Cuisine" hint="Main style, e.g. North Indian or Café.">
           <Input value={data.cuisine} onChange={(e) => update('cuisine', e.target.value)} placeholder="North Indian, Italian…" />
         </Field>
-        <Field label="Tagline">
+        <Field label="Tagline" hint="One short line customers remember.">
           <Input value={data.tagline} onChange={(e) => update('tagline', e.target.value)} placeholder="Home-style cooking, delivered fast." />
         </Field>
-        <Field label="Description" className="md:col-span-2">
+        <Field label="Description" hint="e.g. “Family-run since 1998 — every gravy made fresh each morning.”" className="md:col-span-2">
           <Textarea value={data.description} onChange={(e) => update('description', e.target.value)} rows={3} placeholder="Tell customers what makes your kitchen special." />
         </Field>
-        <Field label="Contact email">
-          <Input type="email" value={data.contactEmail} onChange={(e) => update('contactEmail', e.target.value)} />
+        <Field label="Contact email" error={errors.contactEmail} hint="Where order and payout emails go.">
+          <Input type="email" value={data.contactEmail} onChange={(e) => update('contactEmail', e.target.value)} placeholder="orders@saffronkitchen.in" />
         </Field>
-        <Field label="Contact phone">
+        <Field label="Contact phone" error={errors.contactPhone} hint="Riders and customers call this, e.g. +91 98765 43210.">
           <Input value={data.contactPhone} onChange={(e) => update('contactPhone', e.target.value)} placeholder="+91…" />
         </Field>
       </div>
@@ -319,23 +329,23 @@ function StepIdentity({ data, update }: { data: FormData; update: <K extends key
 }
 
 // ─── Step 3: Location + hours ───────────────────────────────────────────────
-function StepLocation({ data, update }: { data: FormData; update: <K extends keyof FormData>(k: K, v: FormData[K]) => void }) {
+function StepLocation({ data, update, errors }: { data: FormData; update: <K extends keyof FormData>(k: K, v: FormData[K]) => void; errors: Errors }) {
   function updateDay(d: number, patch: Partial<Hours>) {
     update('hours', data.hours.map((h) => (h.dayOfWeek === d ? { ...h, ...patch } : h)));
   }
   const gmapsQuery = encodeURIComponent(`${data.line1} ${data.city} ${data.postalCode}`);
   return (
     <div className="space-y-5 reveal-stagger">
-      <Field label="Branch name *" required>
+      <Field label="Branch name" required error={errors.branchName} hint="Usually the area name, e.g. HSR Layout.">
         <Input value={data.branchName} onChange={(e) => update('branchName', e.target.value)} placeholder="HSR Layout, Indiranagar, Connaught Place…" />
       </Field>
-      <Field label="Address line *" required>
+      <Field label="Address line" required error={errors.line1} hint="Building, street and area — what you'd tell a rider.">
         <Input value={data.line1} onChange={(e) => update('line1', e.target.value)} placeholder="22, 7th Main Road, Sector 6" />
       </Field>
       <div className="grid gap-4 md:grid-cols-3">
-        <Field label="City *" required><Input value={data.city} onChange={(e) => update('city', e.target.value)} /></Field>
-        <Field label="State"><Input value={data.state} onChange={(e) => update('state', e.target.value)} /></Field>
-        <Field label="PIN code *" required><Input value={data.postalCode} onChange={(e) => update('postalCode', e.target.value)} /></Field>
+        <Field label="City" required error={errors.city}><Input value={data.city} onChange={(e) => update('city', e.target.value)} placeholder="Bengaluru" /></Field>
+        <Field label="State"><Input value={data.state} onChange={(e) => update('state', e.target.value)} placeholder="Karnataka" /></Field>
+        <Field label="PIN code" required error={errors.postalCode} hint="6 digits, e.g. 560102"><Input inputMode="numeric" maxLength={6} value={data.postalCode} onChange={(e) => update('postalCode', e.target.value)} placeholder="560102" /></Field>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         <Field label="Latitude">
@@ -353,11 +363,14 @@ function StepLocation({ data, update }: { data: FormData; update: <K extends key
             Find on Google Maps <ExternalLink className="size-3.5" />
           </a>
           <p className="text-[11px] text-muted-foreground mt-0.5">Right-click your pin → copy coordinates.</p>
+          {errors.coords && <p className="text-[11px] text-destructive mt-0.5">{errors.coords}</p>}
         </div>
       </div>
 
       <div className="rounded-lg border bg-card p-4">
-        <div className="font-medium text-sm mb-3">Operating hours</div>
+        <div className="font-medium text-sm mb-1">Operating hours</div>
+        <p className="text-[11px] text-muted-foreground mb-3">Example: 11:00–23:00 every day with Monday closed as a weekly holiday. You can fine-tune hours after approval.</p>
+        {errors.hours && <p className="text-[11px] text-destructive mb-2">{errors.hours}</p>}
         <div className="space-y-2">
           {data.hours.map((h) => (
             <div key={h.dayOfWeek} className="flex items-center gap-3 text-sm">
@@ -384,7 +397,7 @@ function StepLocation({ data, update }: { data: FormData; update: <K extends key
 }
 
 // ─── Step 4: Menu items ─────────────────────────────────────────────────────
-function StepMenu({ data, update }: { data: FormData; update: <K extends keyof FormData>(k: K, v: FormData[K]) => void }) {
+function StepMenu({ data, update, errors }: { data: FormData; update: <K extends keyof FormData>(k: K, v: FormData[K]) => void; errors: Errors }) {
   function addItem() { update('menuItems', [...data.menuItems, { name: '', description: '', price: 0, isVeg: true, imageUrl: '' }]); }
   function removeItem(i: number) { update('menuItems', data.menuItems.filter((_, idx) => idx !== i)); }
   function patchItem(i: number, patch: Partial<MenuItem>) { update('menuItems', data.menuItems.map((m, idx) => idx === i ? { ...m, ...patch } : m)); }
@@ -395,9 +408,12 @@ function StepMenu({ data, update }: { data: FormData; update: <K extends keyof F
         <Utensils className="size-4 text-primary mt-0.5 shrink-0" />
         <div>
           <strong>Add at least one signature dish to launch your menu.</strong> You can add the full menu after approval —
-          this is just so customers see real dishes when your page goes live.
+          this is just so customers see real dishes when your page goes live. After approval, the setup guide lets you load a
+          full cuisine template or import a spreadsheet.
+          <div className="mt-1 text-muted-foreground">Example: <b>Butter Chicken</b> · ₹360 · Non-veg · “Tandoori chicken in a velvety makhani gravy.”</div>
         </div>
       </div>
+      {errors.menuItems && <p className="text-xs text-destructive">{errors.menuItems}</p>}
 
       <div className="space-y-3">
         {data.menuItems.map((m, i) => (
@@ -507,13 +523,45 @@ function StepReview({ data }: { data: FormData }) {
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-function Field({ label, children, required, className = '' }: { label: string; children: React.ReactNode; required?: boolean; className?: string }) {
+function Field({ label, children, required, className = '', hint, error }: { label: string; children: React.ReactNode; required?: boolean; className?: string; hint?: string; error?: string }) {
   return (
     <div className={`space-y-1.5 ${className}`}>
       <Label className="text-xs font-medium text-muted-foreground">{label}{required && <span className="text-destructive ml-0.5">*</span>}</Label>
       {children}
+      {error ? <p className="text-[11px] text-destructive" role="alert">{error}</p> : hint ? <p className="text-[11px] text-muted-foreground">{hint}</p> : null}
     </div>
   );
+}
+
+type Errors = Partial<Record<string, string>>;
+
+/** Per-step validation with plain-language, example-bearing messages. */
+function stepErrors(step: number, d: FormData): Errors {
+  const e: Errors = {};
+  const put = (k: string, m: string | null) => { if (m) e[k] = m; };
+  if (step === 0) {
+    put('ownerName', d.ownerName.trim().length >= 2 ? null : 'Enter your name, e.g. Priya Sharma.');
+    put('ownerEmail', validateEmail(d.ownerEmail, { required: true }));
+    put('ownerPassword', d.ownerPassword.length >= 8 ? null : 'Use at least 8 characters.');
+  }
+  if (step === 1) {
+    put('restaurantName', d.restaurantName.trim().length >= 2 ? null : 'Enter your restaurant name, e.g. The Saffron Kitchen.');
+    put('contactEmail', validateEmail(d.contactEmail));
+    put('contactPhone', validateIndianPhone(d.contactPhone));
+  }
+  if (step === 2) {
+    put('branchName', d.branchName.trim().length >= 2 ? null : 'Name this branch, e.g. HSR Layout.');
+    put('line1', d.line1.trim().length >= 2 ? null : 'Enter the street address.');
+    put('city', d.city.trim() ? null : 'City is required.');
+    put('postalCode', validatePinCode(d.postalCode));
+    if (d.latitude != null || d.longitude != null) put('coords', validateIndiaLatLng(d.latitude, d.longitude));
+    put('hours', d.hours.every((h) => h.closed) ? 'Open at least one day a week.'
+      : d.hours.some((h) => !h.closed && h.closeMin === h.openMin) ? 'Opening and closing time can\'t be the same — switch the day off if you are closed.' : null);
+  }
+  if (step === 3) {
+    put('menuItems', d.menuItems.some((m) => m.name.trim() && m.price > 0) ? null : 'Add at least one dish with a name and a price above ₹0.');
+  }
+  return e;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -583,9 +631,18 @@ function SuccessScreen({ email, slug }: { email: string; slug: string }) {
             </p>
           </div>
 
+          <div className="mt-6 max-w-xl mx-auto text-left rounded-xl border bg-card p-4">
+            <div className="text-xs font-semibold uppercase tracking-wider text-primary mb-2">What happens next</div>
+            <ol className="space-y-1.5 text-sm list-decimal pl-5">
+              <li>Our team reviews your application (usually within 1 business day).</li>
+              <li>Once approved, sign in with <span className="font-mono">{email}</span>.</li>
+              <li>A guided setup walks you through your FSSAI licence, full menu (templates or spreadsheet import), delivery zones, staff logins and QR code — then you go live.</li>
+            </ol>
+          </div>
+
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Button asChild size="lg">
-              <Link href={`/r/${slug}/staff`}>Sign in to admin</Link>
+              <Link href="/login?mode=admin&next=/admin/onboarding">Sign in after approval</Link>
             </Button>
             <Button asChild variant="outline" size="lg">
               <Link href={`/r/${slug}`}>Preview your page</Link>

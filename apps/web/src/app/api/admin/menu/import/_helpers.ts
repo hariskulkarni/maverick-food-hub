@@ -22,7 +22,8 @@
  */
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
-import { currentRestaurant } from '@/server/tenancy';
+import { activeMembership } from '@/server/tenancy';
+import { STAFF_BRANCH_ORDER } from '@/server/branch-pause';
 
 export type ScopeError = {
   status: number;
@@ -70,7 +71,8 @@ export async function resolveBranchScope(): Promise<BranchScope> {
 
   // 3) Active restaurant. Don't throw — `requireRestaurant` raises a Response
   //    we'd have to catch and translate anyway. Use the underlying helper.
-  const restaurant = await currentRestaurant();
+  const membership = await activeMembership();
+  const restaurant = membership?.restaurant;
   if (!restaurant) {
     return {
       error: jsonError({
@@ -81,12 +83,24 @@ export async function resolveBranchScope(): Promise<BranchScope> {
     };
   }
 
-  // 4) Branch. Menus live on a Branch, so we need at least one ACTIVE branch
-  //    of the selected restaurant. A common gotcha is that the admin paused
-  //    every branch — point them straight at /admin/branches to fix it.
+  // 3b) Membership role: the ADMIN check above is the GLOBAL role; the caller
+  //     must also be an ADMIN *of this restaurant* (not a KITCHEN grant).
+  if (membership.role !== 'ADMIN') {
+    return {
+      error: jsonError({
+        status: 403,
+        reason: 'role',
+        error: 'Only a restaurant admin can bulk-import the menu.',
+      }),
+    };
+  }
+
+  // 4) Branch. Menus live on a Branch, so we need at least one branch of the
+  //    selected restaurant. A paused branch (isActive=false) still counts —
+  //    pausing orders must not lock the admin out of their menu.
   const branch = await prisma.branch.findFirst({
-    where: { restaurantId: restaurant.id, isActive: true },
-    orderBy: { createdAt: 'asc' },
+    where: { restaurantId: restaurant.id },
+    orderBy: STAFF_BRANCH_ORDER,
     select: { id: true },
   });
   if (!branch) {
@@ -94,7 +108,7 @@ export async function resolveBranchScope(): Promise<BranchScope> {
       error: jsonError({
         status: 404,
         reason: 'no_active_branch',
-        error: `${restaurant.name} has no active branch. Open Branches and activate one, then retry.`,
+        error: `${restaurant.name} has no branch yet. Add one in Settings → Branches, then retry.`,
       }),
     };
   }

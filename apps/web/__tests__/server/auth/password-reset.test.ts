@@ -93,6 +93,15 @@ describe('requestPasswordReset', () => {
     expect(mail.html).toContain(raw);
   });
 
+  it('lead item 6: the link uses the configured site / NEXTAUTH_URL, not a hardcoded host', async () => {
+    db.user.findUnique.mockResolvedValue({ id: 'u1', email: 'a@x.com', passwordHash: 'h', role: 'ADMIN' });
+    vi.stubEnv('NEXT_PUBLIC_SITE_URL', '');
+    vi.stubEnv('NEXTAUTH_URL', 'https://staging.example.test/');
+    await requestPasswordReset('a@x.com');
+    expect((emailSend.mock.calls[0] as any)[0].body).toContain('https://staging.example.test/reset-password?token=');
+    vi.unstubAllEnvs();
+  });
+
   it('email send failure/throw does not throw', async () => {
     db.user.findUnique.mockResolvedValue({ id: 'u1', email: 'a@x.com', passwordHash: 'h', role: 'CUSTOMER' });
     emailSend.mockRejectedValueOnce(new Error('smtp down'));
@@ -136,14 +145,17 @@ describe('consumePasswordReset', () => {
     expect(recordLoginSuccess).toHaveBeenCalledWith('a@x.com');
   });
 
-  it.each(['ADMIN', 'SUPER_ADMIN', 'KITCHEN'])('staff role %s: totp cleared and staffReenroll true', async (role) => {
+  // F2: mailbox control alone must not let an attacker re-enrol a staff
+  // authenticator. Email reset keeps TOTP; a lost device is recovered by a
+  // SUPER_ADMIN via /platform/users → Reset Google Authenticator (resetUserTotp).
+  it.each(['ADMIN', 'SUPER_ADMIN', 'KITCHEN', 'ADMIN_ASSIST', 'DEVELOPER', 'QA', 'GUEST'])('staff role %s: totp kept, staffReenroll false', async (role) => {
     db.passwordResetToken.findFirst.mockResolvedValue(row({}, { role }));
     const r = await consumePasswordReset(RAW, 'a-long-password-1');
-    expect(r).toEqual({ ok: true, staffReenroll: true });
+    expect(r).toEqual({ ok: true, staffReenroll: false });
     const upd = (db.user.update.mock.calls[0] as any)[0];
-    expect(upd.data.totpSecret).toBeNull();
-    expect(upd.data.totpPendingSecret).toBeNull();
-    expect(upd.data.totpEnabledAt).toBeNull();
+    expect(upd.data).not.toHaveProperty('totpSecret');
+    expect(upd.data).not.toHaveProperty('totpPendingSecret');
+    expect(upd.data).not.toHaveProperty('totpEnabledAt');
   });
 
   it('expired token: reason expired, nothing changed', async () => {
@@ -166,6 +178,10 @@ describe('consumePasswordReset', () => {
   it('unknown token: invalid', async () => {
     db.passwordResetToken.findFirst.mockResolvedValue(null);
     expect(await consumePasswordReset('nope', 'a-long-password-1')).toEqual({ ok: false, reason: 'invalid' });
+  });
+
+  it('lead item 6: 11 characters is weak (min 12, same as every other password path)', async () => {
+    expect(await consumePasswordReset(RAW, 'elevenchars')).toEqual({ ok: false, reason: 'weak' });
   });
 
   it('weak password: weak, nothing looked up or changed', async () => {

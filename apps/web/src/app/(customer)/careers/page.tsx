@@ -115,7 +115,7 @@ export default function CareersPage() {
                 </div>
               </div>
               <Button size="sm" variant="outline" asChild>
-                <a href="mailto:careers@oakandsizzler.in?subject=Application">Apply</a>
+                <a href={`mailto:${brand.careersEmail}?subject=Application`}>Apply</a>
               </Button>
             </div>
           ))}
@@ -127,8 +127,8 @@ export default function CareersPage() {
         <h2 className="display text-2xl font-semibold">How to apply</h2>
         <p className="mt-3 text-[15px] leading-relaxed text-foreground/90">
           Email{' '}
-          <a href="mailto:careers@oakandsizzler.in" className="text-primary underline">
-            careers@oakandsizzler.in
+          <a href={`mailto:${brand.careersEmail}`} className="text-primary underline">
+            {brand.careersEmail}
           </a>{' '}
           with the role in the subject line, a short note on why you&apos;re a fit, and your CV
           or a link to your work. We read every application and aim to reply within a week. Our
@@ -137,7 +137,7 @@ export default function CareersPage() {
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Button asChild className="group">
-            <a href="mailto:careers@oakandsizzler.in?subject=Open%20application">
+            <a href={`mailto:${brand.careersEmail}?subject=Open%20application`}>
               Send an open application
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
             </a>

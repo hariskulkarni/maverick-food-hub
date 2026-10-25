@@ -1,9 +1,13 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
+import { istDayKey } from '@/lib/ist';
+import { REVENUE_STATUS_FILTER } from '@/server/reports/revenue';
 import { requireAdminReportScope } from '@/server/reports/admin-branch';
-import { parseRange, deliverReport } from '@/server/reports/range';
+import { parseRange, deliverReport, reportRoute } from '@/server/reports/range';
 
-export async function GET(req: NextRequest) {
+export const dynamic = 'force-dynamic';
+
+export const GET = reportRoute(async (req: NextRequest) => {
   const { branchIds } = await requireAdminReportScope();
   const { from, to, format } = parseRange(new URL(req.url));
 
@@ -11,14 +15,14 @@ export async function GET(req: NextRequest) {
     where: {
       branchId: { in: branchIds },
       placedAt: { gte: from, lte: to },
-      status: { notIn: ['CANCELLED', 'PAYMENT_PENDING', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] }
+      status: REVENUE_STATUS_FILTER
     },
     select: { placedAt: true, taxAmount: true }
   });
 
   const buckets = new Map<string, number>();
   for (const o of orders) {
-    const day = o.placedAt.toISOString().slice(0, 10);
+    const day = istDayKey(o.placedAt);
     buckets.set(day, (buckets.get(day) ?? 0) + Number(o.taxAmount));
   }
 
@@ -32,4 +36,4 @@ export async function GET(req: NextRequest) {
     rows,
     basename: 'taxes'
   });
-}
+});

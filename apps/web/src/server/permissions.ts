@@ -192,6 +192,8 @@ const RAW_PAGE_GATES: ReadonlyArray<{ prefix: string; capability: Capability }> 
   { prefix: '/platform/users', capability: 'platform:admin' },
   { prefix: '/platform/analytics', capability: 'platform:admin' },
   { prefix: '/platform/reviews-analytics', capability: 'platform:admin' },
+  { prefix: '/platform/dispatch-insights', capability: 'platform:admin' },
+  { prefix: '/platform/rider-settings', capability: 'platform:admin' },
   { prefix: '/platform/reports', capability: 'platform:admin' },
   { prefix: '/platform/audit-log', capability: 'platform:admin' },
   { prefix: '/platform/observability', capability: 'platform:admin' },
@@ -200,10 +202,14 @@ const RAW_PAGE_GATES: ReadonlyArray<{ prefix: string; capability: Capability }> 
   { prefix: '/platform/brands', capability: 'platform:admin' },
   { prefix: '/platform/kyc', capability: 'platform:admin' },
   { prefix: '/platform/qr', capability: 'platform:admin' },
+  // Native app releases (APK publishing) — SUPER_ADMIN only (API enforces it too).
+  { prefix: '/platform/app-releases', capability: 'platform:admin' },
   // Tenant payment-gateway credentials — as confidential as finance data.
   { prefix: '/platform/payment-gateways', capability: 'platform:admin' },
   { prefix: '/platform/youpi-admin', capability: 'platform:admin' },
   { prefix: '/platform/youpi', capability: 'platform:admin' },
+  // Help-center authoring — writes are SUPER_ADMIN-only (requireSuperAdminApi).
+  { prefix: '/platform/help', capability: 'platform:admin' },
   // Finance (confidential) — SUPER_ADMIN only until Stage-3 approvals
   { prefix: '/platform/payouts', capability: 'finance:read' },
   { prefix: '/platform/settlements', capability: 'finance:read' },

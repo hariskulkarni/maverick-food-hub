@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
-import { requireManagedRestaurant } from "@/server/tenancy";
-import { ZoneBody, zoneData } from "@/server/delivery/zone-schema";
+import { requireTenantAdmin } from "@/server/tenancy";
+import { ZoneBody, zoneData, NO_BRACKETS_MESSAGE } from "@/server/delivery/zone-schema";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 async function managed(req: NextRequest) {
   try {
-    return { restaurant: await requireManagedRestaurant(req.nextUrl.searchParams.get("restaurantId")) };
+    return { restaurant: await requireTenantAdmin(req.nextUrl.searchParams.get("restaurantId")) };
   } catch (e) {
     if (e instanceof Response) return { error: e };
     throw e;
@@ -37,6 +37,10 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   const parsed = ZoneBody.safeParse({ ...current, ...raw });
   if (!parsed.success) return Response.json({ error: "Invalid zone", issues: parsed.error.issues }, { status: 400 });
   const v = parsed.data;
+  // Never let an edit strip every bracket — the zone would refuse every delivery.
+  if (Array.isArray(v.feeBrackets) && v.feeBrackets.length === 0) {
+    return Response.json({ error: NO_BRACKETS_MESSAGE, reason: "no_fee_brackets" }, { status: 400 });
+  }
 
   if (v.branchId !== existing.branchId) {
     const dest = await prisma.branch.findUnique({ where: { id: v.branchId }, select: { restaurantId: true } });

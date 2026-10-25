@@ -25,6 +25,7 @@ type EscType =
   | 'KITCHEN_DELAY'
   | 'NO_RIDER_AVAILABLE'
   | 'RIDER_NOT_MOVING'
+  | 'RIDER_STATIONARY'
   | 'CUSTOMER_UNREACHABLE'
   | 'PAYMENT_WEBHOOK_DELAY'
   | 'COD_NOT_RECONCILED';
@@ -383,6 +384,7 @@ function iconForType(t: EscType) {
     case 'KITCHEN_DELAY':         return Clock;
     case 'NO_RIDER_AVAILABLE':    return Bike;
     case 'RIDER_NOT_MOVING':      return Bike;
+    case 'RIDER_STATIONARY':      return MapPin;
     case 'CUSTOMER_UNREACHABLE':  return Phone;
     case 'PAYMENT_WEBHOOK_DELAY': return Wallet;
     case 'COD_NOT_RECONCILED':    return Wallet;
@@ -396,6 +398,7 @@ function humanType(t: EscType) {
     KITCHEN_DELAY:         'Kitchen delay',
     NO_RIDER_AVAILABLE:    'No rider available',
     RIDER_NOT_MOVING:      'Rider not moving',
+    RIDER_STATIONARY:      'Rider stationary',
     CUSTOMER_UNREACHABLE:  'Customer unreachable',
     PAYMENT_WEBHOOK_DELAY: 'Payment webhook delay',
     COD_NOT_RECONCILED:    'COD not reconciled'

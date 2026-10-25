@@ -1,7 +1,20 @@
-# FoodHub Rider — Android shell
+# FoodHub Rider — Android shell (DEPRECATED)
 
-This folder wraps the rider PWA (`/rider`) into a native Android app using **Capacitor**.
-Same web codebase, no parallel Kotlin/React Native rewrite. Ships to Play Store as a real APK.
+> **Deprecated.** The supported rider app is the Expo / React Native app in
+> [`apps/rider-native`](../rider-native) (build with EAS — see its `BUILD.md`).
+> The old `/rider` PWA this shell used to wrap was removed. Since 2026-10-25
+> `/rider` exists again, but as the **rider web portal** (earnings, payouts,
+> KYC documents, shifts, training, help, profile) — it deliberately cannot go
+> online or run deliveries, because live GPS tracking needs the native app.
+> So this shell **stays deprecated and keeps opening `/rider-app`** (install +
+> onboarding page, which links to the portal). Do not ship new releases from
+> here; publish native builds at `/platform/app-releases` instead.
+>
+> Security defaults: `FOODHUB_URL` is **required** (no `10.0.2.2` default), and
+> `cleartext` / `allowMixedContent` are enabled **only** when `FOODHUB_URL` is an
+> `http://` dev origin. Every `https://` build gets the secure defaults.
+
+This folder wraps a web page into a native Android app using **Capacitor**.
 
 ## What you get out of the wrapper
 
@@ -9,7 +22,7 @@ Same web codebase, no parallel Kotlin/React Native rewrite. Ships to Play Store 
 - Native push notifications (FCM)
 - Native camera capture for the delivery proof photo (replaces the browser file input)
 - Native geolocation that keeps running when the app is in the background
-- Same Next.js codebase you already maintain — `/rider/*` routes inside the WebView
+- Same Next.js codebase you already maintain — the `/rider-app` page inside the WebView
 
 ## One-time setup (on your machine)
 
@@ -18,7 +31,7 @@ Same web codebase, no parallel Kotlin/React Native rewrite. Ships to Play Store 
 cd "/Users/hkulkarni/Documents/Claude/Projects/Restaurant Manager/apps/android-rider"
 npm install
 # 2. Point the wrapper at your deployed FoodHub URL
-echo "FOODHUB_URL=https://app.foodhub.example" > .env
+echo "FOODHUB_URL=https://flavrly.in" > .env   # required — config throws without it
 # 3. Generate the Android project (one-time)
 npx cap add android
 # 4. Sync web bundle → native shell
@@ -52,7 +65,7 @@ Already declared in `capacitor.config.ts` via plugins:
 
 ## Why Capacitor, not React Native or Flutter?
 
-We already have a fully-featured rider PWA at `/rider`. A native rewrite would
+(Historical) We had a rider PWA at `/rider` when this shell was written; it has since been replaced by `apps/rider-native` (deliveries) plus the `/rider` web portal (account self-service). A native rewrite would
 double the codebase and create a second source of truth for delivery logic.
 Capacitor gives you ~95% of native UX (icon, splash, push, camera, background
 GPS) while keeping a single codebase. Migration to a fully-native Kotlin app

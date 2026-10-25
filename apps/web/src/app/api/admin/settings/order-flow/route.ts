@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
 import { unauthenticated, forbidden } from '@/server/api-auth';
-import { requireRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 
 export const dynamic = 'force-dynamic';
@@ -42,7 +42,8 @@ export async function PATCH(req: NextRequest) {
   if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
     return forbidden('Only a restaurant admin or platform super-admin can change order-flow settings.');
   }
-  const restaurant = await requireRestaurant();
+  const restaurant = await tenantAdminOrError();
+  if (restaurant instanceof Response) return restaurant;
 
   const data = Body.parse(await req.json());
 

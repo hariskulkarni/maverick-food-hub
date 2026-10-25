@@ -9,9 +9,14 @@
  *      modals on their next tick.
  *   4. Create a RiderAssignment in ACCEPTED state, with payout values matching
  *      what the normal pool claim would set.
- *   5. Transition the Order to OUT_FOR_DELIVERY (the batch flow skips the
- *      RIDER_ASSIGNED interstitial — by the time the rider accepts a batch
- *      the food is implicitly ready and they're already mid-trip).
+ *   5. Leave the order where it is (READY). P1-9: the order only moves to
+ *      OUT_FOR_DELIVERY when the rider actually picks it up (pickup route) —
+ *      moving it at accept time texted the customer their hand-over code
+ *      while the rider was still on their previous drop.
+ *
+ * Eligibility (approval, dispatch policy, KYC, concurrent-order cap) is
+ * re-checked here — the invitation was created seconds ago but the rider's
+ * state may have changed. A COD order gets its CodCollection row (P0-4).
  *
  * Returns 409 on:
  *   - invitation already accepted/declined/cancelled/expired by the sweeper
@@ -25,11 +30,13 @@ import {
   OrderStatus,
   Prisma,
 } from '@prisma/client';
-import { transitionOrder } from '@/server/orders';
 import { computeBasePayout } from '@/server/payouts';
 import { publish } from '@/server/realtime';
 import { log } from '@/server/log';
 import { requireRider } from '../../_helpers';
+import { checkRiderEligibility } from '@/server/rider-eligibility';
+import { ensureCodCollection } from '@/server/rider-cod';
+import { recordOrderEvent } from '@/server/dispatch/events';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -47,6 +54,18 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   }
   if (inv.expiresAt.getTime() <= Date.now()) {
     return new Response('Invitation expired', { status: 409 });
+  }
+
+  const order = await prisma.order.findUnique({
+    where: { id: inv.orderId },
+    include: { branch: { include: { restaurant: true } } },
+  });
+  if (!order || order.status !== OrderStatus.READY) {
+    return new Response('This order is no longer available', { status: 409 });
+  }
+  const eligible = await checkRiderEligibility(profileId, order, { requireOnline: true });
+  if (!eligible.ok) {
+    return Response.json({ error: eligible.message, code: eligible.code }, { status: eligible.status });
   }
 
   // Compute payout outside the txn — `computeBasePayout` runs its own queries
@@ -118,6 +137,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         where: { id: profileId },
         data: { currentLoad: { increment: 1 } },
       });
+      await ensureCodCollection(tx, fresh.orderId, profileId);
 
       return assignment.id;
     });
@@ -134,24 +154,16 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return new Response('Could not accept the batch', { status: 500 });
   }
 
-  // Transition the order outside the txn — `transitionOrder` writes status
-  // events, publishes realtime events and dispatches SMS, and we don't want
-  // those side effects rolled into the assignment-create txn. Idempotent.
-  try {
-    const order = await prisma.order.findUnique({ where: { id: inv.orderId } });
-    if (order && order.status !== OrderStatus.OUT_FOR_DELIVERY) {
-      await transitionOrder(inv.orderId, OrderStatus.OUT_FOR_DELIVERY, {
-        actorId: guard.rider.userId,
-        note: 'Batched onto rider via BatchInvitation',
-      });
-    }
-  } catch (e) {
-    // Transition failure must not undo the accept — we log and continue. The
-    // rider's queue still has the new assignment; admin can re-sync status if
-    // the order machine got into a weird state.
-    log.error({ err: e, invitationId: id, orderId: inv.orderId }, 'batch accept transition failed');
-  }
-
+  // P1-9: no order transition here — the order moves to OUT_FOR_DELIVERY at
+  // pickup, so the customer's hand-over code isn't texted early.
+  await recordOrderEvent({
+    orderId: inv.orderId,
+    type: 'ASSIGNED',
+    source: 'RIDER',
+    actorId: guard.rider.userId,
+    riderId: profileId,
+    meta: { via: 'batch', invitationId: id },
+  });
   publish('rider:pool', { kind: 'order:claimed', orderId: inv.orderId });
   publish(`order:${inv.orderId}`, {
     kind: 'assigned',

@@ -151,7 +151,9 @@ export function ReserveClient(props: ReserveClientProps) {
 
   // Verify-and-confirm the online deposit on the server.
   async function confirmDepositCall(reservationId: string, payload: Record<string, unknown>) {
-    const res = await fetch(`/api/r/${slug}/reservations/${reservationId}/confirm-deposit`, {
+    // Both segments are encoded so a crafted ?depositFor= value can never walk the
+    // request onto another same-origin endpoint (e.g. `../../admin/...`).
+    const res = await fetch(`/api/r/${encodeURIComponent(slug)}/reservations/${encodeURIComponent(reservationId)}/confirm-deposit`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
@@ -182,7 +184,8 @@ export function ReserveClient(props: ReserveClientProps) {
   // Back from a full-page PhonePe redirect (?depositFor=<reservationId>).
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('depositFor');
-    if (!id) return;
+    // Reservation ids are cuids — ignore anything else rather than POSTing it.
+    if (!id || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) return;
     setBooking(true);
     pollPhonePeDeposit(id).finally(() => setBooking(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps

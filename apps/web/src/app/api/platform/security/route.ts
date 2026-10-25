@@ -7,14 +7,15 @@
 
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { getPlatformSecurity, setPlatformSecurity } from '@/server/2fa';
 import { getOtpMode, setOtpMode, realOtpDeliveryConfigured } from '@/server/otp';
 import { audit } from '@/server/audit';
 import { parseOrJsonError } from '@/server/zod-helpers';
 
 export async function GET() {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const sec = await getPlatformSecurity();
   return Response.json({
     totpEnabled: Boolean(sec.totpSecret),
@@ -32,7 +33,8 @@ const PatchBody = z.object({
 });
 
 export async function PATCH(req: NextRequest) {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const parsed = parseOrJsonError(PatchBody, await req.json());
   if (parsed instanceof Response) return parsed;
   const body = parsed;

@@ -5,7 +5,7 @@
  * any number that isn't a registered rider, so there are no customer/staff
  * paths to clutter this screen.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { api, ApiError } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 
 export default function LoginScreen() {
@@ -26,6 +27,13 @@ export default function LoginScreen() {
   const [digits, setDigits] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const { consumeSessionEnded } = useAuth();
+  // One-time notice when the server ended the previous session (revoked,
+  // expired, signed in elsewhere) so the rider knows why they're here.
+  const [sessionEnded, setSessionEnded] = useState(false);
+  useEffect(() => {
+    consumeSessionEnded().then(setSessionEnded).catch(() => {});
+  }, [consumeSessionEnded]);
 
   const valid = digits.length === 10;
 
@@ -79,6 +87,14 @@ export default function LoginScreen() {
               verification code.
             </Text>
           </View>
+
+          {sessionEnded ? (
+            <View style={styles.notice}>
+              <Text style={styles.noticeText}>
+                Your session ended — please sign in again.
+              </Text>
+            </View>
+          ) : null}
 
           {/* Phone input */}
           <View style={styles.field}>
@@ -187,6 +203,13 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   field: { marginTop: spacing.xl },
+  notice: {
+    marginTop: spacing.lg,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
+  },
+  noticeText: { color: colors.text, fontSize: font.size.sm, fontWeight: font.weight.semibold },
   label: {
     fontSize: font.size.sm,
     fontWeight: font.weight.semibold,

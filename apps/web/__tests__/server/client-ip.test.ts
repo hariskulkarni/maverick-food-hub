@@ -3,7 +3,7 @@
  * X-Forwarded-For hop (nginx's appended peer), or CF-Connecting-IP / X-Real-IP.
  * Never the left-most, client-supplied XFF element.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { clientIp } from '@/server/http/client-ip';
 import { clientIp as rlClientIp } from '@/server/http/rate-limit';
 
@@ -16,10 +16,16 @@ describe('C10: client-ip resolution', () => {
     expect(clientIp(hdr({ 'x-forwarded-for': '1.2.3.4, 9.9.9.9' }))).toBe('9.9.9.9');
   });
 
-  it('prefers CF-Connecting-IP over everything', () => {
-    expect(
-      clientIp(hdr({ 'cf-connecting-ip': '5.5.5.5', 'x-forwarded-for': '1.2.3.4, 9.9.9.9', 'x-real-ip': '8.8.8.8' }))
-    ).toBe('5.5.5.5');
+  // Lead item 6: a request sent straight to the origin (not via Cloudflare) can
+  // carry a forged CF-Connecting-IP; nginx's real_ip only rewrites $remote_addr
+  // (→ X-Real-IP). So the CF header is trusted only when TRUST_CF=true.
+  it('ignores CF-Connecting-IP unless TRUST_CF=true (forged-header allowlist bypass)', () => {
+    const h = hdr({ 'cf-connecting-ip': '5.5.5.5', 'x-forwarded-for': '1.2.3.4, 9.9.9.9', 'x-real-ip': '8.8.8.8' });
+    vi.stubEnv('TRUST_CF', '');
+    expect(clientIp(h)).toBe('8.8.8.8');
+    vi.stubEnv('TRUST_CF', 'true');
+    expect(clientIp(h)).toBe('5.5.5.5');
+    vi.unstubAllEnvs();
   });
 
   it('falls back to X-Real-IP when no CF header', () => {

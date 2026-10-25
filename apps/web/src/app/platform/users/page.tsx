@@ -19,7 +19,7 @@ export default async function PlatformUsersPage({ searchParams }: { searchParams
     : null;
 
   const where: any = {};
-  if (role && ['CUSTOMER', 'ADMIN', 'KITCHEN', 'RIDER', 'SUPER_ADMIN'].includes(role)) where.role = role;
+  if (role && ['CUSTOMER', 'ADMIN', 'KITCHEN', 'RIDER', 'SUPER_ADMIN', 'ADMIN_ASSIST', 'DEVELOPER', 'QA', 'GUEST'].includes(role)) where.role = role;
   if (since) where.createdAt = { gte: since };
   if (q) {
     where.OR = [
@@ -34,7 +34,8 @@ export default async function PlatformUsersPage({ searchParams }: { searchParams
       where,
       orderBy: { createdAt: 'desc' },
       take: 300,
-      include: { _count: { select: { orders: true } } }
+      // Only what the table shows — never serialize password hashes / TOTP secrets to the client.
+      select: { id: true, name: true, email: true, phone: true, role: true, createdAt: true, _count: { select: { orders: true } } }
     }),
     prisma.user.groupBy({ by: ['role'], _count: true })
   ]);

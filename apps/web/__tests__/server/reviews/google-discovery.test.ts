@@ -16,9 +16,10 @@ describe('discoverAccountAndLocation', () => {
   it('parses first account and location', async () => {
     const f = vi.spyOn(globalThis, 'fetch').mockImplementation(async (u: any) => {
       const url = String(u);
-      if (url.includes('oauth2.googleapis.com')) return json({ access_token: 'at' });
-      if (url.includes('mybusinessaccountmanagement')) return json({ accounts: [{ name: 'accounts/123' }, { name: 'accounts/9' }] });
-      if (url.includes('mybusinessbusinessinformation')) return json({ locations: [{ name: 'locations/456' }] });
+      const host = new URL(url).hostname;
+      if (host === 'oauth2.googleapis.com') return json({ access_token: 'at' });
+      if (host === 'mybusinessaccountmanagement.googleapis.com') return json({ accounts: [{ name: 'accounts/123' }, { name: 'accounts/9' }] });
+      if (host === 'mybusinessbusinessinformation.googleapis.com') return json({ locations: [{ name: 'locations/456' }] });
       throw new Error('unexpected ' + url);
     });
     const r = await discoverAccountAndLocation('rt');
@@ -28,7 +29,7 @@ describe('discoverAccountAndLocation', () => {
 
   it('returns empty ids when no accounts', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (u: any) =>
-      String(u).includes('oauth2') ? json({ access_token: 'at' }) : json({}));
+      new URL(String(u)).hostname === 'oauth2.googleapis.com' ? json({ access_token: 'at' }) : json({}));
     expect(await discoverAccountAndLocation('rt')).toEqual({ accountId: '', locationId: '' });
   });
 });

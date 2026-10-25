@@ -20,6 +20,7 @@
  */
 
 import { prisma } from '../db';
+import { acquireJobLease, releaseJobLease } from './lease';
 import { log } from '../log';
 import {
   markOrderPaymentFailed,
@@ -43,9 +44,11 @@ export interface SweepResult {
   abandoned: number;
 }
 
-/** H15: a Postgres advisory-lock key so overlapping sweeps (cron overlap or a
- * manual trigger landing on the cron) cannot double-process. */
-const SWEEP_LOCK_KEY = 4820154;
+/** H15/F9: job-lease name so overlapping sweeps (cron overlap or a manual
+ * trigger landing on the cron) cannot double-process. */
+const SWEEP_LEASE = 'phonepe-reconcile-sweep';
+/** Well above a 100-row batch's worst case; a crashed run frees it after this. */
+const SWEEP_LEASE_TTL_MS = 10 * 60_000;
 
 /**
  * Only consider payments older than this. A payment created seconds ago is
@@ -86,13 +89,12 @@ export async function runPhonePeReconcileSweep(): Promise<SweepResult> {
     abandoned: 0,
   };
 
-  // H15: overlap guard. Take a session advisory lock so two concurrent sweeps
-  // (a cron overlap, or a manual /run landing on the cron tick) can't both
-  // process the same rows. It auto-releases if the connection dies, so a crashed
-  // run can't wedge it, and it is honoured across PM2 instances (unlike an
-  // in-process flag).
-  const lockRows = await prisma.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${SWEEP_LOCK_KEY}) AS locked`;
-  if (!lockRows?.[0]?.locked) {
+  // H15/F9: overlap guard. A job lease (row with expiry) so two concurrent
+  // sweeps (a cron overlap, or a manual /run landing on the cron tick) can't
+  // both process the same rows. Honoured across PM2 instances; a crashed run's
+  // lease expires. (A session advisory lock is unsafe on pooled connections.)
+  const lease = await acquireJobLease(SWEEP_LEASE, SWEEP_LEASE_TTL_MS);
+  if (!lease) {
     log.warn('phonepe reconcile sweep: another run holds the lock; skipping this tick');
     return result;
   }
@@ -188,6 +190,6 @@ export async function runPhonePeReconcileSweep(): Promise<SweepResult> {
   }
   return result;
   } finally {
-    await prisma.$queryRaw`SELECT pg_advisory_unlock(${SWEEP_LOCK_KEY})`;
+    await releaseJobLease(SWEEP_LEASE, lease);
   }
 }

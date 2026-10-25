@@ -10,6 +10,9 @@
  *   ACCEPTED, has [reached-restaurant]        → at_restaurant
  *   PICKED_UP, no  [reached-customer]         → to_customer
  *   PICKED_UP, has [reached-customer]         → at_customer
+ *   PICKED_UP, order CUSTOMER_UNREACHABLE     → unreachable (support alerted;
+ *                                               hand-over with code still allowed)
+ *   PICKED_UP, order closed by support        → closed
  *   DELIVERED                                 → delivered
  *
  * Full-screen (pushed over the tab bar) so the rider stays focused on the job.
@@ -27,18 +30,23 @@ import {
   Linking,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { api, ApiError, type Assignment } from '../../lib/api';
+import { api, ApiError, type Assignment, type FailReason } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRiderLocation } from '../../lib/use-rider-location';
 import { DeliveryMap } from '../../components/delivery-map';
 import { SuccessCelebration } from '../../components/success-celebration';
 import { CollectOnlineCard } from '../../components/collect-online-card';
 import { haversineKm, estimateEtaMinutes } from '../../lib/geo';
+import { orderHold } from '../../lib/order-hold';
+import { openNavigation, canNavigate } from '../../lib/maps-nav';
+import { useDeliveryTracking } from '../../lib/delivery-tracking';
+import { BackgroundLocationBanner } from '../../components/background-location-banner';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 
 type Step =
@@ -47,6 +55,8 @@ type Step =
   | 'at_restaurant'
   | 'to_customer'
   | 'at_customer'
+  | 'unreachable'
+  | 'closed'
   | 'delivered';
 
 const MILESTONES = ['Reach restaurant', 'Pick up order', 'Reach customer', 'Hand over'];
@@ -54,6 +64,8 @@ const MILESTONES = ['Reach restaurant', 'Pick up order', 'Reach customer', 'Hand
 function deriveStep(a: Assignment): Step {
   if (a.status === 'DELIVERED') return 'delivered';
   if (a.status === 'PENDING') return 'accept';
+  const hold = orderHold(a);
+  if (hold) return hold;
   const notes = a.notes ?? '';
   if (a.status === 'PICKED_UP') {
     return notes.includes('[reached-customer') ? 'at_customer' : 'to_customer';
@@ -72,6 +84,8 @@ function milestoneIndex(step: Step): number {
     case 'to_customer':
       return 2;
     case 'at_customer':
+    case 'unreachable':
+    case 'closed':
       return 3;
     case 'delivered':
       return 4;
@@ -83,16 +97,22 @@ function rupees(s: string): string {
   return Number.isFinite(n) ? `₹${Math.round(n)}` : '₹0';
 }
 
-type Waypoint = { coords: { lat: number; lng: number } | null; label: string };
+type Waypoint = {
+  coords: { lat: number; lng: number } | null;
+  label: string;
+  /** Address text — a navigation label, or the search query when coords are missing. */
+  address: string | null;
+};
 
 /**
  * The next place the rider is heading for, given the current step:
- * the restaurant for the to_restaurant/at_restaurant steps, the customer
- * for the to_customer/at_customer steps.
+ * the restaurant for the accept/to_restaurant/at_restaurant steps (shown on a
+ * fresh offer too, so the rider can preview the pickup), the customer for the
+ * to_customer/at_customer steps.
  */
 function nextWaypoint(a: Assignment, step: Step): Waypoint | null {
   const o = a.order;
-  if (step === 'to_restaurant' || step === 'at_restaurant') {
+  if (step === 'accept' || step === 'to_restaurant' || step === 'at_restaurant') {
     const b = o.branch;
     return {
       label: 'pickup',
@@ -100,9 +120,12 @@ function nextWaypoint(a: Assignment, step: Step): Waypoint | null {
         b && b.latitude != null && b.longitude != null
           ? { lat: b.latitude, lng: b.longitude }
           : null,
+      address: b
+        ? [b.restaurantName ?? b.name, b.line1, b.city].filter(Boolean).join(', ')
+        : null,
     };
   }
-  if (step === 'to_customer' || step === 'at_customer') {
+  if (step === 'to_customer' || step === 'at_customer' || step === 'unreachable') {
     const ad = o.address;
     return {
       label: 'customer',
@@ -110,17 +133,18 @@ function nextWaypoint(a: Assignment, step: Step): Waypoint | null {
         ad && ad.latitude != null && ad.longitude != null
           ? { lat: ad.latitude, lng: ad.longitude }
           : null,
+      address: ad ? [ad.line1, ad.line2, ad.city].filter(Boolean).join(', ') : null,
     };
   }
   return null;
 }
 
-/** Open external turn-by-turn navigation to a coordinate. */
-function openNavigation(coords: { lat: number; lng: number } | null) {
-  if (!coords) return;
-  Linking.openURL(
-    `https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}&travelmode=driving`
-  );
+/** Open the waypoint in the phone's Google Maps app (see lib/maps-nav.ts). */
+function navigateTo(wp: Waypoint | null) {
+  if (!wp) return;
+  openNavigation({ lat: wp.coords?.lat, lng: wp.coords?.lng, label: wp.address }).then((ok) => {
+    if (!ok) Alert.alert('Could not open maps', 'Install Google Maps or another maps app and try again.');
+  });
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -241,6 +265,15 @@ export default function DeliveryScreen() {
   const [otpError, setOtpError] = useState<string | null>(null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // "Customer unreachable" note sheet.
+  const [unreachOpen, setUnreachOpen] = useState(false);
+  const [unreachNote, setUnreachNote] = useState('');
+  const [unreachError, setUnreachError] = useState<string | null>(null);
+  // "Can't complete this delivery" sheet.
+  const [failOpen, setFailOpen] = useState(false);
+  const [failReason, setFailReason] = useState<FailReason | null>(null);
+  const [failNote, setFailNote] = useState('');
+  const [failError, setFailError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -268,8 +301,35 @@ export default function DeliveryScreen() {
   // customer / admin trackers. Stops automatically once delivered.
   const { position: riderPos, permissionDenied } = useRiderLocation({
     orderId: assignment?.orderId ?? null,
-    enabled: !!assignment && !delivered && assignment.status !== 'DELIVERED',
+    enabled:
+      !!assignment &&
+      !delivered &&
+      assignment.status !== 'DELIVERED' &&
+      orderHold(assignment) !== 'closed',
   });
+
+  // Background tracking (keeps streaming while the rider is in Google Maps or
+  // the phone is locked) from acceptance until delivered / closed. Shows the
+  // prominent disclosure before asking for background permission.
+  const tracking = useDeliveryTracking({
+    orderId: assignment?.orderId ?? null,
+    active:
+      !!assignment &&
+      !delivered &&
+      (assignment.status === 'ACCEPTED' || assignment.status === 'PICKED_UP') &&
+      orderHold(assignment) !== 'closed',
+  });
+
+  // While support is handling an unreachable customer, poll so the rider sees
+  // the outcome (delivered / closed) without having to pull to refresh.
+  const onHold = !!assignment && orderHold(assignment) === 'unreachable';
+  useEffect(() => {
+    if (!onHold) return;
+    const t = setInterval(() => {
+      load();
+    }, 30_000);
+    return () => clearInterval(t);
+  }, [onHold, load]);
 
   // Auth guard (this screen lives outside the (app) group's guard).
   if (authLoading) return null;
@@ -303,10 +363,36 @@ export default function DeliveryScreen() {
     setActing(true);
     setOtpError(null);
     try {
-      await api.deliver(assignment.id, clean);
+      // The server makes a repeat confirm idempotent (it answers
+      // alreadyDelivered and never pays twice), so a lost response on a weak
+      // network is safe to retry. Retry network-level failures twice with a
+      // short backoff before asking the rider to tap again.
+      let lastErr: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await api.deliver(assignment.id, clean);
+          lastErr = null;
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (!(err instanceof ApiError && err.status === 0) || attempt === 2) break;
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        }
+      }
+      if (lastErr) throw lastErr;
       setDelivered(true);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 400) {
+      if (e instanceof ApiError && e.status === 0) {
+        setOtpError(
+          "Couldn't reach Flavrly. Check your connection and tap Confirm again — you won't be paid twice."
+        );
+      } else if (e instanceof ApiError && (e.status === 409 || e.status === 429)) {
+        // 409: order no longer deliverable (cancelled / closed). 429: too many
+        // wrong codes — both carry rider-facing copy from the server.
+        const body = e.body as { message?: string } | null;
+        setOtpError(body && typeof body.message === 'string' && body.message ? body.message : e.message);
+        if (e.status === 409) await load();
+      } else if (e instanceof ApiError && e.status === 400) {
         // Backend now returns { reason, message } — show its message verbatim
         // when present so wrong-length / mismatch / missing-expected each
         // surface their own copy.
@@ -322,6 +408,118 @@ export default function DeliveryScreen() {
     } finally {
       setActing(false);
     }
+  }
+
+  /**
+   * Step 1 of "Customer unreachable": make sure the rider has tried calling.
+   * Calling doesn't advance the flow — the rider comes back and taps again.
+   */
+  function startUnreachable() {
+    if (acting || !assignment) return;
+    const phone = assignment.order.customer?.phone ?? null;
+    const openNoteSheet = () => {
+      setUnreachError(null);
+      setUnreachOpen(true);
+    };
+    if (!phone) {
+      Alert.alert(
+        'No phone number on this order',
+        'We could not find a number for this customer. You can still alert Flavrly support.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Continue', onPress: openNoteSheet },
+        ]
+      );
+      return;
+    }
+    Alert.alert(
+      'Call the customer first',
+      'Try calling the customer (and knock / ring the bell) before reporting them unreachable.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Call customer', onPress: () => Linking.openURL(`tel:${phone}`) },
+        { text: "I've already called", onPress: openNoteSheet },
+      ]
+    );
+  }
+
+  /** Step 2 → 3: confirm, then report. Keeps the sheet + note open on failure. */
+  function confirmUnreachable() {
+    Alert.alert(
+      'Report customer unreachable?',
+      'Flavrly support will be alerted and this order will be put on hold until they contact you.',
+      [
+        { text: 'Back', style: 'cancel' },
+        { text: 'Alert support', style: 'destructive', onPress: submitUnreachable },
+      ]
+    );
+  }
+
+  async function submitUnreachable() {
+    if (acting || !assignment) return;
+    setActing(true);
+    setUnreachError(null);
+    try {
+      await api.customerUnreachable(assignment.id, unreachNote.trim() || undefined);
+      setUnreachOpen(false);
+      setUnreachNote('');
+      await load();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 0) {
+        setUnreachError(
+          "You're offline — support was NOT alerted. Check your connection and try again."
+        );
+      } else {
+        setUnreachError(e instanceof ApiError ? e.message : 'Could not alert support. Please try again.');
+        // 409 means the order moved on (e.g. already unreachable / closed) — refresh.
+        if (e instanceof ApiError && e.status === 409) await load();
+      }
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function submitFail() {
+    if (acting || !assignment || !failReason) return;
+    const note = failNote.trim();
+    if (failReason === 'OTHER' && note.length < 5) {
+      setFailError('Tell support what happened (at least 5 characters).');
+      return;
+    }
+    setActing(true);
+    setFailError(null);
+    try {
+      await api.failAssignment(assignment.id, failReason, note || undefined);
+      setFailOpen(false);
+      router.replace('/');
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 0) {
+        setFailError("You're offline — nothing was changed. Check your connection and try again.");
+      } else {
+        setFailError(e instanceof ApiError ? e.message : 'Could not report this. Please try again.');
+        if (e instanceof ApiError && e.status === 409) await load();
+      }
+    } finally {
+      setActing(false);
+    }
+  }
+
+  function confirmFail() {
+    if (!failReason) {
+      setFailError('Pick a reason first.');
+      return;
+    }
+    const afterPickup = assignment?.status === 'PICKED_UP';
+    Alert.alert(
+      afterPickup ? 'Mark delivery as failed?' : 'Give up this pickup?',
+      afterPickup
+        ? 'This ends the delivery and alerts Flavrly support. Only do this if you really cannot deliver.'
+        : 'The order goes back to other riders and you are freed for new orders.',
+      [
+        { text: 'Back', style: 'cancel' },
+        { text: afterPickup ? 'Mark failed' : 'Give up pickup', style: 'destructive', onPress: submitFail },
+      ]
+    );
   }
 
   async function capturePhoto() {
@@ -474,40 +672,82 @@ export default function DeliveryScreen() {
               customer&apos;s tracker. Enable it in your phone&apos;s settings.
             </Text>
           ) : null}
-          {step === 'to_restaurant' || step === 'at_restaurant' ? (
+          {step !== 'accept' ? (
+            <BackgroundLocationBanner
+              status={tracking.status}
+              onEnable={tracking.openDisclosure}
+              onOpenSettings={tracking.openSettings}
+            />
+          ) : null}
+          {waypoint ? (
             <Pressable
               style={({ pressed }) => [
                 styles.navBtn,
                 pressed && styles.navBtnPressed,
-                !waypoint?.coords && styles.navBtnDisabled,
+                !canNavigate({ ...waypoint.coords, label: waypoint.address }) && styles.navBtnDisabled,
               ]}
-              onPress={() => openNavigation(waypoint?.coords ?? null)}
-              disabled={!waypoint?.coords}
+              onPress={() => navigateTo(waypoint)}
+              disabled={!canNavigate({ ...waypoint.coords, label: waypoint.address })}
+              accessibilityRole="button"
+              accessibilityHint="Opens Google Maps with driving directions"
             >
               <Ionicons name="navigate" size={18} color={colors.primary} />
-              <Text style={styles.navBtnText}>Navigate to pickup</Text>
-            </Pressable>
-          ) : step === 'to_customer' || step === 'at_customer' ? (
-            <Pressable
-              style={({ pressed }) => [
-                styles.navBtn,
-                pressed && styles.navBtnPressed,
-                !waypoint?.coords && styles.navBtnDisabled,
-              ]}
-              onPress={() => openNavigation(waypoint?.coords ?? null)}
-              disabled={!waypoint?.coords}
-            >
-              <Ionicons name="navigate" size={18} color={colors.primary} />
-              <Text style={styles.navBtnText}>Navigate to customer</Text>
+              <Text style={styles.navBtnText}>
+                {waypoint.label === 'pickup' ? 'Navigate to pickup' : 'Navigate to customer'} in Google Maps
+              </Text>
             </Pressable>
           ) : null}
           <Stepper activeIndex={idx} />
+          {/* JIT dispatch: the rider may be sent before the kitchen finishes.
+              Show a friendly label instead of the raw order status. */}
+          {(step === 'to_restaurant' || step === 'at_restaurant' || step === 'accept') &&
+          (o.status === 'PREPARING' || o.status === 'ACCEPTED' || o.status === 'RECEIVED') ? (
+            <View style={styles.notReady}>
+              <Ionicons name="time-outline" size={16} color={colors.warning} />
+              <Text style={styles.notReadyText}>
+                Being prepared — food not ready yet, head to the restaurant
+              </Text>
+            </View>
+          ) : null}
           <RouteBlock a={assignment} />
 
           {o.customerNotes ? (
             <View style={styles.notesCard}>
               <Text style={styles.notesLabel}>CUSTOMER NOTE</Text>
               <Text style={styles.notesText}>{o.customerNotes}</Text>
+            </View>
+          ) : null}
+
+          {step === 'unreachable' ? (
+            <View style={styles.holdCard}>
+              <View style={styles.holdHead}>
+                <Ionicons name="alert-circle" size={20} color={colors.warning} />
+                <Text style={styles.holdTitle}>Customer unreachable</Text>
+              </View>
+              <Text style={styles.holdBody}>
+                Flavrly support has been alerted; wait for instructions. Stay at the drop
+                location with the order — support will call you or update this screen.
+              </Text>
+              <Text style={styles.holdBody}>
+                If the customer turns up, hand over the order with their delivery code below.
+              </Text>
+              <Pressable style={styles.holdRefresh} onPress={() => runStep(async () => {})} disabled={acting}>
+                <Ionicons name="refresh" size={16} color={colors.primary} />
+                <Text style={styles.holdRefreshText}>Check for updates</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {step === 'closed' ? (
+            <View style={styles.holdCard}>
+              <View style={styles.holdHead}>
+                <Ionicons name="close-circle" size={20} color={colors.danger} />
+                <Text style={styles.holdTitle}>Closed by Flavrly support</Text>
+              </View>
+              <Text style={styles.holdBody}>
+                Support has closed this order without a hand-over. Follow the instructions
+                support gave you for the food, or contact support from the Help tab.
+              </Text>
             </View>
           ) : null}
 
@@ -522,8 +762,8 @@ export default function DeliveryScreen() {
             />
           ) : null}
 
-          {/* Final step: OTP entry */}
-          {step === 'at_customer' ? (
+          {/* Final step: OTP entry (also while on hold — the customer may turn up) */}
+          {step === 'at_customer' || step === 'unreachable' ? (
             <View style={styles.otpBlock}>
               {/* Proof-of-delivery photo (optional) */}
               <Pressable
@@ -572,7 +812,41 @@ export default function DeliveryScreen() {
                 maxLength={6}
               />
               {otpError ? <Text style={styles.otpErrorText}>{otpError}</Text> : null}
+
+              {step === 'at_customer' ? (
+                <Pressable
+                  style={styles.unreachBtn}
+                  onPress={startUnreachable}
+                  disabled={acting}
+                >
+                  <Ionicons name="call-outline" size={18} color={colors.danger} />
+                  <Text style={styles.unreachBtnText}>Customer unreachable</Text>
+                </Pressable>
+              ) : null}
             </View>
+          ) : null}
+
+          {/* Escape hatch for a delivery that can't be completed — before or
+              after pickup (vehicle breakdown, restaurant closed, wrong address…). */}
+          {step === 'to_restaurant' ||
+          step === 'at_restaurant' ||
+          step === 'to_customer' ||
+          step === 'at_customer' ||
+          step === 'unreachable' ? (
+            <Pressable
+              style={styles.unreachBtn}
+              onPress={() => {
+                setFailError(null);
+                setFailReason(null);
+                setFailOpen(true);
+              }}
+              disabled={acting}
+            >
+              <Ionicons name="close-circle-outline" size={18} color={colors.danger} />
+              <Text style={styles.unreachBtnText}>
+                {assignment.status === 'PICKED_UP' ? 'Can\u2019t deliver' : 'Can\u2019t do this pickup'}
+              </Text>
+            </Pressable>
           ) : null}
         </ScrollView>
 
@@ -602,18 +876,168 @@ export default function DeliveryScreen() {
               acting={acting}
               onPress={() => runStep(() => api.reachCustomer(assignment.id))}
             />
-          ) : step === 'at_customer' ? (
+          ) : step === 'at_customer' || step === 'unreachable' ? (
             <ActionButton
               label="Confirm delivery"
               acting={acting}
               onPress={confirmDelivery}
             />
+          ) : step === 'closed' ? (
+            <ActionButton label="Back to home" acting={false} onPress={() => router.replace('/')} />
           ) : null}
         </View>
+
+        {/* "Customer unreachable" — optional note, then confirm. */}
+        <Modal
+          visible={unreachOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => !acting && setUnreachOpen(false)}
+        >
+          <KeyboardAvoidingView
+            style={styles.sheetBackdrop}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <View style={styles.sheet}>
+              <Text style={styles.sheetTitle}>Customer unreachable</Text>
+              <Text style={styles.sheetHint}>
+                Add a note for support (optional) — e.g. how many times you called, gate
+                locked, wrong address.
+              </Text>
+              <TextInput
+                style={styles.sheetInput}
+                value={unreachNote}
+                onChangeText={(t) => setUnreachNote(t.slice(0, 500))}
+                placeholder="Called 3 times, no answer. Gate is locked."
+                placeholderTextColor={colors.textMuted}
+                multiline
+                maxLength={500}
+                editable={!acting}
+              />
+              {unreachError ? <Text style={styles.otpErrorText}>{unreachError}</Text> : null}
+              <View style={styles.sheetActions}>
+                <Pressable
+                  style={[styles.sheetBtn, styles.sheetBtnGhost]}
+                  onPress={() => setUnreachOpen(false)}
+                  disabled={acting}
+                >
+                  <Text style={styles.sheetBtnGhostText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.sheetBtn, styles.sheetBtnDanger, acting && styles.primaryBtnDisabled]}
+                  onPress={confirmUnreachable}
+                  disabled={acting}
+                >
+                  {acting ? (
+                    <ActivityIndicator color={colors.white} />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>Alert support</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+        {/* "Can't complete this delivery" — reason + optional note, then confirm. */}
+        <Modal
+          visible={failOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => !acting && setFailOpen(false)}
+        >
+          <KeyboardAvoidingView
+            style={styles.sheetBackdrop}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <View style={styles.sheet}>
+              <Text style={styles.sheetTitle}>
+                {assignment.status === 'PICKED_UP' ? 'Can\u2019t deliver' : 'Can\u2019t do this pickup'}
+              </Text>
+              <Text style={styles.sheetHint}>
+                {assignment.status === 'PICKED_UP'
+                  ? 'Support will be alerted. What went wrong?'
+                  : 'The order goes back to other riders. What went wrong?'}
+              </Text>
+              <View style={styles.reasonWrap}>
+                {(assignment.status === 'PICKED_UP' ? FAIL_REASONS_AFTER_PICKUP : FAIL_REASONS_BEFORE_PICKUP).map((r) => (
+                  <Pressable
+                    key={r.value}
+                    onPress={() => {
+                      setFailReason(r.value);
+                      if (failError) setFailError(null);
+                    }}
+                    disabled={acting}
+                    style={[styles.reasonChip, failReason === r.value && styles.reasonChipActive]}
+                  >
+                    <Text
+                      style={[styles.reasonChipText, failReason === r.value && styles.reasonChipTextActive]}
+                    >
+                      {r.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput
+                style={styles.sheetInput}
+                value={failNote}
+                onChangeText={(t) => setFailNote(t.slice(0, 500))}
+                placeholder={failReason === 'OTHER' ? 'Describe what happened (required)' : 'Add a note for support (optional)'}
+                placeholderTextColor={colors.textMuted}
+                multiline
+                maxLength={500}
+                editable={!acting}
+              />
+              {failError ? <Text style={styles.otpErrorText}>{failError}</Text> : null}
+              <View style={styles.sheetActions}>
+                <Pressable
+                  style={[styles.sheetBtn, styles.sheetBtnGhost]}
+                  onPress={() => setFailOpen(false)}
+                  disabled={acting}
+                >
+                  <Text style={styles.sheetBtnGhostText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.sheetBtn, styles.sheetBtnDanger, (acting || !failReason) && styles.primaryBtnDisabled]}
+                  onPress={confirmFail}
+                  disabled={acting || !failReason}
+                >
+                  {acting ? (
+                    <ActivityIndicator color={colors.white} />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>
+                      {assignment.status === 'PICKED_UP' ? 'Mark failed' : 'Give up pickup'}
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+/**
+ * Rider-facing reasons (subset of the server's CancellationReason). Before
+ * pickup the server hands the order back to the pool for another rider; after
+ * pickup it marks the order DELIVERY_FAILED and alerts support.
+ */
+const FAIL_REASONS_BEFORE_PICKUP: { value: FailReason; label: string }[] = [
+  { value: 'RIDER_VEHICLE_ISSUE', label: 'Vehicle problem' },
+  { value: 'RIDER_PERSONAL_EMERGENCY', label: 'Personal emergency' },
+  { value: 'RESTAURANT_TOO_BUSY', label: 'Restaurant too busy' },
+  { value: 'RESTAURANT_OUT_OF_STOCK', label: 'Items out of stock' },
+  { value: 'RESTAURANT_KITCHEN_CLOSED', label: 'Restaurant closed' },
+  { value: 'OTHER', label: 'Other' },
+];
+const FAIL_REASONS_AFTER_PICKUP: { value: FailReason; label: string }[] = [
+  { value: 'CUSTOMER_UNREACHABLE', label: 'Customer unreachable' },
+  { value: 'CUSTOMER_WRONG_ADDRESS', label: 'Wrong address' },
+  { value: 'RIDER_VEHICLE_ISSUE', label: 'Vehicle problem' },
+  { value: 'RIDER_PERSONAL_EMERGENCY', label: 'Personal emergency' },
+  { value: 'OTHER', label: 'Other' },
+];
 
 function ActionButton({
   label,
@@ -645,6 +1069,28 @@ function ActionButton({
 }
 
 const styles = StyleSheet.create({
+  notReady: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningSoft,
+  },
+  notReadyText: { flex: 1, fontSize: font.size.sm, fontWeight: font.weight.semibold, color: colors.warning },
+  reasonWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
+  reasonChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  reasonChipActive: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
+  reasonChipText: { fontSize: font.size.sm, color: colors.text },
+  reasonChipTextActive: { color: colors.danger, fontWeight: font.weight.semibold },
   safe: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   center: {
@@ -939,6 +1385,65 @@ const styles = StyleSheet.create({
     fontWeight: font.weight.bold,
     color: colors.primary,
   },
+
+  // Customer unreachable
+  unreachBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    height: 48,
+    marginTop: spacing.lg,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.danger,
+  },
+  unreachBtnText: {
+    fontSize: font.size.md,
+    fontWeight: font.weight.semibold,
+    color: colors.danger,
+  },
+  holdCard: {
+    marginTop: spacing.md,
+    backgroundColor: '#fdf4e3',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: '#f0e0bf',
+    gap: spacing.sm,
+  },
+  holdHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  holdTitle: { fontSize: font.size.md, fontWeight: font.weight.bold, color: colors.text },
+  holdBody: { fontSize: font.size.sm, color: colors.text, lineHeight: 20 },
+  holdRefresh: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start' },
+  holdRefreshText: { fontSize: font.size.sm, fontWeight: font.weight.semibold, color: colors.primary },
+  sheetBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  sheet: {
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    padding: spacing.lg,
+    paddingBottom: spacing.xl,
+  },
+  sheetTitle: { fontSize: font.size.lg, fontWeight: font.weight.bold, color: colors.text },
+  sheetHint: { marginTop: spacing.xs, fontSize: font.size.sm, color: colors.textMuted, lineHeight: 20 },
+  sheetInput: {
+    marginTop: spacing.md,
+    minHeight: 96,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    fontSize: font.size.md,
+    color: colors.text,
+    textAlignVertical: 'top',
+  },
+  sheetActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
+  sheetBtn: { flex: 1, height: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  sheetBtnGhost: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  sheetBtnGhostText: { fontSize: font.size.md, fontWeight: font.weight.semibold, color: colors.text },
+  sheetBtnDanger: { backgroundColor: colors.danger },
 
   permWarning: {
     backgroundColor: '#fdf4e3',

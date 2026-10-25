@@ -82,7 +82,7 @@ export default async function HomePage() {
             url: SITE,
             slogan: brand.tagline,
             logo: `${SITE}/icon-512.png`,
-            telephone: brand.supportPhone,
+            ...(brand.supportPhone ? { telephone: brand.supportPhone } : {}),
             areaServed: {
               '@type': 'City',
               name: 'Guntur',

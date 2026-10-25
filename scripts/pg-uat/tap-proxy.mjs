@@ -16,7 +16,8 @@ const tapDir = path.join(dir, 'tap');
 fs.mkdirSync(tapDir, { recursive: true });
 let n = fs.readdirSync(tapDir).length;
 const mode = () => { try { return fs.readFileSync(path.join(dir, 'tap.mode'), 'utf8').trim() || 'pass'; } catch { return 'pass'; } };
-const log = (m) => console.log(`${new Date().toISOString()} ${m}`);
+// Request-derived values (url, headers) are logged: strip CR/LF so a crafted request can't forge log lines.
+const log = (m) => console.log(`${new Date().toISOString()} ${String(m).replace(/\n|\r/g, '')}`);
 
 http.createServer((req, res) => {
   const chunks = [];

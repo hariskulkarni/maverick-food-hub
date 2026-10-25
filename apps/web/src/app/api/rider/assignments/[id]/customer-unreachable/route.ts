@@ -4,6 +4,8 @@
  * Rider can't get the customer on the phone / at the door. We:
  *   1. Transition the order to CUSTOMER_UNREACHABLE (non-terminal — admin
  *      may still recover this into DELIVERED or escalate to DELIVERY_FAILED).
+ *      Only allowed once the rider has marked "reached customer"
+ *      (order RIDER_REACHED_CUSTOMER); anything else is a 409.
  *   2. Open an OrderEscalation (CUSTOMER_UNREACHABLE, HIGH) so it lights
  *      up live-ops immediately.
  *   3. Record the rider's note on the assignment for context.
@@ -14,9 +16,12 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
-import { transitionOrder } from '@/server/orders';
+import { transitionOrder, OrderTransitionError } from '@/server/orders';
 
-const Body = z.object({ note: z.string().max(500).optional() });
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const Body = z.object({ note: z.string().trim().max(500).optional() });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -26,12 +31,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const a = await prisma.riderAssignment.findUnique({ where: { id } });
   if (!a || !profile || a.riderId !== profile.id) return new Response('Not found', { status: 404 });
 
-  const { note } = Body.parse(await req.json().catch(() => ({})));
+  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return Response.json({ error: 'Note must be 500 characters or fewer.' }, { status: 400 });
+  }
+  const note = parsed.data.note || undefined;
 
-  await transitionOrder(a.orderId, 'CUSTOMER_UNREACHABLE' as any, {
-    actorId: session.user.id,
-    note: note ?? 'Rider reports customer unreachable'
-  });
+  if (a.status !== 'PICKED_UP') {
+    return Response.json(
+      { error: 'You can report the customer unreachable only while you are carrying the order.' },
+      { status: 409 }
+    );
+  }
+
+  try {
+    await transitionOrder(a.orderId, 'CUSTOMER_UNREACHABLE' as any, {
+      actorId: session.user.id,
+      note: note ?? 'Rider reports customer unreachable'
+    });
+  } catch (e) {
+    if (e instanceof OrderTransitionError) {
+      return Response.json(
+        { error: "Tap \"I've reached the customer\" first, then report the customer unreachable." },
+        { status: 409 }
+      );
+    }
+    throw e;
+  }
 
   // Stamp note on the assignment + open an OPEN escalation (idempotent — don't
   // double-open if admin already has one in flight for this order).
@@ -53,5 +79,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   }
 
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, orderStatus: 'CUSTOMER_UNREACHABLE' });
 }

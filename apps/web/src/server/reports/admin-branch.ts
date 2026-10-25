@@ -1,17 +1,19 @@
 /**
  * Resolve the admin's branch the same way every admin/* endpoint does:
- * pick the oldest active branch of the requireRestaurant() result.
+ * pick the restaurant's primary branch (active first, then oldest; a paused
+ * branch still counts) of the requireRestaurant() result.
  */
 
 import { prisma } from '../db';
-import { requireRestaurant } from '../tenancy';
+import { requireRestaurant, requireTenantAdmin } from '../tenancy';
 import { resolveGroupContext } from '../group-scope';
+import { STAFF_BRANCH_ORDER } from '@/server/branch-pause';
 
 export async function requireAdminBranch() {
   const restaurant = await requireRestaurant();
   const branch = await prisma.branch.findFirstOrThrow({
-    where: { restaurantId: restaurant.id, isActive: true },
-    orderBy: { createdAt: 'asc' }
+    where: { restaurantId: restaurant.id },
+    orderBy: STAFF_BRANCH_ORDER
   });
   return { restaurant, branch };
 }
@@ -22,9 +24,11 @@ export async function requireAdminBranch() {
  * For a solo restaurant this is just its own branches. Exports were previously
  * scoped to a single (oldest) branch, so multi-branch/group tenants saw CSV/XLSX
  * totals diverge from the on-screen charts — this aligns them.
+ * Throws a 401/403/404 Response unless the caller ADMINs the active restaurant.
  */
 export async function requireAdminReportScope() {
-  const restaurant = await requireRestaurant();
+  // Reports + exports carry revenue and customer PII → tenant ADMIN only (P1-4).
+  const restaurant = await requireTenantAdmin();
   const group = await resolveGroupContext(restaurant.id);
   let branchIds = group.branchIds;
   if (!branchIds || branchIds.length === 0) {

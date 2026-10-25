@@ -16,7 +16,8 @@ export function SettlementControls({
   const [f, setF] = useState(from);
   const [t, setT] = useState(to);
 
-  const qs = (r = rid, fr = f, tt = t) => `restaurantId=${encodeURIComponent(r)}&from=${fr}&to=${tt}`;
+  const qs = (r = rid, fr = f, tt = t) =>
+    `restaurantId=${encodeURIComponent(r)}&from=${encodeURIComponent(fr)}&to=${encodeURIComponent(tt)}`;
   function go() { router.push(`/platform/settlements?${qs()}`); }
 
   return (

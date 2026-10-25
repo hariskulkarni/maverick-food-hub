@@ -12,16 +12,16 @@ import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
+import { istTodayKey, addDaysToKey } from '@/lib/ist';
 
 export type Preset = 'today' | '7d' | '30d' | '90d' | 'custom';
 
+// Report days are IST calendar days (the API reads date-only values as IST).
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return istTodayKey();
 }
 function daysAgoIso(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return addDaysToKey(istTodayKey(), -n);
 }
 
 export interface ReportLinks {

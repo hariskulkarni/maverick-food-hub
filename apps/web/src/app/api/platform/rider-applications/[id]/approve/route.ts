@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
 import { Role } from '@prisma/client';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { notify } from '@/server/notifications';
 import { brand } from '@/lib/brand';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const { id } = await params;
   const app = await prisma.riderApplication.findUnique({ where: { id } });
   if (!app) return new Response('Not found', { status: 404 });

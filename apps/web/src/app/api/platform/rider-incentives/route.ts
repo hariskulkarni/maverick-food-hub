@@ -6,9 +6,10 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
+import { clientIp } from '@/server/http/client-ip';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,7 +30,8 @@ function serialize(i: any) {
 }
 
 export async function GET() {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const incentives = await prisma.riderIncentive.findMany({ orderBy: { createdAt: 'desc' } });
   return Response.json({ incentives: incentives.map(serialize) });
 }
@@ -46,7 +48,8 @@ const CreateBody = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const session = await auth();
   const data = CreateBody.parse(await req.json());
 
@@ -69,7 +72,7 @@ export async function POST(req: NextRequest) {
     entityType: 'RiderIncentive',
     entityId: created.id,
     after: serialize(created),
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+    ipAddress: clientIp(req.headers) ?? null,
     userAgent: req.headers.get('user-agent') ?? null
   });
 

@@ -2,15 +2,18 @@
 /**
  * Super-admin "create restaurant" wizard — 6-step state machine.
  *
- * State lives entirely in a single `useReducer`. We persist a draft to
- * sessionStorage so an accidental tab close doesn't lose progress, and clear
- * it on a successful launch.
+ * State lives entirely in a single `useReducer`. A draft autosaves to
+ * localStorage (temp passwords are stripped and regenerated on restore) so a
+ * closed tab or browser restart doesn't lose progress; it is cleared on a
+ * successful launch or via "Discard draft".
  *
  * Validation is *per-step*: clicking "Next" only advances if the section's
- * validate() returns no issues. Step 6 (Review) re-runs every step's
- * validation before enabling the final "Launch" button.
+ * validate() returns no issues, and the step's issue list appears once the
+ * super-admin has tried to move on. Step 6 (Review) re-runs every step's
+ * validation, previews the go-live readiness checks the owner will see, and
+ * only then enables "Launch".
  */
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -23,8 +26,11 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { ImageUploader } from '@/components/image-uploader';
 import {
-  ArrowLeft, ArrowRight, Check, Copy, Plus, Trash2, Loader2, PartyPopper, Sparkles, Pencil
+  ArrowLeft, ArrowRight, Check, Copy, Plus, Trash2, Loader2, PartyPopper, Sparkles, Pencil,
+  CheckCircle2, CircleAlert, AlertTriangle, Save
 } from 'lucide-react';
+import { evaluateReadiness, type ReadinessResult } from '@/lib/onboarding/readiness';
+import { validateFssai, validateIndianPhone, validatePinCode } from '@/lib/onboarding/validators';
 import { RESERVED_RESTAURANT_SLUGS, generateTempPassword } from '@/server/restaurant-wizard';
 import { slugifyName } from '@/server/brands';
 
@@ -76,6 +82,9 @@ interface BranchState {
   baseDeliveryFee: number;
   perKmDeliveryFee: number;
   packagingFee: number;
+  fssaiLicenseNumber: string;
+  /** Create 11:00–23:00 hours for all 7 days (owner edits later). */
+  defaultHours: boolean;
 }
 interface StaffRow { id: string; role: 'ADMIN' | 'KITCHEN'; email: string; name: string; tempPassword: string }
 interface RiderRow { id: string; phone: string; name: string; vehicleType: 'BIKE' | 'SCOOTER' | 'BICYCLE'; vehicleNumber: string }
@@ -112,7 +121,8 @@ const STEPS = [
   { n: 6, label: 'Review' }
 ] as const;
 
-const SESSION_KEY = 'wizard:restaurant:draft';
+const DRAFT_KEY = 'wizard:restaurant:draft:v2';
+const LEGACY_SESSION_KEY = 'wizard:restaurant:draft';
 
 // ─── Reducer ────────────────────────────────────────────────────────────────
 
@@ -224,7 +234,9 @@ function initialState(defaults: Defaults): WizardState {
       taxRatePct: defaults.taxRatePct,
       baseDeliveryFee: defaults.baseDeliveryFee,
       perKmDeliveryFee: defaults.perKmDeliveryFee,
-      packagingFee: defaults.packagingFee
+      packagingFee: defaults.packagingFee,
+      fssaiLicenseNumber: '',
+      defaultHours: true
     },
     staff: [
       { id: 'admin-1', role: 'ADMIN', email: '', name: '', tempPassword: generateTempPassword() },
@@ -246,7 +258,9 @@ function validateIdentity(s: IdentityState): string[] {
   if (!slug || slug.length < 2) issues.push('Slug is invalid.');
   if (RESERVED_RESTAURANT_SLUGS.has(slug)) issues.push(`Slug "${slug}" is reserved — pick another.`);
   if (s.commissionPct < 0 || s.commissionPct > 100) issues.push('Commission % must be 0–100.');
-  if (s.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.contactEmail)) issues.push('Contact email is invalid.');
+  if (s.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.contactEmail)) issues.push('Contact email is invalid (e.g. hello@olivebistro.in).');
+  const phone = validateIndianPhone(s.contactPhone);
+  if (phone) issues.push(`Contact phone: ${phone}`);
   return issues;
 }
 
@@ -266,7 +280,12 @@ function validateBranch(s: BranchState): string[] {
   if (!s.name.trim()) issues.push('Branch name is required.');
   if (!s.line1.trim()) issues.push('Address line 1 is required.');
   if (!s.city.trim()) issues.push('City is required.');
-  if (!s.postalCode.trim()) issues.push('Postal code is required.');
+  const pin = validatePinCode(s.postalCode);
+  if (pin) issues.push(pin);
+  if (s.fssaiLicenseNumber.trim()) {
+    const f = validateFssai(s.fssaiLicenseNumber);
+    if (f) issues.push(f);
+  }
   const lat = Number(s.latitude);
   const lng = Number(s.longitude);
   if (!Number.isFinite(lat) || lat < -90 || lat > 90) issues.push('Latitude must be between -90 and 90.');
@@ -319,10 +338,14 @@ export function WizardClient({ brands, unownedAdmins, defaults }: { brands: Bran
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<null | { restaurantId: string; slug: string; brandId: string | null; adminCredentials: { email: string; tempPassword: string }; kitchenCredentials: { email: string; tempPassword: string }[] }>(null);
 
+  const [attempted, setAttempted] = useState<Record<number, boolean>>({});
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const restored = useRef(false);
+
   // Restore draft on mount.
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(SESSION_KEY);
+      const raw = localStorage.getItem(DRAFT_KEY) ?? sessionStorage.getItem(LEGACY_SESSION_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as WizardState;
         // Naive shape sanity check — if a developer changes the schema, drop
@@ -337,17 +360,39 @@ export function WizardClient({ brands, unownedAdmins, defaults }: { brands: Bran
           if (typeof parsed.allowFreebies !== 'boolean') {
             parsed.allowFreebies = false;
           }
+          // Drafts saved before FSSAI / default hours existed.
+          parsed.branch = { ...initialState(defaults).branch, ...parsed.branch };
+          // Temp passwords are never persisted — mint fresh ones.
+          parsed.staff = (parsed.staff ?? []).map((r) => ({ ...r, tempPassword: r.tempPassword || generateTempPassword() }));
           dispatch({ type: 'replace', state: parsed });
+          toast.message('Restored your unsaved draft', { description: 'Temporary passwords were regenerated.' });
         }
       }
     } catch { /* ignore */ }
+    restored.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist draft.
+  // Autosave draft (debounced). Passwords are stripped before writing.
   useEffect(() => {
-    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(state)); } catch { /* ignore */ }
+    if (!restored.current) return;
+    const t = setTimeout(() => {
+      try {
+        const safe = { ...state, staff: state.staff.map((r) => ({ ...r, tempPassword: '' })) };
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(safe));
+        setSavedAt(new Date());
+      } catch { /* storage full / blocked — the wizard still works */ }
+    }, 600);
+    return () => clearTimeout(t);
   }, [state]);
+
+  function discardDraft() {
+    try { localStorage.removeItem(DRAFT_KEY); sessionStorage.removeItem(LEGACY_SESSION_KEY); } catch { /* ignore */ }
+    dispatch({ type: 'replace', state: initialState(defaults) });
+    setAttempted({});
+    setSavedAt(null);
+    toast.success('Draft discarded');
+  }
 
   const issues = useMemo(() => ({
     1: validateIdentity(state.identity),
@@ -364,6 +409,7 @@ export function WizardClient({ brands, unownedAdmins, defaults }: { brands: Bran
   function next() {
     const stepIssues = (issues as any)[state.step] as string[] | undefined;
     if (stepIssues && stepIssues.length > 0) {
+      setAttempted((a) => ({ ...a, [state.step]: true }));
       toast.error(stepIssues[0]);
       return;
     }
@@ -408,6 +454,10 @@ export function WizardClient({ brands, unownedAdmins, defaults }: { brands: Bran
           country: state.branch.country || 'IN',
           latitude: Number(state.branch.latitude),
           longitude: Number(state.branch.longitude),
+          fssaiLicenseNumber: state.branch.fssaiLicenseNumber.replace(/\s+/g, '') || null,
+          hours: state.branch.defaultHours
+            ? Array.from({ length: 7 }, (_, d) => ({ dayOfWeek: d, openMin: 11 * 60, closeMin: 23 * 60 }))
+            : undefined,
           serviceRadiusKm: state.branch.serviceRadiusKm,
           taxRatePct: state.branch.taxRatePct,
           baseDeliveryFee: state.branch.baseDeliveryFee,
@@ -463,7 +513,7 @@ export function WizardClient({ brands, unownedAdmins, defaults }: { brands: Bran
         throw new Error(j.message || j.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+      try { localStorage.removeItem(DRAFT_KEY); sessionStorage.removeItem(LEGACY_SESSION_KEY); } catch { /* ignore */ }
       setSuccess(data);
       toast.success('Restaurant launched!');
     } catch (e) {
@@ -491,17 +541,21 @@ export function WizardClient({ brands, unownedAdmins, defaults }: { brands: Bran
           <h1 className="display text-3xl font-semibold leading-tight mt-1">New restaurant</h1>
           <p className="text-sm text-muted-foreground">Stand up a new tenant — identity, brand, first branch, staff and riders.</p>
         </div>
+        <div className="flex flex-col items-end gap-1 text-xs text-muted-foreground">
+          {savedAt && <span className="inline-flex items-center gap-1"><Save className="size-3.5" /> Draft saved {savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+          <button type="button" onClick={discardDraft} className="underline hover:text-foreground">Discard draft</button>
+        </div>
       </header>
 
       <Stepper current={state.step} onJump={(n) => dispatch({ type: 'goto', step: n })} issues={issues as any} />
 
       <Card>
         <CardContent className="p-6 space-y-6">
-          {state.step === 1 && <IdentityStep state={state.identity} dispatch={dispatch} issues={issues[1]} />}
-          {state.step === 2 && <BrandStep state={state.brand} brands={brands} dispatch={dispatch} issues={issues[2]} />}
-          {state.step === 3 && <BranchStep state={state.branch} dispatch={dispatch} issues={issues[3]} />}
-          {state.step === 4 && <StaffStep rows={state.staff} dispatch={dispatch} issues={issues[4]} />}
-          {state.step === 5 && <RidersStep rows={state.riders} dispatch={dispatch} issues={issues[5]} />}
+          {state.step === 1 && <IdentityStep state={state.identity} dispatch={dispatch} issues={attempted[1] ? issues[1] : []} />}
+          {state.step === 2 && <BrandStep state={state.brand} brands={brands} dispatch={dispatch} issues={attempted[2] ? issues[2] : []} />}
+          {state.step === 3 && <BranchStep state={state.branch} dispatch={dispatch} issues={attempted[3] ? issues[3] : []} />}
+          {state.step === 4 && <StaffStep rows={state.staff} dispatch={dispatch} issues={attempted[4] ? issues[4] : []} />}
+          {state.step === 5 && <RidersStep rows={state.riders} dispatch={dispatch} issues={attempted[5] ? issues[5] : []} />}
           {state.step === 6 && (
             <ReviewStep
               state={state}
@@ -577,6 +631,7 @@ function IdentityStep({ state, dispatch, issues }: { state: IdentityState; dispa
       <div>
         <Label>Name *</Label>
         <Input value={state.name} onChange={(e) => dispatch({ type: 'identity', patch: { name: e.target.value } })} placeholder="Olive Bistro" />
+        <Hint>As customers know it. For a second outlet of the same brand, add the area: “Olive Bistro · Banjara Hills”.</Hint>
       </div>
       <div>
         <Label>Slug *</Label>
@@ -591,6 +646,7 @@ function IdentityStep({ state, dispatch, issues }: { state: IdentityState; dispa
       <div>
         <Label>Cuisine</Label>
         <Input value={state.cuisine} onChange={(e) => dispatch({ type: 'identity', patch: { cuisine: e.target.value } })} placeholder="Italian, Indian, Multi-cuisine…" />
+        <Hint>Shown as a tag and used for discovery filters.</Hint>
       </div>
       <div>
         <Label>Commission % *</Label>
@@ -602,6 +658,7 @@ function IdentityStep({ state, dispatch, issues }: { state: IdentityState; dispa
           value={state.commissionPct}
           onChange={(e) => dispatch({ type: 'identity', patch: { commissionPct: Number(e.target.value) } })}
         />
+        <Hint>Platform cut per order, as agreed in the partner contract. Example: 15 → ₹150 on a ₹1,000 order.</Hint>
       </div>
 
       <div className="md:col-span-2">
@@ -635,6 +692,7 @@ function IdentityStep({ state, dispatch, issues }: { state: IdentityState; dispa
       <div>
         <Label>Contact phone</Label>
         <Input value={state.contactPhone} onChange={(e) => dispatch({ type: 'identity', patch: { contactPhone: e.target.value } })} placeholder="+91 98765 43210" />
+        <Hint>Riders and customers call this. Required before the owner can go live.</Hint>
       </div>
 
       <IssueList issues={issues} />
@@ -783,6 +841,7 @@ function BranchStep({ state, dispatch, issues }: { state: BranchState; dispatch:
       <div>
         <Label>Postal code *</Label>
         <Input value={state.postalCode} onChange={(e) => dispatch({ type: 'branch', patch: { postalCode: e.target.value } })} placeholder="522002" />
+        <Hint>6-digit Indian PIN code.</Hint>
       </div>
       <div>
         <Label>Country</Label>
@@ -798,13 +857,27 @@ function BranchStep({ state, dispatch, issues }: { state: BranchState; dispatch:
         <Input value={state.longitude} onChange={(e) => dispatch({ type: 'branch', patch: { longitude: e.target.value } })} placeholder="80.4365" inputMode="decimal" />
       </div>
       <div className="md:col-span-2 text-xs text-muted-foreground -mt-3">
-        Tip: paste a Google Maps pin to populate both. A visual picker is on the roadmap.
+        Tip: in Google Maps right-click the kitchen entrance and copy the two numbers (e.g. 16.3067, 80.4365). Delivery distance is measured from here.
+      </div>
+
+      <div>
+        <Label>FSSAI licence number</Label>
+        <Input value={state.fssaiLicenseNumber} inputMode="numeric" onChange={(e) => dispatch({ type: 'branch', patch: { fssaiLicenseNumber: e.target.value } })} placeholder="10020042007183" />
+        <Hint>Optional now — 14 digits from the licence. The owner&apos;s setup guide asks for it before go-live.</Hint>
+      </div>
+      <div className="flex items-start gap-3 pt-6">
+        <Switch id="default-hours" checked={state.defaultHours} onCheckedChange={(v) => dispatch({ type: 'branch', patch: { defaultHours: v } })} />
+        <label htmlFor="default-hours" className="text-sm cursor-pointer">
+          <span className="font-medium">Default hours 11:00–23:00 daily</span>
+          <span className="block text-xs text-muted-foreground">Off ⇒ no hours saved (treated as always open) until the owner sets them.</span>
+        </label>
       </div>
 
       <div>
         <Label>Service radius (km)</Label>
         <Input type="number" step="0.5" min={0.5} max={50} value={state.serviceRadiusKm}
                onChange={(e) => dispatch({ type: 'branch', patch: { serviceRadiusKm: Number(e.target.value) } })} />
+        <Hint>Basic delivery area until the owner draws zones. City kitchens: 5–7 km.</Hint>
       </div>
       <div>
         <Label>Tax rate (%)</Label>
@@ -820,6 +893,7 @@ function BranchStep({ state, dispatch, issues }: { state: BranchState; dispatch:
         <Label>Per-km delivery fee (₹)</Label>
         <Input type="number" step="0.5" min={0} value={state.perKmDeliveryFee}
                onChange={(e) => dispatch({ type: 'branch', patch: { perKmDeliveryFee: Number(e.target.value) } })} />
+        <Hint>Example: base ₹40 + ₹8 per km after the first → a 3 km order pays ₹56.</Hint>
       </div>
       <div>
         <Label>Packaging fee (₹)</Label>
@@ -1044,6 +1118,8 @@ function ReviewStep({ state, brands, issues, dispatch, onEdit, onSeedToggle }: {
 
       <DineInConfig state={state.dineIn} dispatch={dispatch} />
 
+      <ReadinessPreview readiness={wizardReadiness(state)} />
+
       <Card>
         <CardContent className="p-4 flex items-start gap-3">
           <Switch
@@ -1072,6 +1148,74 @@ function ReviewStep({ state, brands, issues, dispatch, onEdit, onSeedToggle }: {
       )}
     </div>
   );
+}
+
+// ─── Go-live readiness (same rules the owner's setup guide runs) ─────────────
+
+/** Readiness as it will stand right after launch, derived from the wizard state. */
+function wizardReadiness(state: WizardState): ReadinessResult {
+  const lat = Number(state.branch.latitude);
+  const lng = Number(state.branch.longitude);
+  const hours = state.branch.defaultHours ? 7 : 0;
+  return evaluateReadiness({
+    restaurant: { name: state.identity.name, contactPhone: state.identity.contactPhone || null, logoUrl: state.identity.logoUrl, gstin: null },
+    branches: [{
+      id: 'new', name: state.branch.name || 'First branch',
+      line1: state.branch.line1, city: state.branch.city, postalCode: state.branch.postalCode,
+      latitude: state.branch.latitude !== '' && Number.isFinite(lat) ? lat : null,
+      longitude: state.branch.longitude !== '' && Number.isFinite(lng) ? lng : null,
+      serviceRadiusKm: state.branch.serviceRadiusKm,
+      fssaiLicenseNumber: state.branch.fssaiLicenseNumber.replace(/\s+/g, '') || null, fssaiExpiresOn: null,
+      hourRows: hours, openDays: hours, activeZones: 0,
+    }],
+    availableItems: 0, // starter-menu placeholders are created hidden until the owner reviews them
+    otherStaff: Math.max(0, state.staff.length - 1),
+    hasQr: true, // minted automatically on launch
+  });
+}
+
+function ReadinessPreview({ readiness, title = 'Go-live readiness after launch', note }: { readiness: ReadinessResult; title?: string; note?: string }) {
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-semibold">{title}</h3>
+          <Badge variant={readiness.ready ? 'success' : 'warning'}>
+            {readiness.ready ? 'Ready to go live' : `${readiness.requiredFailing} required item${readiness.requiredFailing === 1 ? '' : 's'} for the owner`}
+          </Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {note ?? 'These do not block launch. They are the checks the owner’s setup guide (/admin/onboarding) runs before they can press “Go live”.'}
+        </p>
+        <ul className="grid gap-1.5 md:grid-cols-2">
+          {readiness.checks.map((c) => (
+            <li key={c.key} className="flex items-start gap-2 text-sm">
+              {c.ok ? <CheckCircle2 className="size-4 shrink-0 text-success mt-0.5" />
+                : c.required ? <CircleAlert className="size-4 shrink-0 text-destructive mt-0.5" />
+                : <AlertTriangle className="size-4 shrink-0 text-warning mt-0.5" />}
+              <span className="min-w-0"><span className="font-medium">{c.label}</span><span className="block text-xs text-muted-foreground">{c.detail}</span></span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LiveReadiness({ restaurantId }: { restaurantId: string }) {
+  const [readiness, setReadiness] = useState<ReadinessResult | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/admin/onboarding?restaurantId=${encodeURIComponent(restaurantId)}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((j) => { if (alive) setReadiness(j.readiness); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [restaurantId]);
+  if (failed) return <p className="text-xs text-muted-foreground text-center">Readiness could not be loaded — the owner will see it in their setup guide.</p>;
+  if (!readiness) return <p className="text-xs text-muted-foreground text-center"><Loader2 className="inline size-3.5 animate-spin" /> Checking readiness…</p>;
+  return <ReadinessPreview readiness={readiness} title="Live readiness (from the database)" note="What the owner will see when they sign in — their setup guide walks them through every open item." />;
 }
 
 // ─── Dine-in reservations toggle (lives on the Review step) ───────────────────
@@ -1169,6 +1313,10 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function Hint({ children }: { children: React.ReactNode }) {
+  return <p className="text-[11px] text-muted-foreground mt-1">{children}</p>;
+}
+
 function IssueList({ issues }: { issues: string[] }) {
   if (issues.length === 0) return null;
   return (
@@ -1190,7 +1338,7 @@ function SuccessScreen({ result, onAgain }: { result: { restaurantId: string; sl
           <PartyPopper className="size-8" />
         </div>
         <h1 className="display text-3xl font-semibold">Restaurant launched</h1>
-        <p className="text-sm text-muted-foreground">Share these credentials with the new admin. Temp passwords should be changed on first login.</p>
+        <p className="text-sm text-muted-foreground">Share these credentials with the new admin. Temp passwords should be changed on first login. On first sign-in the owner lands in a guided setup that walks them to go-live.</p>
       </header>
 
       <Card>
@@ -1206,6 +1354,8 @@ function SuccessScreen({ result, onAgain }: { result: { restaurantId: string; sl
           ))}
         </CardContent>
       </Card>
+
+      <LiveReadiness restaurantId={result.restaurantId} />
 
       <div className="grid gap-3 md:grid-cols-2">
         <Link href="/login" className="contents">
