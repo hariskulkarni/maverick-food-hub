@@ -45,8 +45,11 @@ preflight() {
 
 backup() {
   confirm "Back up the production database now?"
-  remote 'set -a; . ./.env; set +a; mkdir -p ~/predeploy-backups;
-          pg_dump -Fc "$DATABASE_URL" > ~/predeploy-backups/flavrly-'"$TS"'.dump;
+  # Read ONLY DATABASE_URL from .env (sourcing the whole file breaks on any malformed line), and drop
+  # Prisma's ?schema=public query — pg_dump rejects it ("invalid URI query parameter").
+  remote 'DATABASE_URL=$(grep -E "^DATABASE_URL=" .env | tail -1 | cut -d= -f2- | tr -d "\"\047");
+          [ -n "$DATABASE_URL" ] || { echo "DATABASE_URL not found in .env"; exit 4; }; mkdir -p ~/predeploy-backups;
+          pg_dump -Fc "${DATABASE_URL%%\?*}" > ~/predeploy-backups/flavrly-'"$TS"'.dump;
           ls -lh ~/predeploy-backups/flavrly-'"$TS"'.dump; pg_restore -l ~/predeploy-backups/flavrly-'"$TS"'.dump | head -3'
   mkdir -p "$HOME/flavrly-backups"
   scp -i "$KEY" -o IdentitiesOnly=yes "$HOST:predeploy-backups/flavrly-$TS.dump" "$HOME/flavrly-backups/" && echo "copied to ~/flavrly-backups/flavrly-$TS.dump"
@@ -58,7 +61,7 @@ migrate() {
           npm install --no-audit --no-fund; npx prisma generate >/dev/null'
   echo "== migrate status on the new code"
   if remote 'npx prisma migrate status' ; then echo "status ok"; else echo "(status reported pending/failed — inspecting)"; fi
-  if remote 'npx prisma migrate status 2>&1 | grep -qE "P3005|not found in the migrations table|_prisma_migrations.*does not exist|have not yet been applied: *0_init"'; then
+  if remote 'npx prisma migrate status 2>&1 | grep -qE "^[[:space:]]*0_init[[:space:]]*$|P3005|not found in the migrations table|_prisma_migrations.*does not exist"'; then
     echo "Database looks db-push-managed (old migrations not recorded)."
     confirm "Mark the ${#OLD_MIGRATIONS[@]} pre-existing migrations as applied (no SQL runs)?"
     for m in "${OLD_MIGRATIONS[@]}"; do remote "npx prisma migrate resolve --applied $m || true"; done
