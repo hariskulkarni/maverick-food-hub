@@ -7,7 +7,7 @@ import {
   AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet,
   History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, ShieldCheck, ClipboardCheck,
   Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones,
-  GraduationCap, MessagesSquare, Banknote, LayoutTemplate, CreditCard, Gauge, BookOpen, Timer,
+  GraduationCap, MessagesSquare, Banknote, LayoutTemplate, CreditCard, Gauge, BookOpen, Timer, SlidersHorizontal,
 } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { DemoBanner } from '@/components/demo-banner';
@@ -69,6 +69,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/platform/rider-shifts',      icon: <CalendarClock className={I} />,  label: 'Rider shifts' },
       { href: '/platform/rider-support',     icon: <Headphones className={I} />,     label: 'Rider support' },
       { href: '/platform/training-modules',  icon: <GraduationCap className={I} />,  label: 'Training modules' },
+      { href: '/platform/rider-settings',    icon: <SlidersHorizontal className={I} />, label: 'Rider settings' },
     ],
   },
 ];

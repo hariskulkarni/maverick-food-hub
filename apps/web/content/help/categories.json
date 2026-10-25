@@ -13,5 +13,6 @@
   { "slug": "rider-safety-support", "title": "Safety & support", "description": "SOS, incidents, emergency contacts and support tickets.", "audience": "RIDER", "sortOrder": 140 },
   { "slug": "customer-ordering", "title": "Ordering & delivery", "description": "Placing, tracking and cancelling orders.", "audience": "CUSTOMER", "sortOrder": 210 },
   { "slug": "customer-payments", "title": "Payments & refunds", "description": "Payment methods, coupons and refunds.", "audience": "CUSTOMER", "sortOrder": 220 },
-  { "slug": "customer-account", "title": "Account & partners", "description": "Your account, privacy, and partnering with us.", "audience": "CUSTOMER", "sortOrder": 230 }
+  { "slug": "customer-account", "title": "Account & partners", "description": "Your account, privacy, and partnering with us.", "audience": "CUSTOMER", "sortOrder": 230 },
+  { "slug": "platform-operations", "title": "Platform team (super admin)", "description": "For the Flavrly platform team only: platform-wide rider rules and settings.", "audience": "ALL", "sortOrder": 310 }
 ]
