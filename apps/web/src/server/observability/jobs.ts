@@ -37,6 +37,10 @@ export const DEFAULT_CRON_TEXT = `
 0 9 * * 1 curl https://x/api/platform/jobs/review-digest/run
 * * * * * curl https://x/api/platform/jobs/obs-alerts/run
 30 3 * * * curl https://x/api/platform/jobs/obs-retention/run
+* * * * * curl https://x/api/platform/jobs/dispatch-jit/run
+*/2 * * * * curl https://x/api/platform/jobs/rider-stationary/run
+*/5 * * * * curl https://x/api/platform/jobs/zone-snapshot/run
+10 3 * * * curl https://x/api/platform/jobs/prep-stats/run
 `;
 
 /**
