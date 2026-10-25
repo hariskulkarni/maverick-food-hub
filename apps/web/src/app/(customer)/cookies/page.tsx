@@ -96,8 +96,8 @@ export default function CookiesPage() {
           <h2 className="display text-xl font-semibold">6. Contact</h2>
           <p className="mt-3 text-sm text-muted-foreground">
             Questions about our use of cookies? Email{' '}
-            <a href="mailto:privacy@oakandsizzler.in" className="text-primary underline">
-              privacy@oakandsizzler.in
+            <a href={`mailto:${brand.privacyEmail}`} className="text-primary underline">
+              {brand.privacyEmail}
             </a>
             .
           </p>

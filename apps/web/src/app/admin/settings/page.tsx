@@ -11,6 +11,7 @@ import { ReviewsSettings } from './reviews-settings';
 import { NotificationsTable } from './notifications-table';
 import { IntegrationsSection } from './integrations-section';
 import { LicenseExpiryBanner } from './license-expiry-banner';
+import { HelpButton } from '@/components/help/help-button';
 
 export const metadata = { title: 'Admin · Settings' };
 export const dynamic = 'force-dynamic';
@@ -26,7 +27,10 @@ export default async function SettingsPage() {
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-6xl">
       <header>
-        <h1 className="display text-3xl font-semibold">Settings</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="display text-3xl font-semibold">Settings</h1>
+          <HelpButton appArea="admin.settings" />
+        </div>
         <p className="text-sm text-muted-foreground mt-1">Manage your storefront, branches, integrations, and notifications.</p>
       </header>
 

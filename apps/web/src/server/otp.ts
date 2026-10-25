@@ -50,10 +50,11 @@ const SMS_DAILY_BUDGET       = envInt('SMS_DAILY_BUDGET',     1000); // total SM
 const RATE_LIMITS_DISABLED   = process.env.OTP_RATE_LIMITS_DISABLED === 'true';
 const IS_PROD = process.env.NODE_ENV === 'production';
 // Is a REAL SMS provider configured? (anything other than the no-op "mock")
-const SMS_PROVIDER = (process.env.NOTIFIER_SMS ?? 'mock').toLowerCase().trim();
+// F12: same setting the dispatcher reads — NOTIFIER_SMS, legacy alias SMS_PROVIDER.
+const SMS_PROVIDER = (process.env.NOTIFIER_SMS || process.env.SMS_PROVIDER || 'mock').toLowerCase().trim();
 const SMS_IS_REAL = SMS_PROVIDER !== '' && SMS_PROVIDER !== 'mock';
 // Real WhatsApp provider configured? (Meta Cloud API or Twilio WhatsApp.)
-const WHATSAPP_PROVIDER = (process.env.NOTIFIER_WHATSAPP ?? 'mock').toLowerCase().trim();
+const WHATSAPP_PROVIDER = (process.env.NOTIFIER_WHATSAPP || 'mock').toLowerCase().trim();
 const WHATSAPP_IS_REAL = WHATSAPP_PROVIDER !== '' && WHATSAPP_PROVIDER !== 'mock';
 // Any real delivery channel means surfacing codes would leak real users' OTPs.
 const DELIVERY_IS_REAL = SMS_IS_REAL || WHATSAPP_IS_REAL;
@@ -158,7 +159,8 @@ async function sendMsg91OtpDirect(phone: string, code: string): Promise<boolean>
   const authkey = process.env.MSG91_AUTH_KEY ?? process.env.MSG91_AUTHKEY;
   if (!authkey) { log.error('[otp] MSG91_AUTH_KEY missing; cannot send production OTP'); return false; }
   const mobile = phone.replace(/[^0-9]/g, '');
-  const templateId = process.env.MSG91_TEMPLATE_ID;
+  // SendOTP template: MSG91_TEMPLATE_ID, else the documented MSG91_DLT_TEMPLATE_ID.
+  const templateId = process.env.MSG91_TEMPLATE_ID || process.env.MSG91_DLT_TEMPLATE_ID;
   try {
     const params = new URLSearchParams({ otp_expiry: '5', mobile, otp: code });
     if (templateId) params.set('template_id', templateId);

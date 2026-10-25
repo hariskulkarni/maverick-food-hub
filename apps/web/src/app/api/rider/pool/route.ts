@@ -8,7 +8,8 @@ import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { computeBasePayout } from '@/server/payouts';
 import { filterOrdersForRider, resolveDedicatedGroup } from '@/server/rider-sourcing';
-import { RiderType } from '@prisma/client';
+import { RiderType, FulfillmentType } from '@prisma/client';
+import { releasedPreReadyOrderIds, PRE_READY_STATUSES } from '@/server/dispatch/jit';
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -35,9 +36,19 @@ export async function GET(req: NextRequest) {
   // dispatch policy included, then filter to this rider's eligible subset.
   // (We over-fetch a little and trim in app code so the dispatch rules live
   // in exactly one place — see rider-sourcing.ts.)
+  // JIT (platform setting): DELIVERY orders still in the kitchen join the pool
+  // once the JIT sweep released them; `foodReady:false` tells the app.
+  const jitIds = await releasedPreReadyOrderIds();
   const candidates = await prisma.order.findMany({
-    where: { status: 'READY', assignment: null },
-    include: { branch: { include: { restaurant: true } }, address: true, items: true, customer: true },
+    where: {
+      assignment: null,
+      OR: [
+        { status: 'READY' },
+        ...(jitIds.length ? [{ id: { in: jitIds }, status: { in: PRE_READY_STATUSES }, fulfillmentType: FulfillmentType.DELIVERY }] : []),
+      ],
+    },
+    // P0-3: no customer row — the pool DTO never exposes the customer.
+    include: { branch: { include: { restaurant: true } }, address: true, items: true },
     orderBy: { readyAt: 'asc' },
     take: 60
   });
@@ -67,6 +78,7 @@ export async function GET(req: NextRequest) {
       payout: payout.payout,
       distanceKm: payout.distanceKm,
       readyAt: o.readyAt,
+      foodReady: o.status === 'READY',
       dispatchTag
     };
   }));

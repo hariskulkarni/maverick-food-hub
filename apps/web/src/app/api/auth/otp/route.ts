@@ -3,14 +3,11 @@ import { z } from 'zod';
 import { sendOtp, OtpRateLimitedError } from '@/server/otp';
 import { parseJsonBody } from '@/server/http/validate';
 import { rateLimit } from '@/server/http/rate-limit';
+// C10: the per-IP OTP caps must key on a header the client cannot forge.
+import { clientIp } from '@/server/http/client-ip';
 
 const Body = z.object({ phone: z.string().min(8).max(20), purpose: z.string().max(40).optional() });
 
-function clientIp(req: NextRequest): string | undefined {
-  const fwd = req.headers.get('x-forwarded-for');
-  if (fwd) return fwd.split(',')[0]?.trim();
-  return req.headers.get('x-real-ip') ?? undefined;
-}
 
 export async function POST(req: NextRequest) {
   // Coarse per-IP edge limit in front of the fine-grained per-phone/per-IP
@@ -21,7 +18,7 @@ export async function POST(req: NextRequest) {
   const parsed = await parseJsonBody(req, Body);
   if (!parsed.ok) return parsed.response;
   try {
-    const r = await sendOtp({ phone: parsed.data.phone, purpose: parsed.data.purpose, ipAddress: clientIp(req) });
+    const r = await sendOtp({ phone: parsed.data.phone, purpose: parsed.data.purpose, ipAddress: clientIp(req.headers) ?? undefined });
     return Response.json(r);
   } catch (e) {
     if (e instanceof OtpRateLimitedError) {

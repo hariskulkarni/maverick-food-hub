@@ -1,10 +1,11 @@
 /**
  * POST /api/platform/jobs/google-reviews/run
  *
- * Syncs new Google reviews for connected restaurants and applies the auto-reply
- * policy. Schedule it every 10 minutes.
+ * Syncs Google reviews for connected restaurants, applies the auto-reply rules,
+ * sends negative-review alerts, recomputes insights and escalates overdue
+ * replies. Scheduled every 15 minutes (deploy/flavrly-jobs.cron):
  *
- *   every 10 minutes: curl -fsS -X POST https://<domain>/api/platform/jobs/google-reviews/run \
+ *   every 15 minutes: curl -fsS -X POST https://<domain>/api/platform/jobs/google-reviews/run \
  *                  -H "x-internal-secret: $INTERNAL_CRON_SECRET"
  *
  * Auth: SUPER_ADMIN session OR x-internal-secret matching INTERNAL_CRON_SECRET.

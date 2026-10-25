@@ -11,15 +11,22 @@
  *   - nginx appends the real peer to X-Forwarded-For with
  *     `$proxy_add_x_forwarded_for`, so the trustworthy hop is the LAST element.
  *
- * Resolution order: CF-Connecting-IP, then X-Real-IP, then the LAST XFF element.
+ * Resolution order: CF-Connecting-IP (only with TRUST_CF=true), then X-Real-IP,
+ * then the LAST XFF element.
  * Never the first. Returns null when nothing resolves (callers coarsen to a
  * global bucket rather than failing open on an attacker-chosen key).
  *
  * Dependency-free on purpose: safe to import from the edge middleware runtime.
  */
 export function clientIp(headers: { get(name: string): string | null } | Headers): string | null {
-  const cf = headers.get('cf-connecting-ip');
-  if (cf && cf.trim()) return cf.trim();
+  // CF-Connecting-IP is only trustworthy when every request provably comes via
+  // Cloudflare (TRUST_CF=true). A request sent straight to the origin can carry
+  // a forged one — nginx's real_ip module rewrites $remote_addr (→ X-Real-IP),
+  // not the passed-through header — which bypassed the super-admin allowlist.
+  if (process.env.TRUST_CF === 'true') {
+    const cf = headers.get('cf-connecting-ip');
+    if (cf && cf.trim()) return cf.trim();
+  }
 
   const real = headers.get('x-real-ip');
   if (real && real.trim()) return real.trim();

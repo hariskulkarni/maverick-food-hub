@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,10 +9,13 @@ import { ChartsClient } from './charts-client';
 import { ArrowRight, ScrollText, Truck, Wallet, Users, History, Network, Info } from 'lucide-react';
 import { requireRestaurant } from '@/server/tenancy';
 import { NoBranchNotice } from './no-branch-notice';
+import { getOnboardingState } from '@/server/onboarding';
+import { SetupChecklist } from './setup-checklist';
 import {
   resolveGroupReport, groupKpis, groupSalesSeries, groupPaymentMixToday, childBreakdownToday,
   type ChildBreakdownRow,
 } from './reports/_group-metrics';
+import { STAFF_BRANCH_ORDER } from '@/server/branch-pause';
 
 // CRITICAL: every other /admin page sets dynamic = 'force-dynamic' (see
 // orders/page.tsx, settings/page.tsx, etc.). This dashboard was missed,
@@ -27,22 +31,40 @@ export const metadata = { title: 'Admin · Dashboard' };
 export default async function AdminDashboardPage() {
   const session = await auth();
   const restaurant = await requireRestaurant();
-  const branch = await prisma.branch.findFirst({ where: { restaurantId: restaurant.id, isActive: true }, orderBy: { createdAt: 'asc' } });
-  if (!branch) return <NoBranchNotice />;
+  // Guided onboarding: a brand-new restaurant (never opened the setup guide,
+  // never taken an order) lands in the wizard; established tenants are left
+  // alone. The wizard marks itself "started" on first view, so this only
+  // redirects once.
+  const [onboarding, anyOrder] = await Promise.all([
+    getOnboardingState(restaurant.id),
+    prisma.order.findFirst({ where: { branch: { restaurantId: restaurant.id } }, select: { id: true } }),
+  ]);
+  if (!onboarding.progress.started && !anyOrder && session?.user.role === 'ADMIN') redirect('/admin/onboarding');
+  const showChecklist = onboarding.progress.started || !anyOrder;
+  const branch = await prisma.branch.findFirst({ where: { restaurantId: restaurant.id }, orderBy: STAFF_BRANCH_ORDER });
+  if (!branch) {
+    return (
+      <>
+        {showChecklist && <div className="p-4 pb-0 sm:p-6 sm:pb-0"><SetupChecklist state={onboarding} /></div>}
+        <NoBranchNotice />
+      </>
+    );
+  }
 
   // Group scope: when this restaurant is a parent with rollup enabled, headline
-  // metrics span every branch in the group; otherwise scope to the single branch.
-  const report = await resolveGroupReport(restaurant.id, branch.id);
+  // metrics span every branch in the group; otherwise every branch of this
+  // restaurant (multi-branch tenants used to see only the primary — P1-9).
+  const report = await resolveGroupReport(restaurant.id);
   const scopedBranchIds = report.branchIds;
 
   const [kpi, sales, sellers, peak, mix, ci, latest, recentActivity, breakdown] = await Promise.all([
-    report.rollup ? groupKpis(scopedBranchIds) : dashboardKpis(branch.id),
-    report.rollup ? groupSalesSeries(scopedBranchIds, 14) : salesSeries(branch.id, 14),
-    bestSellers(branch.id, 6),
-    peakHours(branch.id),
-    report.rollup ? groupPaymentMixToday(scopedBranchIds) : paymentMixToday(branch.id),
-    customerInsights(branch.id),
-    prisma.order.findMany({ where: { branchId: { in: scopedBranchIds } }, orderBy: { placedAt: 'desc' }, take: 6, include: { customer: true } }),
+    report.rollup ? groupKpis(scopedBranchIds) : dashboardKpis(scopedBranchIds),
+    report.rollup ? groupSalesSeries(scopedBranchIds, 14) : salesSeries(scopedBranchIds, 14),
+    bestSellers(scopedBranchIds, 6),
+    peakHours(scopedBranchIds),
+    report.rollup ? groupPaymentMixToday(scopedBranchIds) : paymentMixToday(scopedBranchIds),
+    customerInsights(scopedBranchIds),
+    prisma.order.findMany({ where: { branchId: { in: scopedBranchIds } }, orderBy: { placedAt: 'desc' }, take: 6, include: { customer: { select: { name: true, phone: true } } } }),
     prisma.auditLog.findMany({
       where: {
         restaurantId: { in: report.rollup ? report.ctx.restaurantIds : [restaurant.id] },
@@ -72,6 +94,8 @@ export default async function AdminDashboardPage() {
           </p>
         </div>
       </header>
+
+      {showChecklist && <SetupChecklist state={onboarding} />}
 
       {report.rollupAvailableButOff && (
         <div className="flex items-start gap-2 rounded-lg border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground">

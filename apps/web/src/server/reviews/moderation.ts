@@ -1,5 +1,5 @@
 /** Shared helpers for admin feedback moderation (single + bulk). */
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { requireTenantAdmin } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { forbidden, unauthenticated } from '@/server/api-auth';
 import { recomputeRiderRating } from './rider-rating';
@@ -22,7 +22,8 @@ export async function moderationGate(restaurantId?: string | null) {
   const role = (session.user as any).role;
   if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') return forbidden('Only a restaurant admin can do that.');
   try {
-    const restaurant = await requireManagedRestaurant(restaurantId);
+    // Membership-aware: a global ADMIN holding only a KITCHEN grant here is refused.
+    const restaurant = await requireTenantAdmin(restaurantId);
     return { userId: session.user.id as string, restaurant };
   } catch (e) {
     if (e instanceof Response) return e;

@@ -5,6 +5,7 @@ import { PLATFORM_ROLES, pageGateFor, can } from '@/server/permissions';
 import { PUBLIC_HOST, PORTAL_HOST, isPortalHost, hostSplitActive, isStaffPath } from '@/server/hosts';
 import { clientIp } from '@/server/http/client-ip';
 import { csrfGuard, isWebhookPath } from '@/server/http/csrf';
+import { isAuthRateLimitPath } from '@/server/http/rate-limit-paths';
 
 const { auth } = NextAuth(authEdgeConfig);
 
@@ -50,9 +51,7 @@ function rlTooMany(retryAfterSec: number): NextResponse {
     { status: 429, headers: { 'content-type': 'application/json', 'Retry-After': String(retryAfterSec), 'Cache-Control': 'no-store' } },
   );
 }
-function rlIsAuthPath(p: string): boolean {
-  return p.includes('/auth/') || /(login|signin|otp|verify|password|2fa)/i.test(p);
-}
+const rlIsAuthPath = isAuthRateLimitPath;
 
 async function apiRateLimit(req: NextRequest, path: string): Promise<NextResponse | null> {
   try {
@@ -177,6 +176,8 @@ export async function middleware(req: NextRequest) {
       path.startsWith('/_next') ||
       path.startsWith('/uploads/') ||
       path.startsWith('/downloads/') ||
+      // Rider app download route (streams the active APK; demo APKs too).
+      path.startsWith('/download/') ||
       // Common static files served straight from /public
       path === '/favicon.ico' ||
       path === '/robots.txt' ||
@@ -230,6 +231,7 @@ export async function middleware(req: NextRequest) {
         const r = s?.user?.role ? String(s.user.role) : null;
         const home =
             r === 'SUPER_ADMIN' ? '/platform'
+          : r === 'ADMIN_ASSIST' || r === 'DEVELOPER' || r === 'QA' || r === 'GUEST' ? '/platform'
           : r === 'ADMIN'       ? '/admin'
           : r === 'KITCHEN'     ? '/kitchen'
           : '/login';
@@ -309,8 +311,9 @@ export const config = {
   // excluded so they never hit the auth lookup.
   matcher: [
     // NOTE: `api` is excluded so Next doesn't buffer (and 10MB-truncate) large
-    // request bodies through middleware — critical for video uploads. API routes
+    // request bodies through middleware — critical for video uploads (and the
+    // ≤200 MB rider APK upload, which does its own same-origin check). API routes
     // do their own auth; the demo gate already exempts /api.
-    '/((?!api/admin/upload|api/admin/menu/import|api/events|_next/static|_next/image|favicon.ico|manifest.json|manifest.webmanifest|sw.js|push-sw.js|service-worker.js|robots.txt|sitemap.xml).*)'
+    '/((?!api/admin/upload|api/platform/app-releases/upload|api/admin/menu/import|api/events|_next/static|_next/image|favicon.ico|manifest.json|manifest.webmanifest|sw.js|push-sw.js|service-worker.js|robots.txt|sitemap.xml).*)'
   ]
 };

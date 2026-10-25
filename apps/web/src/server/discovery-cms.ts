@@ -418,7 +418,6 @@ export function defaultDiscoveryConfig(): DiscoveryConfig {
             { label: 'About', href: '/about' },
             { label: 'Careers', href: '/careers' },
             { label: 'Contact', href: '/contact' },
-            { label: 'Blog', href: '#' },
           ],
         },
         {

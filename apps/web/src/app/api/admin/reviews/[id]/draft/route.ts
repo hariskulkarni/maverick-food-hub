@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
-import { requireManagedRestaurant } from '@/server/tenancy';
-import { getReviewScoped, getAutoReplyConfig } from '@/server/reviews/store';
-import { generateReviewReply, LlmNotConfiguredError } from '@/server/reviews/llm';
+import { tenantAdminOrError } from '@/server/tenancy';
+import { getReviewScoped, getAutoReplyConfig, getResponseSettings } from '@/server/reviews/store';
+import { LlmNotConfiguredError } from '@/server/reviews/llm';
+import { draftReply } from '@/server/reviews/drafting';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,15 +14,14 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     const { id } = await params;
     const review = await getReviewScoped(restaurant.id, id);
     if (!review) return new Response('Not found', { status: 404 });
-    const cfg = await getAutoReplyConfig(restaurant.id);
-    const gen = await generateReviewReply({
-      restaurantId: restaurant.id, rating: review.rating, comment: review.comment, tone: cfg?.tonePrompt,
-    });
-    return Response.json({ ok: true, text: gen.text });
+    const [cfg, settings] = await Promise.all([getAutoReplyConfig(restaurant.id), getResponseSettings(restaurant.id)]);
+    const gen = await draftReply(restaurant.id, review, { tone: cfg?.tonePrompt, voice: settings.brandVoiceSummary });
+    return Response.json({ ok: true, text: gen.text, issues: gen.issues });
   } catch (e) {
     if (e instanceof Response) return e;
     if (e instanceof LlmNotConfiguredError) return Response.json({ error: 'No LLM key configured' }, { status: 400 });

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { testAndSave, disconnect, getConfig } from '@/server/integrations';
 import { PROVIDERS, ProviderKey } from '@/server/integrations/providers';
 import { maskCredentials, sendIntegrationAlert } from '@/server/alerts';
@@ -35,7 +35,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ prov
   if (p === 'YOUPI') return YOUPI_BLOCKED();
 
   const session = await auth();
-  const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+  const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+  if (restaurant instanceof Response) return restaurant;
   const { config } = Body.parse(await req.json());
 
   // Required-field validation up front
@@ -90,7 +91,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ p
   if (!p) return new Response('Unknown provider', { status: 400 });
   if (p === 'YOUPI') return YOUPI_BLOCKED();
   const session = await auth();
-  const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+  const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+  if (restaurant instanceof Response) return restaurant;
 
   const before = await getConfig(restaurant.id, p).catch(() => null);
   const cred = await prisma.integrationCredential.findUnique({

@@ -10,7 +10,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { assertTransition, toPublicDoc } from '@/server/kyc';
 import { optionalString } from '@/server/zod-helpers';
@@ -19,7 +19,8 @@ import { KycDocumentStatus } from '@prisma/client';
 export const dynamic = 'force-dynamic';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { id } = await params;
   const doc = await prisma.riderKycDocument.findUnique({
     where: { id },
@@ -44,7 +45,8 @@ const PatchBody = z.object({
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const { id } = await params;
 
   let body: z.infer<typeof PatchBody>;

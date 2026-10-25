@@ -29,7 +29,7 @@ import { colors } from '../../lib/theme';
 const ONLINE_POLL_MS = 15_000;
 
 export default function AppLayout() {
-  const { token, loading, signOut } = useAuth();
+  const { token, loading, endSession } = useAuth();
   const router = useRouter();
 
   // Register for push notifications once authenticated. Called unconditionally
@@ -60,7 +60,9 @@ export default function AppLayout() {
           // returns "Forbidden". Any other error (network blip, 5xx) is
           // transient — keep the last-known state.
           if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
-            signOut().catch(() => {});
+            // endSession (not signOut): the server already dropped the session,
+            // so skip the logout call and flag the login screen to explain why.
+            endSession().catch(() => {});
             return;
           }
           /* swallow — keep last-known state */
@@ -72,7 +74,7 @@ export default function AppLayout() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [token, loading]);
+  }, [token, loading, endSession]);
 
   // Watch the pool for brand-new orders. Returns the freshest one + an ack.
   const { newOrder, ack } = usePoolWatcher(!!token && !loading && online);

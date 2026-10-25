@@ -6,6 +6,7 @@ import { requireRestaurant } from '@/server/tenancy';
 import { sendMenuToggleAlert } from '@/server/alerts';
 import { log } from '@/server/log';
 import { imageRef } from '@/server/zod-helpers';
+import { branchOwned, callerRestaurantId, categoryInBranch, notFound } from '../../_tenant';
 
 const Patch = z.object({
   name: z.string().optional(),
@@ -32,9 +33,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const parsed = Patch.parse(await req.json());
   const { reason, ...data } = parsed;
 
-  // Snapshot the existing availability so we can detect a true flip.
-  const before = await prisma.menuItem.findUnique({
-    where: { id },
+  const restaurantId = await callerRestaurantId();
+  if (restaurantId instanceof Response) return restaurantId;
+
+  // Snapshot the existing availability so we can detect a true flip. Scoped to
+  // the caller's restaurant: a cross-tenant id is a 404, never an update.
+  const before = await prisma.menuItem.findFirst({
+    where: { id, branch: { restaurantId } },
     select: {
       id: true, name: true, isAvailable: true,
       branch: {
@@ -46,6 +51,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   });
 
+  if (!before) return notFound('Menu item');
+  // A moved item must land in one of the caller's branches, and its category
+  // must belong to the (possibly new) branch.
+  const targetBranchId = data.branchId ?? before.branch.id;
+  if (data.branchId !== undefined && !(await branchOwned(data.branchId, restaurantId))) return notFound('Branch');
+  if (data.categoryId !== undefined && !(await categoryInBranch(data.categoryId, targetBranchId))) return notFound('Category');
+
   const u = await prisma.menuItem.update({
     where: { id },
     data: { ...data, ...(data.price != null ? { price: data.price as any } : {}) }
@@ -54,7 +66,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Alert hook — only fire when isAvailable actually flipped. Runs after the
   // mutation commits and is fully suppressed if the mail layer throws so a
   // bad SMTP config can never roll back this PATCH.
-  if (before && data.isAvailable !== undefined && before.isAvailable !== data.isAvailable) {
+  if (data.isAvailable !== undefined && before.isAvailable !== data.isAvailable) {
     const restaurantId = before.branch?.restaurantId;
     const restaurantName = before.branch?.restaurant?.name ?? '';
     if (restaurantId) {

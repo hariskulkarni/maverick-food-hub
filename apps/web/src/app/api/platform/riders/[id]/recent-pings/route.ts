@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { prisma } from '@/server/db';
 
 /**
@@ -8,7 +8,8 @@ import { prisma } from '@/server/db';
  *   limit defaults to 50, capped at 500.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { id: riderId } = await params;
   const url = new URL(req.url);
   const limitParam = Number(url.searchParams.get('limit') ?? 50);

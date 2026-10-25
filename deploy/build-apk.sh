@@ -22,6 +22,8 @@
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
+echo "⚠ apps/android-rider (Capacitor shell) is DEPRECATED — ship apps/rider-native via EAS instead." >&2
+
 if [[ $# -ne 1 ]]; then
   echo "Usage: $0 <FOODHUB_URL>"
   echo "Example: $0 https://yourdomain.in"

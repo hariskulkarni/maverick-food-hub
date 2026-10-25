@@ -12,12 +12,13 @@
  * has to branch on role.
  */
 import { NextRequest } from 'next/server';
-import { requireCapability } from '@/server/tenancy';
+import { requireCapabilityApi } from '@/server/api-auth';
 import { visibleForRole, summariseRatings } from '@/server/feedback';
 import { prisma } from '@/server/db';
 
 export async function GET(req: NextRequest) {
-  await requireCapability('ops:read');
+  const gate = await requireCapabilityApi('ops:read');
+  if (gate instanceof Response) return gate;
   const sp = req.nextUrl.searchParams;
   const restaurantId = sp.get('restaurantId') || undefined;
   const riderId = sp.get('riderId') || undefined;

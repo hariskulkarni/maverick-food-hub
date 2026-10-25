@@ -4,12 +4,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useSSE } from '@/hooks/use-sse';
-import { ChefHat, Package, Clock, Printer, AlertTriangle, BellRing, RefreshCw, Wifi, WifiOff, Gift } from 'lucide-react';
+import { ChefHat, Package, Clock, Printer, AlertTriangle, BellRing, RefreshCw, Wifi, WifiOff, Gift, UtensilsCrossed } from 'lucide-react';
 import { toast } from 'sonner';
 import { KotLine } from './kot-line';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { SoundToggle } from '@/components/sound-toggle';
 import { KitchenAttentionBanner } from '@/components/kitchen-attention-banner';
+import { completionAction } from '@/lib/order-actions';
 
 // Four-column board:
 //   RECEIVED  → customer just placed it, needs Accept (kitchen or admin can)
@@ -276,7 +277,32 @@ export function KitchenBoard({
 
   async function transition(id: string, next: string) {
     const r = await fetch(`/api/admin/orders/${id}/transition`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: next }) });
-    if (!r.ok) toast.error(await r.text());
+    if (!r.ok) {
+      const err = await r.json().catch(() => null) as { error?: string } | null;
+      toast.error(err?.error ?? 'Could not change order status');
+      return;
+    }
+    // P2-17: apply the result locally so the card moves now, not on the next SSE/poll.
+    const res = await r.json().catch(() => null) as { status?: string } | null;
+    if (res?.status) setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: res.status } : o)));
+  }
+
+  // Single-tap "Food ready": idempotent + audited server-side; feeds the
+  // FOOD_READY dispatch event and the prep-time stats. Busy-guarded locally so
+  // a double tap sends one request.
+  const [readyBusy, setReadyBusy] = useState<Set<string>>(new Set());
+  async function foodReady(id: string) {
+    if (readyBusy.has(id)) return;
+    setReadyBusy((p) => new Set(p).add(id));
+    try {
+      const r = await fetch(`/api/admin/orders/${id}/food-ready`, { method: 'POST' });
+      const body = await r.json().catch(() => ({} as { error?: string }));
+      if (!r.ok) { toast.error(body.error ?? 'Could not mark food ready'); return; }
+      setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: 'READY', readyAt: new Date().toISOString() } : o)));
+      toast.success('Food ready — rider notified');
+    } finally {
+      setReadyBusy((p) => { const n = new Set(p); n.delete(id); return n; });
+    }
   }
 
   return (
@@ -364,6 +390,9 @@ export function KitchenBoard({
                         {o.scheduledFor && (
                           <Badge variant="muted">🕒 {fmtSlot(o.scheduledFor)}</Badge>
                         )}
+                        {o.fulfillmentType === 'DINE_IN' && o.reservation?.table?.name && (
+                          <Badge variant="muted">Table {o.reservation.table.name}</Badge>
+                        )}
                         {o.fulfillmentType === 'PICKUP' && o.pickupCode && (
                           <Badge variant="muted" className="font-mono">Code {o.pickupCode}</Badge>
                         )}
@@ -383,6 +412,9 @@ export function KitchenBoard({
                             name={i.name}
                             quantity={i.quantity}
                             comboBreakdown={i.comboBreakdown}
+                            selectedVariantName={i.selectedVariantName}
+                            modifiersSummary={i.modifiersSummary}
+                            notes={i.notes}
                           />
                         ))}
                       </ul>
@@ -392,7 +424,19 @@ export function KitchenBoard({
                           <Button size="sm" onClick={() => transition(o.id, 'ACCEPTED')}>Accept order</Button>
                         )}
                         {o.status === 'ACCEPTED' && <Button size="sm" onClick={() => transition(o.id, 'PREPARING')}>Start preparing</Button>}
-                        {o.status === 'PREPARING' && <Button size="sm" onClick={() => transition(o.id, 'READY')}>Mark ready</Button>}
+                        {o.status === 'PREPARING' && (
+                          <Button
+                            size="lg"
+                            className="w-full sm:w-auto bg-success text-success-foreground hover:bg-success/90"
+                            disabled={readyBusy.has(o.id)}
+                            onClick={() => foodReady(o.id)}
+                          >
+                            <UtensilsCrossed className="size-4" /> Food ready
+                          </Button>
+                        )}
+                        {completionAction(o) && (
+                          <Button size="sm" onClick={() => transition(o.id, completionAction(o)!.next)}>{completionAction(o)!.label}</Button>
+                        )}
                         <Button size="sm" variant="outline" asChild><a href={`/api/admin/orders/${o.id}/kot`} target="_blank" rel="noreferrer"><Printer className="size-4" /> KOT</a></Button>
                       </div>
                     </CardContent>

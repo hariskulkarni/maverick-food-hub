@@ -6,7 +6,7 @@ const h = vi.hoisted(() => ({
   getConfig: vi.fn(async () => null),
 }));
 vi.mock('@/server/auth', () => ({ auth: vi.fn(async () => ({ user: { id: 'u1', role: 'ADMIN' } })) }));
-vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: vi.fn(async () => ({ id: 'r1', name: 'R' })) }));
+vi.mock('@/server/tenancy', async () => ({ requireManagedRestaurant: vi.fn(async () => ({ id: 'r1', name: 'R' })), ...(await import('../../helpers/tenant-admin-mock')).tenantAdminMocks(() => (vi.fn(async () => ({ id: 'r1', name: 'R' })))()) }));
 vi.mock('@/server/integrations', () => h);
 vi.mock('@/server/alerts', () => ({ maskCredentials: (x: any) => x, sendIntegrationAlert: vi.fn(async () => undefined) }));
 vi.mock('@/server/db', () => ({ prisma: { integrationCredential: { findUnique: vi.fn(async () => null) } } }));

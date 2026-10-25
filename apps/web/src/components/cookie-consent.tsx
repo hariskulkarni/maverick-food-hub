@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Cookie, X } from 'lucide-react';
 
@@ -47,6 +47,20 @@ export function CookieConsent() {
     if (!decided) setShow(true);
   }, []);
 
+  // While the banner is up, pad the page by its height so it never sits on top
+  // of a primary action (e.g. the login form's submit button on a phone): the
+  // user can always scroll the content clear of it.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!show || !ref.current) return;
+    const el = ref.current;
+    const apply = () => { document.body.style.paddingBottom = `${el.offsetHeight}px`; };
+    apply();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(apply) : null;
+    ro?.observe(el);
+    return () => { ro?.disconnect(); document.body.style.paddingBottom = ''; };
+  }, [show]);
+
   if (!show) return null;
 
   function choose(value: 'all' | 'essential') {
@@ -56,36 +70,42 @@ export function CookieConsent() {
 
   return (
     <div
+      ref={ref}
       role="dialog"
       aria-label="Cookie consent"
       aria-live="polite"
-      className="fixed inset-x-0 bottom-0 z-[60] px-3 pb-3 md:px-4 md:pb-4"
+      className="fixed inset-x-0 bottom-0 z-[60] px-2 pb-2 md:px-4 md:pb-4"
     >
-      <div className="mx-auto max-w-3xl rounded-2xl border bg-card/95 backdrop-blur shadow-lg p-4 md:p-5">
-        <div className="flex items-start gap-3">
-          <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+      {/* Compact on phones (one short line + two small buttons); full copy from md up. */}
+      <div className="mx-auto max-w-3xl rounded-xl md:rounded-2xl border bg-card/95 backdrop-blur shadow-lg p-3 md:p-5">
+        <div className="flex items-center md:items-start gap-3">
+          <div className="hidden md:grid size-9 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
             <Cookie className="size-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">We use cookies</p>
-            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+            <p className="text-xs md:hidden text-muted-foreground">
+              We use essential cookies to keep you signed in.{' '}
+              <Link href="/cookies" className="text-primary underline underline-offset-2">Policy</Link>
+            </p>
+            <p className="hidden md:block text-sm font-semibold">We use cookies</p>
+            <p className="hidden md:block mt-1 text-[13px] leading-relaxed text-muted-foreground">
               We use strictly-necessary cookies to keep you signed in and remember your cart.
               With your consent we may also use optional cookies to understand usage and improve
               the app. See our{' '}
               <Link href="/cookies" className="text-primary underline underline-offset-2">Cookie Policy</Link>.
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-2 md:mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => choose('all')}
-                className="inline-flex items-center rounded-md bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                className="inline-flex min-h-11 items-center rounded-md bg-primary px-3 text-xs md:text-sm font-semibold text-primary-foreground hover:bg-primary/90"
               >
                 Accept all
               </button>
               <button
                 type="button"
                 onClick={() => choose('essential')}
-                className="inline-flex items-center rounded-md border bg-card px-3.5 py-2 text-sm font-medium hover:bg-accent"
+                className="inline-flex min-h-11 items-center rounded-md border bg-card px-3 text-xs md:text-sm font-medium hover:bg-accent"
               >
                 Essential only
               </button>
@@ -95,7 +115,7 @@ export function CookieConsent() {
             type="button"
             aria-label="Dismiss (essential cookies only)"
             onClick={() => choose('essential')}
-            className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="hidden md:inline-flex shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <X className="size-4" />
           </button>

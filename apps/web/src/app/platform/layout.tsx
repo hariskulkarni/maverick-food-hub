@@ -7,7 +7,7 @@ import {
   AlertTriangle, Activity, LifeBuoy, QrCode, Shield, FileSpreadsheet,
   History, BadgeCheck, Layers, Gift, MessageSquare, Wallet, Trophy, ShieldCheck, ClipboardCheck,
   Flame, Award, UserPlus, Siren, ShieldAlert, CalendarClock, Headphones,
-  GraduationCap, MessagesSquare, Banknote, LayoutTemplate, CreditCard, Gauge,
+  GraduationCap, MessagesSquare, Banknote, LayoutTemplate, CreditCard, Gauge, BookOpen, Timer, Smartphone, SlidersHorizontal,
 } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { DemoBanner } from '@/components/demo-banner';
@@ -36,6 +36,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/platform/feedback',      icon: <MessageSquare className={I} />,   label: 'Feedback' },
       { href: '/platform/reviews-analytics', icon: <BarChart3 className={I} />, label: 'Review analytics' },
       { href: '/platform/live-ops',      icon: <AlertTriangle className={I} />,   label: 'Live ops' },
+      { href: '/platform/dispatch-insights', icon: <Timer className={I} />,   label: 'Dispatch insights' },
       { href: '/platform/riders',        icon: <Bike className={I} />,            label: 'Riders' },
       { href: '/platform/kyc',           icon: <BadgeCheck className={I} />,      label: 'KYC review' },
       { href: '/platform/payouts',       icon: <ListOrdered className={I} />,     label: 'Payout rules' },
@@ -44,6 +45,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/platform/approvals',     icon: <ClipboardCheck className={I} />,  label: 'Approvals' },
       { href: '/platform/users',         icon: <Users className={I} />,           label: 'All users' },
       { href: '/platform/support',       icon: <LifeBuoy className={I} />,        label: 'Support' },
+      { href: '/platform/help',          icon: <BookOpen className={I} />,        label: 'Help center' },
       { href: '/platform/qr',            icon: <QrCode className={I} />,          label: 'QR codes' },
       { href: '/platform/settlements',   icon: <Banknote className={I} />,        label: 'Settlements' },
       { href: '/platform/reports',       icon: <FileSpreadsheet className={I} />, label: 'Reports' },
@@ -67,6 +69,8 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/platform/rider-shifts',      icon: <CalendarClock className={I} />,  label: 'Rider shifts' },
       { href: '/platform/rider-support',     icon: <Headphones className={I} />,     label: 'Rider support' },
       { href: '/platform/training-modules',  icon: <GraduationCap className={I} />,  label: 'Training modules' },
+      { href: '/platform/rider-settings',    icon: <SlidersHorizontal className={I} />, label: 'Rider settings' },
+      { href: '/platform/app-releases',      icon: <Smartphone className={I} />,     label: 'Rider app releases' },
     ],
   },
 ];

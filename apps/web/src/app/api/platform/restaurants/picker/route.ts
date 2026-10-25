@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 
 /**
  * Flat restaurant list for super-admin pickers: every restaurant, ordered so a
@@ -9,7 +9,8 @@ import { requireSuperAdmin } from '@/server/tenancy';
  * target any tenant — not only those already in a group.
  */
 export async function GET(_req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
 
   const all = await prisma.restaurant.findMany({
     where: { deletedAt: null },

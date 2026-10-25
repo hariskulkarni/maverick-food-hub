@@ -25,7 +25,7 @@ import { audit } from './audit';
 import { headers } from 'next/headers';
 import { clientIp } from './http/client-ip';
 import { startSession, isSessionActive, revokeSession } from './sessions';
-import { isStaffTotpRole, verifyUserTotp, isBreakGlassEmail } from './user-totp';
+import { isStaffTotpRole, consumeUserTotp, isBreakGlassEmail, isRecoveryCodeFormat, consumeRecoveryCode } from './user-totp';
 import { verifyWidgetAccessToken } from './msg91-widget';
 import { phoneOtpRoleAllowed } from './phone-otp-policy';
 
@@ -166,14 +166,14 @@ export const authConfig: NextAuthConfig = {
         // the password so a brute-forcer can't bypass lockout by spamming.
         const sec = await getPlatformSecurity().catch(() => ({} as Awaited<ReturnType<typeof getPlatformSecurity>>));
         const lockoutMinutes = sec.lockoutMinutes ?? 15;
-        if (isLockedOut(email)) {
+        if (await isLockedOut(email)) {
           await audit('auth.login.locked', { entityType: 'User', after: { email } }).catch(() => {});
           return null;
         }
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user || !user.passwordHash) {
-          recordLoginFailure(email, lockoutMinutes);
+          await recordLoginFailure(email, lockoutMinutes);
           return null;
         }
         // Password login is for STAFF + PLATFORM-team roles only. Customers and
@@ -181,15 +181,22 @@ export const authConfig: NextAuthConfig = {
         if (user.role === Role.CUSTOMER || user.role === Role.RIDER) return null;
         // Suspended accounts cannot log in (a super-admin has blocked them).
         if (user.suspendedAt || user.deletedAt) {
-          recordLoginFailure(email, lockoutMinutes);
+          await recordLoginFailure(email, lockoutMinutes);
           await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: user.deletedAt ? 'deleted' : 'suspended' } }).catch(() => {});
           return null;
         }
 
         const ok = await argon2.verify(user.passwordHash, password);
         if (!ok) {
-          recordLoginFailure(email, lockoutMinutes);
+          await recordLoginFailure(email, lockoutMinutes);
           await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'bad_password' } }).catch(() => {});
+          return null;
+        }
+
+        // A SUPER_ADMIN-issued password must be changed first (login UI does
+        // this via /api/auth/staff/change-password); no session until then.
+        if (user.mustChangePassword) {
+          await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'must_change_password' } }).catch(() => {});
           return null;
         }
 
@@ -203,24 +210,30 @@ export const authConfig: NextAuthConfig = {
           // C10: the allowlist must key on a header the client cannot forge.
           const ip = (req?.headers ? clientIp(req.headers as Headers) : null) ?? '';
           if (!ip || !ipMatchesAllowlist(ip, sec.allowlist)) {
-            recordLoginFailure(email, lockoutMinutes);
+            await recordLoginFailure(email, lockoutMinutes);
             await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'ip_not_allowlisted', ip } }).catch(() => {});
             return null;
           }
         }
 
-        // Per-user Google Authenticator (2FA) for every staff role
-        // (ADMIN / SUPER_ADMIN / KITCHEN). Must be enrolled AND present a valid
+        // Per-user Google Authenticator (2FA) for every staff + platform-team
+        // role (STAFF_TOTP_ROLES). Must be enrolled AND present a valid
         // 6-digit code on every login. Enrollment: /api/auth/staff/precheck+enroll.
         // Break-glass accounts are exempt.
         if (!isBreak && isStaffTotpRole(user.role)) {
           if (!user.totpEnabledAt) {
-            recordLoginFailure(email, lockoutMinutes);
+            await recordLoginFailure(email, lockoutMinutes);
             await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'totp_not_enrolled' } }).catch(() => {});
             return null;
           }
-          if (!totp || !verifyUserTotp(user, totp)) {
-            recordLoginFailure(email, lockoutMinutes);
+          // F15: consume the code (single-use) — a replayed code is refused.
+          // A recovery code (lost authenticator) is accepted once in its place.
+          const usedRecovery = !!totp && isRecoveryCodeFormat(totp) && (await consumeRecoveryCode(user.id, totp));
+          if (usedRecovery) {
+            await audit('auth.totp.recovery_code_used', { actorId: user.id, actorRole: user.role, entityType: 'User', entityId: user.id }).catch(() => {});
+          }
+          if (!usedRecovery && (!totp || !(await consumeUserTotp(user, totp)))) {
+            await recordLoginFailure(email, lockoutMinutes);
             await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'totp_invalid' } }).catch(() => {});
             return null;
           }
@@ -230,7 +243,7 @@ export const authConfig: NextAuthConfig = {
           await audit('auth.login.breakglass', { actorId: user.id, actorRole: user.role, entityType: 'User', entityId: user.id, after: { email: user.email } }).catch(() => {});
         }
 
-        recordLoginSuccess(email);
+        await recordLoginSuccess(email);
         return { id: user.id, name: user.name ?? null, email: user.email ?? null };
       }
     }),
@@ -242,16 +255,21 @@ export const authConfig: NextAuthConfig = {
   ],
   callbacks: {
     async signIn({ user, account }) {
-      // Google flow: provision/lookup a User by email. New emails become CUSTOMER;
-      // existing accounts keep whatever role they already have (so a kitchen user
-      // who happens to use Google still gets KITCHEN, not CUSTOMER).
+      // Google flow: provision/lookup a User by email. New emails become CUSTOMER.
+      // F1: Google is a CUSTOMER login factor only. An existing staff, platform
+      // or rider account is refused — Google alone must never bypass the
+      // password + TOTP + IP-allowlist gates of the email-password provider.
       if (account?.provider === 'google') {
         const email = (user.email ?? '').toLowerCase().trim();
         if (!email) return false;
         const existing = await prisma.user.findUnique({ where: { email } });
         if (existing) {
-          if (existing.deletedAt) {
-            await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: 'deleted', provider: 'google' } }).catch(() => {});
+          if (existing.deletedAt || existing.suspendedAt) {
+            await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: existing.deletedAt ? 'deleted' : 'suspended', provider: 'google' } }).catch(() => {});
+            return false;
+          }
+          if (existing.role !== Role.CUSTOMER) {
+            await audit('auth.login.failed', { actorId: existing.id, entityType: 'User', entityId: existing.id, after: { reason: 'google_role_blocked', role: existing.role, provider: 'google' } }).catch(() => {});
             return false;
           }
           (user as any).id = existing.id;

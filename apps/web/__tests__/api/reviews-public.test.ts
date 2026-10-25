@@ -5,6 +5,7 @@ const h = vi.hoisted(() => ({
     restaurant: { findUnique: vi.fn() },
     orderFeedback: { findMany: vi.fn(), aggregate: vi.fn() },
     googleReview: { findMany: vi.fn(), aggregate: vi.fn() },
+    reviewResponseSettings: { findUnique: vi.fn() },
   },
   session: null as null | { user: { id: string; role: string } },
 }));
@@ -34,6 +35,7 @@ beforeEach(() => {
   h.prisma.orderFeedback.aggregate.mockResolvedValue({ _avg: { overallRating: 4.5 }, _count: { _all: 2 } });
   h.prisma.googleReview.aggregate.mockResolvedValue({ _avg: { rating: 5 }, _count: { _all: 1 } });
   h.prisma.googleReview.findMany.mockResolvedValue([]);
+  h.prisma.reviewResponseSettings.findUnique.mockResolvedValue(null);
 });
 
 describe('GET /api/storefront/[slug]/reviews', () => {
@@ -118,6 +120,31 @@ describe('GET /api/storefront/[slug]/reviews', () => {
     expect(j2.reviews.map((r: any) => r.id)).toEqual(['google:g2']);
     expect(j2.reviews[0].reply).toBeNull();
     expect(j2.reviews[0].author).toBe('Google user');
+  });
+
+  it('credits Google authors by their full public display name', async () => {
+    h.prisma.orderFeedback.findMany.mockResolvedValue([]);
+    h.prisma.googleReview.findMany.mockResolvedValue([
+      { id: 'g1', reviewerName: 'Ravi  Kumar', rating: 4, comment: 'Nice', reviewCreatedAt: new Date('2026-10-12T00:00:00Z'), reply: null },
+    ]);
+    const j = await (await pubCall()).json();
+    expect(j.reviews[0].author).toBe('Ravi Kumar');
+  });
+
+  it('reports Google\'s true location totals alongside the shown aggregate; average is over ALL rows (no rating filter)', async () => {
+    h.prisma.orderFeedback.findMany.mockResolvedValue([]);
+    h.prisma.reviewResponseSettings.findUnique.mockResolvedValue({ googleAverageRating: 4.2, googleTotalReviewCount: 512 });
+    const j = await (await pubCall()).json();
+    expect(j.aggregate.google).toEqual({ average: 4.2, count: 512 });
+    // (4.5 * 2 + 5 * 1) / 3 = 4.67 → 4.7: every stored review counts, low or high.
+    expect(j.aggregate.average).toBe(4.7);
+    expect(h.prisma.googleReview.aggregate.mock.calls[0][0].where).toEqual({ restaurantId: 'r1' });
+  });
+
+  it('aggregate.google is null when Google never reported totals', async () => {
+    h.prisma.orderFeedback.findMany.mockResolvedValue([]);
+    const j = await (await pubCall()).json();
+    expect(j.aggregate.google).toBeNull();
   });
 });
 

@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { brand } from '@/lib/brand';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { prisma } from '@/server/db';
+import { ContactForm } from './contact-form';
 import {
   Phone,
   MessageCircle,
@@ -22,7 +22,7 @@ export const metadata = {
 
 export default async function ContactPage() {
   const branch = await prisma.branch.findFirst({ where: { isActive: true } });
-  const waNumber = brand.supportWhatsapp.replace(/\D/g, '');
+  const waNumber = brand.supportWhatsapp?.replace(/\D/g, '') ?? null;
 
   return (
     <div className="container py-12 md:py-16 max-w-3xl">
@@ -35,6 +35,7 @@ export default async function ContactPage() {
 
       {/* Channels */}
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        {brand.supportPhone && (
         <Card>
           <CardContent className="p-5">
             <h3 className="font-semibold flex items-center gap-2">
@@ -46,6 +47,8 @@ export default async function ContactPage() {
             <p className="mt-1 text-xs text-muted-foreground">For urgent help with a live order.</p>
           </CardContent>
         </Card>
+        )}
+        {waNumber && (
         <Card>
           <CardContent className="p-5">
             <h3 className="font-semibold flex items-center gap-2">
@@ -59,13 +62,14 @@ export default async function ContactPage() {
             </p>
           </CardContent>
         </Card>
+        )}
         <Card>
           <CardContent className="p-5">
             <h3 className="font-semibold flex items-center gap-2">
               <Mail className="size-4" /> Email
             </h3>
-            <a href="mailto:support@oakandsizzler.in" className="mt-2 block text-lg hover:text-primary">
-              support@oakandsizzler.in
+            <a href={`mailto:${brand.supportEmail}`} className="mt-2 block text-lg hover:text-primary">
+              {brand.supportEmail}
             </a>
             <p className="mt-1 text-xs text-muted-foreground">
               For refunds, billing and anything non-urgent.
@@ -155,64 +159,7 @@ export default async function ContactPage() {
           Fill this in and our support team will get back to you, usually within one business
           day.
         </p>
-        <form className="mt-4 space-y-4" aria-label="Contact form">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label htmlFor="contact-name" className="text-sm font-medium">
-                Your name
-              </label>
-              <input
-                id="contact-name"
-                name="name"
-                type="text"
-                autoComplete="name"
-                className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label htmlFor="contact-email" className="text-sm font-medium">
-                Email
-              </label>
-              <input
-                id="contact-email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-          <div>
-            <label htmlFor="contact-topic" className="text-sm font-medium">
-              Topic
-            </label>
-            <select
-              id="contact-topic"
-              name="topic"
-              defaultValue="order"
-              className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="order">Help with an order</option>
-              <option value="refund">Refund or payment</option>
-              <option value="account">My account</option>
-              <option value="restaurant">Restaurant partnership</option>
-              <option value="rider">Riding with us</option>
-              <option value="other">Something else</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="contact-message" className="text-sm font-medium">
-              Message
-            </label>
-            <textarea
-              id="contact-message"
-              name="message"
-              rows={4}
-              className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            />
-          </div>
-          <Button type="submit">Send message</Button>
-        </form>
+        <ContactForm />
       </section>
     </div>
   );

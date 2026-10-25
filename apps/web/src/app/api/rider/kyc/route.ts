@@ -29,6 +29,16 @@ import {
 } from '@/server/kyc';
 import { log } from '@/server/log';
 import { KycDocumentType } from '@prisma/client';
+import { REQUIRED_KYC_TYPES, riderKycGate, kycTypeLabel } from '@/server/rider-kyc-gate';
+import { clientIp as resolveClientIp } from '@/server/http/client-ip';
+
+const KYC_REQUIREMENTS: { type: KycDocumentType; label: string; needsExpiry: boolean; numberLabel: string; numberPlaceholder: string; hint: string }[] = [
+  { type: 'AADHAAR', label: kycTypeLabel('AADHAAR'), needsExpiry: false, numberLabel: 'Aadhaar number', numberPlaceholder: '1234 5678 9012', hint: 'Front side, all 12 digits readable.' },
+  { type: 'DRIVING_LICENSE', label: kycTypeLabel('DRIVING_LICENSE'), needsExpiry: true, numberLabel: 'Licence number', numberPlaceholder: 'MH1420110012345', hint: 'Photo page with your name, licence number and validity.' },
+  { type: 'VEHICLE_RC', label: kycTypeLabel('VEHICLE_RC'), needsExpiry: true, numberLabel: 'Registration number', numberPlaceholder: 'MH12AB1234', hint: 'Registration certificate of the vehicle you ride.' },
+  { type: 'VEHICLE_INSURANCE', label: kycTypeLabel('VEHICLE_INSURANCE'), needsExpiry: true, numberLabel: 'Policy number', numberPlaceholder: 'POL/2026/123456', hint: 'Current policy page showing the validity dates.' },
+  { type: 'PAN_CARD', label: kycTypeLabel('PAN_CARD'), needsExpiry: false, numberLabel: 'PAN', numberPlaceholder: 'ABCDE1234F', hint: 'Optional — needed for tax on payouts.' }
+];
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -37,9 +47,7 @@ const MAX_BYTES = 8 * 1024 * 1024;
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf']);
 
 function clientIp(req: NextRequest): string | null {
-  const fwd = req.headers.get('x-forwarded-for');
-  if (fwd) return fwd.split(',')[0]!.trim();
-  return req.headers.get('x-real-ip');
+  return resolveClientIp(req.headers);
 }
 
 async function resolveRider(userId: string) {
@@ -64,10 +72,15 @@ export async function GET(_req: NextRequest) {
     where: { riderId: profile.id },
     orderBy: { submittedAt: 'desc' }
   });
-  const summary = await getStatusSummary(profile.id);
+  const [summary, gating] = await Promise.all([getStatusSummary(profile.id), riderKycGate(profile.id)]);
   return Response.json({
     documents: docs.map(toPublicDoc),
-    summary
+    summary,
+    // Drives the rider app's KYC upload screen (P1-14).
+    requirements: KYC_REQUIREMENTS.map((r) => ({ ...r, required: REQUIRED_KYC_TYPES.includes(r.type) })),
+    accept: [...ALLOWED_MIME].filter((m) => m !== 'image/jpg'),
+    maxBytes: MAX_BYTES,
+    gating
   });
 }
 
@@ -106,7 +119,9 @@ export async function POST(req: NextRequest) {
 
   // Expiry-on-future required for license/insurance/RC. Aadhaar/PAN are
   // effectively permanent — allow null/past for those.
-  if (expiresOn && (type === 'DRIVING_LICENSE' || type === 'VEHICLE_INSURANCE' || type === 'VEHICLE_RC')) {
+  const expiring = type === 'DRIVING_LICENSE' || type === 'VEHICLE_INSURANCE' || type === 'VEHICLE_RC';
+  if (expiring && !expiresOn) return new Response('Expiry date is required for this document', { status: 400 });
+  if (expiresOn && expiring) {
     const ev = validateExpiry(expiresOn);
     if (!ev.ok) return new Response(ev.error, { status: 400 });
   }
@@ -118,9 +133,11 @@ export async function POST(req: NextRequest) {
   if (!ALLOWED_MIME.has(mime)) return new Response('Unsupported file type (jpg/png/webp/pdf only)', { status: 415 });
 
   const buf = Buffer.from(await file.arrayBuffer());
-  const name = (file as File).name || `${type.toLowerCase()}.bin`;
+  const extForMime: Record<string, string> = { 'application/pdf': 'pdf', 'image/png': 'png', 'image/webp': 'webp' };
+  const name = (file as File).name || `${type.toLowerCase()}.${extForMime[mime] ?? 'jpg'}`;
 
-  const { url } = await storage().put(
+  // P1-14: KYC files are private — never under public/uploads.
+  const { ref: url } = await storage().putPrivate(
     { name, type: mime, data: buf },
     { folder: `rider-kyc/${profile.id}/${type}` }
   );

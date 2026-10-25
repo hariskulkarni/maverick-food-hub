@@ -1,75 +1,34 @@
 /**
- * Global feature flags. Single source of truth — env-driven for Phase 1,
- * could later read overrides from a `PlatformSetting` row.
+ * Deployment summary for the platform system-health dashboard.
  *
- * Phase 1 defaults disable everything that adds cost or complexity:
- *   - Wallet / Loyalty / Referrals (accounting overhead)
- *   - Advanced payouts / Surge (operational complexity)
- *   - WhatsApp (per-message cost in India)
- *   - Customer mobile app (QR + PWA is sufficient)
- *   - S3 (local FS works fine on a single VPS)
- *   - Auto-dispatch (manual rider assignment is safer to launch)
- *   - Advanced analytics (basic dashboards are enough day 1)
- *
- * To turn anything on for staging or beta, set the matching env var to "true"
- * (or "1", "yes", "on"). All other values, including absent, mean off.
+ * Reports the settings delivery code ACTUALLY reads, so the operator sees the
+ * truth (the old ENABLE_* "Phase 1" flags were never read anywhere and were
+ * removed; SMS used to show SMS_PROVIDER ?? 'msg91' while delivery reads
+ * NOTIFIER_SMS):
+ *   - SMS:      NOTIFIER_SMS (legacy alias SMS_PROVIDER)   — server/notifications.ts, server/otp.ts
+ *   - Email:    NOTIFIER_EMAIL (alias EMAIL_PROVIDER); plain SMTP when only SMTP_HOST is set
+ *   - WhatsApp: NOTIFIER_WHATSAPP
+ *   - Storage:  STORAGE_DRIVER ('s3' | local)             — server/storage.ts
+ * Per-restaurant integration credentials override these env defaults.
  */
 
-function parseBool(v: string | undefined, fallback = false): boolean {
-  if (v == null) return fallback;
-  return /^(true|1|yes|on)$/i.test(v.trim());
+const NOT_CONFIGURED = 'mock (not configured)';
+
+function env(...names: string[]): string {
+  for (const n of names) {
+    const v = (process.env[n] ?? '').toLowerCase().trim();
+    if (v) return v;
+  }
+  return '';
 }
 
-export const FLAGS = {
-  // Money & rewards
-  wallet:           parseBool(process.env.ENABLE_WALLET),
-  loyalty:          parseBool(process.env.ENABLE_LOYALTY),
-  referrals:        parseBool(process.env.ENABLE_REFERRALS),
-  surge:            parseBool(process.env.ENABLE_SURGE_PRICING),
-  advancedPayouts:  parseBool(process.env.ENABLE_ADVANCED_PAYOUTS),
-
-  // Channels
-  whatsapp:                  parseBool(process.env.ENABLE_WHATSAPP),
-  emailCustomerNotifications: parseBool(process.env.ENABLE_EMAIL_CUSTOMER_NOTIFICATIONS),
-
-  // Surfaces
-  customerApp:        parseBool(process.env.ENABLE_CUSTOMER_APP),
-  advancedAnalytics:  parseBool(process.env.ENABLE_ADVANCED_ANALYTICS),
-
-  // Infrastructure
-  s3Storage:          parseBool(process.env.ENABLE_S3_STORAGE),
-  autoDispatch:       parseBool(process.env.ENABLE_AUTO_DISPATCH)
-} as const;
-
-export type FeatureFlagKey = keyof typeof FLAGS;
-
-/**
- * Check a flag from server code. Throws nothing — just returns false if the
- * flag name is misspelled. Use this everywhere rather than reading the env
- * directly so the source of truth stays in this one file.
- */
-export function isEnabled(key: FeatureFlagKey): boolean {
-  return FLAGS[key] === true;
-}
-
-/** Whole snapshot — useful for /api/me to expose to the client. */
-export function flagSnapshot() {
-  return { ...FLAGS };
-}
-
-/**
- * Phase 1 mode summary string — surfaced on the system health dashboard and
- * super-admin tools so the operator can see what mode the platform is in.
- */
 export function deploymentSummary() {
-  const enabled = Object.entries(FLAGS).filter(([, v]) => v).map(([k]) => k);
-  const phase1 = enabled.length === 0;
+  const email = env('NOTIFIER_EMAIL', 'EMAIL_PROVIDER') || ((process.env.SMTP_HOST ?? '').trim() ? 'smtp' : '');
   return {
-    phase: phase1 ? 'Phase 1 (lean)' : 'Custom',
-    enabledFlags: enabled,
     deploymentMode: process.env.DEPLOYMENT_MODE ?? 'LOW_COST_SINGLE_VPS',
-    storageProvider: process.env.STORAGE_PROVIDER ?? 'local',
-    smsProvider: process.env.SMS_PROVIDER ?? 'msg91',
-    emailProvider: process.env.EMAIL_PROVIDER ?? 'zoho_smtp'
+    storageProvider: env('STORAGE_DRIVER') === 's3' ? 's3' : 'local',
+    smsProvider: env('NOTIFIER_SMS', 'SMS_PROVIDER') || NOT_CONFIGURED,
+    emailProvider: email || NOT_CONFIGURED,
+    whatsappProvider: env('NOTIFIER_WHATSAPP') || NOT_CONFIGURED,
   };
 }

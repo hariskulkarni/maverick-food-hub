@@ -1,6 +1,6 @@
 /**
- * Per-user Google Authenticator (TOTP) 2FA for staff roles
- * (ADMIN / SUPER_ADMIN / KITCHEN). Customers and riders never use this — they
+ * Per-user Google Authenticator (TOTP) 2FA for staff + platform-team roles
+ * (ADMIN / SUPER_ADMIN / KITCHEN / ADMIN_ASSIST / DEVELOPER / QA / GUEST). Customers and riders never use this — they
  * authenticate via phone OTP.
  *
  * Model (fields on User):
@@ -13,6 +13,7 @@
  * promotes pending → active. Login then requires a valid code every time.
  * A super-admin can resetUserTotp() to force re-enrollment.
  */
+import crypto from 'node:crypto';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import { prisma } from './db';
@@ -27,8 +28,15 @@ const ISSUER = 'Flavrly';
 // server/2fa.ts; it is set explicitly there too.)
 authenticator.options = { ...authenticator.options, window: 1 };
 
-/** Roles that must use a Google Authenticator code as a second factor. */
-export const STAFF_TOTP_ROLES: Role[] = [Role.ADMIN, Role.SUPER_ADMIN, Role.KITCHEN];
+/**
+ * Roles that must use a Google Authenticator code as a second factor: every
+ * role that signs in with email + password (restaurant staff and the platform
+ * team). Customers and riders use phone OTP instead.
+ */
+export const STAFF_TOTP_ROLES: Role[] = [
+  Role.ADMIN, Role.SUPER_ADMIN, Role.KITCHEN,
+  Role.ADMIN_ASSIST, Role.DEVELOPER, Role.QA, Role.GUEST,
+];
 export function isStaffTotpRole(role: Role | string | null | undefined): boolean {
   return !!role && (STAFF_TOTP_ROLES as string[]).includes(String(role));
 }
@@ -62,9 +70,35 @@ export function verifyTotpSecret(secret: string | null, token: string | null | u
   catch { return false; }
 }
 
-/** Verify a login code against a user's ACTIVE secret. */
-export function verifyUserTotp(user: { totpSecret: string | null }, token: string | null | undefined): boolean {
-  return verifyTotpSecret(dec(user.totpSecret), token);
+/** Absolute 30s step the token matches for `secret` (±window), or null. */
+export function matchTotpStep(secret: string | null, token: string | null | undefined): number | null {
+  if (!secret || !token) return null;
+  try {
+    const delta = authenticator.checkDelta(String(token).replace(/\s+/g, ''), secret);
+    if (delta === null || delta === undefined) return null;
+    return Math.floor(Date.now() / 1000 / 30) + delta; // otplib default step = 30s
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * F15: verify a LOGIN code against the user's active secret AND consume it.
+ * The matched step must be strictly newer than the last accepted one; the
+ * conditional updateMany makes the claim atomic, so a replayed (or concurrent
+ * duplicate) code is refused even inside the ±1 step skew window.
+ */
+export async function consumeUserTotp(
+  user: { id: string; totpSecret: string | null },
+  token: string | null | undefined
+): Promise<boolean> {
+  const step = matchTotpStep(dec(user.totpSecret), token);
+  if (step === null) return false;
+  const claimed = await prisma.user.updateMany({
+    where: { id: user.id, OR: [{ totpLastStep: null }, { totpLastStep: { lt: step } }] },
+    data: { totpLastStep: step },
+  });
+  return claimed.count === 1;
 }
 
 export function isTotpEnrolled(user: { totpEnabledAt: Date | null }): boolean {
@@ -95,10 +129,56 @@ export async function confirmEnrollment(userId: string, code: string): Promise<b
   return true;
 }
 
-/** Super-admin reset — clears TOTP so the user must re-enroll on next login. */
+/** Super-admin reset — clears TOTP (and recovery codes) so the user must re-enroll on next login. */
 export async function resetUserTotp(userId: string): Promise<void> {
+  await prisma.totpRecoveryCode.deleteMany({ where: { userId } });
   await prisma.user.update({
     where: { id: userId },
-    data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null },
+    data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null, totpLastStep: null },
   });
+}
+
+// ─── Recovery codes (lost-authenticator self-service) ───────────────────────
+const RECOVERY_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const RECOVERY_CODE_COUNT = 10;
+
+function normaliseRecoveryCode(code: string): string {
+  return String(code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+function hashRecoveryCode(code: string): string {
+  return crypto.createHash('sha256').update(`totp-recovery:${normaliseRecoveryCode(code)}`).digest('hex');
+}
+/** `XXXXX-XXXXX` (10 symbols, ~49 bits). A 6-digit TOTP code never matches. */
+export function isRecoveryCodeFormat(code: string): boolean {
+  return /^[A-Z2-9]{10}$/.test(normaliseRecoveryCode(code)) && !/^\d+$/.test(normaliseRecoveryCode(code));
+}
+
+/**
+ * Replace the user's recovery codes with a fresh set and return the plaintext
+ * codes — the ONLY time they exist outside the user's hands (hashes stored).
+ */
+export async function generateRecoveryCodes(userId: string): Promise<string[]> {
+  const codes: string[] = [];
+  while (codes.length < RECOVERY_CODE_COUNT) {
+    const b = crypto.randomBytes(10);
+    let c = '';
+    for (let i = 0; i < 10; i++) c += RECOVERY_ALPHABET[b[i] % RECOVERY_ALPHABET.length];
+    const code = `${c.slice(0, 5)}-${c.slice(5)}`;
+    if (!codes.includes(code)) codes.push(code);
+  }
+  await prisma.$transaction(async (tx) => {
+    await tx.totpRecoveryCode.deleteMany({ where: { userId } });
+    await tx.totpRecoveryCode.createMany({ data: codes.map((c) => ({ userId, codeHash: hashRecoveryCode(c) })) });
+  });
+  return codes;
+}
+
+/** Atomically use one recovery code. True only the first time a valid code is used. */
+export async function consumeRecoveryCode(userId: string, code: string): Promise<boolean> {
+  if (!isRecoveryCodeFormat(code)) return false;
+  const used = await prisma.totpRecoveryCode.updateMany({
+    where: { userId, codeHash: hashRecoveryCode(code), usedAt: null },
+    data: { usedAt: new Date() },
+  });
+  return used.count === 1;
 }

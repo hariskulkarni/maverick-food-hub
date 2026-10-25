@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server';
 import type { OrderStatus, Prisma } from '@prisma/client';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { parseRange, deliverReport } from '@/server/reports/range';
 import { splitPgPaymentModes } from '@/server/payment-mode-label';
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { from, to, format } = parseRange(new URL(req.url));
 
   const where: Prisma.OrderWhereInput = {

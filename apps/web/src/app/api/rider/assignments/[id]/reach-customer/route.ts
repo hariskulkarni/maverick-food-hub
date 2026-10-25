@@ -10,6 +10,8 @@ import { NextRequest } from 'next/server';
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { transitionOrder } from '@/server/orders';
+import { OrderEventSource, OrderEventType } from '@prisma/client';
+import { recordOrderEvent } from '@/server/dispatch/events';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -23,8 +25,17 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     where: { id: a.id },
     data: { notes: ((a.notes ?? '') + '\n[reached-customer ' + new Date().toISOString() + ']').trim() }
   });
+  await recordOrderEvent({
+    orderId: a.orderId,
+    type: OrderEventType.ARRIVED_CUSTOMER,
+    source: OrderEventSource.RIDER,
+    actorId: session.user.id,
+    riderId: profile.id,
+    lat: profile.currentLat,
+    lng: profile.currentLng,
+  });
   try {
-    await transitionOrder(a.orderId, 'RIDER_REACHED_CUSTOMER' as any, { actorId: session.user.id });
+    await transitionOrder(a.orderId, 'RIDER_REACHED_CUSTOMER' as any, { actorId: session.user.id, eventSource: OrderEventSource.RIDER });
   } catch {
     // Idempotent / already past — non-fatal.
   }

@@ -8,9 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { DetailDrawer, DrawerSection } from '@/components/admin/detail-drawer';
 import { Search, Download, RefreshCw, Phone, Mail, MapPin, Wallet, Sparkles, Bell, ShoppingBag, ArrowUpRight, Plus, Minus, X, Loader2, ShieldOff, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { AccountControls } from './account-controls';
 
-type Role = 'CUSTOMER' | 'ADMIN' | 'KITCHEN' | 'RIDER' | 'SUPER_ADMIN';
-const ROLES: Array<Role | 'ALL'> = ['ALL', 'CUSTOMER', 'RIDER', 'ADMIN', 'KITCHEN', 'SUPER_ADMIN'];
+type Role = 'CUSTOMER' | 'ADMIN' | 'KITCHEN' | 'RIDER' | 'SUPER_ADMIN' | 'ADMIN_ASSIST' | 'DEVELOPER' | 'QA' | 'GUEST';
+const ROLES: Array<Role | 'ALL'> = ['ALL', 'CUSTOMER', 'RIDER', 'ADMIN', 'KITCHEN', 'SUPER_ADMIN', 'ADMIN_ASSIST', 'DEVELOPER', 'QA', 'GUEST'];
 const PERIODS: Array<{ key: string; label: string }> = [
   { key: 'all', label: 'All time' },
   { key: '7d',  label: 'Last 7d' },
@@ -34,7 +35,9 @@ export function UsersExplorer({ initial, filters }: { initial: UserRow[]; filter
   const [q, setQ] = useState(filters.q);
   const [role, setRole] = useState<Role | 'ALL'>((filters.role || 'ALL') as any);
   const [period, setPeriod] = useState(filters.period);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  // ?open=<userId> deep-links straight into a user's drawer (e.g. from a
+  // restaurant's team list).
+  const [activeId, setActiveId] = useState<string | null>(params.get('open'));
 
   // Push URL when filters change (debounced)
   useEffect(() => {
@@ -207,16 +210,10 @@ function UserDrawer({ id, onClose }: { id: string; onClose: () => void }) {
         />
       </DrawerSection>
 
-      <DrawerSection title="Password">
-        <PasswordResetControl userId={u.id} staff={u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' || u.role === 'KITCHEN'} />
+      {/* Super-admin recovery: password, authenticator, unlock, sign-out, role, activity */}
+      <DrawerSection title="Sign-in & recovery">
+        <AccountControls user={u} onChange={load} />
       </DrawerSection>
-
-      {/* Two-factor (Google Authenticator) — staff only. Super-admin reset. */}
-      {(u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' || u.role === 'KITCHEN') && (
-        <DrawerSection title="Two-factor (Google Authenticator)">
-          <TotpResetControl userId={u.id} />
-        </DrawerSection>
-      )}
 
       {/* Customer metrics — only meaningful for customers */}
       {u.role === 'CUSTOMER' && (
@@ -315,95 +312,6 @@ function UserDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   );
 }
 
-function PasswordResetControl({ userId, staff }: { userId: string; staff: boolean }) {
-  const [open, setOpen] = useState(false);
-  const [pw, setPw] = useState('');
-  const [busy, setBusy] = useState(false);
-  const valid = pw.length >= 12;
-  async function submit() {
-    if (!valid) return;
-    setBusy(true);
-    try {
-      const r = await fetch(`/api/platform/users/${userId}/reset-password`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ password: pw }),
-      });
-      if (r.ok) {
-        toast.success('Password reset. All their sessions were signed out.');
-        setPw('');
-        setOpen(false);
-      } else {
-        const d = await r.json().catch(() => ({}));
-        toast.error(d.error || 'Could not reset password.');
-      }
-    } catch {
-      toast.error('Could not reach the server. Please try again.');
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <div className="p-4 space-y-2 text-sm">
-      {!open ? (
-        <Button size="sm" variant="outline" onClick={() => setOpen(true)}>Reset password</Button>
-      ) : (
-        <div role="dialog" aria-label="Reset password" className="space-y-2">
-          <label className="block text-xs font-medium" htmlFor={`pw-${userId}`}>New password (min 12 characters)</label>
-          <Input
-            id={`pw-${userId}`}
-            type="password"
-            autoComplete="new-password"
-            value={pw}
-            onChange={(e) => setPw(e.target.value)}
-          />
-          {staff && (
-            <p className="text-xs text-muted-foreground">They re-set Google Authenticator on next sign-in.</p>
-          )}
-          <div className="flex gap-2">
-            <Button size="sm" disabled={busy || !valid} onClick={submit}>{busy ? 'Saving\u2026' : 'Set password'}</Button>
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => { setOpen(false); setPw(''); }}>Cancel</Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TotpResetControl({ userId }: { userId: string }) {
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-  async function reset() {
-    if (!window.confirm('Reset this staff member\'s Google Authenticator? They will set it up again on their next login.')) return;
-    setBusy(true);
-    try {
-      const r = await fetch(`/api/platform/users/${userId}/reset-totp`, { method: 'POST' });
-      if (r.ok) {
-        setDone(true);
-        toast.success('2FA reset — they will re-enroll Google Authenticator on next login.');
-      } else {
-        const d = await r.json().catch(() => ({}));
-        toast.error(d.error || 'Could not reset 2FA.');
-      }
-    } catch {
-      toast.error('Could not reach the server. Please try again.');
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <div className="p-4 space-y-2 text-sm">
-      <p className="text-xs text-muted-foreground">
-        If this staff member lost their authenticator device, reset it here. On their next login they&apos;ll
-        scan a fresh QR to set up Google Authenticator again.
-      </p>
-      <Button size="sm" variant="outline" disabled={busy || done} onClick={reset}>
-        {done ? '2FA reset \u2713' : busy ? 'Resetting\u2026' : 'Reset Google Authenticator'}
-      </Button>
-    </div>
-  );
-}
-
 function SuspensionControl({
   userId,
   suspendedAt,
@@ -428,7 +336,10 @@ function SuspensionControl({
       body: JSON.stringify({ suspended: next, ...(next ? { suspendReason: reason || undefined } : {}) })
     });
     setBusy(false);
-    if (!r.ok) return toast.error(`Failed: ${await r.text()}`);
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      return toast.error(d.error || 'Could not update the account.');
+    }
     toast.success(next ? 'Account suspended — user is logged out everywhere' : 'Account reinstated');
     setReason('');
     setConfirming(false);
@@ -554,12 +465,16 @@ function RoleBadge({ role }: { role: Role }) {
     ADMIN:       { cls: 'bg-primary/10 text-primary border-primary/30',             label: 'Restaurant admin' },
     KITCHEN:     { cls: 'bg-warning/10 text-warning border-warning/30',             label: 'Kitchen' },
     RIDER:       { cls: 'bg-success/10 text-success border-success/30',             label: 'Rider' },
-    CUSTOMER:    { cls: 'bg-muted text-muted-foreground',                           label: 'Customer' }
+    CUSTOMER:    { cls: 'bg-muted text-muted-foreground',                           label: 'Customer' },
+    ADMIN_ASSIST:{ cls: 'bg-primary/10 text-primary border-primary/30',             label: 'Admin assist' },
+    DEVELOPER:   { cls: 'bg-muted text-muted-foreground',                           label: 'Developer' },
+    QA:          { cls: 'bg-muted text-muted-foreground',                           label: 'QA' },
+    GUEST:       { cls: 'bg-muted text-muted-foreground',                           label: 'Guest' }
   };
   const m = map[role];
   return <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${m.cls}`}>{m.label}</span>;
 }
 
 function prettyRole(r: Role) {
-  return { SUPER_ADMIN: 'Admin', ADMIN: 'Owner', KITCHEN: 'Kitchen', RIDER: 'Rider', CUSTOMER: 'Customer' }[r];
+  return { SUPER_ADMIN: 'Admin', ADMIN: 'Owner', KITCHEN: 'Kitchen', RIDER: 'Rider', CUSTOMER: 'Customer', ADMIN_ASSIST: 'Admin assist', DEVELOPER: 'Developer', QA: 'QA', GUEST: 'Guest' }[r];
 }

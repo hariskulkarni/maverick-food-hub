@@ -10,7 +10,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 
 export const runtime = 'nodejs';
 
@@ -20,7 +20,8 @@ async function ownedBranchIds(restaurantId: string) {
 }
 
 export async function GET(req: NextRequest) {
-  const restaurant = await requireRestaurant();
+  const restaurant = await tenantAdminOrError();
+  if (restaurant instanceof Response) return restaurant;
   const categoryId = new URL(req.url).searchParams.get('categoryId') ?? '';
   if (!categoryId) return Response.json({ ok: false, message: 'categoryId required' }, { status: 400 });
   const branchIds = await ownedBranchIds(restaurant.id);
@@ -39,7 +40,8 @@ const Body = z.object({
 });
 
 export async function PATCH(req: NextRequest) {
-  const restaurant = await requireRestaurant();
+  const restaurant = await tenantAdminOrError();
+  if (restaurant instanceof Response) return restaurant;
   const { items } = Body.parse(await req.json());
   const branchIds = await ownedBranchIds(restaurant.id);
   const rows = await prisma.menuItem.findMany({ where: { id: { in: items.map((i) => i.id) } }, select: { id: true, branchId: true } });

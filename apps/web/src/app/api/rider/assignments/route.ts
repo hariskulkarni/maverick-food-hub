@@ -1,5 +1,9 @@
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
+import { isDemoMode } from '@/lib/demo';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const session = await auth();
@@ -12,7 +16,9 @@ export async function GET() {
       order: {
         include: {
           items: true,
-          customer: true,
+          // P0-3: only what the rider needs to reach the customer — never the
+          // full User row (passwordHash, totpSecret, email, …).
+          customer: { select: { id: true, name: true, phone: true } },
           address: true,
           // Include the branch's restaurant so each assignment carries the
           // SOURCE restaurant the rider must collect from — critical once
@@ -28,10 +34,16 @@ export async function GET() {
   // Surface the source restaurant name/id on each order's branch so the native
   // app can show "which restaurant" prominently. (Prisma already nests it under
   // branch.restaurant; we keep the shape flat-and-explicit for the client.)
+  // The hand-over code is the customer's proof of receipt — the rider must get
+  // it FROM the customer, so it is only exposed on demo deployments (where the
+  // app shows a "DEMO MODE" hint for walkthroughs).
+  const demo = isDemoMode();
   const out = list.map((a) => ({
     ...a,
     order: {
       ...a.order,
+      deliveryOtp: demo ? a.order.deliveryOtp : null,
+      pickupCode: undefined,
       branch: a.order.branch
         ? {
             ...a.order.branch,

@@ -40,12 +40,30 @@ const OPENAI_COMPAT_BASE: Record<'openai' | 'nvidia', string> = {
 
 const LLM_TIMEOUT_MS = 20000;
 
-function buildPrompt(rating: number, comment: string | null, tone?: string | null): string {
+export type ReplyPromptExtras = {
+  /** Style summary learned from the restaurant's own posted replies. */
+  voice?: string | null;
+  /** PRIVATE order context for the model only (never to be echoed publicly). */
+  privateContext?: string | null;
+  /** Why Google rejected the previous reply, when redrafting. */
+  rejectionReason?: string | null;
+};
+
+export function buildPrompt(rating: number, comment: string | null, tone?: string | null, extras: ReplyPromptExtras = {}): string {
   return [
     'You write a short, warm, professional reply from a restaurant to a Google review.',
     'Rules: 1-3 sentences; thank the reviewer by sentiment not name; never invent facts, offers, or refunds;',
     'for low ratings apologise sincerely and invite them to make it right; no hashtags; no emojis unless the review used them.',
-    tone ? `Brand voice: ${tone}` : '',
+    'Never offer discounts, freebies or anything in exchange for a review, never ask them to change or remove the review,',
+    'and never include phone numbers, email addresses, order numbers, rider names, delivery times or other personal details.',
+    tone ? `Owner tone notes: ${tone}` : '',
+    extras.voice ? `Match the restaurant's usual reply style: ${extras.voice}` : '',
+    extras.privateContext
+      ? `PRIVATE CONTEXT (for understanding only, NEVER mention or hint at any of it in the reply): ${extras.privateContext}`
+      : '',
+    extras.rejectionReason
+      ? `Google rejected the previous reply for: ${extras.rejectionReason}. Write a new reply that clearly complies.`
+      : '',
     `Review rating: ${rating}/5.`,
     `Review text: ${comment?.trim() || '(no text, rating only)'}`,
     'Write only the reply text.',
@@ -58,11 +76,11 @@ async function safeBody(res: Response, apiKey: string): Promise<string> {
   return (apiKey ? raw.split(apiKey).join('***') : raw).slice(0, 200);
 }
 
-async function callAnthropic(apiKey: string, model: string, prompt: string): Promise<string> {
+async function callAnthropic(apiKey: string, model: string, prompt: string, maxTokens = 300): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model, max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
     signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`anthropic ${res.status}: ${await safeBody(res, apiKey)}`);
@@ -72,11 +90,11 @@ async function callAnthropic(apiKey: string, model: string, prompt: string): Pro
   return String(text).trim();
 }
 
-async function callOpenAiCompat(base: string, apiKey: string, model: string, prompt: string): Promise<string> {
+async function callOpenAiCompat(base: string, apiKey: string, model: string, prompt: string, maxTokens = 300): Promise<string> {
   const res = await fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model, max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
     signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`llm ${res.status}: ${await safeBody(res, apiKey)}`);
@@ -86,10 +104,10 @@ async function callOpenAiCompat(base: string, apiKey: string, model: string, pro
   return String(text).trim();
 }
 
-async function callProvider(provider: LlmProvider, apiKey: string, model: string, prompt: string): Promise<string> {
+async function callProvider(provider: LlmProvider, apiKey: string, model: string, prompt: string, maxTokens = 300): Promise<string> {
   try {
-    if (provider === 'anthropic') return await callAnthropic(apiKey, model, prompt);
-    return await callOpenAiCompat(OPENAI_COMPAT_BASE[provider], apiKey, model, prompt);
+    if (provider === 'anthropic') return await callAnthropic(apiKey, model, prompt, maxTokens);
+    return await callOpenAiCompat(OPENAI_COMPAT_BASE[provider], apiKey, model, prompt, maxTokens);
   } catch (e: any) {
     // Provider error bodies can echo the submitted key; never let it escape.
     const msg = String(e?.message ?? 'LLM call failed');
@@ -97,18 +115,76 @@ async function callProvider(provider: LlmProvider, apiKey: string, model: string
   }
 }
 
-export async function generateReviewReply(args: {
-  restaurantId: string; rating: number; comment: string | null; tone?: string | null;
-}): Promise<{ text: string; provider: LlmProvider; model: string }> {
-  const cfg = await getConfig(args.restaurantId, 'LLM_REVIEWS' as any);
+async function resolveKey(restaurantId: string): Promise<{ provider: LlmProvider; apiKey: string; model: string }> {
+  const cfg = await getConfig(restaurantId, 'LLM_REVIEWS' as any);
   if (!cfg?.apiKey || !cfg?.provider) throw new LlmNotConfiguredError();
   if (!Object.prototype.hasOwnProperty.call(LLM_MODELS, cfg.provider)) throw new LlmNotConfiguredError();
   const provider = cfg.provider as LlmProvider;
-  const model = cfg.model || LLM_MODELS[provider][0].value;
-  const prompt = buildPrompt(args.rating, args.comment, args.tone);
-  const text = await callProvider(provider, cfg.apiKey, model, prompt);
+  return { provider, apiKey: cfg.apiKey, model: cfg.model || LLM_MODELS[provider][0].value };
+}
+
+export async function generateReviewReply(args: {
+  restaurantId: string; rating: number; comment: string | null; tone?: string | null;
+} & ReplyPromptExtras): Promise<{ text: string; provider: LlmProvider; model: string }> {
+  const { provider, apiKey, model } = await resolveKey(args.restaurantId);
+  const prompt = buildPrompt(args.rating, args.comment, args.tone, {
+    voice: args.voice, privateContext: args.privateContext, rejectionReason: args.rejectionReason,
+  });
+  const text = await callProvider(provider, apiKey, model, prompt);
   log.info({ restaurantId: args.restaurantId, provider, model, rating: args.rating }, 'reviews.llm.generated');
   return { text, provider, model };
+}
+
+export type ReviewTopics = {
+  id: string; sentiment: 'positive' | 'neutral' | 'negative'; issues: string[];
+  dishes: Array<{ name: string; sentiment: 'positive' | 'neutral' | 'negative' }>;
+};
+
+const SENTIMENTS = new Set(['positive', 'neutral', 'negative']);
+
+/**
+ * Topic + sentiment extraction for a batch of reviews using this restaurant's
+ * own key. Output is validated: dishes must come from `menu`, issues from
+ * `issueTaxonomy`; anything else is dropped. Throws LlmNotConfiguredError when
+ * there is no key (callers fall back to the keyword analyser).
+ */
+export async function analyzeReviewsBatch(args: {
+  restaurantId: string;
+  reviews: Array<{ id: string; rating: number; text: string }>;
+  menu: string[];
+  issueTaxonomy: readonly string[];
+}): Promise<ReviewTopics[]> {
+  if (args.reviews.length === 0) return [];
+  const { provider, apiKey, model } = await resolveKey(args.restaurantId);
+  const prompt = [
+    'Classify each restaurant review. Return ONLY a JSON array, one object per review:',
+    '{"id": string, "sentiment": "positive"|"neutral"|"negative", "issues": string[], "dishes": [{"name": string, "sentiment": "positive"|"neutral"|"negative"}]}',
+    `Allowed issues (use only these): ${args.issueTaxonomy.join(', ')}.`,
+    `Allowed dish names (use the exact name, only when the review clearly mentions it): ${args.menu.slice(0, 150).join(' | ') || '(none)'}.`,
+    'Reviews:',
+    JSON.stringify(args.reviews.map((r) => ({ id: r.id, rating: r.rating, text: r.text.slice(0, 800) }))),
+  ].join('\n');
+  const raw = await callProvider(provider, apiKey, model, prompt, 2000);
+  const start = raw.indexOf('[');
+  const end = raw.lastIndexOf(']');
+  if (start < 0 || end <= start) throw new Error('llm: no JSON array in analysis');
+  const parsed = JSON.parse(raw.slice(start, end + 1));
+  if (!Array.isArray(parsed)) throw new Error('llm: analysis is not an array');
+  const ids = new Set(args.reviews.map((r) => r.id));
+  const menuByLower = new Map(args.menu.map((m) => [m.toLowerCase(), m]));
+  const issues = new Set(args.issueTaxonomy);
+  const sent = (v: unknown) => (SENTIMENTS.has(String(v)) ? String(v) : 'neutral') as ReviewTopics['sentiment'];
+  log.info({ restaurantId: args.restaurantId, provider, model, n: args.reviews.length }, 'reviews.llm.analyzed');
+  return parsed
+    .filter((o: any) => o && ids.has(String(o.id)))
+    .map((o: any) => ({
+      id: String(o.id),
+      sentiment: sent(o.sentiment),
+      issues: (Array.isArray(o.issues) ? o.issues : []).map(String).filter((x: string) => issues.has(x)),
+      dishes: (Array.isArray(o.dishes) ? o.dishes : [])
+        .map((d: any) => ({ name: menuByLower.get(String(d?.name ?? '').toLowerCase()), sentiment: sent(d?.sentiment) }))
+        .filter((d: any): d is { name: string; sentiment: ReviewTopics['sentiment'] } => !!d.name),
+    }));
 }
 
 export async function testLlmKey(cfg: { provider: LlmProvider; apiKey: string; model: string }):

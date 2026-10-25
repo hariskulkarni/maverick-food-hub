@@ -1,4 +1,5 @@
 import { prisma } from '@/server/db';
+import { KITCHEN_BOARD_INCLUDE, KITCHEN_STATUSES, withComboBreakdown } from '@/server/staff-orders';
 import { requireRestaurant, accessibleOrderScope } from '@/server/tenancy';
 import { KitchenBoard } from './kitchen-board';
 
@@ -22,18 +23,11 @@ export default async function KitchenPage() {
   // admin's /admin/orders board can still accept them too — both paths route
   // through the same transitionOrder() server logic.
   const orders = await prisma.order.findMany({
-    where: { branchId: { in: scope.branchIds }, status: { in: ['RECEIVED', 'ACCEPTED', 'PREPARING', 'READY'] } },
+    where: { branchId: { in: scope.branchIds }, status: { in: KITCHEN_STATUSES } },
     // Expand each combo so the kitchen sees what's actually being plated. The
     // OrderItem.name is the combo's snapshot name; the constituent menuItem
     // names come from the related Combo.items[].
-    include: {
-      items: {
-        include: {
-          combo: { include: { items: { include: { menuItem: true } } } }
-        }
-      },
-      customer: true
-    },
+    include: KITCHEN_BOARD_INCLUDE, // P2-13: customer as {id,name,phone}
     // RECEIVED orders have no `acceptedAt` yet — fall through to placedAt so
     // they sort by arrival time within the New column.
     orderBy: [{ acceptedAt: 'asc' }, { placedAt: 'asc' }]
@@ -42,17 +36,8 @@ export default async function KitchenPage() {
   // Pre-compute a `comboBreakdown` per OrderItem so the client component can
   // stay dumb — no client-side prisma fetches, no combo definition lookups.
   const decorated = orders.map((o) => ({
-    ...o,
+    ...withComboBreakdown(o),
     _label: scope.labelByBranchId[o.branchId] ?? null,
-    items: o.items.map((i: any) => ({
-      ...i,
-      comboBreakdown: i.combo
-        ? (i.combo.items as any[]).map((ci) => ({
-            name: ci.menuItem?.name ?? 'Unknown item',
-            qty: ci.quantity
-          }))
-        : null
-    }))
   }));
 
   return (

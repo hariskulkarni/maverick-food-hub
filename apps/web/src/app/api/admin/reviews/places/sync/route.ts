@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { getPlacesLink } from '@/server/reviews/store';
@@ -10,7 +10,8 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     const link = await getPlacesLink(restaurant.id);
     if (!link) return Response.json({ error: 'Google Places not connected' }, { status: 409 });
     const r = await syncPlacesReviews(restaurant.id, link.placeId);

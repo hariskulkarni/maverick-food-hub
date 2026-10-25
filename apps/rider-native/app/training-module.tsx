@@ -1,380 +1,424 @@
 /**
- * Training module viewer — read a (block-based) lesson, take inline quiz
- * checks, then mark it complete.
+ * Training module — lesson viewer → quiz → results / retake → certificate.
  *
- * The lesson is rendered from the new `contentBlocks` array (heading,
- * paragraph, image, callout, checklist, key-points, divider, quiz). When the
- * module doesn't ship contentBlocks (older builds / legacy seed), we fall back
- * to the previous lightweight markdown-ish renderer over `contentBody`.
+ * Lessons are markdown (headings, lists, bold, links) plus optional image,
+ * video link or checklist. The quiz is graded on the server; correct answers
+ * are only revealed after a pass. Each lesson is marked done as the rider
+ * moves through, and a pass issues the certificate for the module's current
+ * version.
  *
- * Quiz interactivity: each quiz block is a single-question check. The total
- * score is sent up with the "complete" call as `quizScore` (0–100).
+ * Offline-friendly: the last copy of each opened module is cached on the
+ * device, so lessons can be read without a network (saving progress and taking
+ * the quiz need a connection).
  *
- * Wired to GET/POST /api/rider/training/[id].
+ * Wired to GET /api/rider/training/[id], POST …/lessons/[lessonId], POST …/quiz.
  */
 import { useState, useCallback, useMemo } from 'react';
-import {
-  View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Image,
-} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { ApiError } from '../lib/api';
 import { ScreenHeader } from '../components/screen-header';
-import {
-  growth,
-  type TrainingModuleDetail,
-  type QuizQuestion,
-  type ContentBlock,
-} from '../lib/api-growth';
+import { TrainingMarkdown } from '../components/training-markdown';
+import { growth, type TrainingModuleDetail, type TrainingLesson, type QuizResult, type TrainingLang } from '../lib/api-growth';
+import { cacheKeys, getTrainingLang, readCache, savedAgo, writeCache } from '../lib/training-cache';
 import { colors, spacing, radius, font, shadow } from '../lib/theme';
 
-// ─── Legacy markdown-ish parser (fallback for modules without contentBlocks) ──
-type LegacyBlock =
-  | { kind: 'h1'; text: string }
-  | { kind: 'h2'; text: string }
-  | { kind: 'bullet'; text: string }
-  | { kind: 'para'; text: string };
-
-function parseLegacy(body: string): LegacyBlock[] {
-  const lines = body.replace(/\r\n/g, '\n').split('\n');
-  const out: LegacyBlock[] = [];
-  let para: string[] = [];
-  const flush = () => {
-    if (para.length) { out.push({ kind: 'para', text: para.join(' ').trim() }); para = []; }
-  };
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) { flush(); continue; }
-    if (line.startsWith('## '))      { flush(); out.push({ kind: 'h2', text: line.slice(3).trim() }); }
-    else if (line.startsWith('# ')) { flush(); out.push({ kind: 'h1', text: line.slice(2).trim() }); }
-    else if (line.startsWith('- ') || line.startsWith('* ')) { flush(); out.push({ kind: 'bullet', text: line.slice(2).trim() }); }
-    else para.push(line);
-  }
-  flush();
-  return out;
+function firstOpenStep(m: TrainingModuleDetail): number {
+  const lessons = m.lessons ?? [];
+  const done = new Set(m.completedLessonIds ?? []);
+  const idx = lessons.findIndex((l) => !done.has(l.id));
+  if (idx >= 0) return idx;
+  return m.quiz && m.status?.state !== 'CERTIFIED' ? lessons.length : 0;
 }
 
-function normalizeQuiz(raw: unknown): QuizQuestion[] {
-  if (!Array.isArray(raw)) return [];
-  const out: QuizQuestion[] = [];
-  for (const item of raw) {
-    if (item && typeof item === 'object' && typeof (item as any).question === 'string' && Array.isArray((item as any).options)) {
-      const options = (item as any).options.filter((o: unknown) => typeof o === 'string') as string[];
-      const answer = typeof (item as any).answer === 'number' ? (item as any).answer : undefined;
-      out.push({ question: (item as any).question, options, answer });
-    }
-  }
-  return out;
-}
-
-const CALLOUT_COLOURS: Record<string, { bg: string; border: string; icon: any; iconColour: string }> = {
-  tip:     { bg: colors.primarySoft, border: colors.primary, icon: 'bulb-outline',              iconColour: colors.primary },
-  warning: { bg: colors.warningSoft, border: colors.warning, icon: 'alert-circle-outline',      iconColour: colors.warning },
-  success: { bg: colors.successSoft, border: colors.success, icon: 'checkmark-circle-outline', iconColour: colors.success },
-  danger:  { bg: colors.dangerSoft,  border: colors.danger,  icon: 'close-circle-outline',     iconColour: colors.danger },
-  info:    { bg: colors.card,        border: colors.border,  icon: 'information-circle-outline', iconColour: colors.textMuted },
-};
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
 
 export default function TrainingModuleScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const moduleId = typeof id === 'string' ? id : '';
 
+  const [lang, setLang] = useState<TrainingLang>('en');
   const [mod, setMod] = useState<TrainingModuleDetail | null>(null);
+  const [offlineSince, setOfflineSince] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [completing, setCompleting] = useState(false);
-  const [justCompleted, setJustCompleted] = useState(false);
-  const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
-  const [checked, setChecked] = useState<Record<string, Set<number>>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [result, setResult] = useState<QuizResult | null>(null);
 
-  const load = useCallback(async () => {
-    if (!moduleId) { setError('Missing module.'); return; }
-    setError(null);
-    try { setMod(await growth.trainingModule(moduleId)); }
-    catch (e) { setError(e instanceof ApiError ? e.message : 'Could not load this module.'); }
-  }, [moduleId]);
+  const apply = useCallback((m: TrainingModuleDetail, l: TrainingLang) => {
+    setMod(m);
+    writeCache(cacheKeys.module(m.id, l), m);
+  }, []);
 
-  useFocusEffect(useCallback(() => {
-    let cancelled = false;
-    (async () => { await load(); if (!cancelled) setLoading(false); })();
-    return () => { cancelled = true; };
-  }, [load]));
+  const load = useCallback(
+    async (l: TrainingLang, resetStep: boolean) => {
+      if (!moduleId) {
+        setError('Missing module.');
+        return;
+      }
+      setError(null);
+      try {
+        const fresh = await growth.trainingModule(moduleId, l);
+        apply(fresh, l);
+        setOfflineSince(null);
+        if (resetStep) setStep(firstOpenStep(fresh));
+      } catch (e) {
+        const cached = await readCache<TrainingModuleDetail>(cacheKeys.module(moduleId, l));
+        if (cached) {
+          setMod(cached.data);
+          setOfflineSince(cached.savedAt);
+          if (resetStep) setStep(firstOpenStep(cached.data));
+        } else {
+          setError(e instanceof ApiError ? e.message : 'Could not load this module.');
+        }
+      }
+    },
+    [moduleId, apply]
+  );
 
-  const blocks: ContentBlock[] = useMemo(() => mod?.contentBlocks ?? [], [mod]);
-  const legacyBlocks = useMemo(() => (mod && blocks.length === 0 ? parseLegacy(mod.contentBody) : []), [mod, blocks]);
-  const legacyQuiz = useMemo(() => (mod ? normalizeQuiz(mod.quizQuestions) : []), [mod]);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        const l = await getTrainingLang();
+        if (cancelled) return;
+        setLang(l);
+        await load(l, true);
+        if (!cancelled) setLoading(false);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [load])
+  );
 
-  const quizBlocks = useMemo(() => blocks.filter((b) => b.type === 'quiz') as Extract<ContentBlock, { type: 'quiz' }>[], [blocks]);
-  const answeredCount = quizBlocks.filter((q) => quizAnswers[q.id] !== undefined).length;
-  const correctCount = quizBlocks.filter((q) => quizAnswers[q.id] === q.correct).length;
-  const quizScorePct = quizBlocks.length > 0 ? Math.round((correctCount / quizBlocks.length) * 100) : null;
+  const lessons = useMemo(() => mod?.lessons ?? [], [mod]);
+  const done = useMemo(() => new Set(mod?.completedLessonIds ?? []), [mod]);
+  const quiz = mod?.quiz ?? null;
+  const certified = mod?.status?.state === 'CERTIFIED' || (!mod?.status && !!mod?.progress.completed);
+  const onQuiz = !!quiz && step >= lessons.length;
+  const lesson: TrainingLesson | null = onQuiz ? null : lessons[step] ?? null;
 
-  const isComplete = mod?.progress.completed ?? false;
-  const canComplete = quizBlocks.length === 0 || answeredCount === quizBlocks.length;
-
-  async function onComplete() {
-    if (completing || !moduleId) return;
-    setCompleting(true);
-    setError(null);
+  async function markDone() {
+    if (!mod || !lesson || busy) return;
+    setBusy(true);
+    setActionError(null);
     try {
-      await growth.completeModule(moduleId, quizScorePct ?? undefined);
-      setJustCompleted(true);
-      setMod((m) => m ? { ...m, progress: { completed: true, completedAt: new Date().toISOString(), quizScore: quizScorePct ?? m.progress.quizScore } } : m);
+      const { module: fresh } = await growth.completeLesson(mod.id, lesson.id, lang);
+      apply(fresh, lang);
+      if (step + 1 < lessons.length || fresh.quiz) setStep(step + 1);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not save your progress.');
+      setActionError(e instanceof ApiError && e.status !== 0 ? e.message : 'You need a connection to save progress. You can keep reading offline.');
     } finally {
-      setCompleting(false);
+      setBusy(false);
     }
   }
 
-  function toggleCheck(blockId: string, idx: number) {
-    setChecked((c) => {
-      const set = new Set(c[blockId] ?? []);
-      if (set.has(idx)) set.delete(idx); else set.add(idx);
-      return { ...c, [blockId]: set };
-    });
+  async function submitQuiz() {
+    if (!mod || !quiz || busy) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const res = await growth.submitQuiz(mod.id, answers, lang);
+      setResult(res.result);
+      apply(res.module, lang);
+    } catch (e) {
+      setActionError(e instanceof ApiError && e.status !== 0 ? e.message : 'You need a connection to submit the quiz.');
+      await load(lang, false);
+    } finally {
+      setBusy(false);
+    }
   }
+
+  function retake() {
+    setResult(null);
+    setAnswers({});
+    setActionError(null);
+    load(lang, false);
+  }
+
+  // Pre-v2 server (no lessons array): keep the old single-page completion working.
+  async function legacyComplete() {
+    if (!mod || busy) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await growth.completeModule(mod.id);
+      await load(lang, false);
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Could not save your progress.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const elig = quiz?.eligibility;
+  const allAnswered = !!quiz && quiz.questions.every((q) => answers[q.id] !== undefined);
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScreenHeader title={mod?.title ?? 'Module'} />
 
-      {loading ? (
+      {loading && !mod ? (
         <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
       ) : error && !mod ? (
         <View style={styles.center}>
           <Ionicons name="alert-circle-outline" size={40} color={colors.textMuted} />
           <Text style={styles.errorText}>{error}</Text>
-          <Pressable style={styles.retryBtn} onPress={() => { setLoading(true); load().then(() => setLoading(false)); }}>
+          <Pressable style={styles.retryBtn} onPress={() => { setLoading(true); load(lang, true).then(() => setLoading(false)); }}>
             <Text style={styles.retryBtnText}>Try again</Text>
           </Pressable>
         </View>
       ) : mod ? (
-        <>
-          <ScrollView contentContainerStyle={styles.scroll}>
-            {mod.heroImageUrl ? (
-              <Image source={{ uri: mod.heroImageUrl }} style={styles.hero} resizeMode="cover" />
-            ) : null}
-
-            <Text style={styles.title}>{mod.title}</Text>
-            <View style={styles.metaRow}>
-              <View style={styles.metaChip}>
-                <Ionicons name="time-outline" size={13} color={colors.textMuted} />
-                <Text style={styles.metaChipText}>{mod.durationMin} min</Text>
-              </View>
-              {mod.isRequired ? (
-                <View style={[styles.metaChip, styles.metaChipRequired]}>
-                  <Text style={styles.metaChipRequiredText}>REQUIRED</Text>
-                </View>
-              ) : null}
-              {isComplete ? (
-                <View style={[styles.metaChip, styles.metaChipDone]}>
-                  <Ionicons name="checkmark" size={13} color={colors.success} />
-                  <Text style={styles.metaChipDoneText}>Completed</Text>
-                </View>
-              ) : null}
-              {quizBlocks.length > 0 ? (
-                <View style={styles.metaChip}>
-                  <Ionicons name="help-circle-outline" size={13} color={colors.textMuted} />
-                  <Text style={styles.metaChipText}>{answeredCount}/{quizBlocks.length} quiz</Text>
-                </View>
-              ) : null}
+        <ScrollView contentContainerStyle={styles.scroll}>
+          {offlineSince ? (
+            <View style={styles.offline}>
+              <Ionicons name="cloud-offline-outline" size={16} color={colors.textMuted} />
+              <Text style={styles.offlineText}>Offline copy saved {savedAgo(offlineSince)}. Reading works; saving needs a connection.</Text>
             </View>
-            {mod.summary ? <Text style={styles.summary}>{mod.summary}</Text> : null}
+          ) : null}
 
-            {/* ── Block-based lesson body ───────────────────────────────────── */}
-            {blocks.length > 0 ? (
-              <View style={{ marginTop: spacing.md, gap: spacing.md }}>
-                {blocks.map((b) => {
-                  switch (b.type) {
-                    case 'heading':
-                      return <Text key={b.id} style={styles.h1}>{b.text}</Text>;
-                    case 'paragraph':
-                      return <Text key={b.id} style={styles.para}>{b.text}</Text>;
-                    case 'image':
-                      return (
-                        <View key={b.id} style={{ marginVertical: spacing.xs }}>
-                          <Image source={{ uri: b.src }} style={styles.blockImage} resizeMode="cover" />
-                          {b.caption ? <Text style={styles.caption}>{b.caption}</Text> : null}
-                        </View>
-                      );
-                    case 'callout': {
-                      const cs = CALLOUT_COLOURS[b.tone] ?? CALLOUT_COLOURS.info;
-                      return (
-                        <View key={b.id} style={[styles.callout, { backgroundColor: cs.bg, borderColor: cs.border }]}>
-                          <Ionicons name={cs.icon} size={20} color={cs.iconColour} />
-                          <View style={{ flex: 1 }}>
-                            {b.title ? <Text style={[styles.calloutTitle, { color: cs.iconColour }]}>{b.title}</Text> : null}
-                            <Text style={styles.calloutBody}>{b.body}</Text>
-                          </View>
-                        </View>
-                      );
-                    }
-                    case 'checklist': {
-                      const set = checked[b.id] ?? new Set<number>();
-                      return (
-                        <View key={b.id} style={styles.contentCard}>
-                          {b.title ? <Text style={styles.h2}>{b.title}</Text> : null}
-                          {b.items.map((it, i) => {
-                            const on = set.has(i);
-                            return (
-                              <Pressable key={i} style={styles.checkRow} onPress={() => toggleCheck(b.id, i)}>
-                                <View style={[styles.checkBox, on && styles.checkBoxOn]}>
-                                  {on ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
-                                </View>
-                                <Text style={[styles.checkText, on && styles.checkTextDone]}>{it}</Text>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                      );
-                    }
-                    case 'keyPoints':
-                      return (
-                        <View key={b.id} style={styles.contentCard}>
-                          {b.title ? <Text style={styles.sectionLabelInline}>{b.title}</Text> : null}
-                          {b.points.map((p, i) => (
-                            <View key={i} style={styles.bulletRow}>
-                              <View style={styles.bulletDot} />
-                              <Text style={styles.bulletText}>{p}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      );
-                    case 'divider':
-                      return <View key={b.id} style={styles.divider} />;
-                    case 'quiz': {
-                      const ans = quizAnswers[b.id];
-                      const answered = ans !== undefined;
-                      const correct = ans === b.correct;
-                      return (
-                        <View key={b.id} style={styles.quizCard}>
-                          <Text style={styles.sectionLabelInline}>QUICK CHECK</Text>
-                          <Text style={styles.quizQuestion}>{b.question}</Text>
-                          {b.options.map((opt, i) => {
-                            const isChoice = ans === i;
-                            const isCorrect = i === b.correct;
-                            const tone =
-                              answered && isChoice && isCorrect ? 'right' :
-                              answered && isChoice ? 'wrong' :
-                              answered && isCorrect ? 'reveal' : isChoice ? 'picked' : 'idle';
-                            return (
-                              <Pressable
-                                key={i}
-                                onPress={() => !answered && setQuizAnswers((q) => ({ ...q, [b.id]: i }))}
-                                style={[
-                                  styles.quizOption,
-                                  tone === 'right' && styles.quizOptionRight,
-                                  tone === 'wrong' && styles.quizOptionWrong,
-                                  tone === 'reveal' && styles.quizOptionReveal,
-                                  tone === 'picked' && styles.quizOptionPicked,
-                                ]}
-                                disabled={answered}
-                              >
-                                <View style={styles.quizLetter}>
-                                  <Text style={styles.quizLetterText}>{tone === 'right' || tone === 'reveal' ? '✓' : tone === 'wrong' ? '✕' : String.fromCharCode(65 + i)}</Text>
-                                </View>
-                                <Text style={styles.quizOptionText}>{opt}</Text>
-                              </Pressable>
-                            );
-                          })}
-                          {answered && b.explanation ? (
-                            <View style={[styles.callout, correct ? { backgroundColor: colors.successSoft, borderColor: colors.success } : { backgroundColor: colors.warningSoft, borderColor: colors.warning }]}>
-                              <Ionicons name={correct ? 'checkmark-circle' : 'alert-circle'} size={20} color={correct ? colors.success : colors.warning} />
-                              <Text style={[styles.calloutBody, { flex: 1 }]}>{b.explanation}</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      );
-                    }
-                  }
-                })}
-              </View>
-            ) : (
-              <View style={styles.contentCard}>
-                {legacyBlocks.length === 0 ? (
-                  <Text style={styles.para}>No content for this module yet.</Text>
-                ) : legacyBlocks.map((b, i) => {
-                  if (b.kind === 'h1') return <Text key={i} style={styles.h1}>{b.text}</Text>;
-                  if (b.kind === 'h2') return <Text key={i} style={styles.h2}>{b.text}</Text>;
-                  if (b.kind === 'bullet') return (
-                    <View key={i} style={styles.bulletRow}>
-                      <View style={styles.bulletDot} />
-                      <Text style={styles.bulletText}>{b.text}</Text>
-                    </View>
-                  );
-                  return <Text key={i} style={styles.para}>{b.text}</Text>;
-                })}
-              </View>
-            )}
+          <Text style={styles.title}>{mod.title}</Text>
+          <View style={styles.metaRow}>
+            <Chip icon="time-outline" text={`${mod.durationMin} min`} />
+            {mod.isRequired ? <Chip text="REQUIRED" tone="primary" /> : null}
+            {mod.status?.needsRecert ? <Chip text="RE-CERTIFY" tone="danger" /> : null}
+            {mod.status?.overdue && !certified ? <Chip text="OVERDUE" tone="danger" /> : null}
+            {certified ? <Chip icon="checkmark" text="Certified" tone="success" /> : null}
+          </View>
+          {mod.summary ? <Text style={styles.summary}>{mod.summary}</Text> : null}
 
-            {/* Legacy quiz (for modules with quizQuestions JSON but no quiz blocks) */}
-            {legacyQuiz.length > 0 && quizBlocks.length === 0 ? (
-              <>
-                <Text style={styles.sectionLabel}>QUICK QUIZ</Text>
-                <View style={styles.contentCard}>
-                  {legacyQuiz.map((q, qi) => (
-                    <View key={qi} style={[styles.quizBlock, qi === legacyQuiz.length - 1 && styles.quizBlockLast]}>
-                      <Text style={styles.quizQuestion}>{qi + 1}. {q.question}</Text>
-                      {q.options.map((opt, oi) => {
-                        const correct = q.answer === oi;
-                        return (
-                          <View key={oi} style={styles.quizOptionLegacy}>
-                            <Ionicons name={correct ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={correct ? colors.success : colors.textMuted} />
-                            <Text style={[styles.quizOptionTextLegacy, correct && styles.quizOptionTextCorrect]}>{opt}</Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  ))}
-                </View>
-              </>
-            ) : null}
+          {mod.status ? (
+            <View style={styles.bar}><View style={[styles.barFill, { width: `${mod.status.progressPct}%` }]} /></View>
+          ) : null}
 
-            {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
-
-            {justCompleted ? (
-              <View style={styles.successCard}>
-                <Ionicons name="checkmark-circle" size={36} color={colors.success} />
-                <Text style={styles.successTitle}>Module complete!</Text>
-                <Text style={styles.successText}>
-                  Nice work — your progress has been saved.{quizScorePct !== null ? ` You scored ${quizScorePct}% on the quiz.` : ''}
+          {certified && mod.status?.certificateCode ? (
+            <View style={styles.certCard}>
+              <Ionicons name="ribbon" size={28} color={colors.success} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.certTitle}>Flavrly certificate</Text>
+                <Text style={styles.certMeta}>
+                  {mod.status.certificateCode} · version {mod.version ?? 1}
+                  {mod.progress.completedAt ? ` · ${fmtDate(mod.progress.completedAt)}` : ''}
                 </Text>
               </View>
-            ) : null}
-          </ScrollView>
+            </View>
+          ) : null}
 
-          <View style={styles.footer}>
-            {isComplete && !justCompleted ? (
-              <View style={styles.footerDone}>
-                <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-                <Text style={styles.footerDoneText}>You completed this module</Text>
-              </View>
-            ) : justCompleted ? (
-              <Pressable style={[styles.completeBtn, styles.completeBtnGhost]} onPress={() => router.back()}>
-                <Text style={styles.completeBtnGhostText}>Back to training</Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                style={[styles.completeBtn, !canComplete && { opacity: 0.5 }]}
-                onPress={onComplete}
-                disabled={completing || !canComplete}
-              >
-                {completing ? <ActivityIndicator color={colors.white} /> : (
-                  <>
-                    <Ionicons name="checkmark-done" size={20} color={colors.white} />
-                    <Text style={styles.completeBtnText}>
-                      {canComplete ? 'Mark as complete' : `Answer ${quizBlocks.length - answeredCount} more`}
-                    </Text>
-                  </>
-                )}
-              </Pressable>
-            )}
-          </View>
-        </>
+          {!mod.lessons ? (
+            <View style={styles.card}>
+              <TrainingMarkdown source={mod.contentBody} />
+              {!certified ? (
+                <Pressable style={styles.primaryBtn} onPress={legacyComplete} disabled={busy}>
+                  {busy ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryBtnText}>Mark complete</Text>}
+                </Pressable>
+              ) : null}
+            </View>
+          ) : (
+            <>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.steps}>
+                {lessons.map((l, i) => (
+                  <Pressable key={l.id} onPress={() => { setStep(i); setResult(null); }} style={[styles.stepChip, step === i && styles.stepChipOn]}>
+                    <Ionicons
+                      name={done.has(l.id) ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={14}
+                      color={done.has(l.id) ? colors.success : step === i ? colors.primary : colors.textMuted}
+                    />
+                    <Text style={[styles.stepText, step === i && styles.stepTextOn]}>{i + 1}</Text>
+                  </Pressable>
+                ))}
+                {quiz ? (
+                  <Pressable onPress={() => setStep(lessons.length)} style={[styles.stepChip, onQuiz && styles.stepChipOn]}>
+                    <Ionicons name={certified ? 'checkmark-circle' : 'help-circle-outline'} size={14} color={certified ? colors.success : onQuiz ? colors.primary : colors.textMuted} />
+                    <Text style={[styles.stepText, onQuiz && styles.stepTextOn]}>Quiz</Text>
+                  </Pressable>
+                ) : null}
+              </ScrollView>
+
+              {lesson ? (
+                <View style={styles.card}>
+                  <Text style={styles.stepLabel}>LESSON {step + 1} OF {lessons.length}</Text>
+                  <Text style={styles.lessonTitle}>{lesson.title}</Text>
+                  {lesson.kind === 'IMAGE' && lesson.mediaUrl ? (
+                    <Image source={{ uri: lesson.mediaUrl }} style={styles.media} resizeMode="cover" accessibilityLabel={lesson.title} />
+                  ) : null}
+                  {lesson.kind === 'VIDEO' && lesson.mediaUrl ? (
+                    <Pressable style={styles.videoBtn} onPress={() => WebBrowser.openBrowserAsync(lesson.mediaUrl!).catch(() => {})}>
+                      <Ionicons name="play-circle" size={28} color={colors.primary} />
+                      <Text style={styles.videoText}>Watch the video</Text>
+                      <Ionicons name="open-outline" size={16} color={colors.textMuted} />
+                    </Pressable>
+                  ) : null}
+                  {lesson.body.trim() ? <TrainingMarkdown source={lesson.body} /> : null}
+                  {lesson.kind === 'CHECKLIST' && lesson.checklistItems.length ? <Checklist key={lesson.id} items={lesson.checklistItems} /> : null}
+
+                  {done.has(lesson.id) ? (
+                    <View style={styles.doneRow}>
+                      <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                      <Text style={styles.doneText}>Done</Text>
+                      {step + 1 < lessons.length || quiz ? (
+                        <Pressable style={styles.secondaryBtn} onPress={() => setStep(step + 1)}>
+                          <Text style={styles.secondaryBtnText}>Next</Text>
+                          <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : (
+                    <Pressable style={styles.primaryBtn} onPress={markDone} disabled={busy}>
+                      {busy ? (
+                        <ActivityIndicator color={colors.white} />
+                      ) : (
+                        <Text style={styles.primaryBtnText}>
+                          {step + 1 < lessons.length ? 'Mark done and continue' : quiz ? 'Mark done and take the quiz' : 'Finish module'}
+                        </Text>
+                      )}
+                    </Pressable>
+                  )}
+                </View>
+              ) : null}
+
+              {onQuiz && quiz ? (
+                <View style={styles.card}>
+                  <Text style={styles.lessonTitle}>Quiz</Text>
+                  <Text style={styles.quizMeta}>
+                    Pass mark {quiz.passMarkPct}%{quiz.maxAttempts ? ` · ${elig?.attemptsLeft ?? 0} of ${quiz.maxAttempts} attempts left` : ''}
+                  </Text>
+
+                  {result ? (
+                    <Results quiz={quiz} result={result} answers={answers} onRetake={retake} />
+                  ) : certified || elig?.reason === 'already_passed' ? (
+                    <Notice tone="success" text={`You passed this quiz${quiz.lastAttempt ? ` with ${quiz.lastAttempt.scorePct}%` : ''}.`} />
+                  ) : elig && !elig.allowed ? (
+                    <Notice
+                      tone="warning"
+                      text={
+                        elig.reason === 'lessons_incomplete'
+                          ? 'Finish every lesson to unlock the quiz.'
+                          : elig.reason === 'cooldown'
+                            ? `You can try again at ${elig.retryAt ? fmtTime(elig.retryAt) : 'a little later'}. Review the lessons meanwhile.`
+                            : 'You have used all your attempts. Contact Flavrly Support from the Support screen to reset them.'
+                      }
+                    />
+                  ) : (
+                    <>
+                      {quiz.questions.map((q, qi) => (
+                        <View key={q.id} style={styles.question}>
+                          <Text style={styles.questionText}>{qi + 1}. {q.prompt}</Text>
+                          {q.options.map((opt, oi) => {
+                            const on = answers[q.id] === oi;
+                            return (
+                              <Pressable
+                                key={oi}
+                                onPress={() => setAnswers((a) => ({ ...a, [q.id]: oi }))}
+                                style={[styles.option, on && styles.optionOn]}
+                                accessibilityRole="radio"
+                                accessibilityState={{ selected: on }}
+                              >
+                                <Ionicons name={on ? 'radio-button-on' : 'radio-button-off'} size={18} color={on ? colors.primary : colors.textMuted} />
+                                <Text style={styles.optionText}>{opt}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      ))}
+                      <Pressable style={[styles.primaryBtn, !allAnswered && styles.btnDisabled]} onPress={submitQuiz} disabled={!allAnswered || busy}>
+                        {busy ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryBtnText}>Submit answers</Text>}
+                      </Pressable>
+                    </>
+                  )}
+                </View>
+              ) : null}
+            </>
+          )}
+
+          {actionError ? <Text style={styles.actionError}>{actionError}</Text> : null}
+        </ScrollView>
       ) : null}
     </SafeAreaView>
+  );
+}
+
+function Chip({ text, icon, tone }: { text: string; icon?: keyof typeof Ionicons.glyphMap; tone?: 'primary' | 'success' | 'danger' }) {
+  const c = tone === 'primary' ? colors.primary : tone === 'success' ? colors.success : tone === 'danger' ? colors.danger : colors.textMuted;
+  const bg = tone === 'primary' ? colors.primarySoft : tone === 'success' ? colors.successSoft : tone === 'danger' ? colors.dangerSoft : colors.card;
+  return (
+    <View style={[styles.chip, { backgroundColor: bg }]}>
+      {icon ? <Ionicons name={icon} size={13} color={c} /> : null}
+      <Text style={[styles.chipText, { color: c }]}>{text}</Text>
+    </View>
+  );
+}
+
+function Notice({ tone, text }: { tone: 'success' | 'warning'; text: string }) {
+  return (
+    <View style={[styles.notice, tone === 'success' ? { backgroundColor: colors.successSoft, borderColor: colors.success } : { backgroundColor: colors.warningSoft, borderColor: colors.warning }]}>
+      <Text style={styles.noticeText}>{text}</Text>
+    </View>
+  );
+}
+
+function Checklist({ items }: { items: string[] }) {
+  const [ticked, setTicked] = useState<Set<number>>(new Set());
+  return (
+    <View style={styles.checklist}>
+      {items.map((it, i) => {
+        const on = ticked.has(i);
+        return (
+          <Pressable
+            key={i}
+            style={styles.checkRow}
+            onPress={() => setTicked((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; })}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: on }}
+          >
+            <View style={[styles.checkBox, on && styles.checkBoxOn]}>{on ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}</View>
+            <Text style={[styles.checkText, on && styles.checkTextDone]}>{it}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function Results({ quiz, result, answers, onRetake }: { quiz: NonNullable<TrainingModuleDetail['quiz']>; result: QuizResult; answers: Record<string, number>; onRetake: () => void }) {
+  const byId = new Map(result.questions.map((q) => [q.questionId, q]));
+  return (
+    <View style={{ gap: spacing.md }}>
+      <View style={[styles.resultBanner, result.passed ? { backgroundColor: colors.successSoft, borderColor: colors.success } : { backgroundColor: colors.dangerSoft, borderColor: colors.danger }]}>
+        <Ionicons name={result.passed ? 'ribbon' : 'close-circle'} size={30} color={result.passed ? colors.success : colors.danger} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.resultTitle}>{result.passed ? 'You passed! Certificate issued.' : 'Not passed this time'}</Text>
+          <Text style={styles.resultMeta}>{result.correctCount}/{result.totalCount} correct · {result.scorePct}% (pass mark {result.passMarkPct}%)</Text>
+        </View>
+      </View>
+      {quiz.questions.map((q, i) => {
+        const r = byId.get(q.id);
+        return (
+          <View key={q.id} style={styles.resultRow}>
+            <Ionicons name={r?.correct ? 'checkmark-circle' : 'close-circle'} size={18} color={r?.correct ? colors.success : colors.danger} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.resultQ}>{i + 1}. {q.prompt}</Text>
+              <Text style={styles.resultA}>Your answer: {answers[q.id] !== undefined ? q.options[answers[q.id]] : 'No answer'}</Text>
+              {r && r.correctIndex !== null && !r.correct ? <Text style={[styles.resultA, { color: colors.success }]}>Correct: {q.options[r.correctIndex]}</Text> : null}
+              {r?.explanation ? <Text style={styles.resultExp}>{r.explanation}</Text> : null}
+            </View>
+          </View>
+        );
+      })}
+      {!result.passed ? (
+        <Pressable style={styles.secondaryBtnWide} onPress={onRetake}>
+          <Ionicons name="refresh" size={16} color={colors.primary} />
+          <Text style={styles.secondaryBtnText}>Review lessons and retake</Text>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
@@ -384,75 +428,58 @@ const styles = StyleSheet.create({
   errorText: { fontSize: font.size.sm, color: colors.textMuted, textAlign: 'center' },
   retryBtn: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.primary },
   retryBtnText: { color: colors.primary, fontWeight: font.weight.semibold, fontSize: font.size.sm },
-
-  scroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xl },
-
-  hero: { width: '100%', aspectRatio: 16 / 9, borderRadius: radius.lg, marginBottom: spacing.md, backgroundColor: colors.card },
+  scroll: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xxl, gap: spacing.md },
+  offline: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, backgroundColor: colors.card, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.sm },
+  offlineText: { flex: 1, fontSize: font.size.xs, color: colors.textMuted },
   title: { fontSize: font.size.xl, fontWeight: font.weight.bold, color: colors.text },
-  metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
-  metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.pill },
-  metaChipText: { fontSize: font.size.xs, color: colors.textMuted },
-  metaChipRequired: { backgroundColor: colors.primarySoft, borderColor: colors.primarySoft },
-  metaChipRequiredText: { fontSize: 9, fontWeight: font.weight.bold, color: colors.primary, letterSpacing: 0.5 },
-  metaChipDone: { backgroundColor: colors.successSoft, borderColor: colors.successSoft },
-  metaChipDoneText: { fontSize: font.size.xs, color: colors.success, fontWeight: font.weight.semibold },
-  summary: { fontSize: font.size.md, color: colors.textMuted, lineHeight: 22, marginTop: spacing.md },
-
-  contentCard: { backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, ...shadow.card },
-  h1: { fontSize: font.size.lg, fontWeight: font.weight.bold, color: colors.text, marginTop: spacing.sm },
-  h2: { fontSize: font.size.md, fontWeight: font.weight.bold, color: colors.text, marginBottom: spacing.xs },
-  para: { fontSize: font.size.sm, color: colors.text, lineHeight: 22 },
-
-  blockImage: { width: '100%', aspectRatio: 16 / 9, borderRadius: radius.md, backgroundColor: colors.card },
-  caption: { fontSize: font.size.xs, color: colors.textMuted, marginTop: spacing.xs },
-
-  callout: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, borderWidth: 1, borderRadius: radius.lg },
-  calloutTitle: { fontSize: font.size.sm, fontWeight: font.weight.bold, marginBottom: 2 },
-  calloutBody: { fontSize: font.size.sm, color: colors.text, lineHeight: 20 },
-
-  checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, paddingVertical: 6 },
-  checkBox: { width: 20, height: 20, borderRadius: 4, borderWidth: 2, borderColor: colors.border, marginTop: 1, alignItems: 'center', justifyContent: 'center' },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
+  chipText: { fontSize: font.size.xs, fontWeight: font.weight.semibold },
+  summary: { fontSize: font.size.sm, color: colors.textMuted, lineHeight: 20 },
+  bar: { height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },
+  barFill: { height: 6, backgroundColor: colors.primary },
+  certCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.successSoft, borderRadius: radius.md, borderWidth: 1, borderColor: colors.success, padding: spacing.md },
+  certTitle: { fontSize: font.size.md, fontWeight: font.weight.bold, color: colors.text },
+  certMeta: { fontSize: font.size.xs, color: colors.textMuted, marginTop: 2 },
+  steps: { gap: spacing.xs, paddingVertical: 2 },
+  stepChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, minHeight: 36 },
+  stepChipOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  stepText: { fontSize: font.size.sm, color: colors.textMuted, fontWeight: font.weight.semibold },
+  stepTextOn: { color: colors.primary },
+  card: { backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, gap: spacing.md, ...shadow.card },
+  stepLabel: { fontSize: font.size.xs, fontWeight: font.weight.bold, color: colors.textMuted, letterSpacing: 1 },
+  lessonTitle: { fontSize: font.size.lg, fontWeight: font.weight.bold, color: colors.text },
+  media: { width: '100%', aspectRatio: 16 / 9, borderRadius: radius.md, backgroundColor: colors.border },
+  videoBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md },
+  videoText: { flex: 1, fontSize: font.size.md, fontWeight: font.weight.semibold, color: colors.text },
+  checklist: { gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md },
+  checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, minHeight: 32 },
+  checkBox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
   checkBoxOn: { backgroundColor: colors.success, borderColor: colors.success },
-  checkText: { flex: 1, fontSize: font.size.sm, color: colors.text, lineHeight: 20 },
+  checkText: { flex: 1, fontSize: font.size.md, lineHeight: 22, color: colors.text },
   checkTextDone: { color: colors.textMuted, textDecorationLine: 'line-through' },
-
-  bulletRow: { flexDirection: 'row', gap: spacing.sm, paddingVertical: 4, paddingLeft: spacing.xs },
-  bulletDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary, marginTop: 9 },
-  bulletText: { flex: 1, fontSize: font.size.sm, color: colors.text, lineHeight: 22 },
-
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
-  sectionLabel: { marginTop: spacing.xl, marginBottom: spacing.sm, fontSize: font.size.xs, fontWeight: font.weight.bold, color: colors.textMuted, letterSpacing: 1.2 },
-  sectionLabelInline: { fontSize: font.size.xs, fontWeight: font.weight.bold, color: colors.primary, letterSpacing: 1.2, marginBottom: spacing.sm },
-
-  quizCard: { backgroundColor: colors.primarySoft, borderRadius: radius.lg, borderWidth: 2, borderColor: colors.primary, padding: spacing.lg, gap: spacing.sm },
-  quizQuestion: { fontSize: font.size.md, fontWeight: font.weight.semibold, color: colors.text, lineHeight: 22, marginBottom: spacing.xs },
-  quizOption: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm, borderWidth: 2, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.bg },
-  quizOptionPicked: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
-  quizOptionRight: { borderColor: colors.success, backgroundColor: colors.successSoft },
-  quizOptionWrong: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
-  quizOptionReveal: { borderColor: colors.success },
-  quizLetter: { width: 26, height: 26, borderRadius: 13, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  quizLetterText: { fontSize: font.size.xs, fontWeight: font.weight.bold, color: colors.text },
-  quizOptionText: { flex: 1, fontSize: font.size.sm, color: colors.text, lineHeight: 20 },
-
-  // Legacy quiz styles (for modules without contentBlocks)
-  quizBlock: { paddingBottom: spacing.md, marginBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  quizBlockLast: { borderBottomWidth: 0, marginBottom: 0, paddingBottom: 0 },
-  quizOptionLegacy: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 4 },
-  quizOptionTextLegacy: { flex: 1, fontSize: font.size.sm, color: colors.textMuted, lineHeight: 20 },
-  quizOptionTextCorrect: { color: colors.text, fontWeight: font.weight.medium },
-
-  errorBanner: { backgroundColor: colors.dangerSoft, color: colors.danger, fontSize: font.size.sm, padding: spacing.md, borderRadius: radius.md, marginTop: spacing.md, overflow: 'hidden' },
-
-  successCard: { backgroundColor: colors.successSoft, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.success, padding: spacing.lg, marginTop: spacing.lg, alignItems: 'center', gap: spacing.xs },
-  successTitle: { fontSize: font.size.md, fontWeight: font.weight.bold, color: colors.success, marginTop: spacing.xs },
-  successText: { fontSize: font.size.sm, color: colors.text, lineHeight: 20, textAlign: 'center' },
-
-  footer: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.lg, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border },
-  completeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, height: 54, borderRadius: radius.md, backgroundColor: colors.primary },
-  completeBtnText: { color: colors.white, fontWeight: font.weight.bold, fontSize: font.size.md },
-  completeBtnGhost: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.primary },
-  completeBtnGhostText: { color: colors.primary, fontWeight: font.weight.bold, fontSize: font.size.md },
-  footerDone: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, height: 54, borderRadius: radius.md, backgroundColor: colors.successSoft },
-  footerDoneText: { color: colors.success, fontWeight: font.weight.semibold, fontSize: font.size.md },
+  primaryBtn: { backgroundColor: colors.primary, borderRadius: radius.pill, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', minHeight: 48 },
+  primaryBtnText: { color: colors.white, fontWeight: font.weight.bold, fontSize: font.size.md },
+  btnDisabled: { opacity: 0.5 },
+  doneRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md },
+  doneText: { flex: 1, fontSize: font.size.sm, color: colors.success, fontWeight: font.weight.semibold },
+  secondaryBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.primary },
+  secondaryBtnWide: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, paddingVertical: 12, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.primary, minHeight: 48 },
+  secondaryBtnText: { color: colors.primary, fontWeight: font.weight.semibold, fontSize: font.size.sm },
+  quizMeta: { fontSize: font.size.xs, color: colors.textMuted, marginTop: -spacing.sm },
+  question: { gap: spacing.sm },
+  questionText: { fontSize: font.size.md, fontWeight: font.weight.semibold, color: colors.text, lineHeight: 22 },
+  option: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 12, minHeight: 48 },
+  optionOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  optionText: { flex: 1, fontSize: font.size.sm, color: colors.text, lineHeight: 20 },
+  notice: { borderWidth: 1, borderRadius: radius.md, padding: spacing.md },
+  noticeText: { fontSize: font.size.sm, color: colors.text, lineHeight: 20 },
+  resultBanner: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderRadius: radius.md, padding: spacing.md },
+  resultTitle: { fontSize: font.size.md, fontWeight: font.weight.bold, color: colors.text },
+  resultMeta: { fontSize: font.size.xs, color: colors.textMuted, marginTop: 2 },
+  resultRow: { flexDirection: 'row', gap: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: spacing.sm },
+  resultQ: { fontSize: font.size.sm, fontWeight: font.weight.semibold, color: colors.text },
+  resultA: { fontSize: font.size.xs, color: colors.textMuted },
+  resultExp: { fontSize: font.size.xs, color: colors.text, lineHeight: 17 },
+  actionError: { fontSize: font.size.sm, color: colors.danger, textAlign: 'center' },
 });
