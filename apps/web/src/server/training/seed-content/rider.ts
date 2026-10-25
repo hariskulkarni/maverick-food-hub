@@ -1346,13 +1346,19 @@ Stay at the address while you try. Keep the food bag closed so the order stays h
       {
         kind: 'TEXT',
         title: 'When you still cannot reach the customer',
-        body: `## Let Flavrly Support decide
+        body: `## Tap Customer unreachable and let Flavrly Support decide
 
-The rider app does not have a separate button to mark a customer unreachable or return an order. Flavrly Support handles these cases with you.
+Once you have tapped **I've reached the customer**, the delivery screen shows a **Customer unreachable** button under the delivery code box.
 
-1. Message **Platform Support** from the **Messages** screen. Include the order code (shown at the top of the delivery screen), what you have tried and how long you have waited.
-2. If you prefer, raise a ticket in **Help & Support** under **Order issue** instead.
-3. Stay at the location and wait for their reply. Follow their instructions on whether to wait longer, leave the order somewhere or take it elsewhere.
+1. Tap **Customer unreachable**. The app first asks you to call the customer: tap **Call customer** to try again, or **I've already called** if you have.
+2. Add a short note for support if you like, for example how many times you called or that the gate is locked. The note is optional.
+3. Tap **Alert support** and confirm. Flavrly Support gets an urgent alert straight away.
+4. The screen now shows **Customer unreachable** with *Flavrly support has been alerted; wait for instructions*. Stay at the location with the order. Support will contact you and tell you whether to wait longer, leave the order somewhere or take it elsewhere. Tap **Check for updates** to refresh.
+5. If the customer turns up while you wait, ask for their delivery code and tap **Confirm delivery** as usual.
+
+If the app says you are offline, support was **not** alerted. Try again when you have signal, or call rider support. You can also message **Platform Support** from **Messages** with the order code at any time.
+
+If support closes the order, the delivery screen shows **Closed by Flavrly support**. Follow the instructions support gave you for the food.
 
 ### Never
 
@@ -1366,7 +1372,7 @@ The rider app does not have a separate button to mark a customer unreachable or 
         title: 'When an order is cancelled',
         body: `## How a cancellation looks in the app
 
-If an order is cancelled while you are on it, it stops being an active delivery. When you open it, the delivery screen shows **Not an active delivery** and *This delivery is no longer in progress*. Tap **Back to home**.
+If an order is cancelled while you are on it, it stops being an active delivery. When you open it, the delivery screen shows **Not an active delivery** and *This delivery is no longer in progress*, or **Closed by Flavrly support** if support closed it while you had the food. Tap **Back to home**.
 
 ### What to do
 
@@ -1414,14 +1420,14 @@ Sometimes you cannot finish an order yourself: your vehicle breaks down, you hav
       {
         prompt: 'You have called twice and waited, and the customer is still unreachable. What is next?',
         options: [
-          'Message Platform Support with the order code and what you tried, then follow their instructions',
+          'Tap Customer unreachable on the delivery screen, then wait for Flavrly Support\'s instructions',
           'Guess the delivery code',
           'Give the food to the security guard without asking anyone',
           'Eat the food since it will go cold',
         ],
         correctIndex: 0,
         explanation:
-          'The app has no separate unreachable button. Contact Platform Support from Messages, or raise an Order issue ticket, and follow their instructions.',
+          'Tap Customer unreachable on the delivery screen, add a note and confirm. Flavrly Support is alerted straight away; stay with the order and follow their instructions.',
       },
       {
         prompt: 'You open your delivery and see Not an active delivery. What does this usually mean?',

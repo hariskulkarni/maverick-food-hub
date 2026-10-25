@@ -29,6 +29,7 @@ import * as Haptics from 'expo-haptics';
 import { api, ApiError, type Assignment, type AssignmentStatus, type RiderMe } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
+import { orderHold } from '../../lib/order-hold';
 import { OnboardingTour, useTourSeen } from '../../components/onboarding-tour';
 import { SurgeBanner } from '../../components/surge-banner';
 import { TrainingBanner } from '../../components/training-banner';
@@ -92,8 +93,14 @@ const STATUS_META: Record<
   CANCELLED: { label: 'Cancelled', bg: colors.dangerSoft, fg: colors.danger },
 };
 
-function StatusBadge({ status }: { status: AssignmentStatus }) {
-  const meta = STATUS_META[status];
+const HOLD_META = {
+  unreachable: { label: 'Customer unreachable', bg: '#fdf0e0', fg: colors.warning },
+  closed: { label: 'Closed by support', bg: colors.dangerSoft, fg: colors.danger },
+} as const;
+
+function StatusBadge({ a }: { a: Assignment }) {
+  const hold = orderHold(a);
+  const meta = hold ? HOLD_META[hold] : STATUS_META[a.status];
   return (
     <View style={[styles.badge, { backgroundColor: meta.bg }]}>
       <Text style={[styles.badgeText, { color: meta.fg }]}>{meta.label}</Text>
@@ -112,7 +119,7 @@ function AssignmentCard({ a }: { a: Assignment }) {
         <Text style={styles.orderCode} numberOfLines={1}>
           {o.code}
         </Text>
-        <StatusBadge status={a.status} />
+        <StatusBadge a={a} />
       </View>
 
       <View style={styles.route}>

@@ -362,6 +362,16 @@ export const api = {
   /** "I'm at the customer's door." Stamps a marker; status stays PICKED_UP. */
   reachCustomer: (id: string) =>
     request<unknown>(`/api/rider/assignments/${id}/reach-customer`, { method: 'POST' }),
+  /**
+   * Customer can't be reached at the drop. Moves the order to
+   * CUSTOMER_UNREACHABLE and alerts Flavrly support (live-ops escalation).
+   * Only valid after reachCustomer; 409 otherwise.
+   */
+  customerUnreachable: (id: string, note?: string) =>
+    request<{ ok: true; orderStatus: 'CUSTOMER_UNREACHABLE' }>(
+      `/api/rider/assignments/${id}/customer-unreachable`,
+      { method: 'POST', body: note ? { note } : {} }
+    ),
   /** Hand-over — verifies the customer's OTP. 400 on mismatch. */
   deliver: (id: string, otp: string) =>
     request<unknown>(`/api/rider/assignments/${id}/deliver`, {

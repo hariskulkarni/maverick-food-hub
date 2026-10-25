@@ -99,11 +99,11 @@ const WELCOME: TrainingDefault = {
       options: [
         'Mark the order undelivered and leave',
         'Wait at the door for 30 minutes',
-        'Tap "Customer unreachable" in the app — support will help locate them',
+        'Call them from the delivery screen, then tap "Customer unreachable" so support is alerted',
         'Eat the food yourself',
       ],
       correct: 2,
-      explanation: 'Call the customer from the order screen, then contact Flavrly support from the Help screen and follow their instructions. Never abandon an order or take it home without support\'s go-ahead.' },
+      explanation: 'Call the customer with the call button on the delivery screen first. If they still don\'t answer, tap "Customer unreachable" (it appears after you tap "I\'ve reached the customer"), add a short note and confirm — Flavrly support is alerted straight away. Stay with the order and wait for their instructions. Never abandon an order or take it home without support\'s go-ahead.' },
   ],
 };
 
@@ -155,7 +155,7 @@ const DELIVERY: TrainingDefault = {
     { id: id('d-h7'), type: 'heading', text: 'Edge cases — the ones that catch new riders' },
 
     { id: id('d-p7'), type: 'paragraph', text: 'Restaurant says the order doesn\'t exist: open the order in the app, tap "Restaurant issue," and the in-app chat opens with restaurant support. Don\'t leave or cancel on your end — let support reconcile.' },
-    { id: id('d-p8'), type: 'paragraph', text: 'Customer not answering at the door: tap-to-call first. If still no answer after 2 attempts, use "Customer unreachable" — this triggers a 5-minute timer. If they still don\'t respond, follow the support prompts; do NOT just leave the food.' },
+    { id: id('d-p8'), type: 'paragraph', text: 'Customer not answering at the door: tap-to-call first. If still no answer after 2 attempts, tap "Customer unreachable" under the code box, add an optional note and confirm. Flavrly support is alerted and the screen shows "Flavrly support has been alerted; wait for instructions". Stay at the drop and follow support\'s instructions; if the customer turns up meanwhile, hand over with their code as usual. Do NOT just leave the food.' },
     { id: id('d-p9'), type: 'paragraph', text: 'Item missing from the bag: this is the restaurant\'s problem, not yours. Hand over what you have and tap "Item missing" on the active-order screen. Flavrly auto-refunds the customer for the missing item and you still get your full payout.' },
     { id: id('d-p10'), type: 'paragraph', text: 'Wrong address / dropped pin: the customer\'s pin is what shows on your map. If they meant a different building, call them and update via the in-app chat. We never pay penalties for moving to a corrected address.' },
 
