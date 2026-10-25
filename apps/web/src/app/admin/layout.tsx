@@ -45,6 +45,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/admin/storefront',     icon: <Paintbrush className={ICON} />,      label: 'Storefront CMS' },
       { href: '/admin/settings',       icon: <Settings className={ICON} />,        label: 'Settings' },
+      { href: '/admin/help',           icon: <LifeBuoy className={ICON} />,        label: 'Help center' },
     ],
   },
 ];

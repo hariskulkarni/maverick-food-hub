@@ -13,6 +13,7 @@ import { requireRestaurant } from '@/server/tenancy';
 import { resolveGroupContext } from '@/server/group-scope';
 import { prisma } from '@/server/db';
 import { DedicatedRidersClient } from './dedicated-riders-client';
+import { HelpButton } from '@/components/help/help-button';
 
 export const metadata = { title: 'Admin · Dedicated Riders' };
 export const dynamic = 'force-dynamic';
@@ -64,7 +65,10 @@ export default async function AdminRidersPage() {
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-5xl">
       <header>
-        <h1 className="display text-3xl font-semibold">Dedicated Riders</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="display text-3xl font-semibold">Dedicated Riders</h1>
+          <HelpButton appArea="admin.riders" />
+        </div>
         <p className="text-sm text-muted-foreground mt-1">
           {group.isGroup
             ? 'Choose how your ready orders find a rider. Riders are shared across your whole group — any rider here can take orders from any restaurant in the group.'

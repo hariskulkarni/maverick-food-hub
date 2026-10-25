@@ -3598,3 +3598,134 @@ model YoupiFeatureRequest {
   updatedAt     DateTime           @updatedAt
   restaurant    Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Knowledge base / help center (feat/knowledge-base)
+// Authored by SUPER_ADMIN in /platform/help; read by restaurant admins &
+// kitchen (/admin/help, /kitchen/help), riders (rider app Help screen) and
+// customers (/faq). Full-text search uses `searchVector` (tsvector kept fresh
+// by a trigger + GIN index created in the migration's raw SQL) with a pg_trgm
+// typo-tolerant fallback. See src/server/help/*.
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum HelpAudience {
+  RESTAURANT_ADMIN
+  KITCHEN
+  RIDER
+  CUSTOMER
+  ALL
+}
+
+enum HelpLanguage {
+  en
+  hi
+}
+
+enum HelpArticleStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model HelpCategory {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  title       String
+  description String?
+  /// Primary audience the category is listed for (ALL = everyone).
+  audience    HelpAudience  @default(ALL)
+  sortOrder   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  articles    HelpArticle[]
+}
+
+model HelpArticle {
+  id           String                @id @default(cuid())
+  slug         String
+  language     HelpLanguage          @default(en)
+  title        String
+  summary      String
+  /// Markdown (restricted subset — see src/lib/help-markdown.ts).
+  body         String
+  audience     HelpAudience[]
+  tags         String[]
+  status       HelpArticleStatus     @default(DRAFT)
+  /// Contextual-help key, e.g. "admin.orders" or "rider.earnings".
+  appArea      String?
+  /// Slugs of related articles (same language preferred).
+  relatedSlugs String[]
+  sortOrder    Int                   @default(0)
+  version      Int                   @default(1)
+  viewCount    Int                   @default(0)
+  publishedAt  DateTime?
+  categoryId   String?
+  category     HelpCategory?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdById  String?
+  updatedById  String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  /// Maintained by trigger "HelpArticle_search_vector_trg" (raw SQL migration).
+  searchVector Unsupported("tsvector")?
+  versions     HelpArticleVersion[]
+  feedback     HelpArticleFeedback[]
+
+  @@unique([slug, language])
+  @@index([status, language])
+  @@index([appArea])
+  @@index([categoryId])
+  @@index([searchVector], type: Gin)
+}
+
+/// Immutable snapshot written on every create / save / restore.
+model HelpArticleVersion {
+  id         String         @id @default(cuid())
+  articleId  String
+  article    HelpArticle    @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  version    Int
+  title      String
+  summary    String
+  body       String
+  audience   HelpAudience[]
+  tags       String[]
+  appArea    String?
+  categoryId String?
+  /// Free-text reason, e.g. "created", "edited", "restored from v3".
+  note       String?
+  authorId   String?
+  authorName String?
+  createdAt  DateTime       @default(now())
+
+  @@unique([articleId, version])
+}
+
+model HelpArticleFeedback {
+  id        String      @id @default(cuid())
+  articleId String
+  article   HelpArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId    String
+  role      String
+  helpful   Boolean
+  comment   String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([articleId, userId])
+  @@index([articleId, helpful])
+}
+
+/// One row per search, for content-gap reports (top zero-result queries).
+model HelpSearchLog {
+  id           String       @id @default(cuid())
+  /// Normalised (trimmed, lower-cased, whitespace-collapsed) query.
+  query        String
+  resultsCount Int
+  language     HelpLanguage @default(en)
+  /// "web" | "rider" | "public"
+  source       String
+  role         String?
+  userId       String?
+  createdAt    DateTime     @default(now())
+
+  @@index([createdAt])
+  @@index([resultsCount, createdAt])
+}
