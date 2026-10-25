@@ -31,7 +31,7 @@ describe('content/help starter fixtures', () => {
 
   it('has 30+ articles across restaurant, rider and customer audiences', () => {
     expect(en.length).toBeGreaterThanOrEqual(30);
-    for (const aud of ['RIDER', 'CUSTOMER'] as const) {
+    for (const aud of ['RESTAURANT_ADMIN', 'KITCHEN', 'RIDER', 'CUSTOMER'] as const) {
       expect(en.some((a) => a.audience.includes(aud))).toBe(true);
     }
   });

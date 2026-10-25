@@ -1,0 +1,17 @@
+[
+  { "slug": "getting-started", "title": "Getting started", "description": "Set up your restaurant and find your way around the dashboard.", "audience": "RESTAURANT_ADMIN", "sortOrder": 10 },
+  { "slug": "menu", "title": "Menu & items", "description": "Categories, items, variants, availability and menu import.", "audience": "RESTAURANT_ADMIN", "sortOrder": 20 },
+  { "slug": "orders", "title": "Orders & kitchen", "description": "Order statuses, accepting orders, the kitchen board and KOT printing.", "audience": "RESTAURANT_ADMIN", "sortOrder": 30 },
+  { "slug": "delivery", "title": "Delivery & riders", "description": "Delivery zones, dedicated riders and live tracking.", "audience": "RESTAURANT_ADMIN", "sortOrder": 40 },
+  { "slug": "marketing", "title": "Coupons & offers", "description": "Coupons, offers, happy hours and promotions.", "audience": "RESTAURANT_ADMIN", "sortOrder": 50 },
+  { "slug": "reviews", "title": "Reviews & feedback", "description": "Customer ratings, replies and moderation.", "audience": "RESTAURANT_ADMIN", "sortOrder": 60 },
+  { "slug": "reports-payments", "title": "Reports & payments", "description": "Sales reports, exports and how payments and settlements work.", "audience": "RESTAURANT_ADMIN", "sortOrder": 70 },
+  { "slug": "account", "title": "Settings, staff & storefront", "description": "Branches, staff roles, storefront and QR codes.", "audience": "RESTAURANT_ADMIN", "sortOrder": 80 },
+  { "slug": "rider-getting-started", "title": "Getting started", "description": "Sign in, KYC and setting up the rider app.", "audience": "RIDER", "sortOrder": 110 },
+  { "slug": "rider-deliveries", "title": "Shifts & deliveries", "description": "Going online, shifts, accepting and completing deliveries.", "audience": "RIDER", "sortOrder": 120 },
+  { "slug": "rider-earnings", "title": "Earnings & payouts", "description": "How earnings, incentives, COD and payouts appear in the app.", "audience": "RIDER", "sortOrder": 130 },
+  { "slug": "rider-safety-support", "title": "Safety & support", "description": "SOS, incidents, emergency contacts and support tickets.", "audience": "RIDER", "sortOrder": 140 },
+  { "slug": "customer-ordering", "title": "Ordering & delivery", "description": "Placing, tracking and cancelling orders.", "audience": "CUSTOMER", "sortOrder": 210 },
+  { "slug": "customer-payments", "title": "Payments & refunds", "description": "Payment methods, coupons and refunds.", "audience": "CUSTOMER", "sortOrder": 220 },
+  { "slug": "customer-account", "title": "Account & partners", "description": "Your account, privacy, and partnering with us.", "audience": "CUSTOMER", "sortOrder": 230 }
+]
