@@ -77,7 +77,13 @@ migrate() {
 
 deploy() {
   confirm "Build and restart the production app (scripts/deploy-remote.sh)?"
-  "${SSH[@]}" "bash -lc 'cd $APP_DIR && APP_COMMIT_SHA=\$(git rev-parse --short HEAD) bash scripts/deploy-remote.sh'"
+  # next build type-checks in a worker that needs more than Node's default ~2 GB heap on this VPS
+  # (OOM 2026-10-25). Give it 3/4 of MemAvailable, capped at 4 GB.
+  local cmd='cd '"$APP_DIR"'; avail=$(awk "/MemAvailable/ {print int(\$2/1024)}" /proc/meminfo); heap=$(( avail * 3 / 4 ));
+    [ "$heap" -gt 4096 ] && heap=4096; echo "build heap: ${heap} MB (MemAvailable ${avail} MB)";
+    [ "$heap" -lt 3072 ] && echo "WARNING: under 3 GB available for the build; it may run out of memory (add swap or free memory)";
+    export NODE_OPTIONS=--max-old-space-size=$heap; APP_COMMIT_SHA=$(git rev-parse --short HEAD) bash scripts/deploy-remote.sh'
+  "${SSH[@]}" "bash -lc $(printf '%q' "$cmd")"
 }
 
 post() {
