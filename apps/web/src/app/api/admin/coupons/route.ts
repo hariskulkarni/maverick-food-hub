@@ -15,19 +15,16 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
-import { requireRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { STAFF_BRANCH_ORDER } from '@/server/branch-pause';
+import { parseOrJsonError } from '@/server/zod-helpers';
+import { couponNumbers, CODE_TAKEN } from './_schema';
 
 const Body = z.object({
   code: z.string().min(2).max(40),
   description: z.string().max(500).optional().nullable(),
-  flatOff: z.number().nullable().optional(),
-  percentOff: z.number().nullable().optional(),
-  minOrderAmount: z.number().nullable().optional(),
-  maxDiscount: z.number().nullable().optional(),
-  usageLimit: z.number().int().nullable().optional(),
-  perUserLimit: z.number().int().optional(),
+  ...couponNumbers,
   validFrom: z.string().optional().nullable(),
   validTo: z.string().optional().nullable(),
   branchId: z.string().optional().nullable(),
@@ -37,7 +34,8 @@ const Body = z.object({
 export const dynamic = 'force-dynamic';
 
 export async function GET(_req: NextRequest) {
-  const r = await requireRestaurant();
+  const r = await tenantAdminOrError();
+  if (r instanceof Response) return r;
   const branches = await prisma.branch.findMany({ where: { restaurantId: r.id }, select: { id: true } });
   const branchIds = branches.map((b) => b.id);
   const coupons = await prisma.coupon.findMany({
@@ -48,10 +46,12 @@ export async function GET(_req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const r = await requireRestaurant();
+  const r = await tenantAdminOrError();
+  if (r instanceof Response) return r;
   const session = await auth();
   const raw = await req.json();
-  const data = Body.parse(raw);
+  const data = parseOrJsonError(Body, raw);
+  if (data instanceof Response) return data;
 
   // Resolve branchId: prefer explicit, else first active branch of this restaurant.
   let branchId = data.branchId ?? null;
@@ -69,25 +69,32 @@ export async function POST(req: NextRequest) {
   if (!flatOff && !percentOff) return new Response('Provide flatOff or percentOff', { status: 400 });
 
   const code = data.code.trim().toUpperCase();
-  const existing = await prisma.coupon.findUnique({ where: { code } });
-  if (existing) return new Response('Code already exists', { status: 409 });
+  const existing = await prisma.coupon.findUnique({ where: { code }, select: { id: true } });
+  if (existing) return Response.json(CODE_TAKEN, { status: 409 });
 
-  const created = await prisma.coupon.create({
-    data: {
-      code,
-      description: data.description ?? null,
-      branchId,
-      flatOff: flatOff as any,
-      percentOff: percentOff,
-      minOrderAmount: data.minOrderAmount != null ? (data.minOrderAmount as any) : null,
-      maxDiscount: data.maxDiscount != null ? (data.maxDiscount as any) : null,
-      usageLimit: data.usageLimit ?? 1000,
-      perUserLimit: data.perUserLimit ?? 1,
-      validFrom: data.validFrom ? new Date(data.validFrom) : new Date(),
-      validTo: data.validTo ? new Date(data.validTo) : null,
-      isActive: data.isActive ?? true
-    }
-  });
+  let created;
+  try {
+    created = await prisma.coupon.create({
+      data: {
+        code,
+        description: data.description ?? null,
+        branchId,
+        flatOff: flatOff as any,
+        percentOff: percentOff,
+        minOrderAmount: data.minOrderAmount != null ? (data.minOrderAmount as any) : null,
+        maxDiscount: data.maxDiscount != null ? (data.maxDiscount as any) : null,
+        usageLimit: data.usageLimit ?? 1000,
+        perUserLimit: data.perUserLimit ?? 1,
+        validFrom: data.validFrom ? new Date(data.validFrom) : new Date(),
+        validTo: data.validTo ? new Date(data.validTo) : null,
+        isActive: data.isActive ?? true
+      }
+    });
+  } catch (e) {
+    // Lost a race with another tenant creating the same code.
+    if ((e as { code?: string })?.code === 'P2002') return Response.json(CODE_TAKEN, { status: 409 });
+    throw e;
+  }
 
   await audit('coupon.create', {
     actorId: session?.user?.id,

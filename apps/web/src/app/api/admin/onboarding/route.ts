@@ -5,7 +5,7 @@
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { requireTenantAdmin } from '@/server/tenancy';
 import { parseOrJsonError } from '@/server/zod-helpers';
 import { audit } from '@/server/audit';
 import { getOnboardingState, saveOnboardingStep, ProgressUpdateError } from '@/server/onboarding';
@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   let restaurant;
   try {
-    restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    restaurant = await requireTenantAdmin(req.nextUrl.searchParams.get('restaurantId'));
   } catch (e) {
     if (e instanceof Response) return e;
     throw e;

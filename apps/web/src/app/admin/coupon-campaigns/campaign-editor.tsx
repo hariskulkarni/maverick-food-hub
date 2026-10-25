@@ -28,6 +28,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Mail, Smartphone, Utensils, Trash2, Info, IndianRupee, Percent } from 'lucide-react';
 import { money } from '@/lib/utils';
+import { brand } from '@/lib/brand';
 import { toast } from 'sonner';
 import { reportApiError } from '@/lib/api-error';
 import type { CampaignRow, CampaignChannel } from './campaigns-client';
@@ -577,7 +578,7 @@ function Preview({ draft, previewCode }: { draft: Draft; previewCode: string }) 
         </div>
         <div className="text-center mt-1 text-muted-foreground">
           {isDineToOnline
-            ? 'at maverick.app — valid for one use per customer'
+            ? `at ${new URL(brand.url).host} — valid for one use per customer`
             : 'when you next visit — scan the QR on your email'}
         </div>
         {draft.minOrderAmount > 0 && (

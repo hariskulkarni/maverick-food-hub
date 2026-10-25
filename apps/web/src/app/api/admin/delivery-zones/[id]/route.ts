@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
-import { requireManagedRestaurant } from "@/server/tenancy";
+import { requireTenantAdmin } from "@/server/tenancy";
 import { ZoneBody, zoneData, NO_BRACKETS_MESSAGE } from "@/server/delivery/zone-schema";
 
 export const runtime = "nodejs";
@@ -10,7 +10,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 async function managed(req: NextRequest) {
   try {
-    return { restaurant: await requireManagedRestaurant(req.nextUrl.searchParams.get("restaurantId")) };
+    return { restaurant: await requireTenantAdmin(req.nextUrl.searchParams.get("restaurantId")) };
   } catch (e) {
     if (e instanceof Response) return { error: e };
     throw e;

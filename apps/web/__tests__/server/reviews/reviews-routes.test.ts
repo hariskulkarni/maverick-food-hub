@@ -13,7 +13,7 @@ const h = vi.hoisted(() => {
     GoogleApiError,
   };
 });
-vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: h.requireManagedRestaurant }));
+vi.mock('@/server/tenancy', async () => ({ requireManagedRestaurant: h.requireManagedRestaurant, ...(await import('../../helpers/tenant-admin-mock')).tenantAdminMocks((rid) => (h.requireManagedRestaurant)(rid)) }));
 vi.mock('@/server/reviews/store', () => ({
   getReviewScoped: h.getReviewScoped, saveReply: h.saveReply,
   listReviewsForAdmin: h.listForAdmin, getAutoReplyConfig: h.cfg, getResponseSettings: h.settings,

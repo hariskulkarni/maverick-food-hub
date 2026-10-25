@@ -4,7 +4,7 @@ const { reqRestMock, getConfigMock, saveMock, auditMock } = vi.hoisted(() => ({
   reqRestMock: vi.fn(), getConfigMock: vi.fn(), saveMock: vi.fn(), auditMock: vi.fn(),
 }));
 vi.mock('@/server/reviews/review-audit', () => ({ auditReview: auditMock }));
-vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: reqRestMock }));
+vi.mock('@/server/tenancy', async () => ({ requireManagedRestaurant: reqRestMock, ...(await import('../../helpers/tenant-admin-mock')).tenantAdminMocks((rid) => (reqRestMock)(rid)) }));
 vi.mock('@/server/integrations', () => ({ getConfig: getConfigMock, saveConfig: saveMock }));
 vi.mock('@/server/log', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 

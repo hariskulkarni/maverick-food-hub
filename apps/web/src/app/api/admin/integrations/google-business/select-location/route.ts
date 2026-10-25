@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { getConfig, saveConfig } from '@/server/integrations';
 import { auditReview } from '@/server/reviews/review-audit';
 
@@ -7,7 +7,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+  const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+  if (restaurant instanceof Response) return restaurant;
   const body = await req.json().catch(() => null);
   const locationId = typeof body?.locationId === 'string' ? body.locationId : '';
 

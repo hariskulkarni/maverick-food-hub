@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { getResponseSettings } from '@/server/reviews/store';
 import { auditReview } from '@/server/reviews/review-audit';
 import { parseOrJsonError } from '@/server/zod-helpers';
@@ -21,7 +21,8 @@ function dto(s: Awaited<ReturnType<typeof getResponseSettings>>) {
 
 export async function GET(req: NextRequest) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     return Response.json(dto(await getResponseSettings(restaurant.id)));
   } catch (e) {
     if (e instanceof Response) return e;
@@ -46,7 +47,8 @@ const Body = z.object({
 
 export async function PUT(req: NextRequest) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     const parsed = parseOrJsonError(Body, await req.json().catch(() => null));
     if (parsed instanceof Response) return parsed;
     const data = { ...parsed };

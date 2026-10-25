@@ -5,9 +5,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { OrderStatusBadge } from '@/components/order-status-badge';
-import { money, fmtDate, STATUS_LABELS } from '@/lib/utils';
+import { money, STATUS_LABELS } from '@/lib/utils';
 import { Phone, Star, MessageSquare } from 'lucide-react';
 import { findFeedbackByOrder, visibleForRole } from '@/server/feedback';
+import { accessibleOrderScope } from '@/server/tenancy';
+import { STAFF_USER_SELECT } from '@/server/staff-orders';
+import { itemOptions, FULFILLMENT_LABEL } from '@/lib/kot';
+import { formatIst } from '@/lib/ist';
 
 const TAG_LABEL: Record<string, string> = {
   MISSING_ITEM: 'Missing item', WRONG_ITEM: 'Wrong item', COLD_FOOD: 'Cold food',
@@ -19,9 +23,22 @@ export const metadata = { title: 'Admin · Order' };
 
 export default async function AdminOrderDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const o = await prisma.order.findUnique({
-    where: { id },
-    include: { customer: true, items: true, address: true, branch: true, payments: true, statusEvents: { orderBy: { createdAt: 'asc' } }, assignment: { include: { rider: { include: { user: true } } } } }
+  // Tenant scope: only orders in a restaurant this account can operate (the
+  // lookup was by bare id, so any admin could open any tenant's order).
+  const scope = await accessibleOrderScope();
+  if (!scope) return notFound();
+  const o = await prisma.order.findFirst({
+    where: { id, branchId: { in: scope.branchIds } },
+    include: {
+      customer: { select: STAFF_USER_SELECT },
+      items: true,
+      address: true,
+      branch: true,
+      payments: true,
+      statusEvents: { orderBy: { createdAt: 'asc' } },
+      assignment: { include: { rider: { include: { user: { select: STAFF_USER_SELECT } } } } },
+      reservation: { select: { table: { select: { name: true } } } },
+    }
   });
   if (!o) return notFound();
 
@@ -35,7 +52,10 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="display text-2xl font-semibold flex items-center gap-3">{o.code} <OrderStatusBadge status={o.status} /></h1>
-          <p className="text-sm text-muted-foreground">{fmtDate(o.placedAt)}</p>
+          <p className="text-sm text-muted-foreground">
+            {formatIst(o.placedAt)} · {FULFILLMENT_LABEL[o.fulfillmentType] ?? o.fulfillmentType}
+            {o.reservation?.table?.name ? ` · Table ${o.reservation.table.name}` : ''}
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" asChild><Link href="/admin/orders">← All orders</Link></Button>
@@ -49,7 +69,12 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
           <ul className="text-sm divide-y">
             {o.items.map((i) => (
               <li key={i.id} className="flex justify-between py-2">
-                <span>{i.quantity}× {i.name}{i.notes ? <em className="block text-xs text-muted-foreground">{i.notes}</em> : null}</span>
+                <span>
+                  {i.quantity}× {i.name}
+                  {i.isFreebie && <Badge variant="muted" className="ml-2">Free gift</Badge>}
+                  {itemOptions(i) && <span className="block text-xs font-medium">{itemOptions(i)}</span>}
+                  {i.notes ? <em className="block text-xs text-muted-foreground">{i.notes}</em> : null}
+                </span>
                 <span>{money(Number(i.unitPrice) * i.quantity)}</span>
               </li>
             ))}
@@ -80,7 +105,7 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
             <h3 className="font-semibold mb-2">Status timeline</h3>
             <ul className="text-sm space-y-1">
               {o.statusEvents.map((e, i) => (
-                <li key={i} className="flex justify-between"><span>{STATUS_LABELS[e.status]}</span><span className="text-muted-foreground">{new Date(e.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span></li>
+                <li key={i} className="flex justify-between"><span>{STATUS_LABELS[e.status]}</span><span className="text-muted-foreground">{formatIst(new Date(e.createdAt), { hour: '2-digit', minute: '2-digit' })}</span></li>
               ))}
             </ul>
           </CardContent></Card>

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { listForRestaurant } from '@/server/integrations';
 import { prisma } from '@/server/db';
 import { auditReview } from '@/server/reviews/review-audit';
@@ -10,7 +10,8 @@ export const dynamic = 'force-dynamic';
 const RATINGS = [1, 2, 3, 4, 5];
 
 export async function GET(req: NextRequest) {
-  const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+  const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+  if (restaurant instanceof Response) return restaurant;
   const all = await listForRestaurant(restaurant.id);
   // `summary` is already masked by the provider's buildSummary — never decrypt here.
   const pick = (k: string) => {
@@ -39,7 +40,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+  const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+  if (restaurant instanceof Response) return restaurant;
   const b = await req.json().catch(() => ({}));
   const autoPostMinRating = Number(b.autoPostMinRating);
   const draftMaxRating = Number(b.draftMaxRating);
@@ -73,7 +75,8 @@ export async function POST(req: NextRequest) {
 
 /** Toggle whether new customer reviews publish immediately or wait for admin approval. */
 export async function PATCH(req: NextRequest) {
-  const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+  const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+  if (restaurant instanceof Response) return restaurant;
   const b = await req.json().catch(() => ({}));
   if (typeof b.autoPublishReviews !== 'boolean') return new Response('Bad body', { status: 400 });
   await prisma.restaurant.update({ where: { id: restaurant.id }, data: { autoPublishReviews: b.autoPublishReviews } });

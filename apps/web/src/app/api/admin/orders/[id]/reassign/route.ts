@@ -41,8 +41,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Tenancy: restaurant admin must belong to the order's restaurant.
   if (role === Role.ADMIN) {
+    // Membership-aware: a KITCHEN grant on this restaurant may not reassign riders.
     const membership = await prisma.restaurantUser.findFirst({
-      where: { userId: session.user.id, restaurantId: order.branch.restaurantId }
+      where: { userId: session.user.id, restaurantId: order.branch.restaurantId, role: Role.ADMIN }
     });
     if (!membership) {
       return forbidden('That order belongs to a different restaurant.');

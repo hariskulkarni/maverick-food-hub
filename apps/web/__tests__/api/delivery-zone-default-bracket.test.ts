@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const created: any[] = [];
 let existingZone: any;
-vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: async () => ({ id: 'r1' }) }));
+vi.mock('@/server/tenancy', async () => ({ requireManagedRestaurant: async () => ({ id: 'r1' }), ...(await import('../helpers/tenant-admin-mock')).tenantAdminMocks(() => (async () => ({ id: 'r1' }))()) }));
 vi.mock('@/server/db', () => {
   const deliveryZone = {
     create: async ({ data }: any) => { created.push(data); return { id: 'z1', ...data }; },

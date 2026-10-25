@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { recentPostedReplies } from '@/server/reviews/store';
 import { summarizeBrandVoice } from '@/server/reviews/voice';
 import { auditReview } from '@/server/reviews/review-audit';
@@ -11,7 +11,8 @@ export const dynamic = 'force-dynamic';
 /** Re-learn the brand voice from the last 20 posted replies now. */
 export async function POST(req: NextRequest) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     const replies = await recentPostedReplies(restaurant.id);
     const summary = summarizeBrandVoice(replies);
     const now = new Date();

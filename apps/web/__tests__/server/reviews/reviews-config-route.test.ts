@@ -9,7 +9,7 @@ const h = vi.hoisted(() => ({
   restaurantUpdate: vi.fn(),
   auditReview: vi.fn(),
 }));
-vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: h.requireManagedRestaurant }));
+vi.mock('@/server/tenancy', async () => ({ requireManagedRestaurant: h.requireManagedRestaurant, ...(await import('../../helpers/tenant-admin-mock')).tenantAdminMocks((rid) => (h.requireManagedRestaurant)(rid)) }));
 vi.mock('@/server/integrations', () => ({ listForRestaurant: h.listForRestaurant }));
 vi.mock('@/server/reviews/review-audit', () => ({ auditReview: h.auditReview }));
 vi.mock('@/server/db', () => ({

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { testConfig } from '@/server/integrations';
 import { PROVIDERS, ProviderKey } from '@/server/integrations/providers';
 import { sendIntegrationAlert } from '@/server/alerts';
@@ -15,7 +15,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
   const { provider } = await params;
   if (!(provider in PROVIDERS)) return new Response('Unknown provider', { status: 400 });
   const session = await auth();
-  const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId')); // auth gate only — we don't persist on /test
+  const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId')); // auth gate only — we don't persist on /test
+  if (restaurant instanceof Response) return restaurant;
   const { config } = Body.parse(await req.json());
   const def = PROVIDERS[provider as ProviderKey];
   for (const f of def.fields) {

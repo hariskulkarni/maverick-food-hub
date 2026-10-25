@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { requireTenantAdmin } from '@/server/tenancy';
 import { searchBusiness, PlacesNotConfiguredError } from '@/server/reviews/places';
 
 export const runtime = 'nodejs';
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    await requireTenantAdmin(req.nextUrl.searchParams.get('restaurantId'));
     const b = await req.json().catch(() => ({}));
     const query = typeof b?.query === 'string' ? b.query.trim() : '';
     if (query.length < 2 || query.length > 100) {

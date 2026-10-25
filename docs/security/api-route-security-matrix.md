@@ -23,7 +23,7 @@ auth in-handler** via one of these helpers:
 | `accessibleSet()` / `accessibleOrderScope()` | `server/tenancy.ts` | Computes the set of restaurants/branches a user may operate (explicit grants + owned + implied children). |
 | `auth()` (rider) | `server/rider-auth.ts` | Drop-in for `/api/rider/*` + realtime: checks `Authorization: Bearer <JWT>` first (HS256, role re-checked against DB every request), falls back to NextAuth cookie. A bad Bearer token returns `null` (no cookie fallback). |
 | `authorizeRealtimeChannel()` | `server/realtime-authz.ts` | Per-channel allow/deny for SSE + poll (deny-by-default). |
-| Group `_helpers` | e.g. `admin/group/_helpers`, `admin/menu/import/_helpers`, `server/reports/admin-branch` | Thin wrappers (`requireActiveRestaurant`, `resolveBranchScope`, `requireOwnedItem`, `requireAdminBranch`) that all gate on a tenant membership before any DB work. |
+| Group `_helpers` | e.g. `admin/menu/import/_helpers`, `server/reports/admin-branch` | Thin wrappers (`resolveBranchScope`, `requireOwnedItem`, `requireAdminBranch`) that all gate on a tenant membership before any DB work. |
 
 ### Role taxonomy
 
@@ -51,7 +51,7 @@ auth in-handler** via one of these helpers:
 
 ## `/api/admin/*` — ADMIN / KITCHEN, tenant-scoped (91 route files)
 
-All admin routes are tenant-gated. Most check `auth()` + `role === 'ADMIN'` (or `['ADMIN','KITCHEN']`) inline and call `requireRestaurant()`; a subset use per-area `_helpers` (`requireActiveRestaurant`, `resolveBranchScope`, `requireOwnedItem`, `requireAdminBranch`) that wrap the same membership gate. Zod is present on virtually all mutating (POST/PATCH/PUT) handlers. None are public.
+All admin routes are tenant-gated. Most check `auth()` + `role === 'ADMIN'` (or `['ADMIN','KITCHEN']`) inline and call `requireRestaurant()`; a subset use per-area `_helpers` (`resolveBranchScope`, `requireOwnedItem`, `requireAdminBranch`) that wrap the same membership gate. Zod is present on virtually all mutating (POST/PATCH/PUT) handlers. None are public.
 
 | Route group | Method(s) | Public/Private | Required role | Tenant-scoped? | Rate limit | Validation | Notes (member paths) |
 |---|---|---|---|---|---|---|---|
@@ -64,13 +64,11 @@ All admin routes are tenant-gated. Most check `auth()` + `role === 'ADMIN'` (or 
 | Orders ops | GET/POST | Private | ADMIN/KITCHEN | Yes | No | Yes (`transition`, `assign`) | `admin/orders/[id]`(+`/assign`,`/auto-assign`,`/reassign`,`/suggest-riders`,`/transition`,`/feedback`,`/freebie`,`/invoice.pdf`,`/kot`), `admin/orders/snapshot` |
 | Reports/exports | GET | Private | ADMIN | Yes (`requireAdminBranch`/`requireRestaurant`) | No | query-parse | `admin/reports/daily-sales`, `/item-sales`, `/payment-mode`, `/taxes`, `/delivery-fees`, `/cancelled-orders`, `/orders.csv`, `/orders.xlsx` |
 | Riders/dispatch | GET/POST/PATCH | Private | ADMIN | Yes | No | Yes | `admin/riders`, `admin/dedicated-riders`(+`[id]`), `admin/dispatch-mode`, `admin/rider-safety`, `admin/rider-applications/[id]/approve`, `/reject` |
-| Group management | GET/PATCH/POST/DELETE | Private | ADMIN (parent owner) | Yes (`requireActiveRestaurant`) | No | Yes | `admin/group`, `admin/group/access`, `admin/group/children`(+`[childId]`) |
 | Integrations | GET/POST | Private | ADMIN | Yes | No | Yes | `admin/integrations`(+`[provider]`,`/test`) |
 | Tables / reservations | GET/POST/PATCH/DELETE | Private | ADMIN | Yes | No | Yes | `admin/tables`(+`[id]`), `admin/reservations`(+`[id]`) |
 | Messaging / notifications / feedback | GET/POST | Private | ADMIN | Yes | No | Yes | `admin/messages`(+`[id]`), `admin/notifications`, `admin/feedback`(+`/summary`) |
 | Settings & branding | GET/POST/PATCH | Private | ADMIN | Yes | No | Yes | `admin/settings/branding`, `admin/settings/order-flow` |
 | Upload | POST | Private | ADMIN/KITCHEN/SUPER_ADMIN | Yes (member check) | No | content-type + 8MB cap | `admin/upload` — multipart; allowed image MIME types only |
-| Diagnostics | GET | Private | ADMIN/KITCHEN | Yes (`requireRestaurant`) | No | n/a | `admin/diag/sync` — exposes recent-order + SSE subscriber counts for the caller's branch only |
 
 ---
 
