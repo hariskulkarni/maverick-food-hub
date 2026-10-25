@@ -36,7 +36,7 @@ import { ImageUploader } from '@/components/image-uploader';
 import {
   type Offer, type OfferType, type ChannelScope, type Branch, type Category, type MenuItem,
   type FulfillmentType, type OfferSchedule,
-  OFFER_TYPE_META, OFFER_TYPE_ORDER
+  OFFER_TYPE_META, CREATABLE_OFFER_TYPES, isRedeemableYet, NOT_REDEEMABLE_HINT
 } from './offers-client';
 
 // Forced channel locks for the channel-cross-pollination offer types.
@@ -307,9 +307,13 @@ export function OfferEditor({
               <Select value={draft.type} onValueChange={(v: any) => setType(v)}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {OFFER_TYPE_ORDER.map((t) => (
+                  {CREATABLE_OFFER_TYPES.map((t) => (
                     <SelectItem key={t} value={t}>{OFFER_TYPE_META[t].label}</SelectItem>
                   ))}
+                  {/* Keep an existing legacy offer's type selectable, clearly labelled. */}
+                  {!CREATABLE_OFFER_TYPES.includes(draft.type) && (
+                    <SelectItem value={draft.type}>{OFFER_TYPE_META[draft.type].label} (not redeemable yet)</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
               <div className="mt-1.5 text-xs text-muted-foreground flex items-start gap-1.5">
@@ -346,10 +350,17 @@ export function OfferEditor({
                     <SelectContent>
                       <SelectItem value="ANY">Any</SelectItem>
                       <SelectItem value="ONLINE">Online</SelectItem>
-                      <SelectItem value="DINE_IN">Dine-in</SelectItem>
+                      {draft.redeemChannel === 'DINE_IN' && (
+                        <SelectItem value="DINE_IN">Dine-in only (not redeemable yet)</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+            )}
+            {!isRedeemableYet(draft) && (
+              <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
+                {NOT_REDEEMABLE_HINT} Choose “Online” or “Any” for “Redeemable on”.
               </div>
             )}
           </Section>

@@ -106,6 +106,20 @@ export const OFFER_TYPE_ORDER: OfferType[] = [
   'FIRST_ORDER', 'REPEAT_CUSTOMER', 'DINE_IN_TO_ONLINE', 'ONLINE_TO_DINE_IN'
 ];
 
+/**
+ * Checkout redeems offers on the ONLINE channel only (dine-in redemption isn't
+ * wired yet), so an offer that is redeemable ONLY at dine-in would show as
+ * Active yet never apply. The editor no longer offers those choices, and
+ * existing ones are labelled so nobody relies on them.
+ */
+export function isRedeemableYet(o: { type: OfferType; redeemChannel: ChannelScope }): boolean {
+  return o.type !== 'ONLINE_TO_DINE_IN' && o.redeemChannel !== 'DINE_IN';
+}
+export const NOT_REDEEMABLE_HINT = 'Dine-in redemption isn’t live yet — this offer won’t apply to any order.';
+
+/** Offer types a restaurant can create today. */
+export const CREATABLE_OFFER_TYPES: OfferType[] = OFFER_TYPE_ORDER.filter((t) => t !== 'ONLINE_TO_DINE_IN');
+
 type StatusFilter = 'all' | 'active' | 'inactive' | 'expired';
 
 export function OffersClient({
@@ -270,6 +284,9 @@ export function OffersClient({
                             {o.autoApply && <Badge variant="success" className="text-[10px] shrink-0">Auto</Badge>}
                             {o.stackable && <Badge variant="secondary" className="text-[10px] shrink-0">Stackable</Badge>}
                             {expired && <Badge variant="muted" className="text-[10px] shrink-0">Expired</Badge>}
+                            {!isRedeemableYet(o) && (
+                              <Badge variant="warning" className="text-[10px] shrink-0" title={NOT_REDEEMABLE_HINT}>Not redeemable yet</Badge>
+                            )}
                           </div>
                           <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
                             {o.code ? (

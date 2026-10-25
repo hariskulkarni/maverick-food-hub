@@ -21,11 +21,14 @@ import { money, fmtDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { PrintButtonClient } from './print-button';
+import { brand } from '@/lib/brand';
+import { qrPngDataUrl } from '@/server/qr-image';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Campaign · QR poster' };
 
-const PUBLIC_BASE = process.env.NEXT_PUBLIC_APP_URL ?? 'https://maverick.app';
+// The customer-facing site (brand.url), never a hard-coded/legacy host.
+const PUBLIC_BASE = brand.url;
 
 export default async function QrPosterPage({ params }: { params: Promise<{ id: string }> }) {
   const restaurant = await requireRestaurant();
@@ -45,7 +48,8 @@ export default async function QrPosterPage({ params }: { params: Promise<{ id: s
   // with the code pre-applied via querystring.
   const redemptionUrl = `${PUBLIC_BASE}/r/${restaurant.slug}?code=${encodeURIComponent(code)}`;
 
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(redemptionUrl)}&size=400x400&margin=2`;
+  // Rendered locally — no third-party QR service sees the redemption URL.
+  const qrSrc = await qrPngDataUrl(redemptionUrl, 400);
 
   const discountHeadline = (() => {
     const v = Number(campaign.discountValue);
