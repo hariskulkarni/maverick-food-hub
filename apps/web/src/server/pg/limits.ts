@@ -56,6 +56,48 @@ export function livePendingWhere(now: Date): Prisma.PgPaymentAttemptWhereInput {
   };
 }
 
+/**
+ * Read-only dry run of reserveLimit() (P0-2): lets checkout refuse BEFORE an order is committed.
+ * Not a reservation: the real, locked check still runs in createPgAttempt.
+ */
+export async function precheckLimit(
+  db: Tx,
+  args: { receivingAccountId: string; amountPaise: number; limits: PgLimitConfig; customerId: string; now?: Date },
+): Promise<void> {
+  const { receivingAccountId, amountPaise, limits } = args;
+  const now = args.now ?? new Date();
+  if (!Number.isSafeInteger(amountPaise) || amountPaise <= 0) {
+    throw new PgLimitError('AMOUNT_CAP', 'Flavrly PG amount must be a positive integer number of paise');
+  }
+  if (amountPaise > limits.maxAmountPaise) {
+    throw new PgLimitError('AMOUNT_CAP', `Direct UPI payments are limited to ₹${Math.floor(limits.maxAmountPaise / 100)} per order. Choose another payment method.`);
+  }
+  const since = new Date(now.getTime() - limits.customerWindowMinutes * 60_000);
+  const orders = await db.order.findMany({
+    where: { customerId: args.customerId, createdAt: { gte: new Date(now.getTime() - 24 * 3600_000) } },
+    select: { id: true },
+  });
+  if (orders.length > 0) {
+    const mine = await db.pgPaymentAttempt.count({
+      where: { orderId: { in: orders.map((o) => o.id) }, createdAt: { gte: since }, ...livePendingWhere(now) },
+    });
+    if (mine >= limits.customerMaxPending) {
+      throw new PgLimitError('CUSTOMER_VELOCITY', 'Too many pending payment attempts; please complete or wait for the previous one');
+    }
+  }
+  const pending = await db.pgPaymentAttempt.count({ where: { receivingAccountId, ...livePendingWhere(now) } });
+  if (pending >= limits.maxPendingPerAccount) {
+    throw new PgLimitError('PENDING_CAP', 'Too many Flavrly PG payments are pending on this account; try again shortly');
+  }
+  const usage = await db.pgAccountDailyUsage.findUnique({
+    where: { receivingAccountId_day: { receivingAccountId, day: istDay(now) } },
+    select: { reserved: true },
+  });
+  if ((usage?.reserved ?? 0) >= limits.dailyLimit) {
+    throw new PgLimitError('DAILY_CAP', 'Flavrly PG daily transaction cap reached for this account');
+  }
+}
+
 export async function reserveLimit(
   tx: Tx,
   args: {

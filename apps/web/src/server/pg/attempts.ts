@@ -21,11 +21,11 @@
 
 import { openException as openReconException } from './exceptions';
 import crypto from 'node:crypto';
-import type { PaymentMethod, PgAttemptState, PgExceptionKind, Prisma } from '@prisma/client';
+import { Prisma, type PaymentMethod, type PgAttemptState, type PgExceptionKind } from '@prisma/client';
 import { prisma } from '@/server/db';
 import { log } from '@/server/log';
 import { resolveBinding, type PgBinding } from './merchant-binding';
-import { lockReceivingAccount, reserveLimit, releaseLimit, PgLimitError } from './limits';
+import { lockReceivingAccount, precheckLimit, reserveLimit, releaseLimit, PgLimitError } from './limits';
 import { paiseToInrString } from './money';
 import { bindingToConfig, YOUPI_PROVIDER_NAME } from '../payments/youpi';
 import {
@@ -37,6 +37,7 @@ import {
 } from '../payments/youpi-api';
 import { reconcileYoupiPayment } from '../payments/youpi-reconcile';
 import { markOrderPaymentFailed } from '../payments/reconcile';
+import { OrderReviveError, PG_PAYABLE_ORDER, revivePaymentFailedOrder } from './order-state';
 
 type Tx = Prisma.TransactionClient;
 
@@ -127,6 +128,43 @@ async function closeException(tx: Tx, kind: PgExceptionKind, attemptId: string, 
   });
 }
 
+/**
+ * P0-2: everything createPgAttempt would refuse for reasons known before the order exists
+ * (currency, amount > 0, merchant binding, checkout origin, limits), checked read-only so checkout can
+ * refuse cleanly instead of committing a PAYMENT_PENDING order (and consuming coupon/wallet/points)
+ * that can never be paid. Throws PgAttemptError with a customer-safe message.
+ */
+export async function precheckPgAttempt(
+  o: { restaurantId: string; customerId: string },
+  opts: { amountPaise: number; currency?: string; now?: Date },
+): Promise<void> {
+  if ((opts.currency ?? 'INR') !== 'INR') throw new PgAttemptError('Direct UPI (Flavrly PG) supports INR only.', 400, 'CURRENCY');
+  if (!Number.isSafeInteger(opts.amountPaise) || opts.amountPaise <= 0) {
+    throw new PgAttemptError(
+      'Nothing is left to pay by UPI after wallet, points and discounts. Apply less wallet balance or points, or choose another payment method.',
+      400,
+      'AMOUNT',
+    );
+  }
+  const binding = await resolveBinding(o.restaurantId, { forNew: true });
+  if (!binding) throw new PgAttemptError('Direct UPI (Flavrly PG) is not available for this restaurant right now.', 400, 'NO_BINDING');
+  if (bindingToConfig(binding).requireReceiverMatch && !process.env.FLAVRLY_PG_CHECKOUT_ORIGIN) {
+    throw new PgAttemptError('Direct UPI (Flavrly PG) is not available right now. Choose another payment method.', 503, 'CONFIG');
+  }
+  try {
+    await precheckLimit(prisma, {
+      receivingAccountId: binding.receivingAccountId,
+      amountPaise: opts.amountPaise,
+      limits: binding.limits,
+      customerId: o.customerId,
+      now: opts.now,
+    });
+  } catch (e) {
+    if (e instanceof PgLimitError) throw new PgAttemptError(e.message, 429, e.code);
+    throw e;
+  }
+}
+
 export async function createPgAttempt(
   order: { id: string; restaurantId: string; customerId: string; customer?: { name?: string | null; phone?: string | null } },
   opts: { amountPaise: number; method: PaymentMethod; currency?: string; redirectUrl?: string; now?: Date },
@@ -151,6 +189,24 @@ export async function createPgAttempt(
 
       const paid = await tx.payment.findFirst({ where: { orderId: order.id, status: 'CAPTURED' }, select: { id: true } });
       if (paid) throw new PgAttemptError('This order is already paid.', 409, 'ALREADY_PAID');
+
+      // Order row lock (attempt creation and cancel/expiry serialise on it). Only an unpaid,
+      // not-cancelled order may open a session.
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${order.id} FOR UPDATE`;
+      const ord = await tx.order.findUnique({ where: { id: order.id }, select: { status: true } });
+      if (!ord) throw new PgAttemptError('Order not found.', 404, 'NOT_FOUND');
+      if (!PG_PAYABLE_ORDER.includes(ord.status)) throw new PgAttemptError('This order can no longer be paid.', 409, 'NOT_PAYABLE');
+      // P0-1: a retry after expiry/failure moves the order back to PAYMENT_PENDING in THIS transaction,
+      // so the new attempt's bank credit is classified ORDER_PAYMENT, not LATE_PAYMENT.
+      const revive = async () => {
+        if (ord.status !== 'PAYMENT_FAILED') return;
+        try {
+          await revivePaymentFailedOrder(tx, order.id, 'Payment retried (Flavrly PG)');
+        } catch (e) {
+          if (e instanceof OrderReviveError) throw new PgAttemptError(e.message, 409, 'BENEFITS_RELEASED');
+          throw e;
+        }
+      };
 
       const prior = await tx.pgPaymentAttempt.findMany({
         where: { orderId: order.id },
@@ -189,10 +245,12 @@ export async function createPgAttempt(
           if (!reusable) {
             throw new PgAttemptError('A payment for this order is already open. Please complete it or wait for it to expire.', 409, 'ATTEMPT_PENDING');
           }
+          await revive();
           return { kind: 'reuse', attempt: p, checkoutUrl: url as string } as const;
         }
       }
 
+      await revive();
       const attemptId = newAttemptId();
       const attemptKey = `${order.id}-${attemptId}`;
       const payment = await tx.payment.create({
@@ -615,4 +673,65 @@ export async function expireStaleAttempts(
     }
   }
   return res;
+}
+
+function envMinutes(key: string, fallback: number): number {
+  const v = Number(process.env[key]);
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+}
+
+/** P0-2/P0-4: a PG order with no live attempt for this long goes PAYMENT_FAILED (customer may retry). */
+export const ORPHAN_ORDER_MS = envMinutes('FLAVRLY_PG_ORPHAN_ORDER_MINUTES', 30) * 60_000;
+/** P1-10: an unpaid PAYMENT_FAILED PG order quiet for this long is cancelled, releasing its benefits. */
+export const UNPAID_CANCEL_MS = envMinutes('FLAVRLY_PG_UNPAID_CANCEL_HOURS', 24) * 3_600_000;
+
+const LIVE_STATES: PgAttemptState[] = ['CREATED', 'CREATE_UNKNOWN', 'AWAITING_PAYMENT', 'OBSERVED', 'BANK_VERIFIED', 'CAPTURED', 'REVIEW_REQUIRED'];
+
+/** PG prepay orders in `status` with nothing that can still become money, quiet since `cutoff`. */
+async function quietPgOrders(status: 'PAYMENT_PENDING' | 'PAYMENT_FAILED', cutoff: Date, limit: number): Promise<string[]> {
+  const at = Prisma.sql`(${cutoff.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+  const live = Prisma.join(LIVE_STATES.map((s) => Prisma.sql`${s}::"PgAttemptState"`));
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT o.id FROM "Order" o
+    WHERE o.status = ${status}::"OrderStatus" AND o."createdAt" < ${at}
+      AND EXISTS (SELECT 1 FROM "OrderStatusEvent" e WHERE e."orderId" = o.id AND e.status = 'PAYMENT_PENDING')
+      AND NOT EXISTS (SELECT 1 FROM "OrderStatusEvent" e WHERE e."orderId" = o.id AND e."createdAt" >= ${at})
+      AND NOT EXISTS (SELECT 1 FROM "Payment" p WHERE p."orderId" = o.id
+                      AND (p."providerName" IS DISTINCT FROM 'youpi' OR p.status IN ('CAPTURED', 'REFUNDED')))
+      AND NOT EXISTS (SELECT 1 FROM "PgPaymentAttempt" a WHERE a."orderId" = o.id AND (a.state IN (${live}) OR a."updatedAt" >= ${at}))
+      AND NOT EXISTS (SELECT 1 FROM "PgAllocation" l WHERE l."orderId" = o.id AND l."reversedAt" IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM "PgOutbox" x WHERE x."aggregateId" = o.id AND x.topic = 'ORDER_RELEASE' AND x.status <> 'DONE')
+      AND NOT EXISTS (SELECT 1 FROM "PgReconException" r WHERE r."orderId" = o.id AND r.kind = 'RELEASE_HELD' AND r.status <> 'RESOLVED')
+    ORDER BY o."createdAt" ASC
+    LIMIT ${limit}`;
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Worker stage for orders nobody else advances:
+ *  1. PAYMENT_PENDING PG order with no live attempt (create refused/rejected after commit, gateway
+ *     FAILED, voided attempt) -> PAYMENT_FAILED, so it is never stuck and the customer can retry.
+ *  2. PAYMENT_FAILED PG order, unpaid and untouched for UNPAID_CANCEL_MS -> CANCELLED_BY_ADMIN, which
+ *     releases coupon/wallet/points/signup bonus/freebie (transitionOrder). A credit after that is a
+ *     LATE_PAYMENT for refund.
+ */
+export async function sweepUnpaidPgOrders(
+  opts: { now?: Date; limit?: number } = {},
+): Promise<{ failed: number; cancelled: number }> {
+  const now = opts.now ?? new Date();
+  const limit = opts.limit ?? 50;
+  const out = { failed: 0, cancelled: 0 };
+  for (const id of await quietPgOrders('PAYMENT_PENDING', new Date(now.getTime() - ORPHAN_ORDER_MS), limit)) {
+    if (await markOrderPaymentFailed(id, 'Flavrly PG: no payment session is open for this order')) out.failed++;
+  }
+  const { transitionOrder } = await import('../orders');
+  for (const id of await quietPgOrders('PAYMENT_FAILED', new Date(now.getTime() - UNPAID_CANCEL_MS), limit)) {
+    try {
+      await transitionOrder(id, 'CANCELLED_BY_ADMIN', { note: 'Unpaid Flavrly PG order closed automatically' });
+      out.cancelled++;
+    } catch (e) {
+      log.warn({ orderId: id, err: (e as Error).message }, 'pg.unpaid_cancel_failed');
+    }
+  }
+  return out;
 }

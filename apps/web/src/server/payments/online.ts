@@ -17,7 +17,7 @@ import { log } from '../log';
 import { paymentProvider, youpiEnabledForRestaurant, type ProviderOrder } from './index';
 import { brand } from '@/lib/brand';
 import { PaymentMethod, PaymentStatus } from '@prisma/client';
-import { createPgAttempt, PgAttemptError } from '../pg/attempts';
+import { createPgAttempt, precheckPgAttempt, PgAttemptError } from '../pg/attempts';
 import { decimalToPaise } from '../pg/money';
 
 /** Payment methods that open a gateway checkout rather than settling in-app. */
@@ -195,6 +195,26 @@ export async function startOnlinePayment(
   });
 
   return toSession(payment.id, providerOrder);
+}
+
+/**
+ * P0-2: refuse a Flavrly PG checkout before placeOrder commits anything. Returns null when the
+ * session would be allowed, or a customer-safe refusal message.
+ */
+export async function precheckYoupiPayment(restaurantId: string, customerId: string, amount: number | string): Promise<string | null> {
+  let amountPaise: number;
+  try {
+    amountPaise = decimalToPaise(typeof amount === 'number' ? amount.toFixed(2) : amount);
+  } catch {
+    return 'Order total is not a valid INR amount.';
+  }
+  try {
+    await precheckPgAttempt({ restaurantId, customerId }, { amountPaise });
+    return null;
+  } catch (e) {
+    if (e instanceof PgAttemptError) return e.message;
+    throw e;
+  }
 }
 
 /**

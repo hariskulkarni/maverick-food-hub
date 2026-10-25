@@ -26,6 +26,7 @@ vi.mock('@/server/payments', () => ({ youpiEnabledForRestaurant: h.youpiEnabled 
 vi.mock('@/server/payments/online', () => ({
   isOnlineMethod: (m: string) => m === 'RAZORPAY' || m === 'PHONEPE',
   startOnlinePayment: vi.fn(async () => ({ providerName: 'mock', redirectUrl: null })),
+  precheckYoupiPayment: vi.fn(async () => null),
 }));
 vi.mock('@/server/tenancy', () => ({
   requireRestaurant: vi.fn(async () => ({ id: 'r' })),

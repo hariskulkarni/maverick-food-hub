@@ -12,7 +12,7 @@ import { publish } from './realtime';
 import { notify } from './notifications';
 import { genDeliveryOtp, genOrderCode, STATUS_LABELS } from '@/lib/utils';
 import { pricing, type OfferReward } from './pricing';
-import { isOnlineMethod, startOnlinePayment } from './payments/online';
+import { isOnlineMethod, precheckYoupiPayment, startOnlinePayment } from './payments/online';
 import { isDirectUpiPrepayment } from './payments/youpi-order-policy';
 import { youpiEnabledForRestaurant } from './payments';
 import { isCategoryAvailableNow } from './category-availability';
@@ -35,6 +35,7 @@ import { groupOrderChannel } from './group-scope';
 import { resolveDeliveryTerms } from './delivery/placement';
 import { branchHasActiveZones } from './delivery/zones';
 import { isBranchOpenAt, isScheduledTimeInsideOpenWindow } from './operating-hours';
+import { isPgPrepayOrder } from './pg/order-state';
 
 // State machine. Cancellation is allowed from any pre-delivery state into the
 // matching CANCELLED_BY_* terminal. Legacy CANCELLED is kept for back-compat.
@@ -522,6 +523,14 @@ export async function placeOrder(input: PlaceOrderInput) {
   const finalTotal = reservation ? dineInTotal : priced.total;
   const finalDiscount = clampTwo(priced.discountAmount + dineInDiscountAdded);
 
+  // Flavrly PG (P0-2): every refusal createPgAttempt can know up front (₹0 total, no binding, caps,
+  // velocity) is checked BEFORE the order transaction, so a refusal never leaves a PAYMENT_PENDING
+  // order holding the customer's coupon/wallet/points.
+  if (directUpiAwaitingBank) {
+    const refusal = await precheckYoupiPayment(branch.restaurantId, input.customerId, finalTotal);
+    if (refusal) throw new PgUnavailableError(refusal);
+  }
+
   const order = await prisma.$transaction(async (tx) => {
     // Claim the freebie atomically (conditional stock decrement). If we win a
     // unit, build the ₹0 gift line + record the rule id on the order so we can
@@ -708,7 +717,8 @@ export async function placeOrder(input: PlaceOrderInput) {
   // order has already been committed above and the customer's payment intent
   // depends on the response landing successfully.
   const customer = await prisma.user.findUnique({ where: { id: input.customerId } });
-  if (customer?.phone) {
+  const sendPlacedSms = async () => {
+    if (!customer?.phone) return;
     await notify.sms({
       to: customer.phone,
       userId: customer.id,
@@ -718,7 +728,9 @@ export async function placeOrder(input: PlaceOrderInput) {
         ? `${brand.name}: Order ${order.code} is awaiting payment verification. Please do not pay again while confirmation is pending.`
         : `${brand.name}: Order ${order.code} received. We'll start cooking once accepted.`
     }).catch((e) => log.error({ err: (e as Error).message, orderId: order.id }, 'order.placed sms failed'));
-  }
+  };
+  // Flavrly PG: the "awaiting verification" SMS only makes sense once a payment session exists.
+  if (!directUpiAwaitingBank) await sendPlacedSms();
 
   // Kick off the gateway checkout for online methods (Razorpay / PhonePe).
   // Amount is `finalTotal` — for dine-in this is after the reservation discount
@@ -737,6 +749,7 @@ export async function placeOrder(input: PlaceOrderInput) {
       // Online orders are auto-accepted (if the restaurant opts in) only AFTER
       // payment is captured — that happens in the webhook/reconcile path, not
       // here, because the order isn't paid yet.
+      if (directUpiAwaitingBank) await sendPlacedSms();
       return { order, payment: session };
     } catch (e) {
       log.error(
@@ -932,13 +945,17 @@ export async function transitionOrder(
   // Cancellation/refund — restore the signup-bonus hold so the customer can
   // re-use the credit on a future order. Idempotent and reversible-aware
   // (releases pending hold OR reverses a committed credit + restores order count).
+  // Flavrly PG prepay orders: PAYMENT_FAILED is revivable (retry / accepted late payment), so the
+  // signup bonus and freebie stay held until a terminal cancel (pg/order-state.ts). Other rails unchanged.
+  const holdPgBenefits = next === OrderStatus.PAYMENT_FAILED && (await isPgPrepayOrder(orderId));
   if (
-    next === OrderStatus.CANCELLED ||
-    next === OrderStatus.CANCELLED_BY_CUSTOMER ||
-    next === OrderStatus.CANCELLED_BY_RESTAURANT ||
-    next === OrderStatus.CANCELLED_BY_ADMIN ||
-    next === OrderStatus.REFUNDED ||
-    next === OrderStatus.PAYMENT_FAILED
+    !holdPgBenefits &&
+    (next === OrderStatus.CANCELLED ||
+      next === OrderStatus.CANCELLED_BY_CUSTOMER ||
+      next === OrderStatus.CANCELLED_BY_RESTAURANT ||
+      next === OrderStatus.CANCELLED_BY_ADMIN ||
+      next === OrderStatus.REFUNDED ||
+      next === OrderStatus.PAYMENT_FAILED)
   ) {
     await restoreSignupBonusForOrder(orderId).catch((e) =>
       log.error({ err: (e as Error).message, orderId }, 'signup bonus restore failed')

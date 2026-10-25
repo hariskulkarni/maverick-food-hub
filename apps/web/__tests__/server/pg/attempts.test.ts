@@ -69,6 +69,10 @@ const attempt = () => s().attempts[0];
 beforeEach(() => {
   for (const k of Object.keys(h.store) as (keyof Store)[]) h.store[k] = [];
   h.store.accounts.push({ id: 'acc1' });
+  // createPgAttempt locks and checks the order (must be PAYMENT_PENDING / PAYMENT_FAILED).
+  for (const [id, customerId] of [['o1', 'u1'], ['o2', 'u2'], ['o3', 'u3'], ['o4', 'u4']]) {
+    h.store.orders.push({ id, customerId, status: 'PAYMENT_PENDING', createdAt: new Date() });
+  }
   vi.clearAllMocks();
   h.resolveBinding.mockResolvedValue(binding());
   h.markOrderPaymentFailed.mockResolvedValue(true);

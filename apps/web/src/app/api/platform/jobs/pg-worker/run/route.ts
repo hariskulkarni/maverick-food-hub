@@ -18,7 +18,7 @@ import { log } from '@/server/log';
 import { inboxMetrics, redactOldWebhookPayloads, runInbox } from '@/server/pg/inbox';
 import { outboxMetrics, runOutbox } from '@/server/pg/outbox';
 import { withJobLease } from '@/server/pg/job-lease';
-import { expireStaleAttempts } from '@/server/pg/attempts';
+import { expireStaleAttempts, sweepUnpaidPgOrders } from '@/server/pg/attempts';
 import { retryUnmatchedCredits } from '@/server/pg/reconcile-engine';
 import { runYoupiReconcileSweep } from '@/server/jobs/youpi-reconcile-sweep';
 
@@ -56,6 +56,8 @@ export async function POST(req: NextRequest) {
   const outbox = await stage('outbox', () => runOutbox());
   // Unknown-outcome resolution + expiry of never-paid sessions (never expires OBSERVED/REVIEW_REQUIRED).
   const expiry = await stage('expiry', () => expireStaleAttempts());
+  // Unpaid PG orders with no live attempt -> PAYMENT_FAILED; long-abandoned ones -> cancelled (benefits released).
+  const orders = await stage('orders', () => sweepUnpaidPgOrders());
   // Re-offer UNMATCHED credits whose reference now matches an observed UTR (crash/race recovery).
   const credits = await stage('credits', () => retryUnmatchedCredits());
   const retention = await stage('retention', () => redactOldWebhookPayloads());
@@ -86,6 +88,6 @@ export async function POST(req: NextRequest) {
     log.error({ err: (e as Error).message }, 'pg.worker.metrics_failed');
   }
 
-  return Response.json({ ok: true, inbox, outbox, expiry, credits, retention, sweep, metrics, at: new Date().toISOString() });
+  return Response.json({ ok: true, inbox, outbox, expiry, orders, credits, retention, sweep, metrics, at: new Date().toISOString() });
 }
 
