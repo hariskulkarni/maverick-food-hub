@@ -25,7 +25,7 @@ import { audit } from './audit';
 import { headers } from 'next/headers';
 import { clientIp } from './http/client-ip';
 import { startSession, isSessionActive, revokeSession } from './sessions';
-import { isStaffTotpRole, consumeUserTotp, isBreakGlassEmail } from './user-totp';
+import { isStaffTotpRole, consumeUserTotp, isBreakGlassEmail, isRecoveryCodeFormat, consumeRecoveryCode } from './user-totp';
 import { verifyWidgetAccessToken } from './msg91-widget';
 import { phoneOtpRoleAllowed } from './phone-otp-policy';
 
@@ -227,7 +227,12 @@ export const authConfig: NextAuthConfig = {
             return null;
           }
           // F15: consume the code (single-use) — a replayed code is refused.
-          if (!totp || !(await consumeUserTotp(user, totp))) {
+          // A recovery code (lost authenticator) is accepted once in its place.
+          const usedRecovery = !!totp && isRecoveryCodeFormat(totp) && (await consumeRecoveryCode(user.id, totp));
+          if (usedRecovery) {
+            await audit('auth.totp.recovery_code_used', { actorId: user.id, actorRole: user.role, entityType: 'User', entityId: user.id }).catch(() => {});
+          }
+          if (!usedRecovery && (!totp || !(await consumeUserTotp(user, totp)))) {
             await recordLoginFailure(email, lockoutMinutes);
             await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'totp_invalid' } }).catch(() => {});
             return null;

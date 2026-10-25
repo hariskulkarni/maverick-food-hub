@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { authenticator } from 'otplib';
 
 const { db } = vi.hoisted(() => ({
-  db: { user: { findUnique: vi.fn(), updateMany: vi.fn(), create: vi.fn() } },
+  db: { user: { findUnique: vi.fn(), updateMany: vi.fn(), create: vi.fn() }, totpRecoveryCode: { updateMany: vi.fn() } },
 }));
 vi.mock('@/server/db', () => ({ prisma: db }));
 vi.mock('@/server/crypto', () => ({
@@ -94,6 +94,20 @@ describe('F15: email-password login refuses a replayed code', () => {
     });
     const code = codeAt(T0);
     const creds = { email: 'a@x.com', password: 'pw', totp: code };
+    expect(await provider.authorize(creds, { headers: new Headers() })).toMatchObject({ id: 'u1' });
+    expect(await provider.authorize(creds, { headers: new Headers() })).toBeNull();
+  });
+});
+
+describe('lead item 5: a recovery code signs in once instead of a TOTP code', () => {
+  it('accepts an unused recovery code once, then refuses it', async () => {
+    const provider: any = (authConfig.providers as any[]).find((p) => p.id === 'email-password');
+    db.user.findUnique.mockResolvedValue({
+      id: 'u1', email: 'a@x.com', role: 'KITCHEN', passwordHash: 'h', name: null, mustChangePassword: false,
+      suspendedAt: null, deletedAt: null, totpEnabledAt: new Date(), totpSecret: user.totpSecret,
+    });
+    db.totpRecoveryCode.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+    const creds = { email: 'a@x.com', password: 'pw', totp: 'ABCDE-FGHJK' };
     expect(await provider.authorize(creds, { headers: new Headers() })).toMatchObject({ id: 'u1' });
     expect(await provider.authorize(creds, { headers: new Headers() })).toBeNull();
   });

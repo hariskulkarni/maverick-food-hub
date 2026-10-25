@@ -29,6 +29,7 @@ vi.mock('@/server/user-totp', async (orig) => ({
   ...(await orig<typeof import('@/server/user-totp')>()),
   startEnrollment: start,
   confirmEnrollment: confirm,
+  generateRecoveryCodes: vi.fn(async () => ['AAAAA-BBBBB']),
 }));
 
 import { POST as precheck } from '@/app/api/auth/staff/precheck/route';
@@ -94,5 +95,14 @@ describe('F6: precheck / enroll honour the login lockout', () => {
     confirm.mockResolvedValueOnce(false);
     await enroll(mk({ email: 'a@x.com', password: 'p', code: '000000' }));
     expect(sec.recordLoginFailure).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('lead item 5: enrolment returns recovery codes once', () => {
+  it('enroll ok -> recoveryCodes, no-store', async () => {
+    db.user.findUnique.mockResolvedValue(user('KITCHEN'));
+    const r = await enroll(mk({ email: 'a@x.com', password: 'p', code: '123456' }));
+    expect(r.headers.get('cache-control')).toBe('no-store');
+    expect(await r.json()).toEqual({ ok: true, recoveryCodes: ['AAAAA-BBBBB'] });
   });
 });

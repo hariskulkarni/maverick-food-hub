@@ -128,6 +128,7 @@ export async function adminResetTotp(actor: Actor, targetId: string, meta: ReqMe
       where: { id: target.id },
       data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null, totpLastStep: null, currentSessionId: null },
     });
+    await tx.totpRecoveryCode.deleteMany({ where: { userId: target.id } });
     await revokeAllSessions(tx, target.id, 'admin_totp_reset');
   });
   await audit('auth.totp.reset', { ...auditBase(actor, target.id, meta), after: { email: target.email, sessionsRevoked: true } }).catch(() => {});

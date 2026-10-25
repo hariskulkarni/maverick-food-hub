@@ -13,6 +13,7 @@
  * promotes pending → active. Login then requires a valid code every time.
  * A super-admin can resetUserTotp() to force re-enrollment.
  */
+import crypto from 'node:crypto';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import { prisma } from './db';
@@ -128,10 +129,56 @@ export async function confirmEnrollment(userId: string, code: string): Promise<b
   return true;
 }
 
-/** Super-admin reset — clears TOTP so the user must re-enroll on next login. */
+/** Super-admin reset — clears TOTP (and recovery codes) so the user must re-enroll on next login. */
 export async function resetUserTotp(userId: string): Promise<void> {
+  await prisma.totpRecoveryCode.deleteMany({ where: { userId } });
   await prisma.user.update({
     where: { id: userId },
     data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null, totpLastStep: null },
   });
+}
+
+// ─── Recovery codes (lost-authenticator self-service) ───────────────────────
+const RECOVERY_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const RECOVERY_CODE_COUNT = 10;
+
+function normaliseRecoveryCode(code: string): string {
+  return String(code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+function hashRecoveryCode(code: string): string {
+  return crypto.createHash('sha256').update(`totp-recovery:${normaliseRecoveryCode(code)}`).digest('hex');
+}
+/** `XXXXX-XXXXX` (10 symbols, ~49 bits). A 6-digit TOTP code never matches. */
+export function isRecoveryCodeFormat(code: string): boolean {
+  return /^[A-Z2-9]{10}$/.test(normaliseRecoveryCode(code)) && !/^\d+$/.test(normaliseRecoveryCode(code));
+}
+
+/**
+ * Replace the user's recovery codes with a fresh set and return the plaintext
+ * codes — the ONLY time they exist outside the user's hands (hashes stored).
+ */
+export async function generateRecoveryCodes(userId: string): Promise<string[]> {
+  const codes: string[] = [];
+  while (codes.length < RECOVERY_CODE_COUNT) {
+    const b = crypto.randomBytes(10);
+    let c = '';
+    for (let i = 0; i < 10; i++) c += RECOVERY_ALPHABET[b[i] % RECOVERY_ALPHABET.length];
+    const code = `${c.slice(0, 5)}-${c.slice(5)}`;
+    if (!codes.includes(code)) codes.push(code);
+  }
+  await prisma.$transaction(async (tx) => {
+    await tx.totpRecoveryCode.deleteMany({ where: { userId } });
+    await tx.totpRecoveryCode.createMany({ data: codes.map((c) => ({ userId, codeHash: hashRecoveryCode(c) })) });
+  });
+  return codes;
+}
+
+/** Atomically use one recovery code. True only the first time a valid code is used. */
+export async function consumeRecoveryCode(userId: string, code: string): Promise<boolean> {
+  if (!isRecoveryCodeFormat(code)) return false;
+  const used = await prisma.totpRecoveryCode.updateMany({
+    where: { userId, codeHash: hashRecoveryCode(code), usedAt: null },
+    data: { usedAt: new Date() },
+  });
+  return used.count === 1;
 }

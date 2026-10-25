@@ -4032,3 +4032,16 @@ model LoginLockout {
   lockedUntil    DateTime?
   updatedAt      DateTime  @updatedAt
 }
+
+// ---- platform-auth r3: Google Authenticator recovery codes ----
+// Generated at enrolment (shown once), stored as sha256, each usable once in
+// place of an authenticator code. Cleared on TOTP reset. See server/user-totp.ts.
+model TotpRecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}

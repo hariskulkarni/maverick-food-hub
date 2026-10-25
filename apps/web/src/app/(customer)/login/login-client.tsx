@@ -93,6 +93,10 @@ export function LoginClient({
   // 'newpw' = a super admin issued a temporary password that must be replaced.
   const [staffPhase, setStaffPhase] = useState<'creds' | 'code' | 'newpw'>('creds');
   const [newPassword, setNewPassword] = useState('');
+  // Recovery codes: shown once right after enrolment; or typed instead of a
+  // TOTP code when the authenticator is lost.
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  const [useRecovery, setUseRecovery] = useState(false);
   const [newPassword2, setNewPassword2] = useState('');
   const [totpCode, setTotpCode] = useState('');
   const [enroll, setEnroll] = useState<{ qr: string; secret: string; otpauth: string } | null>(null);
@@ -283,8 +287,12 @@ export function LoginClient({
 
   // Staff step 2: (first time) confirm enrollment, then sign in with the code.
   async function staffSignIn() {
-    if (!/^\d{6}$/.test(totpCode.trim())) return toast.error('Enter the 6-digit code from Google Authenticator.');
+    const typed = totpCode.trim();
+    if (useRecovery && !enroll) {
+      if (!/^[A-Za-z2-9]{5}-?[A-Za-z2-9]{5}$/.test(typed)) return toast.error('Enter one of your recovery codes, e.g. ABCDE-FGHJK.');
+    } else if (!/^\d{6}$/.test(typed)) return toast.error('Enter the 6-digit code from Google Authenticator.');
     setBusy(true);
+    let enrolledCodes: string[] | null = null;
     try {
       if (enroll) {
         const er = await fetch('/api/auth/staff/enroll', {
@@ -294,6 +302,7 @@ export function LoginClient({
         });
         const ed = await er.json();
         if (!ed?.ok) { toast.error("That code didn't match — enter the current 6-digit code."); return; }
+        enrolledCodes = Array.isArray(ed.recoveryCodes) ? ed.recoveryCodes : null;
       }
       const r = await signIn('email-password', { email, password, totp: totpCode.trim(), redirect: false });
       if (r?.error) { toast.error('Sign-in failed. Check your code and try again.'); return; }
@@ -309,6 +318,11 @@ export function LoginClient({
           toast.error(`This account doesn't manage ${picked?.name ?? 'that restaurant'}. Use that restaurant's owner login, or link it under a parent you own.`);
           return;
         }
+      }
+      if (enrolledCodes?.length) {
+        // Signed in; show the recovery codes once before leaving the page.
+        setRecoveryCodes(enrolledCodes);
+        return;
       }
       await routeByRole(role === 'super' ? '/platform' : '/admin');
     } catch {
@@ -378,7 +392,28 @@ export function LoginClient({
                 </div>
               </div>
 
-              {activeSpec.auth === 'phone' ? (
+              {recoveryCodes ? (
+                <div className="space-y-4" role="status">
+                  <div className="rounded-xl border bg-muted/30 p-4 text-sm">
+                    <div className="font-semibold">Save your recovery codes</div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      If you lose your phone, each code signs you in once instead of an authenticator code. They are
+                      shown only now — store them somewhere safe (a password manager or printed copy).
+                    </p>
+                  </div>
+                  <ul className="grid grid-cols-1 gap-2 font-mono text-sm sm:grid-cols-2">
+                    {recoveryCodes.map((c) => <li key={c} className="rounded-md border bg-card px-3 py-2 text-center tracking-wider">{c}</li>)}
+                  </ul>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button type="button" variant="outline" className="flex-1" onClick={() => { void navigator.clipboard?.writeText(recoveryCodes.join('\n')); toast.success('Copied'); }}>
+                      Copy codes
+                    </Button>
+                    <Button type="button" className="flex-1" onClick={() => { setRecoveryCodes(null); void routeByRole(role === 'super' ? '/platform' : '/admin'); }}>
+                      I&apos;ve saved them — continue
+                    </Button>
+                  </div>
+                </div>
+              ) : activeSpec.auth === 'phone' ? (
                 !otpSent ? (
                   <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); sendOtp(); }}>
                     <div>
@@ -527,16 +562,15 @@ export function LoginClient({
                         </p>
                       )}
                       <div>
-                        <Label htmlFor="totp">Authenticator code</Label>
+                        <Label htmlFor="totp">{useRecovery && !enroll ? 'Recovery code' : 'Authenticator code'}</Label>
                         <Input
                           id="totp"
                           value={totpCode}
                           onChange={(e) => setTotpCode(e.target.value)}
-                          inputMode="numeric"
-                          pattern="[0-9]{6}"
-                          maxLength={6}
+                          inputMode={useRecovery && !enroll ? 'text' : 'numeric'}
+                          maxLength={useRecovery && !enroll ? 11 : 6}
                           autoComplete="one-time-code"
-                          placeholder="123456"
+                          placeholder={useRecovery && !enroll ? 'ABCDE-FGHJK' : '123456'}
                           required
                         />
                       </div>
@@ -552,10 +586,15 @@ export function LoginClient({
                         ← back
                       </button>
                       {!enroll && (
-                        <p className="text-xs text-muted-foreground">
-                          Lost your phone or authenticator app? Contact your platform super admin — they can reset it from
-                          Platform → Users, and you&apos;ll set it up again at your next sign-in.
-                        </p>
+                        <div className="space-y-1 text-xs text-muted-foreground">
+                          <button type="button" className="min-h-11 text-primary underline" onClick={() => { setUseRecovery((v) => !v); setTotpCode(''); }}>
+                            {useRecovery ? 'Use my authenticator code instead' : 'Lost your authenticator? Use a recovery code'}
+                          </button>
+                          <p>
+                            No recovery codes left? Contact your platform super admin — they can reset your authenticator from
+                            Platform → Users, and you&apos;ll set it up again at your next sign-in.
+                          </p>
+                        </div>
                       )}
                     </>
                   )}

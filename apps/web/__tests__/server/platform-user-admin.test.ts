@@ -17,6 +17,7 @@ const { db, auditFn, sec, hash } = vi.hoisted(() => ({
     branchUser: { updateMany: vi.fn(async () => ({ count: 1 })), deleteMany: vi.fn(async () => ({ count: 1 })) },
     userSession: { updateMany: vi.fn(), findMany: vi.fn() },
     otpAttempt: { updateMany: vi.fn() },
+    totpRecoveryCode: { deleteMany: vi.fn(async () => ({ count: 10 })) },
     auditLog: { findMany: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -95,6 +96,7 @@ describe('adminResetTotp', () => {
     expect(users.get('k1')!.totpEnabledAt).toBeNull();
     expect(users.get('k1')!.totpSecret).toBeNull();
     expect(auditFn).toHaveBeenCalledWith('auth.totp.reset', expect.objectContaining({ entityId: 'k1' }));
+    expect(db.totpRecoveryCode.deleteMany).toHaveBeenCalledWith({ where: { userId: 'k1' } });
   });
   it('400 for a role without TOTP', async () => {
     expect(await adminResetTotp(actor, 'c1', meta)).toMatchObject({ ok: false, status: 400 });
