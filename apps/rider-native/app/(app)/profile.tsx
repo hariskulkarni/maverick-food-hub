@@ -1,7 +1,7 @@
 /**
  * Profile tab — rider identity, editable display name, KYC document status,
- * and sign-out. KYC *uploads* stay on the web portal (multi-document forms);
- * this screen surfaces the verification status at a glance.
+ * and sign-out. KYC uploads happen on the KYC screen (app/kyc.tsx) or on the
+ * rider web portal (/rider/kyc); this screen surfaces the status at a glance.
  */
 import { useState, useCallback, useRef } from 'react';
 import {

@@ -24,6 +24,8 @@ import { AuthProvider, useAuth } from '../lib/auth';
 // task exists when the OS relaunches the app in the background to deliver GPS.
 import '../lib/background-location';
 import { colors, spacing, radius, font } from '../lib/theme';
+import { useAppUpdate } from '../lib/app-update';
+import { UpdateBanner, UpdateRequiredScreen } from '../components/update-prompt';
 
 /**
  * App-wide render-error fallback. `retry()` re-mounts the failed segment, which
@@ -58,6 +60,8 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 
 function RootNavigator() {
   const { loading } = useAuth();
+  // Update check on launch + foreground (GET /api/app/rider/latest).
+  const update = useAppUpdate();
 
   if (loading) {
     // Brief splash while SecureStore is read on cold start.
@@ -68,14 +72,22 @@ function RootNavigator() {
     );
   }
 
+  // Below the minimum supported build: block the app (emergency help stays).
+  if (update.required && update.latest) {
+    return <UpdateRequiredScreen latest={update.latest} currentVersionName={update.currentVersionName} />;
+  }
+
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: colors.bg },
-        animation: 'fade',
-      }}
-    />
+    <View style={styles.fill}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.bg },
+          animation: 'fade',
+        }}
+      />
+      {update.showBanner && update.latest ? <UpdateBanner latest={update.latest} onDismiss={update.dismiss} /> : null}
+    </View>
   );
 }
 
@@ -91,6 +103,7 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
   splash: {
     flex: 1,
     alignItems: 'center',

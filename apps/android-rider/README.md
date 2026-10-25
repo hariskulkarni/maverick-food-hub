@@ -2,9 +2,13 @@
 
 > **Deprecated.** The supported rider app is the Expo / React Native app in
 > [`apps/rider-native`](../rider-native) (build with EAS — see its `BUILD.md`).
-> The `/rider` PWA this shell used to wrap no longer exists in `apps/web`
-> (the path 404s), so the shell now opens `/rider-app` — the page that installs
-> and onboards riders onto the native app. Do not ship new releases from here.
+> The old `/rider` PWA this shell used to wrap was removed. Since 2026-10-25
+> `/rider` exists again, but as the **rider web portal** (earnings, payouts,
+> KYC documents, shifts, training, help, profile) — it deliberately cannot go
+> online or run deliveries, because live GPS tracking needs the native app.
+> So this shell **stays deprecated and keeps opening `/rider-app`** (install +
+> onboarding page, which links to the portal). Do not ship new releases from
+> here; publish native builds at `/platform/app-releases` instead.
 >
 > Security defaults: `FOODHUB_URL` is **required** (no `10.0.2.2` default), and
 > `cleartext` / `allowMixedContent` are enabled **only** when `FOODHUB_URL` is an
@@ -61,7 +65,7 @@ Already declared in `capacitor.config.ts` via plugins:
 
 ## Why Capacitor, not React Native or Flutter?
 
-(Historical) We had a rider PWA at `/rider` when this shell was written; it has since been replaced by `apps/rider-native`. A native rewrite would
+(Historical) We had a rider PWA at `/rider` when this shell was written; it has since been replaced by `apps/rider-native` (deliveries) plus the `/rider` web portal (account self-service). A native rewrite would
 double the codebase and create a second source of truth for delivery logic.
 Capacitor gives you ~95% of native UX (icon, splash, push, camera, background
 GPS) while keeping a single codebase. Migration to a fully-native Kotlin app

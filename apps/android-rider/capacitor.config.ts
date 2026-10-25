@@ -3,9 +3,10 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 // DEPRECATED shell — the supported rider app is apps/rider-native (Expo).
-// There is no `/rider` PWA in apps/web any more (that path 404s), so the shell
-// opens `/rider-app`, the real page that installs/onboards riders onto the
-// native app. FOODHUB_URL is required (set in .env or inline):
+// `/rider` is now the rider WEB PORTAL (account self-service; it cannot run
+// deliveries — tracking needs the native app), so the shell intentionally keeps
+// opening `/rider-app`, the page that installs/onboards riders onto the native
+// app and links to the portal. FOODHUB_URL is required (set in .env or inline):
 //   FOODHUB_URL=https://flavrly.in npx cap sync android
 const FOODHUB_URL = (process.env.FOODHUB_URL ?? '').trim().replace(/\/+$/, '');
 if (!FOODHUB_URL) {
