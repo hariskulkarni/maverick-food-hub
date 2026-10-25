@@ -108,9 +108,10 @@ export function MobileNavBar({
                 us. Tapping any link inside will navigate; the useEffect on
                 pathname (above) closes the drawer automatically on route
                 change, so we don't need an onClick prop on every link. */}
-            <nav className="flex-1 overflow-y-auto p-3 space-y-1 text-sm">
+            {/* drawerContent brings its own <nav> landmark. */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-1 text-sm">
               {drawerContent}
-            </nav>
+            </div>
             {footer && <div className="p-3 border-t">{footer}</div>}
           </aside>
         </div>
