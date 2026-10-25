@@ -19,3 +19,14 @@ export function completionAction(o: { status: string; fulfillmentType?: string |
 export function needsRider(o: { fulfillmentType?: string | null }): boolean {
   return !o.fulfillmentType || o.fulfillmentType === 'DELIVERY';
 }
+
+/**
+ * Every cancelled order status. Reject still writes legacy CANCELLED while
+ * customer/restaurant/admin cancels write CANCELLED_BY_*; filters must match
+ * all of them.
+ */
+export const CANCELLED_STATUSES = ['CANCELLED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] as const;
+
+export function isCancelledStatus(status: string): boolean {
+  return (CANCELLED_STATUSES as readonly string[]).includes(status);
+}

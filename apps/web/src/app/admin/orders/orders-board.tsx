@@ -9,7 +9,7 @@ import { money, fmtDate } from '@/lib/utils';
 import { Printer, X, Check, Bike, RefreshCw, Wifi, WifiOff, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 import { reportApiError } from '@/lib/api-error';
-import { completionAction, needsRider } from '@/lib/order-actions';
+import { completionAction, isCancelledStatus, needsRider } from '@/lib/order-actions';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { SoundToggle } from '@/components/sound-toggle';
 // AssignRiderDialog removed — riders self-claim from the platform pool now.
@@ -23,7 +23,7 @@ const FILTERS = [
   { key: 'PREPARING', label: 'Preparing', match: (o: any) => ['ACCEPTED', 'PREPARING', 'READY'].includes(o.status) },
   { key: 'OUT', label: 'Out for delivery', match: (o: any) => o.status === 'OUT_FOR_DELIVERY' },
   { key: 'COMPLETED', label: 'Completed', match: (o: any) => o.status === 'DELIVERED' },
-  { key: 'CANCELLED', label: 'Cancelled', match: (o: any) => o.status === 'CANCELLED' },
+  { key: 'CANCELLED', label: 'Cancelled', match: (o: any) => isCancelledStatus(o.status) },
   { key: 'COD', label: 'COD', match: (o: any) => o.paymentMethod === 'COD' },
   { key: 'ONLINE', label: 'Online paid', match: (o: any) => o.paymentMethod === 'RAZORPAY' }
 ] as const;

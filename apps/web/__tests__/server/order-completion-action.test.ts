@@ -27,3 +27,19 @@ describe('completionAction (pickup / dine-in hand-over)', () => {
     expect(needsRider({ fulfillmentType: 'DINE_IN' })).toBe(false);
   });
 });
+
+import { isCancelledStatus, CANCELLED_STATUSES } from '@/lib/order-actions';
+
+describe('isCancelledStatus (Cancelled filter)', () => {
+  it('matches legacy CANCELLED and every CANCELLED_BY_* status', () => {
+    for (const s of ['CANCELLED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN']) {
+      expect(isCancelledStatus(s)).toBe(true);
+    }
+    expect(isCancelledStatus('DELIVERED')).toBe(false);
+    expect(isCancelledStatus('REFUND_PENDING')).toBe(false);
+  });
+  it('covers every CANCELLED* value in the OrderStatus enum', () => {
+    const enumCancels = Object.values(OrderStatus).filter((s) => s.startsWith('CANCELLED'));
+    expect([...CANCELLED_STATUSES].sort()).toEqual(enumCancels.sort());
+  });
+});
