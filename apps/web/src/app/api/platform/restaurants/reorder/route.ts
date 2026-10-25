@@ -22,6 +22,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { revalidateRestaurantSurfaces } from '@/server/revalidate';
+import { clientIp } from '@/server/http/client-ip';
 
 const Body = z.object({
   ids: z.array(z.string().min(1)).min(1).max(1000),
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
     entityType: 'Restaurant',
     before: { order: before.sort((a, b) => a.sortOrder - b.sortOrder).map((r) => r.id) },
     after: { order: unique, sortOrders: unique.map((id, i) => ({ id, was: beforeMap.get(id), now: i * 10 })) },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+    ipAddress: clientIp(req.headers),
     userAgent: req.headers.get('user-agent') ?? undefined,
   });
 

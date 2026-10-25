@@ -5,6 +5,7 @@ import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
 import { parseOrJsonError } from '@/server/zod-helpers';
+import { clientIp } from '@/server/http/client-ip';
 
 const Body = z.object({
   name: z.string().min(2),
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
     entityId: rule.id,
     before: prevActive ? { id: prevActive.id, name: prevActive.name } : null,
     after: { id: rule.id, name: rule.name, baseAmount: data.baseAmount, perKmAmount: data.perKmAmount },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    ipAddress: clientIp(req.headers)
   });
 
   return Response.json(rule);

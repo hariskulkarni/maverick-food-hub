@@ -11,6 +11,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
+import { clientIp } from '@/server/http/client-ip';
 
 const Body = z.object({
   amount: z.number().min(0).optional(),
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     entityId: id,
     before: { status: before.status, reconciledAt: before.reconciledAt, reconciledBy: before.reconciledBy },
     after:  { status: after.status,  reconciledAt: after.reconciledAt,  reconciledBy: after.reconciledBy },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    ipAddress: clientIp(req.headers)
   });
 
   return Response.json(after);

@@ -11,6 +11,7 @@ import { parseOrJsonError } from '@/server/zod-helpers';
 import { ModuleSettingsSchema } from '@/server/training/authoring';
 import { serializeModule } from './_serializers';
 import { listModulesWithStats } from './_list';
+import { clientIp } from '@/server/http/client-ip';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
     entityType: 'TrainingModule',
     entityId: created.id,
     after: serializeModule(created),
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+    ipAddress: clientIp(req.headers) ?? null,
     userAgent: req.headers.get('user-agent') ?? null,
   });
 

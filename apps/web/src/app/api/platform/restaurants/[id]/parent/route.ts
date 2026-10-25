@@ -6,6 +6,7 @@ import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
 import { validateParentAssignment } from './_helpers';
 import { revalidateRestaurantSurfaces } from '@/server/revalidate';
+import { clientIp } from '@/server/http/client-ip';
 
 const Body = z.object({
   /** Parent restaurant id to nest under, or null to detach. */
@@ -36,7 +37,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     entityId: id,
     before,
     after: { parentId: after.parentId },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+    ipAddress: clientIp(req.headers),
   });
 
   revalidateRestaurantSurfaces();

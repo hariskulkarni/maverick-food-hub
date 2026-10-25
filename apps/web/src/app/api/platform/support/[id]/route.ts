@@ -10,6 +10,7 @@ import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { TicketStatus, TicketPriority } from '@prisma/client';
+import { clientIp } from '@/server/http/client-ip';
 
 const Body = z.object({
   status: z.nativeEnum(TicketStatus).optional(),
@@ -38,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const ticket = await prisma.supportTicket.update({ where: { id }, data });
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  const ip = clientIp(req.headers);
   await audit('support.ticket.update', {
     actorId: session?.user?.id,
     actorRole: session?.user?.role,

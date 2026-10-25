@@ -5,6 +5,7 @@ import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { imageRef, optionalString } from '@/server/zod-helpers';
+import { clientIp } from '@/server/http/client-ip';
 
 // ─── GET ────────────────────────────────────────────────────────────────────
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -90,7 +91,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       contactEmail: after.contactEmail, contactPhone: after.contactPhone,
       ownerUserId: after.ownerUserId
     },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+    ipAddress: clientIp(req.headers),
     userAgent: req.headers.get('user-agent')
   });
 
@@ -115,7 +116,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     entityId:  id,
     before:    { status: before.status },
     after:     { status: after.status },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+    ipAddress: clientIp(req.headers),
     userAgent: req.headers.get('user-agent')
   });
 

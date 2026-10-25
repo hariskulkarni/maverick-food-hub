@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { audit } from '@/server/audit';
 import { requireSuperAdminApi } from '@/server/api-auth';
+import { clientIp } from '@/server/http/client-ip';
 
 const Body = z.object({
   reason: z.string().min(2).max(500)
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     entityId: id,
     before: { revokedAt: null },
     after: { revokedAt: updated.revokedAt, revokedReason: reason, voidedAmount: remaining },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+    ipAddress: clientIp(req.headers) ?? null,
     userAgent: req.headers.get('user-agent') ?? null
   });
 

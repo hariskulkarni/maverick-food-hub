@@ -4,6 +4,7 @@ import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
 import { revalidateRestaurantSurfaces } from '@/server/revalidate';
+import { clientIp } from '@/server/http/client-ip';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireSuperAdminApi();
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     entityId: id,
     before,
     after: { status: r.status, approvedAt: r.approvedAt },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    ipAddress: clientIp(req.headers)
   });
   revalidateRestaurantSurfaces(r.slug);
   return Response.json(r);

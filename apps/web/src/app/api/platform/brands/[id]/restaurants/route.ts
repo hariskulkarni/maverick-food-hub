@@ -4,6 +4,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
+import { clientIp } from '@/server/http/client-ip';
 
 const Body = z.object({
   restaurantIds: z.array(z.string()).min(1),
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     entityId:  brandId,
     before:    { restaurants: before },
     after:     { restaurants: after },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+    ipAddress: clientIp(req.headers),
     userAgent: req.headers.get('user-agent')
   });
 

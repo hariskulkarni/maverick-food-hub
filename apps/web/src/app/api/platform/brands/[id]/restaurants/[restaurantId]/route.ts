@@ -3,6 +3,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
+import { clientIp } from '@/server/http/client-ip';
 
 // DELETE — unassign one Restaurant from this brand (sets brandId=null).
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string; restaurantId: string }> }) {
@@ -28,7 +29,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     entityId:  brandId,
     before:    { restaurantId, brandId: before.brandId },
     after:     { restaurantId, brandId: null },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+    ipAddress: clientIp(req.headers),
     userAgent: req.headers.get('user-agent')
   });
 

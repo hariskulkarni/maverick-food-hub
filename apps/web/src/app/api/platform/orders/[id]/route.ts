@@ -4,6 +4,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { refundOrder, RefundError } from '@/server/refunds';
+import { clientIp } from '@/server/http/client-ip';
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireSuperAdminApi();
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return Response.json({ ok: false, message: 'Invalid refund request.' }, { status: 400 });
   }
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  const ip = clientIp(req.headers);
   try {
     const result = await refundOrder({
       orderId: id,
