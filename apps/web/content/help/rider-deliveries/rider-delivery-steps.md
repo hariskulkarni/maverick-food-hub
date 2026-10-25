@@ -4,7 +4,7 @@ summary: The four steps on the delivery screen, from reaching the restaurant to 
 audience: RIDER
 appArea: rider.delivery
 tags: delivery, pickup, reached, navigate, steps, status
-related: rider-delivery-code-and-photo, rider-claim-orders-from-pool, rider-cash-on-delivery
+related: rider-delivery-code-and-photo, rider-claim-orders-from-pool, rider-cash-on-delivery, rider-customer-unreachable
 language: en
 ---
 ## Open your delivery
@@ -35,4 +35,5 @@ When it works, you'll see **Delivered!**. Tap **Back to home**.
 
 - Keep location access on. If it's off, the app warns you that your position won't appear on the customer's tracker.
 - If a step fails, you'll see **Could not update**. Check your connection and tap again.
-- The delivery screen has no option for problems such as an unreachable customer. If you're stuck, contact support from **Profile > Messages** or raise an **Order issue** ticket in **Help & Support**.
+- Can't reach the customer at the drop? Call them first, then tap **Customer unreachable** under the delivery code box to alert Flavrly support. See [When you can't reach the customer](help:rider-customer-unreachable).
+- For other problems, contact support from **Profile > Messages** or raise an **Order issue** ticket in **Help & Support**.
