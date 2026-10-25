@@ -26,7 +26,7 @@ vi.mock('@/server/db', () => ({
   },
 }));
 
-import { requireTenantAdmin, activeMembership } from '@/server/tenancy';
+import { requireTenantAdmin, activeMembership, requireManagedRestaurant } from '@/server/tenancy';
 import { requireRestaurantAdminApi } from '@/server/api-auth';
 
 const R = (id: string) => ({ id, name: id, parentId: null });
@@ -75,6 +75,27 @@ describe('requireTenantAdmin', () => {
     h.auth.mockResolvedValue({ user: { id: 's', role: 'SUPER_ADMIN' } });
     await expect(requireTenantAdmin('X')).resolves.toMatchObject({ id: 'X' });
     expect((await requireTenantAdmin().catch((e) => e)).status).toBe(403);
+  });
+});
+
+describe('requireManagedRestaurant', () => {
+  it('honours an explicit restaurantId only for SUPER_ADMIN', async () => {
+    h.auth.mockResolvedValue({ user: { id: 's', role: 'SUPER_ADMIN' } });
+    await expect(requireManagedRestaurant('X')).resolves.toMatchObject({ id: 'X' });
+  });
+
+  it('ignores a caller-supplied restaurantId for a tenant ADMIN (stays on their own restaurant)', async () => {
+    h.auth.mockResolvedValue({ user: { id: 'u1', role: 'ADMIN' } });
+    h.memberships = [{ restaurantId: 'A', role: 'ADMIN', restaurant: R('A') }];
+    await expect(requireManagedRestaurant('X')).resolves.toMatchObject({ id: 'A' });
+    await expect(requireManagedRestaurant()).resolves.toMatchObject({ id: 'A' });
+  });
+
+  it('404s a signed-out caller even when a restaurantId is supplied', async () => {
+    h.auth.mockResolvedValue(null);
+    const err = await requireManagedRestaurant('X').catch((e) => e);
+    expect(err).toBeInstanceOf(Response);
+    expect(err.status).toBe(404);
   });
 });
 

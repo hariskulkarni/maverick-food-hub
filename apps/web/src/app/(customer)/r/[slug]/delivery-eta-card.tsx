@@ -12,8 +12,10 @@
  * UX rules:
  *   - Don't auto-prompt for location. Show a button. The browser permission
  *     dialog is jarring when surprise-fired on first load.
- *   - Cache the granted location in localStorage (with a 30-min TTL) so a
- *     customer navigating across restaurants doesn't re-prompt every time.
+ *   - Cache the granted location IN MEMORY only (30-min TTL) so a customer
+ *     navigating across restaurants doesn't re-prompt every time. Precise
+ *     coordinates are personal data — never persisted to localStorage /
+ *     sessionStorage, so they're gone on reload or when the tab closes.
  *   - Show distinct states: idle / asking / loading / granted / outside-radius
  *     / denied. Each gets its own affordance.
  *   - When permission is denied or geolocation isn't supported, render the
@@ -49,26 +51,30 @@ type State =
   | { kind: 'denied'; reason: string }
   | { kind: 'no-geo' };
 
-// 30 min cache so a customer bouncing between menu/cart/menu isn't re-prompted.
-const CACHE_KEY = 'mfh.customer.geo';
+// 30 min in-memory cache so a customer bouncing between menu/cart/menu (client
+// navigation keeps this module alive) isn't re-prompted.
 const CACHE_TTL_MIN = 30;
+let cachedGeo: { lat: number; lng: number; ts: number } | null = null;
 
 function readCachedGeo(): { lat: number; lng: number } | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    const { lat, lng, ts } = JSON.parse(raw);
-    if (typeof lat !== 'number' || typeof lng !== 'number' || typeof ts !== 'number') return null;
-    if (Date.now() - ts > CACHE_TTL_MIN * 60_000) return null;
-    return { lat, lng };
-  } catch { return null; }
+  if (!cachedGeo) return null;
+  if (Date.now() - cachedGeo.ts > CACHE_TTL_MIN * 60_000) {
+    cachedGeo = null;
+    return null;
+  }
+  return { lat: cachedGeo.lat, lng: cachedGeo.lng };
 }
 
 function writeCachedGeo(lat: number, lng: number) {
+  cachedGeo = { lat, lng, ts: Date.now() };
+}
+
+/** Older builds persisted coordinates in localStorage — wipe them. */
+const LEGACY_CACHE_KEY = 'mfh.customer.geo';
+function purgeLegacyGeoCache() {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ lat, lng, ts: Date.now() }));
-  } catch { /* private mode etc. — ignore */ }
+    localStorage.removeItem(LEGACY_CACHE_KEY);
+  } catch { /* private mode / storage disabled — nothing to purge */ }
 }
 
 /** Slim pulsing dot used by the asking/loading states. */
@@ -109,6 +115,7 @@ export function DeliveryEtaCard({ branchId, branchName, branchCity }: Props) {
 
   // Use cached location if fresh — silent path with no prompt.
   useEffect(() => {
+    purgeLegacyGeoCache();
     const cached = readCachedGeo();
     if (cached) fetchEta(cached.lat, cached.lng);
     // eslint-disable-next-line react-hooks/exhaustive-deps

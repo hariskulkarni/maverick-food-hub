@@ -4,7 +4,7 @@
  * Kept dependency-free (Node's crypto only) so the route handlers stay thin and
  * the token-generation logic has a single home.
  */
-import crypto from 'node:crypto';
+import { randomStringFromAlphabet } from '@/server/secure-random';
 
 /** URL-safe alphabet — no look-alike characters (0/O, 1/l/I) to keep links readable. */
 const TOKEN_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
@@ -14,12 +14,7 @@ const TOKEN_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
  * Uses crypto-strong randomness so tokens aren't guessable.
  */
 export function genShareToken(length = 10): string {
-  const bytes = crypto.randomBytes(length);
-  let out = '';
-  for (let i = 0; i < length; i++) {
-    out += TOKEN_ALPHABET[bytes[i] % TOKEN_ALPHABET.length];
-  }
-  return out;
+  return randomStringFromAlphabet(TOKEN_ALPHABET, length);
 }
 
 /** How long a freshly-created live-trip share link stays valid. */

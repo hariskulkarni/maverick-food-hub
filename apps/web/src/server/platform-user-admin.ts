@@ -24,7 +24,7 @@
  *
  * Callers (route handlers) must already have verified a SUPER_ADMIN session.
  */
-import crypto from 'node:crypto';
+import { randomStringFromAlphabet } from '@/server/secure-random';
 import argon2 from 'argon2';
 import { Role } from '@prisma/client';
 import { prisma } from './db';
@@ -45,9 +45,7 @@ const fail = (status: number, error: string, message: string) => ({ ok: false as
 /** Unambiguous alphabet (no 0/O/1/l/I) — easy to read out over the phone. */
 const TEMP_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
 export function generateTempPassword(): string {
-  const bytes = crypto.randomBytes(16);
-  let s = '';
-  for (let i = 0; i < 16; i++) s += TEMP_ALPHABET[bytes[i] % TEMP_ALPHABET.length];
+  const s = randomStringFromAlphabet(TEMP_ALPHABET, 16);
   return `${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}`;
 }
 

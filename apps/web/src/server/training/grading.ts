@@ -3,7 +3,7 @@
  * per-learner module status (progress, certification, re-certification,
  * overdue). No DB access, so every rule is unit-testable.
  */
-import { randomBytes } from 'node:crypto';
+import { randomStringFromAlphabet } from '@/server/secure-random';
 
 // ─── Grading ─────────────────────────────────────────────────────────────────
 
@@ -168,8 +168,5 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 /** e.g. FLV-7K2M9QX4 — 8 chars from an unambiguous alphabet. */
 export function newCertificateCode(): string {
-  const bytes = randomBytes(8);
-  let s = '';
-  for (const b of bytes) s += CODE_ALPHABET[b % CODE_ALPHABET.length];
-  return `FLV-${s}`;
+  return `FLV-${randomStringFromAlphabet(CODE_ALPHABET, 8)}`;
 }

@@ -14,6 +14,7 @@
  * A super-admin can resetUserTotp() to force re-enrollment.
  */
 import crypto from 'node:crypto';
+import { randomStringFromAlphabet } from '@/server/secure-random';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import { prisma } from './db';
@@ -160,9 +161,7 @@ export function isRecoveryCodeFormat(code: string): boolean {
 export async function generateRecoveryCodes(userId: string): Promise<string[]> {
   const codes: string[] = [];
   while (codes.length < RECOVERY_CODE_COUNT) {
-    const b = crypto.randomBytes(10);
-    let c = '';
-    for (let i = 0; i < 10; i++) c += RECOVERY_ALPHABET[b[i] % RECOVERY_ALPHABET.length];
+    const c = randomStringFromAlphabet(RECOVERY_ALPHABET, 10);
     const code = `${c.slice(0, 5)}-${c.slice(5)}`;
     if (!codes.includes(code)) codes.push(code);
   }

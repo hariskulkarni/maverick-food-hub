@@ -158,13 +158,14 @@ export async function requireRestaurant() {
  * applies, so this cannot widen a tenant admin's reach.
  */
 export async function requireManagedRestaurant(restaurantId?: string | null) {
-  if (restaurantId) {
-    const session = await auth();
-    if (session?.user?.role === Role.SUPER_ADMIN) {
-      const r = await prisma.restaurant.findUnique({ where: { id: restaurantId } });
-      if (!r) throw new Response('No such restaurant', { status: 404 });
-      return r;
-    }
+  // Resolve the session unconditionally: the (caller-supplied) restaurantId
+  // must never decide WHETHER authentication runs — only the server-side role
+  // decides whether the explicit target is honoured.
+  const session = await auth();
+  if (restaurantId && session?.user?.role === Role.SUPER_ADMIN) {
+    const r = await prisma.restaurant.findUnique({ where: { id: restaurantId } });
+    if (!r) throw new Response('No such restaurant', { status: 404 });
+    return r;
   }
   return requireRestaurant();
 }

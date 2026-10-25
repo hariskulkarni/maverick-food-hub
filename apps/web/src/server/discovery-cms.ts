@@ -658,8 +658,20 @@ export function parseDiscoveryConfig(raw: unknown): DiscoveryConfig {
 }
 
 /** Normalize any string to a URL slug (lowercase, hyphenated). */
-function slugStr(v: unknown): string {
-  return String(v ?? '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+export function slugStr(v: unknown): string {
+  return trimDashes(String(v ?? '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-')).slice(0, 64);
+}
+
+/**
+ * Strip leading/trailing '-' in linear time. (`/^-+|-+$/g` backtracks
+ * quadratically on long runs of '-' — a ReDoS on admin-supplied JSON.)
+ */
+function trimDashes(s: string): string {
+  let start = 0;
+  let end = s.length;
+  while (start < end && s[start] === '-') start++;
+  while (end > start && s[end - 1] === '-') end--;
+  return s.slice(start, end);
 }
 
 /** Dish-matching keywords derived from a free-text tile label. */

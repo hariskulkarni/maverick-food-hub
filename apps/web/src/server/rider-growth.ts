@@ -12,6 +12,7 @@
  * suffixed code (`newReferralRowCode`).
  */
 import crypto from 'node:crypto';
+import { randomStringFromAlphabet } from '@/server/secure-random';
 
 export { TIERS, computeTier, tierSurgeShareBonus } from '@/lib/rider-tiers';
 export type { TierName, TierDef, ComputedTier } from '@/lib/rider-tiers';
@@ -40,8 +41,6 @@ export function genReferralCode(riderProfileId: string): string {
  */
 export function newReferralRowCode(riderCode: string): string {
   const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
-  const bytes = crypto.randomBytes(4);
-  let suffix = '';
-  for (let i = 0; i < 4; i++) suffix += ALPHABET[bytes[i] % ALPHABET.length];
+  const suffix = randomStringFromAlphabet(ALPHABET, 4);
   return `${riderCode}-${suffix}`;
 }
