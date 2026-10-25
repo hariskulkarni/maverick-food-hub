@@ -15,8 +15,10 @@
  */
 import { prisma } from './db';
 import { isActiveDelivery } from './rider-location-points';
+import { RIDER_SIGNAL_STALE_MS } from '@/lib/live-fleet';
 
-const STALE_MS = 2 * 60 * 1000; // 2 minutes
+// Shared with the live map's "signal lost" marker so both agree on staleness.
+const STALE_MS = RIDER_SIGNAL_STALE_MS; // 2 minutes
 
 export async function runHeartbeatSweep(): Promise<{ flipped: number }> {
   const threshold = new Date(Date.now() - STALE_MS);

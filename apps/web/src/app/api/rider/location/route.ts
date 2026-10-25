@@ -197,18 +197,22 @@ export async function POST(req: NextRequest) {
     // Any accepted point (incl. a background batch) proves the app is alive:
     // refresh lastSeenAt so the auto-offline sweep doesn't flip a rider whose
     // Home-tab heartbeat interval is paused in the background.
-    // lastLocationAt (the "last GPS fix" on live-ops) only moves with a live point.
+    // lastLocationAt (the "last GPS fix" on the live maps) moves only together
+    // with RiderProfile.currentLat/Lng and carries the fix time, so the poll
+    // never pairs an old stored position with a newer timestamp.
+    const storedLive = live && persist.includes(live) ? live : null;
+    const fixAt = storedLive ? new Date(Math.min(storedLive.t, now)) : null;
     writes.push(
       prisma.riderHeartbeat.upsert({
         where: { riderId },
-        create: { riderId, lastSeenAt: nowDate, lastLocationAt: live ? nowDate : null, gpsEnabled: true },
-        update: live ? { lastSeenAt: nowDate, lastLocationAt: nowDate } : { lastSeenAt: nowDate }
+        create: { riderId, lastSeenAt: nowDate, lastLocationAt: fixAt, gpsEnabled: true },
+        update: fixAt ? { lastSeenAt: nowDate, lastLocationAt: fixAt } : { lastSeenAt: nowDate }
       })
     );
-    if (live && persist.includes(live)) {
+    if (storedLive) {
       // Source of truth for the live maps between SSE frames.
       writes.push(
-        prisma.riderProfile.update({ where: { id: riderId }, data: { currentLat: live.lat, currentLng: live.lng } })
+        prisma.riderProfile.update({ where: { id: riderId }, data: { currentLat: storedLive.lat, currentLng: storedLive.lng } })
       );
     }
     // Fire-and-forget: never block the ack behind disk I/O.
