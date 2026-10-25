@@ -43,3 +43,6 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # YouPI reconciliation — verifies in-flight YouPI payments (status + UTR + amount) and is the only path that captures them.
 */3 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 60 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/youpi-reconcile/run >> /var/log/restaurant-manager/jobs.log 2>&1
+
+# Google review asks — sends due post-order review requests + one optional reminder (idempotent).
+*/5 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 60 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/review-requests/run >> /var/log/restaurant-manager/jobs.log 2>&1

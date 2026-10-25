@@ -551,6 +551,9 @@ model Restaurant {
   googleReviews       GoogleReview[]
   reviewReplies       ReviewReply[]
   reviewAutoReplyCfg  ReviewAutoReplyConfig?
+  reviewRequestCfg    ReviewRequestConfig?
+  reviewRequests      ReviewRequest[]
+  recoveryTickets     ServiceRecoveryTicket[]
   qrCodes           QrCode[]
   favoritedBy       FavoriteRestaurant[]
   offers            Offer[]
@@ -1244,6 +1247,8 @@ model Order {
   batchInvitations  BatchInvitation[]
   reservation       Reservation?         @relation(fields: [reservationId], references: [id])
   freebieRule       FreebieRule?         @relation(fields: [freebieRuleId], references: [id])
+  reviewRequest     ReviewRequest?
+  recoveryTicket    ServiceRecoveryTicket?
 
   @@index([branchId, status])
   @@index([branchId, status, createdAt])
@@ -2622,6 +2627,7 @@ enum QrType {
   TABLE
   CAMPAIGN
   TAKEAWAY
+  REVIEW
 }
 
 // QR codes are how customers reach the storefront in Phase 1 (no customer app).
@@ -3430,6 +3436,134 @@ model ReviewAutoReplyConfig {
   updatedAt         DateTime @updatedAt
   restaurant        Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 }
+
+// ==== Review acquisition ====
+// Post-order Google review asks (SMS / WhatsApp / email), customer opt-outs,
+// tracked short links (/rv/<token>), QR review kit scans, and service-recovery
+// tickets for low ratings. Compliance: every customer is asked the same way and
+// the Google review link is shown at EVERY rating (no gating, no incentives).
+enum ReviewRequestChannel {
+  SMS
+  WHATSAPP
+  EMAIL
+  QR
+}
+
+enum ReviewRequestStatus {
+  SCHEDULED
+  SENT
+  CLICKED
+  FEEDBACK
+  SKIPPED
+  FAILED
+}
+
+enum RecoveryTicketStatus {
+  OPEN
+  CONTACTED
+  RESOLVED
+}
+
+model ReviewRequestConfig {
+  id                      String                 @id @default(cuid())
+  restaurantId            String                 @unique
+  enabled                 Boolean                @default(false)
+  // Priority order: the first channel the customer can be reached on is used.
+  channels                ReviewRequestChannel[] @default([SMS])
+  delayMinutes            Int                    @default(60)
+  // IST hours; no ask is sent while start <= hour < end (wraps midnight). Null = no quiet hours.
+  quietStartHour          Int?                   @default(21)
+  quietEndHour            Int?                   @default(9)
+  reminderEnabled         Boolean                @default(false)
+  reminderAfterHours      Int                    @default(24)
+  // At most one ask per customer per restaurant every N days.
+  frequencyCapDays        Int                    @default(30)
+  // Ratings <= this open a service-recovery ticket (Google link is still shown).
+  lowRatingThreshold      Int                    @default(3)
+  // Place ID resolved from the connected Google Business Profile location.
+  gbpPlaceId              String?
+  gbpReviewUrl            String?
+  // Manual override wins over every derived link.
+  googleReviewUrlOverride String?
+  // Approved Meta WhatsApp Utility template for review asks (owner action).
+  whatsappTemplateName    String?
+  whatsappTemplateLang    String?
+  updatedAt               DateTime               @updatedAt
+  restaurant              Restaurant             @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+model ReviewRequest {
+  id              String               @id @default(cuid())
+  restaurantId    String
+  // One ask per order (Postgres allows many NULLs for QR-kit rows).
+  orderId         String?              @unique
+  customerId      String?
+  qrCodeId        String?
+  channel         ReviewRequestChannel
+  token           String               @unique
+  status          ReviewRequestStatus  @default(SCHEDULED)
+  dueAt           DateTime?
+  sentAt          DateTime?
+  reminderDueAt   DateTime?
+  reminderAt      DateTime?
+  clickedAt       DateTime?
+  feedbackAt      DateTime?
+  googleClickedAt DateTime?
+  // QR-kit feedback has no order; rating/comment live here instead of OrderFeedback.
+  rating          Int?
+  comment         String?
+  error           String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  restaurant      Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  order           Order?               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status, dueAt])
+  @@index([status, reminderDueAt])
+  @@index([restaurantId, createdAt])
+  @@index([customerId, restaurantId, sentAt])
+}
+
+// restaurantId NULL = global opt-out (all restaurants on the platform).
+model ReviewRequestOptOut {
+  id                 String   @id @default(cuid())
+  customerId         String
+  restaurantId       String?
+  // Restaurant whose message carried the STOP link (for funnel stats).
+  sourceRestaurantId String?
+  createdAt          DateTime @default(now())
+
+  @@index([customerId])
+  @@index([sourceRestaurantId, createdAt])
+}
+
+model ServiceRecoveryTicket {
+  id              String               @id @default(cuid())
+  restaurantId    String
+  orderId         String?              @unique
+  reviewRequestId String?
+  customerId      String?
+  contactName     String?
+  contactPhone    String?
+  rating          Int
+  comment         String?
+  status          RecoveryTicketStatus @default(OPEN)
+  assigneeUserId  String?
+  notes           String?
+  // Unconditional goodwill gesture (never tied to a review).
+  goodwillNote    String?
+  goodwillAt      DateTime?
+  contactedAt     DateTime?
+  resolvedAt      DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  restaurant      Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  order           Order?               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, status, createdAt])
+}
+
+// ==== /Review acquisition ====
 
 // ─── YouPI experimental PG pilot ───────────────────────────────────────────
 // Daily order-cap counter, incremented atomically per restaurant per UTC day.
