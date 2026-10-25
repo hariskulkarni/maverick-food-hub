@@ -198,7 +198,7 @@ function ArticlesPanel({ categories }: { categories: Category[] }) {
         </p>
       ) : (
         <div className="overflow-x-auto rounded-xl border bg-card">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full text-sm">
             <thead className="border-b text-left text-xs text-muted-foreground">
               <tr>
                 <th className="p-3">Article</th>
@@ -554,7 +554,7 @@ function CategoriesPanel({ categories, reload }: { categories: Category[]; reloa
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
       <div className="overflow-x-auto rounded-xl border bg-card">
-        <table className="w-full min-w-[520px] text-sm">
+        <table className="w-full text-sm">
           <thead className="border-b text-left text-xs text-muted-foreground">
             <tr>
               <th className="p-3">Category</th>

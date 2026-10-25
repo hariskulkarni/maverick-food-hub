@@ -14,38 +14,17 @@
  * Articles go through the same authoring service as the platform console, so
  * each gets a version-1 snapshot and a fresh search vector.
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { prisma } from '../src/server/db';
-import { parseFixture, type FixtureArticle, type FixtureCategory } from '../src/server/help/fixtures';
+import { loadFixtures } from '../src/server/help/fixtures';
 import { createArticle, updateArticle, type Actor } from '../src/server/help/authoring';
 
 const ROOT = path.join(__dirname, '..', 'content', 'help');
 const ACTOR: Actor = { id: 'system:help-seed', name: 'Help starter content', role: 'SYSTEM' };
 
-export function loadFixtures(root = ROOT): { categories: FixtureCategory[]; articles: FixtureArticle[] } {
-  const categories = JSON.parse(readFileSync(path.join(root, 'categories.json'), 'utf8')) as FixtureCategory[];
-  const articles: FixtureArticle[] = [];
-  for (const dir of readdirSync(root)) {
-    const full = path.join(root, dir);
-    if (!statSync(full).isDirectory()) continue;
-    if (!categories.some((c) => c.slug === dir)) throw new Error(`content/help/${dir}: not in categories.json`);
-    for (const f of readdirSync(full).filter((n) => n.endsWith('.md')).sort()) {
-      articles.push(parseFixture(readFileSync(path.join(full, f), 'utf8'), f, dir));
-    }
-  }
-  const seen = new Set<string>();
-  for (const a of articles) {
-    const key = `${a.slug}:${a.language}`;
-    if (seen.has(key)) throw new Error(`duplicate article slug ${key}`);
-    seen.add(key);
-  }
-  return { categories, articles };
-}
-
 async function main() {
   const update = process.argv.includes('--update');
-  const { categories, articles } = loadFixtures();
+  const { categories, articles } = loadFixtures(ROOT);
   const catIds = new Map<string, string>();
   let catCreated = 0;
   for (const c of categories) {

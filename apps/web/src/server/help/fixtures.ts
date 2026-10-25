@@ -6,8 +6,11 @@
  *   content/help/<category-slug>/<slug>.hi.md   (Hindi)
  *
  * Each .md file has a small "key: value" front-matter block (see
- * parseFixture). Pure — the seed script (prisma/seed-help.ts) does the I/O.
+ * parseFixture). Used by the seed script (prisma/seed-help.ts) and the
+ * fixture-validation test.
  */
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
 import type { HelpAudience, HelpLanguage } from '@prisma/client';
 import { ALL_AUDIENCES } from './audience';
 
@@ -77,4 +80,28 @@ export function parseFixture(text: string, fileName: string, categorySlug: strin
     relatedSlugs: list(meta.related),
     sortOrder: Number(meta.sortOrder) || 0,
   };
+}
+
+/** Read + validate every fixture under `root` (default: <cwd>/content/help). */
+export function loadFixtures(root = path.join(process.cwd(), 'content', 'help')): {
+  categories: FixtureCategory[];
+  articles: FixtureArticle[];
+} {
+  const categories = JSON.parse(readFileSync(path.join(root, 'categories.json'), 'utf8')) as FixtureCategory[];
+  const articles: FixtureArticle[] = [];
+  for (const dir of readdirSync(root).sort()) {
+    const full = path.join(root, dir);
+    if (!statSync(full).isDirectory()) continue;
+    if (!categories.some((c) => c.slug === dir)) throw new Error(`content/help/${dir}: not in categories.json`);
+    for (const f of readdirSync(full).filter((n) => n.endsWith('.md')).sort()) {
+      articles.push(parseFixture(readFileSync(path.join(full, f), 'utf8'), f, dir));
+    }
+  }
+  const seen = new Set<string>();
+  for (const a of articles) {
+    const key = `${a.slug}:${a.language}`;
+    if (seen.has(key)) throw new Error(`duplicate article slug ${key}`);
+    seen.add(key);
+  }
+  return { categories, articles };
 }
