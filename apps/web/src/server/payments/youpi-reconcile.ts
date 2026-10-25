@@ -20,6 +20,8 @@ import { getYoupiStatus } from './youpi-api';
 import { openException } from '../pg/exceptions';
 import { appendFinancialEvent } from '../pg/ledger';
 import { recordObservation, tryAllocateForAttempt } from '../pg/reconcile-engine';
+import { releaseLimit } from '../pg/limits';
+import { markOrderPaymentFailed } from './reconcile';
 
 export interface YoupiReconcileOutcome {
   status: PaymentStatus;
@@ -34,6 +36,16 @@ export interface YoupiReconcileOutcome {
 /** States from which a gateway FAILED may still close the attempt. */
 const FAILABLE: PgAttemptState[] = [PgAttemptState.CREATED, PgAttemptState.AWAITING_PAYMENT, PgAttemptState.CREATE_UNKNOWN];
 const DEAD: PgAttemptState[] = [PgAttemptState.FAILED, PgAttemptState.EXPIRED, PgAttemptState.CANCELLED];
+/** Attempts that may still become (or already are) money. */
+const NOT_FINAL: PgAttemptState[] = [
+  PgAttemptState.CREATED,
+  PgAttemptState.CREATE_UNKNOWN,
+  PgAttemptState.AWAITING_PAYMENT,
+  PgAttemptState.OBSERVED,
+  PgAttemptState.BANK_VERIFIED,
+  PgAttemptState.CAPTURED,
+  PgAttemptState.REVIEW_REQUIRED,
+];
 
 export async function reconcileYoupiPayment(paymentId: string): Promise<YoupiReconcileOutcome> {
   const payment = await prisma.payment.findUnique({
@@ -129,6 +141,9 @@ export async function reconcileYoupiPayment(paymentId: string): Promise<YoupiRec
       if (FAILABLE.includes(a.state)) {
         await tx.pgPaymentAttempt.update({ where: { id: a.id }, data: { state: PgAttemptState.FAILED } });
       }
+      // The gateway itself says the session is dead and nothing was observed or allocated: the
+      // daily-cap slot is free again (same rule as expiry of a gateway-dead session).
+      await releaseLimit(tx, a.id);
       await tx.payment.updateMany({
         where: { id: payment.id, status: { in: [PaymentStatus.PENDING, PaymentStatus.AUTHORIZED] } },
         data: { status: PaymentStatus.FAILED },
@@ -148,6 +163,12 @@ export async function reconcileYoupiPayment(paymentId: string): Promise<YoupiRec
       return { ...pending, indeterminate: true };
     }
     log.info({ paymentId, orderId: payment.orderId }, 'youpi payment failed');
+    // P0-4: with no other attempt that could still become money, the order leaves PAYMENT_PENDING
+    // (PAYMENT_FAILED: the customer may retry), exactly as expiry does.
+    const live = await prisma.pgPaymentAttempt.count({
+      where: { orderId: payment.orderId, id: { not: attempt.id }, state: { in: NOT_FINAL } },
+    });
+    if (live === 0) await markOrderPaymentFailed(payment.orderId, 'Flavrly PG gateway reported the payment failed');
     return { ...base, status: PaymentStatus.FAILED, captured: false };
   }
 
