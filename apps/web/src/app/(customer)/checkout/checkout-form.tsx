@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { Wallet, Sparkles, Bike, ShoppingBag, MapPin, CalendarClock, Gift } from 'lucide-react';
 import { launchPayment } from '@/lib/launch-payment';
 import { apiErrorMessage, submitMethod } from '@/lib/checkout-helpers';
+import { LOYALTY_MAX_REDEEM_PER_ORDER } from '@/lib/loyalty';
 
 interface Addr { id: string; label: string; line1: string; line2?: string | null; city: string; postalCode: string; isDefault?: boolean; }
 
@@ -153,7 +154,7 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
           })),
           couponCode: appliedCoupon || undefined,
           walletApply: walletApply ? Math.min(walletBalance, 500) : 0,
-          loyaltyApply: loyaltyApply ? Math.min(loyaltyPoints, 200) : 0
+          loyaltyApply: loyaltyApply ? Math.min(loyaltyPoints, LOYALTY_MAX_REDEEM_PER_ORDER) : 0
         })
       });
       if (!r.ok) {
@@ -247,7 +248,7 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
           paymentRail: viaYoupi ? 'youpi' : undefined,
           customerNotes: notes,
           walletApply: walletApply ? Math.min(walletBalance, 500) : 0,
-          loyaltyApply: loyaltyApply ? Math.min(loyaltyPoints, 200) : 0,
+          loyaltyApply: loyaltyApply ? Math.min(loyaltyPoints, LOYALTY_MAX_REDEEM_PER_ORDER) : 0,
           fulfillmentType,
           scheduledFor: scheduledForIso
         })

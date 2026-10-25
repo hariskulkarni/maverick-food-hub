@@ -24,6 +24,7 @@ import { notifyRidersOfNewOrder } from './rider-push';
 import { maybeOfferAsBatch } from './batch-dispatch';
 import { resolveQualifyingFreebie, grantFreebieTx, restoreFreebieStock } from './freebies';
 import { clampTwo } from '@/lib/utils';
+import { loyaltyPointsForSubtotal } from '@/lib/loyalty';
 import { loadRulesForRestaurant, priceForItem, priceForCombo } from './happy-hours';
 import { refreshChallengeProgressForOrder } from './challenges';
 import { previewSignupBonusForUser, holdSignupBonusForOrder, commitSignupBonusForOrder, restoreSignupBonusForOrder } from './signup-bonus';
@@ -893,9 +894,9 @@ export async function transitionOrder(
       await releaseOrderBenefitsOnCancel(tx, orderId);
     }
     if (next === OrderStatus.DELIVERED) {
-      // Earn loyalty: 5pt per ₹100 of subtotal
+      // Earn loyalty (rate shared with customer copy: src/lib/loyalty.ts)
       const account = await tx.loyaltyAccount.upsert({ where: { userId: order.customerId }, update: {}, create: { userId: order.customerId } });
-      const points = Math.floor(Number(order.subtotal) / 100) * 5;
+      const points = loyaltyPointsForSubtotal(Number(order.subtotal));
       if (points > 0) {
         await tx.loyaltyAccount.update({ where: { id: account.id }, data: { pointsBalance: { increment: points }, lifetimeEarn: { increment: points } } });
         await tx.loyaltyTransaction.create({ data: { accountId: account.id, orderId, type: 'EARN', points } });
