@@ -58,7 +58,7 @@ migrate() {
           npm install --no-audit --no-fund; npx prisma generate >/dev/null'
   echo "== migrate status on the new code"
   if remote 'npx prisma migrate status' ; then echo "status ok"; else echo "(status reported pending/failed — inspecting)"; fi
-  if remote 'npx prisma migrate status 2>&1 | grep -qE "P3005|not found in the migrations table|_prisma_migrations.*does not exist|have not yet been applied: *0_init"'; then
+  if remote 'npx prisma migrate status 2>&1 | grep -qE "^[[:space:]]*0_init[[:space:]]*$|P3005|_prisma_migrations.*does not exist"'; then
     echo "Database looks db-push-managed (old migrations not recorded)."
     confirm "Mark the ${#OLD_MIGRATIONS[@]} pre-existing migrations as applied (no SQL runs)?"
     for m in "${OLD_MIGRATIONS[@]}"; do remote "npx prisma migrate resolve --applied $m || true"; done
