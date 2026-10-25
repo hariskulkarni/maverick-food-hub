@@ -9,7 +9,7 @@ const h = vi.hoisted(() => ({
     reviewReplyTemplate: { findMany: vi.fn(), count: vi.fn(), create: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() },
   },
 }));
-vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: h.requireManagedRestaurant }));
+vi.mock('@/server/tenancy', async () => ({ requireManagedRestaurant: h.requireManagedRestaurant, ...(await import('../../helpers/tenant-admin-mock')).tenantAdminMocks((rid) => (h.requireManagedRestaurant)(rid)) }));
 vi.mock('@/server/db', () => ({ prisma: h.db }));
 vi.mock('@/server/auth', () => ({ auth: async () => h.session }));
 vi.mock('@/server/reviews/review-audit', () => ({ auditReview: h.audit }));

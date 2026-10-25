@@ -8,7 +8,7 @@ const h = vi.hoisted(() => ({
   saveConfig: vi.fn(),
   getConfig: vi.fn(),
 }));
-vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: h.require }));
+vi.mock('@/server/tenancy', async () => ({ requireManagedRestaurant: h.require, ...(await import('../../helpers/tenant-admin-mock')).tenantAdminMocks((rid) => (h.require)(rid)) }));
 vi.mock('@/server/auth', () => ({ auth: h.auth }));
 vi.mock('@/server/db', () => ({
   prisma: { youpiFeatureRequest: { findUnique: h.findUnique, upsert: h.upsert } },

@@ -6,7 +6,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 
 export const runtime = 'nodejs';
 
@@ -19,7 +19,8 @@ const Body = z.object({
 });
 
 export async function PATCH(req: NextRequest) {
-  const restaurant = await requireRestaurant();
+  const restaurant = await tenantAdminOrError();
+  if (restaurant instanceof Response) return restaurant;
   const { items } = Body.parse(await req.json());
 
   // Resolve the branches this restaurant owns and validate every category id

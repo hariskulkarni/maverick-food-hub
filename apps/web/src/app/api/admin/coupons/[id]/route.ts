@@ -8,7 +8,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
-import { requireRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { optionalString } from '@/server/zod-helpers';
 
@@ -30,7 +30,8 @@ export const dynamic = 'force-dynamic';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const r = await requireRestaurant();
+  const r = await tenantAdminOrError();
+  if (r instanceof Response) return r;
   const session = await auth();
 
   const before = await fetchOwned(id, r.id);
@@ -70,7 +71,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const r = await requireRestaurant();
+  const r = await tenantAdminOrError();
+  if (r instanceof Response) return r;
   const session = await auth();
 
   const before = await fetchOwned(id, r.id);

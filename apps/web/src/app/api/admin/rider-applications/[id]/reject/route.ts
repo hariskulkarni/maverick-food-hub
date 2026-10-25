@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 
 const Body = z.object({ reason: z.string().optional() }).optional();
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const restaurant = await requireRestaurant();
+  const restaurant = await tenantAdminOrError();
+  if (restaurant instanceof Response) return restaurant;
   const { id } = await params;
   const body = Body.parse(await req.json().catch(() => undefined));
   const app = await prisma.riderApplication.findUnique({ where: { id } });

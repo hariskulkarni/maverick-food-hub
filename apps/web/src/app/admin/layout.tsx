@@ -102,6 +102,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     ? <RestaurantSwitcher groups={groups} activeId={activeId} />
     : <Link href="/admin" className="display text-lg font-bold text-primary">{restaurant.name}</Link>;
 
+  // P1-5: authorisation follows the per-restaurant MEMBERSHIP role, not the
+  // global User.role. A global ADMIN who only holds a KITCHEN grant on the
+  // active restaurant gets the switcher + a pointer to the kitchen console,
+  // never the admin screens (every admin API refuses them anyway).
+  const activeRole = flat.find((r) => r.id === restaurant.id)?.role;
+  const kitchenOnly = activeRole === 'KITCHEN';
+
   return (
     <AdminShell
       title={title}
@@ -115,7 +122,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </>
       }
     >
-      {children}
+      {kitchenOnly ? (
+        <div className="mx-auto max-w-md space-y-3 py-16 text-center">
+          <h1 className="display text-2xl font-semibold">Kitchen access only</h1>
+          <p className="text-muted-foreground">
+            You have kitchen access to {restaurant.name}, not admin access. Switch to a restaurant you
+            manage, or run orders from the kitchen console.
+          </p>
+          <Link href="/kitchen" className="text-primary underline">Open the kitchen console</Link>
+        </div>
+      ) : children}
     </AdminShell>
   );
 }

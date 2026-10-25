@@ -15,7 +15,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
-import { requireRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { audit } from '@/server/audit';
 import { STAFF_BRANCH_ORDER } from '@/server/branch-pause';
 
@@ -37,7 +37,8 @@ const Body = z.object({
 export const dynamic = 'force-dynamic';
 
 export async function GET(_req: NextRequest) {
-  const r = await requireRestaurant();
+  const r = await tenantAdminOrError();
+  if (r instanceof Response) return r;
   const branches = await prisma.branch.findMany({ where: { restaurantId: r.id }, select: { id: true } });
   const branchIds = branches.map((b) => b.id);
   const coupons = await prisma.coupon.findMany({
@@ -48,7 +49,8 @@ export async function GET(_req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const r = await requireRestaurant();
+  const r = await tenantAdminOrError();
+  if (r instanceof Response) return r;
   const session = await auth();
   const raw = await req.json();
   const data = Body.parse(raw);

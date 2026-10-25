@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { listReviewsForAdmin, getResponseSettings } from '@/server/reviews/store';
 
 export const runtime = 'nodejs';
@@ -15,7 +15,8 @@ const STATES: ReplyState[] = ['DRAFT', 'PENDING_APPROVAL', 'POSTED', 'FAILED', '
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
-    const restaurant = await requireManagedRestaurant(sp.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(sp.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     const settings = await getResponseSettings(restaurant.id);
     const rating = Number(sp.get('rating'));
     const state = sp.get('state') as ReplyState | null;

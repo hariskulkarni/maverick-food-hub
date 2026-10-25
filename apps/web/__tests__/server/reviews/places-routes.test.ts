@@ -6,7 +6,7 @@ const h = vi.hoisted(() => ({
   upsertReview: vi.fn(), setPlacesLink: vi.fn(), getPlacesLink: vi.fn(), clearPlacesLink: vi.fn(),
   generateReviewReply: vi.fn(), getReviewScoped: vi.fn(), getAutoReplyConfig: vi.fn(), getResponseSettings: vi.fn(),
 }));
-vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: h.requireManagedRestaurant }));
+vi.mock('@/server/tenancy', async () => ({ requireManagedRestaurant: h.requireManagedRestaurant, ...(await import('../../helpers/tenant-admin-mock')).tenantAdminMocks((rid) => (h.requireManagedRestaurant)(rid)) }));
 vi.mock('@/server/auth', () => ({ auth: h.auth }));
 vi.mock('@/server/audit', () => ({ audit: h.audit }));
 vi.mock('@/server/reviews/places', async (orig) => ({

@@ -11,7 +11,7 @@ const m = vi.hoisted(() => ({
   zoneDelete: vi.fn(),
 }));
 
-vi.mock("@/server/tenancy", () => ({ requireManagedRestaurant: m.requireManagedRestaurant }));
+vi.mock("@/server/tenancy", async () => ({ requireManagedRestaurant: m.requireManagedRestaurant, ...(await import('../../helpers/tenant-admin-mock')).tenantAdminMocks((rid) => (m.requireManagedRestaurant)(rid)) }));
 vi.mock("@/server/db", () => {
   const prisma: any = {
     branch: { findUnique: m.branchFindUnique },

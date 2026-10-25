@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { auditReview } from '@/server/reviews/review-audit';
 import { parseOrJsonError } from '@/server/zod-helpers';
 
@@ -12,7 +12,8 @@ const Body = z.object({ name: z.string().trim().min(1).max(60), body: z.string()
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     const { id } = await params;
     const parsed = parseOrJsonError(Body, await req.json().catch(() => null));
     if (parsed instanceof Response) return parsed;
@@ -28,7 +29,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     const { id } = await params;
     const r = await prisma.reviewReplyTemplate.deleteMany({ where: { id, restaurantId: restaurant.id } });
     if (r.count === 0) return Response.json({ error: 'Not found' }, { status: 404 });

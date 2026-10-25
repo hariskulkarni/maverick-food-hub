@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { prisma } from '@/server/db';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { listForRestaurant } from '@/server/integrations';
 import { parseOrJsonError, optionalUrl, optionalString } from '@/server/zod-helpers';
 import { funnelStats, loadAcquisitionConfig, resolveGoogleReviewUrl } from '@/server/reviews/acquisition';
@@ -41,7 +41,8 @@ const Body = z.object({
 
 export async function GET(req: NextRequest) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     const config = await loadAcquisitionConfig(restaurant.id);
     const [googleLink, funnel, integrations, places, waCreds] = await Promise.all([
       resolveGoogleReviewUrl(restaurant.id, config),
@@ -70,7 +71,8 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     const parsed = parseOrJsonError(Body, await req.json().catch(() => null));
     if (parsed instanceof Response) return parsed;
     const data = {

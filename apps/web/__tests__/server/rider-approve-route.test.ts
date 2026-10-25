@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 let existingUser: any = null;
 const calls: string[] = [];
 
-vi.mock('@/server/tenancy', () => ({ requireRestaurant: async () => ({ id: 'rest1', name: 'R' }) }));
+vi.mock('@/server/tenancy', async () => ({ requireRestaurant: async () => ({ id: 'rest1', name: 'R' }), ...(await import('../helpers/tenant-admin-mock')).tenantAdminMocks(() => (async () => ({ id: 'rest1', name: 'R' }))()) }));
 vi.mock('@/server/notifications', () => ({ notify: { sms: vi.fn().mockResolvedValue({ ok: true }) } }));
 vi.mock('@/lib/brand', () => ({ brand: { name: 'Flavrly' } }));
 vi.mock('@/server/db', () => ({

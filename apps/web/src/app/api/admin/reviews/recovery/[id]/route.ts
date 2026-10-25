@@ -7,7 +7,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { parseOrJsonError } from '@/server/zod-helpers';
 import { restaurantStaff, updateTicket } from '@/server/reviews/recovery-admin';
 
@@ -25,7 +25,8 @@ const Body = z.object({
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     const { id } = await params;
     const parsed = parseOrJsonError(Body, await req.json().catch(() => null));
     if (parsed instanceof Response) return parsed;
