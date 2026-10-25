@@ -24,6 +24,16 @@ const routes: Array<[string, () => Promise<any>]> = [
   ['signup-bonus/grants', () => import('@/app/api/platform/signup-bonus/grants/route')],
   ['support', () => import('@/app/api/platform/support/route')],
   ['surge-zones', () => import('@/app/api/platform/surge-zones/route')],
+  // Runtime check (login-check B4b) saw these two 500 for ADMIN/KITCHEN.
+  ['security', () => import('@/app/api/platform/security/route')],
+  ['users/[id]', () => import('@/app/api/platform/users/[id]/route')],
+  ['cod', () => import('@/app/api/platform/cod/route')],
+  ['reports/gmv-by-day', () => import('@/app/api/platform/reports/gmv-by-day/route')],
+  ['rider-payouts', () => import('@/app/api/platform/rider-payouts/route')],
+  ['kyc', () => import('@/app/api/platform/kyc/route')],
+  ['settlements', () => import('@/app/api/platform/settlements/route')],
+  ['riders/live', () => import('@/app/api/platform/riders/live/route')],
+  ['rider-sos', () => import('@/app/api/platform/rider-sos/route')],
 ];
 
 const req = () => new Request('http://x/api/platform/x') as any;
@@ -42,4 +52,27 @@ describe('platform routes return 401/403 instead of a thrown-Response 500', () =
       expect(dbTouched).not.toHaveBeenCalled();
     });
   }
+});
+
+describe('guard: no /api/platform route uses a throwing gate without catching it', () => {
+  it('every requireSuperAdmin()/requireCapability() call site is inside a Response-catching handler', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const root = path.resolve(__dirname, '../../src/app/api/platform');
+    const offenders: string[] = [];
+    const walk = (d: string) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name === 'route.ts') {
+          const s = fs.readFileSync(p, 'utf8');
+          if (/await require(SuperAdmin\(\)|Capability\()/.test(s) && !/catch\s*\((\w+)[^)]*\)\s*\{[^}]*\1 instanceof Response/.test(s)) {
+            offenders.push(path.relative(root, p));
+          }
+        }
+      }
+    };
+    walk(root);
+    expect(offenders).toEqual([]);
+  });
 });

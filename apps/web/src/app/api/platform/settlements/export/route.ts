@@ -5,7 +5,7 @@
  */
 import { NextRequest } from 'next/server';
 import ExcelJS from 'exceljs';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { buildSettlementReport } from '@/server/settlement';
 
 export const runtime = 'nodejs';
@@ -15,7 +15,8 @@ const INR = '₹#,##0.00;[Red]-₹#,##0.00;"-"';
 const HEADER_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF23E5C' } };
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const sp = new URL(req.url).searchParams;
   const restaurantId = sp.get('restaurantId') ?? '';
   if (!restaurantId) return new Response('restaurantId required', { status: 400 });

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { prisma } from '@/server/db';
 
 /**
@@ -10,7 +10,8 @@ import { prisma } from '@/server/db';
  * Returns `null` if the rider is idle (no PENDING/ACCEPTED/PICKED_UP work).
  */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { id: riderId } = await params;
 
   const assignment = await prisma.riderAssignment.findFirst({

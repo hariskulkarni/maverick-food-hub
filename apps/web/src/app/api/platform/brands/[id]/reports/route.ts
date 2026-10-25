@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { getBrandSalesRollup } from '@/server/brands';
 import { prisma } from '@/server/db';
 
@@ -17,7 +17,8 @@ const MS_PER_DAY = 86_400_000;
 const MAX_RANGE_MS = 366 * MS_PER_DAY;
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { id } = await params;
 
   const url = new URL(req.url);
