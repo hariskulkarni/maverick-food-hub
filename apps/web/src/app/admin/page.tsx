@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,6 +9,8 @@ import { ChartsClient } from './charts-client';
 import { ArrowRight, ScrollText, Truck, Wallet, Users, History, Network, Info } from 'lucide-react';
 import { requireRestaurant } from '@/server/tenancy';
 import { NoBranchNotice } from './no-branch-notice';
+import { getOnboardingState } from '@/server/onboarding';
+import { SetupChecklist } from './setup-checklist';
 import {
   resolveGroupReport, groupKpis, groupSalesSeries, groupPaymentMixToday, childBreakdownToday,
   type ChildBreakdownRow,
@@ -27,8 +30,25 @@ export const metadata = { title: 'Admin · Dashboard' };
 export default async function AdminDashboardPage() {
   const session = await auth();
   const restaurant = await requireRestaurant();
+  // Guided onboarding: a brand-new restaurant (never opened the setup guide,
+  // never taken an order) lands in the wizard; established tenants are left
+  // alone. The wizard marks itself "started" on first view, so this only
+  // redirects once.
+  const [onboarding, anyOrder] = await Promise.all([
+    getOnboardingState(restaurant.id),
+    prisma.order.findFirst({ where: { branch: { restaurantId: restaurant.id } }, select: { id: true } }),
+  ]);
+  if (!onboarding.progress.started && !anyOrder && session?.user.role === 'ADMIN') redirect('/admin/onboarding');
+  const showChecklist = onboarding.progress.started || !anyOrder;
   const branch = await prisma.branch.findFirst({ where: { restaurantId: restaurant.id, isActive: true }, orderBy: { createdAt: 'asc' } });
-  if (!branch) return <NoBranchNotice />;
+  if (!branch) {
+    return (
+      <>
+        {showChecklist && <div className="p-4 pb-0 sm:p-6 sm:pb-0"><SetupChecklist state={onboarding} /></div>}
+        <NoBranchNotice />
+      </>
+    );
+  }
 
   // Group scope: when this restaurant is a parent with rollup enabled, headline
   // metrics span every branch in the group; otherwise scope to the single branch.
@@ -72,6 +92,8 @@ export default async function AdminDashboardPage() {
           </p>
         </div>
       </header>
+
+      {showChecklist && <SetupChecklist state={onboarding} />}
 
       {report.rollupAvailableButOff && (
         <div className="flex items-start gap-2 rounded-lg border border-dashed bg-muted/30 p-3 text-sm text-muted-foreground">
