@@ -19,7 +19,7 @@ export function ResetPasswordClient({ token }: { token: string }) {
 
   async function submit() {
     setError(null);
-    if (password.length < 10) return setError('Use at least 10 characters.');
+    if (password.length < 12) return setError('Use at least 12 characters.');
     if (password !== confirm) return setError('Passwords do not match.');
     setBusy(true);
     try {
@@ -31,7 +31,7 @@ export function ResetPasswordClient({ token }: { token: string }) {
       const data = await r.json().catch(() => ({}));
       if (r.ok && data?.ok) return setPhase({ kind: 'done', staffReenroll: !!data.staffReenroll });
       if (r.status === 429) return setError('Too many attempts. Please try again in a few minutes.');
-      if (data?.reason === 'weak') return setError('Use at least 10 characters.');
+      if (data?.reason === 'weak') return setError('Use at least 12 characters.');
       setPhase({ kind: 'bad', reason: data?.reason === 'expired' ? 'expired' : 'invalid' });
     } catch {
       setError('Network error. Please try again.');
@@ -91,11 +91,11 @@ export function ResetPasswordClient({ token }: { token: string }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="new-password"
-          minLength={10}
+          minLength={12}
           className="h-11"
           required
         />
-        <p className="mt-1 text-xs text-muted-foreground">At least 10 characters.</p>
+        <p className="mt-1 text-xs text-muted-foreground">At least 12 characters.</p>
       </div>
       <div>
         <Label htmlFor="confirm-password">Confirm password</Label>

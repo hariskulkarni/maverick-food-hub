@@ -26,7 +26,13 @@ import { recordLoginSuccess } from '../2fa';
 import { brand } from '@/lib/brand';
 
 export const RESET_TTL_MS = 30 * 60_000;
-export const MIN_PASSWORD_LENGTH = 10;
+export const MIN_PASSWORD_LENGTH = 12; // same minimum as every other password path
+
+/** Base URL for emailed links: the deployment's own site (staging-safe). */
+function resetLinkBase(): string {
+  const v = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXTAUTH_URL || brand.url).trim();
+  return v.replace(/\/+$/, '');
+}
 
 export function sha256hex(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex');
@@ -54,7 +60,7 @@ export async function requestPasswordReset(email: string, ip?: string): Promise<
     },
   });
 
-  const link = `${brand.url}/reset-password?token=${raw}`;
+  const link = `${resetLinkBase()}/reset-password?token=${raw}`;
   const text =
     `We received a request to reset your ${brand.name} password.\n\n` +
     `Reset it here (link valid for 30 minutes, single use):\n${link}\n\n` +

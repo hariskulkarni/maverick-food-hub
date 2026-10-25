@@ -93,6 +93,15 @@ describe('requestPasswordReset', () => {
     expect(mail.html).toContain(raw);
   });
 
+  it('lead item 6: the link uses the configured site / NEXTAUTH_URL, not a hardcoded host', async () => {
+    db.user.findUnique.mockResolvedValue({ id: 'u1', email: 'a@x.com', passwordHash: 'h', role: 'ADMIN' });
+    vi.stubEnv('NEXT_PUBLIC_SITE_URL', '');
+    vi.stubEnv('NEXTAUTH_URL', 'https://staging.example.test/');
+    await requestPasswordReset('a@x.com', null);
+    expect((emailSend.mock.calls[0] as any)[0].body).toContain('https://staging.example.test/reset-password?token=');
+    vi.unstubAllEnvs();
+  });
+
   it('email send failure/throw does not throw', async () => {
     db.user.findUnique.mockResolvedValue({ id: 'u1', email: 'a@x.com', passwordHash: 'h', role: 'CUSTOMER' });
     emailSend.mockRejectedValueOnce(new Error('smtp down'));
@@ -169,6 +178,10 @@ describe('consumePasswordReset', () => {
   it('unknown token: invalid', async () => {
     db.passwordResetToken.findFirst.mockResolvedValue(null);
     expect(await consumePasswordReset('nope', 'a-long-password-1')).toEqual({ ok: false, reason: 'invalid' });
+  });
+
+  it('lead item 6: 11 characters is weak (min 12, same as every other password path)', async () => {
+    expect(await consumePasswordReset(RAW, 'elevenchars')).toEqual({ ok: false, reason: 'weak' });
   });
 
   it('weak password: weak, nothing looked up or changed', async () => {

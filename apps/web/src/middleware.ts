@@ -4,6 +4,7 @@ import { authEdgeConfig } from '@/server/auth.config';
 import { PLATFORM_ROLES, pageGateFor, can } from '@/server/permissions';
 import { PUBLIC_HOST, PORTAL_HOST, isPortalHost, hostSplitActive, isStaffPath } from '@/server/hosts';
 import { clientIp } from '@/server/http/client-ip';
+import { isAuthRateLimitPath } from '@/server/http/rate-limit-paths';
 
 const { auth } = NextAuth(authEdgeConfig);
 
@@ -49,9 +50,7 @@ function rlTooMany(retryAfterSec: number): NextResponse {
     { status: 429, headers: { 'content-type': 'application/json', 'Retry-After': String(retryAfterSec), 'Cache-Control': 'no-store' } },
   );
 }
-function rlIsAuthPath(p: string): boolean {
-  return p.includes('/auth/') || /(login|signin|otp|verify|password|2fa)/i.test(p);
-}
+const rlIsAuthPath = isAuthRateLimitPath;
 
 /**
  * CSRF defense-in-depth for the cookie-authenticated (browser) surface.
