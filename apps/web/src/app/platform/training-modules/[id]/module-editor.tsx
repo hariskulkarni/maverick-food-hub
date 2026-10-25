@@ -220,7 +220,9 @@ export function ModuleEditor({ initial, canEdit }: { initial: EditorModule; canE
         {!canEdit && <p className="text-xs text-muted-foreground">Read-only: only a super-admin can edit training content.</p>}
       </header>
 
-      <fieldset disabled={ro} className="space-y-5">
+      {/* min-w-0: a fieldset defaults to min-inline-size: min-content, which made
+          this editor 516px wide on a 390px phone. */}
+      <fieldset disabled={ro} className="min-w-0 space-y-5">
         <Card>
           <CardContent className="space-y-4 p-4">
             <h2 className="font-semibold">Settings</h2>
