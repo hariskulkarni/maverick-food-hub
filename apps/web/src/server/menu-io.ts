@@ -270,9 +270,17 @@ export interface ApplyResult {
   categoriesCreated: number;
 }
 
+/** Rows per createMany round-trip. */
+const CREATE_CHUNK = 500;
+
 /**
  * Apply an import: upsert categories + items. Error rows are skipped. Runs in a
  * transaction so a mid-file failure rolls back cleanly.
+ *
+ * P2-16: a 5000-row file used to cost ~3 queries per row inside one 30s
+ * transaction. Existing items are now preloaded once and matched in memory,
+ * new items are inserted with chunked createMany, and unchanged rows are not
+ * re-written — so the transaction does O(categories + changed rows) work.
  */
 export async function applyMenuImport(branchId: string, rows: MenuRow[]): Promise<ApplyResult> {
   const diff = await diffMenuImport(branchId, rows);
@@ -285,14 +293,21 @@ export async function applyMenuImport(branchId: string, rows: MenuRow[]): Promis
     let maxCatSort = existingCats.reduce((m, c) => Math.max(m, c.sortOrder), 0);
     for (const c of existingCats) catCache.set(c.name.toLowerCase(), c.id);
 
+    // Every existing item, keyed by (category, lower-cased name) — the same
+    // match the per-row findFirst(name, mode: insensitive) used to do.
+    const existingItems = await tx.menuItem.findMany({
+      where: { branchId },
+      select: { id: true, slug: true, categoryId: true, name: true, description: true, price: true, isVeg: true, spicyLevel: true, prepTimeMin: true, isAvailable: true },
+    });
+    const itemKey = (categoryId: string, name: string) => `${categoryId}::${name.toLowerCase()}`;
+    const existingByKey = new Map(existingItems.map((i) => [itemKey(i.categoryId, i.name), i]));
+
     // MenuItem + Category both carry a `@@unique([branchId, slug])`. Two rows
     // whose names slugify to the same value (duplicates, the same dish across
     // Veg/Non-Veg, or a clash with a pre-existing item) would violate it and
     // abort the WHOLE import ("failed mid-way"). Seed the slugs already in use
     // and mint a unique one (base, base-2, base-3, …) for every new record.
-    const usedItemSlugs = new Set<string>(
-      (await tx.menuItem.findMany({ where: { branchId }, select: { slug: true } })).map((i) => i.slug),
-    );
+    const usedItemSlugs = new Set<string>(existingItems.map((i) => i.slug));
     const usedCatSlugs = new Set<string>(existingCats.map((c) => c.slug));
     const uniqueSlug = (name: string, used: Set<string>): string => {
       const base = slugify(name);
@@ -305,6 +320,10 @@ export async function applyMenuImport(branchId: string, rows: MenuRow[]): Promis
       used.add(candidate);
       return candidate;
     };
+
+    type ItemData = { name: string; description: string | null; price: number; isVeg: boolean; spicyLevel: number; prepTimeMin: number; isAvailable: boolean };
+    const pendingCreates = new Map<string, ItemData & { branchId: string; categoryId: string; slug: string }>();
+    const pendingUpdates = new Map<string, ItemData>(); // itemId → latest data
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -322,31 +341,42 @@ export async function applyMenuImport(branchId: string, rows: MenuRow[]): Promis
         result.categoriesCreated++;
       }
 
-      // Item — match existing by (branch, category, name).
-      const found = await tx.menuItem.findFirst({
-        where: { branchId, categoryId, name: { equals: row.name, mode: 'insensitive' } },
-        select: { id: true },
-      });
-      const data = {
+      const data: ItemData = {
         name: row.name,
         description: row.description ?? null,
-        price: (row.price ?? 0) as any,
+        price: row.price ?? 0,
         isVeg: row.isVeg ?? true,
         spicyLevel: row.spicyLevel ?? 0,
         prepTimeMin: row.prepTimeMin ?? 20,
         isAvailable: row.isAvailable ?? true,
       };
+      const key = itemKey(categoryId, row.name);
+      const found = existingByKey.get(key);
       if (found) {
-        await tx.menuItem.update({ where: { id: found.id }, data });
+        const unchanged = found.name === data.name && (found.description ?? null) === data.description
+          && Number(found.price) === data.price && found.isVeg === data.isVeg && found.spicyLevel === data.spicyLevel
+          && found.prepTimeMin === data.prepTimeMin && found.isAvailable === data.isAvailable;
+        if (!unchanged || pendingUpdates.has(found.id)) pendingUpdates.set(found.id, data);
+        result.updated++;
+      } else if (pendingCreates.has(key)) {
+        // Same dish twice in one file: the later row wins (it used to create
+        // then update), keeping the slug minted for the first.
+        pendingCreates.set(key, { ...pendingCreates.get(key)!, ...data });
         result.updated++;
       } else {
-        await tx.menuItem.create({
-          data: { ...data, branchId, categoryId, slug: uniqueSlug(row.name, usedItemSlugs) },
-        });
+        pendingCreates.set(key, { ...data, branchId, categoryId, slug: uniqueSlug(row.name, usedItemSlugs) });
         result.created++;
       }
     }
-  }, { timeout: 30_000 });
+
+    const creates = [...pendingCreates.values()].map((c) => ({ ...c, price: c.price as any }));
+    for (let i = 0; i < creates.length; i += CREATE_CHUNK) {
+      await tx.menuItem.createMany({ data: creates.slice(i, i + CREATE_CHUNK) });
+    }
+    for (const [id, data] of pendingUpdates) {
+      await tx.menuItem.update({ where: { id }, data: { ...data, price: data.price as any } });
+    }
+  }, { timeout: 120_000, maxWait: 10_000 });
 
   return result;
 }

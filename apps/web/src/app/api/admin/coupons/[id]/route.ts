@@ -10,17 +10,13 @@ import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
 import { tenantAdminOrError } from '@/server/tenancy';
 import { audit } from '@/server/audit';
-import { optionalString } from '@/server/zod-helpers';
+import { optionalString, parseOrJsonError } from '@/server/zod-helpers';
+import { couponNumbers, CODE_TAKEN } from '../_schema';
 
 const Patch = z.object({
   code: optionalString(40),
   description: z.string().max(500).nullable().optional(),
-  flatOff: z.number().nullable().optional(),
-  percentOff: z.number().nullable().optional(),
-  minOrderAmount: z.number().nullable().optional(),
-  maxDiscount: z.number().nullable().optional(),
-  usageLimit: z.number().int().nullable().optional(),
-  perUserLimit: z.number().int().optional(),
+  ...couponNumbers,
   validFrom: z.string().nullable().optional(),
   validTo: z.string().nullable().optional(),
   isActive: z.boolean().optional()
@@ -37,7 +33,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const before = await fetchOwned(id, r.id);
   if (!before) return new Response('Coupon not found', { status: 404 });
 
-  const data = Patch.parse(await req.json());
+  const data = parseOrJsonError(Patch, await req.json().catch(() => null));
+  if (data instanceof Response) return data;
 
   const patch: any = {};
   if (data.code !== undefined) patch.code = data.code.trim().toUpperCase();
@@ -52,7 +49,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (data.validTo !== undefined) patch.validTo = data.validTo ? new Date(data.validTo) : null;
   if (data.isActive !== undefined) patch.isActive = data.isActive;
 
-  const updated = await prisma.coupon.update({ where: { id }, data: patch });
+  // The edited coupon must still discount something.
+  const nextFlat = patch.flatOff !== undefined ? patch.flatOff : before.flatOff;
+  const nextPct = patch.percentOff !== undefined ? patch.percentOff : before.percentOff;
+  if (!(Number(nextFlat ?? 0) > 0) && !(Number(nextPct ?? 0) > 0)) {
+    return Response.json({ error: 'Provide a flat or percent discount.', reason: 'no_discount' }, { status: 400 });
+  }
+  if (patch.code && patch.code !== before.code) {
+    const clash = await prisma.coupon.findUnique({ where: { code: patch.code }, select: { id: true } });
+    if (clash) return Response.json(CODE_TAKEN, { status: 409 });
+  }
+
+  let updated;
+  try {
+    updated = await prisma.coupon.update({ where: { id }, data: patch });
+  } catch (e) {
+    if ((e as { code?: string })?.code === 'P2002') return Response.json(CODE_TAKEN, { status: 409 });
+    throw e;
+  }
 
   await audit('coupon.update', {
     actorId: session?.user?.id,
