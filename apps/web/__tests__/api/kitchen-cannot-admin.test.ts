@@ -53,6 +53,9 @@ describe('KITCHEN membership is refused on admin-only routes', () => {
     ['POST rider-applications approve', async () => (await import('@/app/api/admin/rider-applications/[id]/approve/route')).POST(req({}), ctx({ id: 'a1' }))],
     ['POST reviews/places/connect', async () => (await import('@/app/api/admin/reviews/places/connect/route')).POST(req({ placeId: 'p', name: 'n' }))],
     ['GET reports/cancelled-orders', async () => (await import('@/app/api/admin/reports/cancelled-orders/route')).GET(req({}, 'http://x/api/admin/reports/cancelled-orders'))],
+    ['POST branch pause', async () => (await import('@/app/api/admin/branch/[id]/pause/route')).POST(req({ minutes: 15 }), ctx({ id: 'b1' }))],
+    ['POST branch unpause', async () => (await import('@/app/api/admin/branch/[id]/unpause/route')).POST(req({}), ctx({ id: 'b1' }))],
+    ['GET notifications', async () => (await import('@/app/api/admin/notifications/route')).GET(req({}, 'http://x/api/admin/notifications'))],
     ['GET reports/orders.csv', async () => (await import('@/app/api/admin/reports/orders.csv/route')).GET(req({}, 'http://x/api/admin/reports/orders.csv'))],
   ];
 
