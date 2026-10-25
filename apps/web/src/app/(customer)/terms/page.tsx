@@ -211,8 +211,8 @@ export default function TermsPage() {
             Questions about these Terms? Email{' '}
             <a href={`mailto:${brand.supportEmail}`} className="text-primary underline">
               {brand.supportEmail}
-            </a>{' '}
-            or call {brand.supportPhone}.
+            </a>
+            {brand.supportPhone ? <> or call {brand.supportPhone}.</> : '.'}
           </p>
         </section>
       </div>
