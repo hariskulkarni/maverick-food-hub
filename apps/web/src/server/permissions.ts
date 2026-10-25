@@ -201,6 +201,8 @@ const RAW_PAGE_GATES: ReadonlyArray<{ prefix: string; capability: Capability }> 
   { prefix: '/platform/brands', capability: 'platform:admin' },
   { prefix: '/platform/kyc', capability: 'platform:admin' },
   { prefix: '/platform/qr', capability: 'platform:admin' },
+  // Native app releases (APK publishing) — SUPER_ADMIN only (API enforces it too).
+  { prefix: '/platform/app-releases', capability: 'platform:admin' },
   // Tenant payment-gateway credentials — as confidential as finance data.
   { prefix: '/platform/payment-gateways', capability: 'platform:admin' },
   { prefix: '/platform/youpi-admin', capability: 'platform:admin' },

@@ -152,3 +152,42 @@ class S3Storage implements StorageDriver {
 export function storage(): StorageDriver {
   return process.env.STORAGE_DRIVER === 's3' ? new S3Storage() : new LocalStorage();
 }
+
+/**
+ * Open a private file for STREAMING (large downloads such as rider APKs, where
+ * buffering 200 MB per request via getPrivate would be wasteful). Local driver:
+ * a file stream from the private uploads root. S3: the object body stream.
+ * Returns null when the ref is invalid or the object is missing.
+ */
+export async function openPrivateStream(ref: string): Promise<{ stream: ReadableStream<Uint8Array>; size: number } | null> {
+  const key = privateKey(ref);
+  if (!key) return null;
+  if (process.env.STORAGE_DRIVER === 's3') {
+    try {
+      // @ts-expect-error optional dependency — see S3Storage.put().
+      const mod = await import(/* webpackIgnore: true */ '@aws-sdk/client-s3').catch(() => null as any);
+      if (!mod?.S3Client) return null;
+      const client = new mod.S3Client({
+        region: process.env.S3_REGION!,
+        credentials: { accessKeyId: process.env.S3_ACCESS_KEY!, secretAccessKey: process.env.S3_SECRET_KEY! }
+      });
+      const out = await client.send(new mod.GetObjectCommand({ Bucket: process.env.S3_BUCKET!, Key: key }));
+      const stream = out.Body?.transformToWebStream?.();
+      if (!stream || typeof out.ContentLength !== 'number') return null;
+      return { stream, size: out.ContentLength };
+    } catch {
+      return null;
+    }
+  }
+  const full = path.join(privateUploadsRoot(), key);
+  try {
+    const st = await fs.stat(full);
+    if (!st.isFile()) return null;
+    const { createReadStream } = await import('node:fs');
+    const { Readable } = await import('node:stream');
+    const stream = Readable.toWeb(createReadStream(full)) as unknown as ReadableStream<Uint8Array>;
+    return { stream, size: st.size };
+  } catch {
+    return null;
+  }
+}

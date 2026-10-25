@@ -4102,3 +4102,49 @@ model ZoneSupplyDemand {
   @@unique([bucketAt, h3Cell])
   @@index([bucketAt])
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// App releases (2026-10-25, feat/rider-web-portal)
+//
+// Published builds of the native apps (today: the Expo rider app). A super-admin
+// uploads an APK to PRIVATE storage (fileRef = `private:<key>`, served only by
+// /download/rider-app) or registers an external URL (EAS artifact / store link).
+// Exactly one release per (app, platform, channel) is active at a time; that's
+// what /download/rider-app streams and /api/app/rider/latest reports to the
+// app's update check. Rollback = re-activating an earlier release.
+// ─────────────────────────────────────────────────────────────────────────────
+enum AppReleasePlatform {
+  ANDROID
+  IOS
+}
+
+enum AppReleaseChannel {
+  STABLE
+  BETA
+}
+
+model AppRelease {
+  id                      String             @id @default(cuid())
+  app                     String             @default("rider")
+  platform                AppReleasePlatform
+  channel                 AppReleaseChannel  @default(STABLE)
+  versionName             String
+  versionCode             Int
+  fileRef                 String? // private:<key> of an uploaded APK
+  fileName                String?
+  downloadUrl             String? // external download (EAS artifact, etc.) when no file
+  storeUrl                String? // optional Play Store / App Store listing
+  sha256                  String?
+  fileSize                Int?
+  releaseNotes            String?
+  minSupportedVersionCode Int                @default(0)
+  publishedAt             DateTime           @default(now())
+  isActive                Boolean            @default(false)
+  downloadCount           Int                @default(0)
+  createdById             String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  @@unique([app, platform, channel, versionCode])
+  @@index([app, platform, channel, isActive])
+}

@@ -204,6 +204,8 @@ export async function middleware(req: NextRequest) {
       path.startsWith('/_next') ||
       path.startsWith('/uploads/') ||
       path.startsWith('/downloads/') ||
+      // Rider app download route (streams the active APK; demo APKs too).
+      path.startsWith('/download/') ||
       // Common static files served straight from /public
       path === '/favicon.ico' ||
       path === '/robots.txt' ||
@@ -336,8 +338,9 @@ export const config = {
   // excluded so they never hit the auth lookup.
   matcher: [
     // NOTE: `api` is excluded so Next doesn't buffer (and 10MB-truncate) large
-    // request bodies through middleware — critical for video uploads. API routes
+    // request bodies through middleware — critical for video uploads (and the
+    // ≤200 MB rider APK upload, which does its own same-origin check). API routes
     // do their own auth; the demo gate already exempts /api.
-    '/((?!api/admin/upload|api/admin/menu/import|api/events|_next/static|_next/image|favicon.ico|manifest.json|manifest.webmanifest|sw.js|push-sw.js|service-worker.js|robots.txt|sitemap.xml).*)'
+    '/((?!api/admin/upload|api/platform/app-releases/upload|api/admin/menu/import|api/events|_next/static|_next/image|favicon.ico|manifest.json|manifest.webmanifest|sw.js|push-sw.js|service-worker.js|robots.txt|sitemap.xml).*)'
   ]
 };

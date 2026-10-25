@@ -10,7 +10,7 @@ const QUESTIONS = [
   },
   {
     q: 'Why isn\'t the app on the Play Store?',
-    a: 'It is — but our latest builds ship a few days before the Play Store version is approved. Installing directly from this page is the fastest way to start riding today. Either source gives you exactly the same app.',
+    a: 'Flavrly ships the rider app directly from flavrly.in so every rider gets new versions the same day. If a Play Store listing is published, a "Get it on Google Play" button appears on the download card above — either source gives you exactly the same app.',
   },
   {
     q: 'How quickly do I get paid?',
@@ -30,7 +30,7 @@ const QUESTIONS = [
   },
   {
     q: 'I\'m installing the APK — is it safe?',
-    a: 'Yes. The APK is built and signed by Flavrly and served from our own servers (https://flavrly.in). Android\'s "install from unknown source" warning is a standard step for any app not from the Play Store; it doesn\'t mean anything is wrong.',
+    a: 'Yes. The APK is built and signed by Flavrly and served from our own servers (https://flavrly.in). Android\'s "install from unknown source" warning is a standard step for any app not from the Play Store; it doesn\'t mean anything is wrong. The download card shows the file\'s SHA-256 checksum if you want to double-check the file is genuine.',
   },
   {
     q: 'My phone won\'t install the APK',
