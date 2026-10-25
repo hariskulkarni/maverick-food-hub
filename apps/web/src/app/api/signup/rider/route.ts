@@ -26,6 +26,13 @@ export async function POST(req: NextRequest) {
     if (existing.status === 'PENDING') return new Response('You already applied — check back soon', { status: 409 });
     if (existing.status === 'APPROVED') return new Response('You are already approved — sign in at /login', { status: 409 });
   }
-  const app = await prisma.riderApplication.create({ data });
+  // A REJECTED applicant may re-apply: phone is unique, so reopen their row
+  // (fresh details, back to PENDING) instead of a create that would 500.
+  const app = existing
+    ? await prisma.riderApplication.update({
+        where: { id: existing.id },
+        data: { ...data, status: 'PENDING', reviewedById: null, reviewedAt: null, rejectedReason: null, createdAt: new Date() },
+      })
+    : await prisma.riderApplication.create({ data });
   return Response.json({ id: app.id, status: app.status });
 }

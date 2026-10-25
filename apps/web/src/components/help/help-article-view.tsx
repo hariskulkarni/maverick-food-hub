@@ -19,12 +19,15 @@ export function HelpArticleView({
   canFeedback,
   showContact,
   showBack = true,
+  apiBase = '/api/help',
 }: {
   article: ArticleDto;
   basePath: string;
   canFeedback: boolean;
   showContact: boolean;
   showBack?: boolean;
+  /** Help API root — '/api/rider/help' for the rider portal. */
+  apiBase?: string;
 }) {
   const otherLang = article.availableLanguages.find((l) => l !== article.language);
   return (
@@ -50,7 +53,7 @@ export function HelpArticleView({
 
       <HelpMarkdownView blocks={article.blocks} basePath={basePath} />
 
-      {canFeedback && <FeedbackBox slug={article.slug} language={article.language} />}
+      {canFeedback && <FeedbackBox slug={article.slug} language={article.language} apiBase={apiBase} />}
 
       {article.related.length > 0 && (
         <section>
@@ -72,7 +75,7 @@ export function HelpArticleView({
   );
 }
 
-function FeedbackBox({ slug, language }: { slug: string; language: string }) {
+function FeedbackBox({ slug, language, apiBase }: { slug: string; language: string; apiBase: string }) {
   const [vote, setVote] = useState<boolean | null>(null);
   const [comment, setComment] = useState('');
   const [sent, setSent] = useState(false);
@@ -81,7 +84,7 @@ function FeedbackBox({ slug, language }: { slug: string; language: string }) {
   async function send(helpful: boolean, withComment = false) {
     setBusy(true);
     try {
-      const r = await fetch(`/api/help/articles/${slug}/feedback?lang=${language}`, {
+      const r = await fetch(`${apiBase}/articles/${slug}/feedback?lang=${language}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ helpful, comment: withComment ? comment : null }),

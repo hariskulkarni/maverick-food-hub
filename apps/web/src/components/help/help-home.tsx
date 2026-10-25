@@ -24,11 +24,14 @@ export function HelpHome({
   basePath,
   lang,
   searchPlaceholder = 'Search help articles…',
+  apiBase = '/api/help',
 }: {
   categories: CategoryDto[];
   basePath: string;
   lang: 'en' | 'hi';
   searchPlaceholder?: string;
+  /** Help API root — '/api/rider/help' for the rider portal (rider audience). */
+  apiBase?: string;
 }) {
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<Hit[] | null>(null);
@@ -46,7 +49,7 @@ export function HelpHome({
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const r = await fetch(`/api/help/search?q=${encodeURIComponent(query)}&lang=${lang}`, { signal: ctrl.signal });
+        const r = await fetch(`${apiBase}/search?q=${encodeURIComponent(query)}&lang=${lang}`, { signal: ctrl.signal });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.error ?? 'Search failed');
         setHits(j.hits ?? []);
@@ -61,7 +64,7 @@ export function HelpHome({
       clearTimeout(t);
       ctrl.abort();
     };
-  }, [q, lang]);
+  }, [q, lang, apiBase]);
 
   const suffix = lang === 'hi' ? '?lang=hi' : '';
 
