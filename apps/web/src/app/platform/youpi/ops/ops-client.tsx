@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import type { Jsonified, PlatformPgOps } from '@/server/pg/dashboards';
+import { ConfirmActionDialog, paiseToRupees, rupeesToPaise, type ActionSpec } from '@/components/pg/confirm-action-dialog';
 
 type Ops = Jsonified<PlatformPgOps>;
 
@@ -43,6 +44,92 @@ export function OpsClient({ currentUserId, ops }: { currentUserId: string; ops: 
   const [entryErr, setEntryErr] = useState<string | null>(null);
   const [prop, setProp] = useState({ attemptId: '', bankTransactionId: '', reason: '' });
   const [propErr, setPropErr] = useState<string | null>(null);
+  const [action, setAction] = useState<ActionSpec | null>(null);
+
+  /** POST for a dialog: error message (dialog stays open) or null after success + refresh. */
+  async function act(url: string, body: unknown, ok: string): Promise<string | null> {
+    const r = await postJson(url, body);
+    if (!r.ok) return r.data.error || 'Action failed.';
+    toast.success(ok);
+    router.refresh();
+    return null;
+  }
+
+  type Exc = Ops['exceptions'][number];
+  const refundKindOf = (e: Exc): 'ORDER' | 'LATE_PAYMENT' | 'OVERCOLLECTION' | null => {
+    if (e.kind === 'LATE_PAYMENT' || e.kind === 'OVERCOLLECTION') return e.kind;
+    if (e.kind === 'RELEASE_HELD' && e.status === 'ACKNOWLEDGED') {
+      return (e.detail as { reason?: string } | null)?.reason === 'late_payment_accepted' ? 'LATE_PAYMENT' : 'ORDER';
+    }
+    return null;
+  };
+  const refundSpec = (e: Exc, kind: 'ORDER' | 'LATE_PAYMENT' | 'OVERCOLLECTION'): ActionSpec => ({
+    title: `Start a ${kind === 'ORDER' ? 'order' : kind === 'LATE_PAYMENT' ? 'late-payment' : 'overcollection'} refund`,
+    body: (
+      <>
+        <p>This records a manual bank refund request for the customer of {e.restaurantName ?? 'this restaurant'}. Nothing is sent now.</p>
+        <p>A different person approves it on the restaurant&apos;s Flavrly PG page, the restaurant transfers the money from its own bank account, and the bank&apos;s refund reference (UTR/RRN) is recorded to complete it. The amount cannot exceed the bank-confirmed money.</p>
+      </>
+    ),
+    confirmLabel: 'Request refund',
+    fields: [
+      { name: 'amount', label: 'Amount (₹)', kind: 'amount', required: true, defaultValue: paiseToRupees(e.amountPaise) },
+      { name: 'reason', label: 'Reason', kind: 'textarea', required: true, defaultValue: `Refund for ${e.kind} exception ${e.id}` },
+      { name: 'destinationRef', label: 'Customer UPI ID / account (masked, optional)', placeholder: 'e.g. r***@okbank' },
+    ],
+    onConfirm: async (v) => {
+      const amountPaise = rupeesToPaise(v.amount);
+      if (!amountPaise) return 'Enter an amount like 250.00.';
+      return act('/api/platform/youpi/refunds', { attemptId: e.attemptId, kind, amountPaise, reason: v.reason, destinationRef: v.destinationRef || undefined, idempotencyKey: `ops-${e.id}-${kind}-${amountPaise}` }, 'Refund requested; it now needs a second approver.');
+    },
+  });
+  const acceptLateSpec = (e: Exc): ActionSpec => ({
+    title: 'Propose accepting this late payment',
+    body: (
+      <>
+        <p>The customer&apos;s money arrived after the payment window closed. This asks a <strong>second super admin</strong> to approve treating it as the order&apos;s payment.</p>
+        <p>After approval the <strong>restaurant must confirm</strong> it can still prepare the order; only then is the payment captured and the order sent to the kitchen (never auto-accepted). Not possible for a cancelled or already-paid order: refund instead.</p>
+      </>
+    ),
+    confirmLabel: 'Propose',
+    fields: [{ name: 'reason', label: 'Why (evidence, customer contact)', kind: 'textarea', required: true }],
+    onConfirm: (v) => act('/api/platform/youpi/ops-actions', { action: 'LATE_ACCEPT', bankTransactionId: e.bankTransactionId, reason: v.reason }, 'Proposal recorded; a second super admin must approve.'),
+  });
+  const voidSpec = (e: Exc): ActionSpec => ({
+    title: 'Propose voiding this payment attempt',
+    body: (
+      <>
+        <p>Asks a <strong>second super admin</strong> to close attempt <span className="font-mono">{e.attemptId}</span> so the customer can start a new payment.</p>
+        <p>Allowed only when there is <strong>no payment evidence</strong>: no gateway or observer observation, no UTR, no signed amount, no bank credit and no gateway success. The server checks again at approval and refuses otherwise. A payment that still arrives later is booked as a late payment.</p>
+      </>
+    ),
+    confirmLabel: 'Propose void',
+    destructive: true,
+    fields: [{ name: 'reason', label: 'Why (what was checked on the gateway)', kind: 'textarea', required: true }],
+    onConfirm: (v) => act('/api/platform/youpi/ops-actions', { action: 'ATTEMPT_VOID', attemptId: e.attemptId, reason: v.reason }, 'Void proposed; a second super admin must approve.'),
+  });
+  const reversalSpec: ActionSpec = {
+    title: 'Propose a bank reversal',
+    body: (
+      <>
+        <p>Use when the bank reversed (charged back) a credit. Asks a <strong>second super admin</strong> to book it.</p>
+        <p>The credit is marked REVERSED and its allocation is released. The order and payment are <strong>not</strong> changed automatically; a REVERSAL exception is opened for follow-up (recovery or refund decision by the owner).</p>
+      </>
+    ),
+    confirmLabel: 'Propose reversal',
+    destructive: true,
+    fields: [
+      { name: 'bankTransactionId', label: 'Bank transaction id', required: true },
+      { name: 'reason', label: 'Bank evidence (reversal reference, date)', kind: 'textarea', required: true },
+    ],
+    onConfirm: (v) => act('/api/platform/youpi/ops-actions', { action: 'REVERSAL', bankTransactionId: v.bankTransactionId.trim(), reason: v.reason }, 'Reversal proposed; a second super admin must approve.'),
+  };
+  const ACTION_LABEL: Record<string, string> = { LATE_ACCEPT: 'Accept late payment', ATTEMPT_VOID: 'Void attempt', REVERSAL: 'Bank reversal' };
+  const APPROVE_COPY: Record<string, string> = {
+    LATE_ACCEPT: 'Approving sends this order to the restaurant for confirmation. The payment is captured only when the restaurant confirms.',
+    ATTEMPT_VOID: 'Approving closes the attempt (if it still has no payment evidence) and lets the customer pay again.',
+    REVERSAL: 'Approving marks the credit REVERSED and opens a REVERSAL exception. The order is not changed.',
+  };
 
   async function run(key: string, url: string, body: unknown, ok: string, onErr?: (m: string) => void) {
     setBusy(key);
@@ -69,6 +156,7 @@ export function OpsClient({ currentUserId, ops }: { currentUserId: string; ops: 
 
   return (
     <div className="space-y-6">
+      <ConfirmActionDialog spec={action} onClose={() => setAction(null)} />
       <Card>
         <CardContent className="p-4 sm:p-6 space-y-3">
           <h2 className="font-semibold">Health</h2>
@@ -117,7 +205,16 @@ export function OpsClient({ currentUserId, ops }: { currentUserId: string; ops: 
                       {e.detail != null && <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/50 p-2 text-[11px]">{JSON.stringify(e.detail)}</pre>}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {e.attemptId && e.bankTransactionId && (
+                      {e.attemptId && refundKindOf(e) && (
+                        <Button size="sm" variant="outline" onClick={() => setAction(refundSpec(e, refundKindOf(e)!))}>Start refund…</Button>
+                      )}
+                      {e.kind === 'LATE_PAYMENT' && e.bankTransactionId && (
+                        <Button size="sm" variant="outline" onClick={() => setAction(acceptLateSpec(e))}>Accept late payment…</Button>
+                      )}
+                      {e.attemptId && ['CREATE_UNKNOWN', 'RECEIVER_MISMATCH', 'STALE_PENDING'].includes(e.kind) && (
+                        <Button size="sm" variant="outline" onClick={() => setAction(voidSpec(e))}>Void attempt…</Button>
+                      )}
+                      {e.attemptId && e.bankTransactionId && e.kind !== 'LATE_PAYMENT' && e.kind !== 'OVERCOLLECTION' && (
                         <Button size="sm" variant="outline" onClick={() => setProp({ attemptId: e.attemptId!, bankTransactionId: e.bankTransactionId!, reason: `Resolves ${e.kind} exception ${e.id}` })}>
                           Propose allocation
                         </Button>
@@ -144,6 +241,56 @@ export function OpsClient({ currentUserId, ops }: { currentUserId: string; ops: 
                   )}
                 </li>
               ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-4 sm:p-6 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold">Dual-control actions awaiting a second super admin</h2>
+            <Button size="sm" variant="outline" onClick={() => setAction(reversalSpec)}>Propose bank reversal…</Button>
+          </div>
+          {ops.opsProposals.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nothing waiting.</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {ops.opsProposals.map((p) => {
+                const mine = p.proposedById === currentUserId;
+                return (
+                  <li key={p.id} className="py-2 flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <div className="min-w-0">
+                      <div className="font-medium">{ACTION_LABEL[p.action] ?? p.action} · {p.restaurantName ?? '—'} · {inr(p.amountPaise)}</div>
+                      <div className="text-xs text-muted-foreground break-all">
+                        {p.attemptId ? `attempt ${p.attemptId} · ` : ''}{p.bankTransactionId ? `bank txn ${p.bankTransactionId} · ` : ''}{when(p.createdAt)} · {p.reason}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" disabled={mine} title={mine ? 'You proposed this; a different super admin must approve it' : undefined}
+                        onClick={() => setAction({
+                          title: `Approve: ${ACTION_LABEL[p.action] ?? p.action}`,
+                          body: <><p>{APPROVE_COPY[p.action]}</p><p>Requested reason: {p.reason}</p><p>Your approval is recorded with your name.</p></>,
+                          confirmLabel: 'Approve',
+                          destructive: p.action !== 'LATE_ACCEPT',
+                          onConfirm: () => act(`/api/platform/youpi/ops-actions/${p.id}`, { decision: 'APPROVE' }, 'Approved.'),
+                        })}>
+                        {mine ? 'Needs another approver' : 'Approve…'}
+                      </Button>
+                      <Button size="sm" variant="ghost"
+                        onClick={() => setAction({
+                          title: `Reject: ${ACTION_LABEL[p.action] ?? p.action}`,
+                          body: <p>Nothing is changed. The proposal is closed{mine ? ' (withdrawn by you)' : ''}.</p>,
+                          confirmLabel: 'Reject',
+                          fields: [{ name: 'note', label: 'Why', kind: 'textarea', required: true }],
+                          onConfirm: (v) => act(`/api/platform/youpi/ops-actions/${p.id}`, { decision: 'REJECT', note: v.note }, 'Proposal rejected.'),
+                        })}>
+                        {mine ? 'Withdraw…' : 'Reject…'}
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </CardContent>
@@ -260,11 +407,11 @@ export function OpsClient({ currentUserId, ops }: { currentUserId: string; ops: 
             <ul className="divide-y divide-border">
               {ops.proposals.map((p) => {
                 const mine = p.proposedById === currentUserId;
-                const open = p.bankTxnStatus === 'UNMATCHED' || p.bankTxnStatus === 'REVIEW_REQUIRED';
+                const open = !p.decision && (p.bankTxnStatus === 'UNMATCHED' || p.bankTxnStatus === 'REVIEW_REQUIRED');
                 return (
                   <li key={p.id} className="py-2 flex flex-wrap items-center justify-between gap-2 text-sm">
                     <div className="min-w-0">
-                      <div className="font-medium">{inr(p.amountPaise)} · bank txn {p.bankTxnStatus ?? '—'}</div>
+                      <div className="font-medium">{inr(p.amountPaise)} · bank txn {p.bankTxnStatus ?? '—'}{p.decision ? ` · ${p.decision.toLowerCase()}` : ''}</div>
                       <div className="text-xs text-muted-foreground break-all">attempt {p.attemptId} · txn {p.bankTransactionId} · {when(p.createdAt)} · {p.reason}</div>
                     </div>
                     <Button size="sm" disabled={!!busy || mine || !open}
@@ -272,6 +419,18 @@ export function OpsClient({ currentUserId, ops }: { currentUserId: string; ops: 
                       onClick={() => run(`pp-${p.id}`, `/api/platform/youpi/allocations/${p.id}/approve`, {}, 'Allocation approved.')}>
                       {busy === `pp-${p.id}` ? <Loader2 className="size-4 animate-spin" /> : !open ? 'Closed' : mine ? 'Needs another approver' : 'Approve'}
                     </Button>
+                    {open && (
+                      <Button size="sm" variant="ghost"
+                        onClick={() => setAction({
+                          title: 'Reject manual allocation proposal',
+                          body: <p>Nothing is allocated. The proposal is closed and cannot be approved later{mine ? ' (withdrawn by you)' : ''}.</p>,
+                          confirmLabel: 'Reject',
+                          fields: [{ name: 'reason', label: 'Why', kind: 'textarea', required: true }],
+                          onConfirm: (v) => act(`/api/platform/youpi/allocations/${p.id}/reject`, { reason: v.reason }, 'Proposal rejected.'),
+                        })}>
+                        {mine ? 'Withdraw…' : 'Reject…'}
+                      </Button>
+                    )}
                   </li>
                 );
               })}
@@ -282,15 +441,52 @@ export function OpsClient({ currentUserId, ops }: { currentUserId: string; ops: 
 
       <Card>
         <CardContent className="p-4 sm:p-6 space-y-3">
-          <h2 className="font-semibold">Dead outbox messages</h2>
+          <h2 className="font-semibold">Dead letters</h2>
+          <p className="text-xs text-muted-foreground">Requeue only after fixing the cause in the error. Requeueing moves no money: an order release still needs bank-captured money and a webhook only records an observation.</p>
+          <h3 className="text-sm font-semibold">Outbox</h3>
           {ops.deadOutbox.length === 0 ? (
             <p className="text-sm text-muted-foreground">None.</p>
           ) : (
             <ul className="divide-y divide-border text-sm">
               {ops.deadOutbox.map((o) => (
-                <li key={o.id} className="py-2">
-                  <div className="font-medium">{o.topic} · {o.aggregateId} · {o.attempts} attempts</div>
-                  <div className="text-xs text-muted-foreground break-all">{when(o.createdAt)} · {o.lastError ?? ''}</div>
+                <li key={o.id} className="py-2 flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium">{o.topic} · {o.aggregateId} · {o.attempts} attempts</div>
+                    <div className="text-xs text-muted-foreground break-all">{when(o.createdAt)} · {o.lastError ?? ''}</div>
+                  </div>
+                  <Button size="sm" variant="outline"
+                    onClick={() => setAction({
+                      title: `Requeue ${o.topic}`,
+                      body: <p>The message is retried from attempt 0 on the next worker tick. Your name is recorded.</p>,
+                      confirmLabel: 'Requeue',
+                      onConfirm: () => act('/api/platform/youpi/dead-letters', { type: 'outbox', id: o.id }, 'Requeued.'),
+                    })}>
+                    Requeue…
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <h3 className="text-sm font-semibold">Gateway webhooks</h3>
+          {ops.deadInbox.length === 0 ? (
+            <p className="text-sm text-muted-foreground">None.</p>
+          ) : (
+            <ul className="divide-y divide-border text-sm">
+              {ops.deadInbox.map((w) => (
+                <li key={w.id} className="py-2 flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium">{w.eventType} · {w.providerEventId ?? w.id} · {w.attempts} attempts</div>
+                    <div className="text-xs text-muted-foreground break-all">{when(w.createdAt)} · {w.error ?? ''}</div>
+                  </div>
+                  <Button size="sm" variant="outline" disabled={w.redacted} title={w.redacted ? 'Body already redacted by retention; cannot be replayed' : undefined}
+                    onClick={() => setAction({
+                      title: 'Requeue gateway webhook',
+                      body: <p>The stored, signature-verified webhook is processed again on the next worker tick. It can only record an observation; it never captures money. Your name is recorded.</p>,
+                      confirmLabel: 'Requeue',
+                      onConfirm: () => act('/api/platform/youpi/dead-letters', { type: 'webhook', id: w.id }, 'Requeued.'),
+                    })}>
+                    {w.redacted ? 'Redacted' : 'Requeue…'}
+                  </Button>
                 </li>
               ))}
             </ul>
