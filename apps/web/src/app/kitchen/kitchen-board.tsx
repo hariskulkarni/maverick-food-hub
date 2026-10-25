@@ -10,6 +10,7 @@ import { KotLine } from './kot-line';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { SoundToggle } from '@/components/sound-toggle';
 import { KitchenAttentionBanner } from '@/components/kitchen-attention-banner';
+import { completionAction } from '@/lib/order-actions';
 
 // Four-column board:
 //   RECEIVED  → customer just placed it, needs Accept (kitchen or admin can)
@@ -393,6 +394,9 @@ export function KitchenBoard({
                         )}
                         {o.status === 'ACCEPTED' && <Button size="sm" onClick={() => transition(o.id, 'PREPARING')}>Start preparing</Button>}
                         {o.status === 'PREPARING' && <Button size="sm" onClick={() => transition(o.id, 'READY')}>Mark ready</Button>}
+                        {completionAction(o) && (
+                          <Button size="sm" onClick={() => transition(o.id, completionAction(o)!.next)}>{completionAction(o)!.label}</Button>
+                        )}
                         <Button size="sm" variant="outline" asChild><a href={`/api/admin/orders/${o.id}/kot`} target="_blank" rel="noreferrer"><Printer className="size-4" /> KOT</a></Button>
                       </div>
                     </CardContent>
