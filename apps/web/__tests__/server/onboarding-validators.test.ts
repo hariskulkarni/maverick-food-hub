@@ -48,3 +48,13 @@ describe('onboarding validators', () => {
     expect(validateIndiaLatLng(null, 77)).toMatch(/required/);
   });
 });
+
+import { parseLatLngInput } from '@/lib/onboarding/validators';
+describe('parseLatLngInput', () => {
+  it('reads pasted pairs and Google Maps URLs', () => {
+    expect(parseLatLngInput('12.9352, 77.6245')).toEqual({ lat: 12.9352, lng: 77.6245 });
+    expect(parseLatLngInput('12.9352 77.6245')).toEqual({ lat: 12.9352, lng: 77.6245 });
+    expect(parseLatLngInput('https://www.google.com/maps/place/X/@12.9352,77.6245,17z')).toEqual({ lat: 12.9352, lng: 77.6245 });
+    expect(parseLatLngInput('Koramangala')).toBeNull();
+  });
+});

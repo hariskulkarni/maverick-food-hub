@@ -86,7 +86,9 @@ export async function loadReadinessSnapshot(restaurantId: string): Promise<Readi
       id: b.id, name: b.name, line1: b.line1, city: b.city, postalCode: b.postalCode,
       latitude: b.latitude, longitude: b.longitude, serviceRadiusKm: b.serviceRadiusKm,
       fssaiLicenseNumber: b.fssaiLicenseNumber, fssaiExpiresOn: b.fssaiExpiresOn,
-      openDays: b.hours.filter((h) => h.openMin < h.closeMin).length,
+      hourRows: b.hours.length,
+      // Same convention as server/operating-hours.ts: 0/0 = closed, overnight windows count as open.
+      openDays: b.hours.filter((h) => !(h.openMin === 0 && h.closeMin === 0)).length,
       activeZones: b._count.deliveryZones,
     })),
     availableItems,

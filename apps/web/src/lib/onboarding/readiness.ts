@@ -17,7 +17,9 @@ export interface SnapshotBranch {
   serviceRadiusKm: number;
   fssaiLicenseNumber: string | null;
   fssaiExpiresOn: Date | string | null;
-  /** Days of the week with openMin < closeMin. */
+  /** OperatingHours rows saved (0 ⇒ the resolver treats the branch as always open). */
+  hourRows: number;
+  /** Days with an open window (a closed day is stored as openMin = closeMin = 0; overnight windows count). */
   openDays: number;
   activeZones: number;
 }
@@ -109,11 +111,13 @@ export function evaluateReadiness(s: ReadinessSnapshot, now: Date = new Date()):
   });
 
   // ── Hours ──
-  const closedAllWeek = b.filter((x) => x.openDays === 0);
+  const noHours = b.filter((x) => x.hourRows === 0);
+  const closedAllWeek = b.filter((x) => x.hourRows > 0 && x.openDays === 0);
   add({
     key: 'hours', label: 'Opening hours set', required: true, step: 'branches',
-    ok: !noBranch && closedAllWeek.length === 0,
+    ok: !noBranch && noHours.length === 0 && closedAllWeek.length === 0,
     detail: noBranch ? 'Add a branch first.'
+      : noHours.length ? `No hours saved for ${branchList(noHours.map((x) => x.name))} — right now customers could order at any time of day.`
       : closedAllWeek.length ? `${branchList(closedAllWeek.map((x) => x.name))} is closed every day — set at least one open day.`
       : 'Customers can only order while you are open.',
   });

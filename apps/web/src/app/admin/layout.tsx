@@ -5,7 +5,7 @@ import { currentRestaurant, accessibleRestaurants } from '@/server/tenancy';
 import {
   LayoutDashboard, ScrollText, CalendarClock, Armchair, Radio, Building2,
   Bike, ShieldAlert, MessagesSquare, BarChart3, History, MessageSquare,
-  Settings, Paintbrush, Star, MapPinned,
+  Settings, Paintbrush, Star, MapPinned, Rocket,
 } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { RestaurantSwitcher } from './restaurant-switcher';
@@ -24,6 +24,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     items: [
       { href: '/admin',                icon: <LayoutDashboard className={ICON} />, label: 'Dashboard' },
+      { href: '/admin/onboarding',     icon: <Rocket className={ICON} />,          label: 'Setup guide' },
       { href: '/admin/orders',         icon: <ScrollText className={ICON} />,      label: 'Orders' },
       { href: '/admin/reservations',   icon: <CalendarClock className={ICON} />,   label: 'Reservations' },
       { href: '/admin/tables',         icon: <Armchair className={ICON} />,        label: 'Tables' },
@@ -78,6 +79,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               : restaurant.status === 'SUSPENDED' ? 'temporarily suspended' : 'not active'}.
             {restaurant.rejectedReason ? ` Reason: ${restaurant.rejectedReason}` : ''}
           </p>
+          {restaurant.status === 'PENDING' && (
+            <div className="rounded-lg border bg-muted/30 p-4 text-left text-sm">
+              <div className="font-medium">What happens next</div>
+              <ol className="mt-1 list-decimal space-y-1 pl-5 text-muted-foreground">
+                <li>The Flavrly team reviews your application — usually within 1 business day.</li>
+                <li>Once approved, sign in again and the setup guide opens automatically: FSSAI licence, full menu, delivery zones, staff and QR code.</li>
+                <li>Pass the readiness check and press <b>Go live</b>.</li>
+              </ol>
+            </div>
+          )}
           <p className="text-sm">If this is unexpected, contact platform support.</p>
         </div>
       </div>

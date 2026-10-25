@@ -87,8 +87,8 @@ export async function POST(req: NextRequest) {
       }
       return u;
     });
-  } catch (e: any) {
-    if (e?.code === 'P2002') return Response.json({ error: 'That email is already registered.', reason: 'email_taken' }, { status: 409 });
+  } catch (e) {
+    if ((e as { code?: string })?.code === 'P2002') return Response.json({ error: 'That email is already registered.', reason: 'email_taken' }, { status: 409 });
     throw e;
   }
 

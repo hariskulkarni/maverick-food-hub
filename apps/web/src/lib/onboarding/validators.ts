@@ -95,3 +95,17 @@ export function validateIndiaLatLng(lat: number | null | undefined, lng: number 
   }
   return null;
 }
+
+/**
+ * Pull "lat, lng" out of whatever the owner pastes: "12.9352, 77.6245",
+ * "12.9352 77.6245", or a Google Maps URL containing "@12.9352,77.6245" / "q=12.93,77.62".
+ */
+export function parseLatLngInput(raw: string): { lat: number; lng: number } | null {
+  const s = (raw ?? '').trim();
+  const m = s.match(/@(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/) ?? s.match(/(-?\d{1,2}\.\d+)\s*[, ]\s*(-?\d{1,3}\.\d+)/);
+  if (!m) return null;
+  const lat = Number(m[1]);
+  const lng = Number(m[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}

@@ -15,7 +15,7 @@ import { loadReadinessSnapshot } from '@/server/onboarding';
 const goodBranch = {
   id: 'b1', name: 'Koramangala', line1: '12, 80 Feet Rd', city: 'Bengaluru', postalCode: '560034',
   latitude: 12.93, longitude: 77.62, serviceRadiusKm: 5, fssaiLicenseNumber: '10020042007183',
-  fssaiExpiresOn: '2030-01-01', openDays: 7, activeZones: 1,
+  fssaiExpiresOn: '2030-01-01', hourRows: 7, openDays: 7, activeZones: 1,
 };
 function snap(over: Partial<ReadinessSnapshot> = {}): ReadinessSnapshot {
   return {
@@ -40,6 +40,7 @@ describe('evaluateReadiness', () => {
 
   it('blocks on hours closed all week, missing FSSAI, expired FSSAI, bad phone', () => {
     expect(byKey(evaluateReadiness(snap({ branches: [{ ...goodBranch, openDays: 0 }] })), 'hours').ok).toBe(false);
+    expect(byKey(evaluateReadiness(snap({ branches: [{ ...goodBranch, hourRows: 0, openDays: 0 }] })), 'hours').detail).toMatch(/No hours saved/);
     expect(byKey(evaluateReadiness(snap({ branches: [{ ...goodBranch, fssaiLicenseNumber: null }] })), 'fssai').detail).toMatch(/14-digit/);
     const expired = evaluateReadiness(snap({ branches: [{ ...goodBranch, fssaiExpiresOn: '2024-01-01' }] }), new Date('2026-10-24'));
     expect(byKey(expired, 'fssai').detail).toMatch(/expired/);
@@ -75,7 +76,7 @@ describe('loadReadinessSnapshot', () => {
   it('reads only ACTIVE branches of the restaurant and counts open days / zones', async () => {
     db.restaurant.findUnique.mockResolvedValue({ name: 'S', contactPhone: null, logoUrl: null, gstin: null, ownerUserId: 'owner' });
     db.branch.findMany.mockResolvedValue([{
-      ...goodBranch, hours: [{ openMin: 660, closeMin: 1380 }, { openMin: 0, closeMin: 0 }], _count: { deliveryZones: 2 },
+      ...goodBranch, hours: [{ openMin: 660, closeMin: 1380 }, { openMin: 0, closeMin: 0 }, { openMin: 1080, closeMin: 120 }], _count: { deliveryZones: 2 },
     }]);
     db.menuItem.count.mockResolvedValue(3);
     db.restaurantUser.count.mockResolvedValue(0);
@@ -85,7 +86,7 @@ describe('loadReadinessSnapshot', () => {
     expect(db.branch.findMany.mock.calls[0][0].where).toEqual({ restaurantId: 'r1', isActive: true });
     expect(db.menuItem.count.mock.calls[0][0].where).toMatchObject({ branchId: { in: ['b1'] }, isAvailable: true, category: { isActive: true } });
     expect(db.restaurantUser.count.mock.calls[0][0].where).toEqual({ restaurantId: 'r1', userId: { not: 'owner' } });
-    expect(s.branches[0]).toMatchObject({ openDays: 1, activeZones: 2 });
+    expect(s.branches[0]).toMatchObject({ hourRows: 3, openDays: 2, activeZones: 2 }); // overnight 18:00→02:00 counts as open
     expect(s).toMatchObject({ availableItems: 3, otherStaff: 0, hasQr: false });
   });
 });
