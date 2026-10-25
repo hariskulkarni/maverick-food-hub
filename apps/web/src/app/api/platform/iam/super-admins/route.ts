@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   let created: { id: string; email: string | null; role: Role };
   try {
     created = await prisma.user.create({
-      data: { name: body.name.trim(), email, passwordHash, role: Role.SUPER_ADMIN },
+      data: { name: body.name.trim(), email, passwordHash, mustChangePassword: true, role: Role.SUPER_ADMIN },
       select: { id: true, email: true, role: true },
     });
   } catch (e: any) {

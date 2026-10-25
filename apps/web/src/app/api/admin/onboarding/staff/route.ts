@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
   try {
     user = await prisma.$transaction(async (tx) => {
       const u = await tx.user.create({
-        data: { email: parsed.email, name: parsed.name, passwordHash, role },
+        data: { email: parsed.email, name: parsed.name, passwordHash, mustChangePassword: true, role },
         select: { id: true, email: true, name: true },
       });
       await tx.restaurantUser.create({ data: { restaurantId: scope.restaurant.id, userId: u.id, role } });

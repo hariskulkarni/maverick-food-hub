@@ -345,6 +345,7 @@ export async function POST(req: NextRequest) {
           email: adminHashed.email,
           name: adminHashed.name ?? null,
           passwordHash: adminHashed.hash,
+          mustChangePassword: true, // set by the super admin — owner picks their own at first login
           role: Role.ADMIN
         }
       });
@@ -428,6 +429,7 @@ export async function POST(req: NextRequest) {
             email: k.email,
             name: k.name ?? null,
             passwordHash: k.hash,
+            mustChangePassword: true,
             role: Role.KITCHEN
           }
         });

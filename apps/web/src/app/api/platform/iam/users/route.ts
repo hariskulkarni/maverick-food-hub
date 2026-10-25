@@ -98,6 +98,7 @@ export async function POST(req: NextRequest) {
       name: body.name.trim(),
       email,
       passwordHash,
+      mustChangePassword: true, // super-admin chosen — user sets their own at first login
       role: body.role as Role,
     },
     select: { id: true, name: true, email: true, role: true, createdAt: true },
