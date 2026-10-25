@@ -7,7 +7,7 @@
  */
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
-import { isIncidentType, toFiniteNumber, toTrimmedString } from '@/server/rider-safety';
+import { isIncidentType, isOwnIncidentPhotoUrl, toFiniteNumber, toTrimmedString } from '@/server/rider-safety';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -85,6 +85,12 @@ export async function POST(req: Request) {
     return Response.json({ error: 'A description is required.' }, { status: 400 });
   }
 
+  // Only photos this rider uploaded through /api/rider/incidents/photo.
+  const photoUrl = toTrimmedString(b.photoUrl) ?? null;
+  if (photoUrl && !isOwnIncidentPhotoUrl(photoUrl, profile.id)) {
+    return Response.json({ error: 'Upload the photo first, then submit the report.' }, { status: 400 });
+  }
+
   const incident = await prisma.riderIncidentReport.create({
     data: {
       riderId: profile.id,
@@ -94,7 +100,7 @@ export async function POST(req: Request) {
       lat: toFiniteNumber(b.lat) ?? null,
       lng: toFiniteNumber(b.lng) ?? null,
       assignmentId: toTrimmedString(b.assignmentId) ?? null,
-      photoUrl: toTrimmedString(b.photoUrl) ?? null,
+      photoUrl,
     },
   });
 

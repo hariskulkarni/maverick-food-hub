@@ -6,8 +6,9 @@
  * permission is denied), and an auto-attached GPS fix. On submit it confirms,
  * shows a success Alert, and refreshes the rider's past reports below.
  *
- * NOTE: photo upload isn't wired to storage in this build — the captured image
- * is shown locally for reassurance, but `photoUrl` is left undefined on submit.
+ * The photo (if any) is uploaded to /api/rider/incidents/photo first and the
+ * returned URL is attached to the report. If the upload fails the rider can
+ * retry or submit without the photo.
  *
  * Full-screen route with its own back header.
  */
@@ -183,23 +184,39 @@ export default function ReportIncidentScreen() {
       'Our safety team will review it and reach out if they need more information.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Submit report', onPress: submit },
+        { text: 'Submit report', onPress: () => submit() },
       ]
     );
   }
 
-  async function submit() {
+  async function submit(skipPhoto = false) {
     if (!type) return;
     setSubmitting(true);
     try {
+      let photoUrl: string | undefined;
+      if (photoUri && !skipPhoto) {
+        try {
+          photoUrl = (await safety.uploadIncidentPhoto(photoUri)).url;
+        } catch (e) {
+          setSubmitting(false);
+          Alert.alert(
+            'Photo upload failed',
+            e instanceof ApiError ? e.message : 'Please check your connection.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Submit without photo', onPress: () => submit(true) },
+            ]
+          );
+          return;
+        }
+      }
       const fix = await getFix();
       await safety.reportIncident({
         type,
         description: description.trim(),
         lat: fix?.lat,
         lng: fix?.lng,
-        // Photo upload to storage isn't wired in this build — submit without it.
-        photoUrl: undefined,
+        photoUrl,
       });
       await loadPast();
       setType(null);
