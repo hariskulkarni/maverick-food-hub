@@ -11,6 +11,7 @@ import { riderCanClaimOrder, resolveDedicatedGroup } from './rider-sourcing';
 import { checkRiderEligibility } from './rider-eligibility';
 import { computeBasePayout } from './payouts';
 import { ensureCodCollection } from './rider-cod';
+import { recordOrderEvent } from './dispatch/events';
 
 export interface RiderScore {
   riderId: string;
@@ -186,5 +187,6 @@ export async function assignRider(orderId: string, riderId: string) {
   if (prevActive && prev) publish(`rider:${prev.riderId}`, { kind: 'status', orderId, status: order.status, at: new Date().toISOString() });
   publish(`rider:${riderId}`, { kind: 'assigned', orderId, riderId });
   publish(`order:${orderId}`, { kind: 'assigned', orderId, riderId });
+  await recordOrderEvent({ orderId, type: 'ASSIGNED', source: 'ADMIN', riderId, meta: { via: 'assign' } });
   return a;
 }

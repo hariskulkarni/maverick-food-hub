@@ -1154,7 +1154,7 @@ When you have an active order, the delivery screen guides you through four steps
 ### Getting to the restaurant
 
 - The map shows the pickup, the drop and your live position. When the app knows your location, a banner shows the distance and rough time to the next stop.
-- Tap **Navigate to pickup** to open turn-by-turn directions in Google Maps. Set this up *before* you start riding.
+- Tap **Navigate to pickup in Google Maps** to open turn-by-turn directions in the Google Maps app on your phone. Set this up *before* you start riding. You can also check the pickup route from an order card in the **Orders** tab before you claim it.
 - When you arrive, tap **I've reached the restaurant**.
 
 ### At the restaurant
@@ -1164,16 +1164,22 @@ When you have an active order, the delivery screen guides you through four steps
 - Pack the bag properly: hot and cold apart, containers upright.
 - Tap **I've picked up the order**.
 
-### Location permission
+### Location while you deliver
 
-If location is switched off, the app warns that your live position will not show on the customer's tracker. Turn it on in your phone settings so the customer can follow the order.`,
+From the moment you accept a delivery until it is delivered, cancelled or closed by support, Flavrly keeps sharing your location in the background, even while Google Maps is on screen or your phone is locked. On Android a notification says *Flavrly is sharing your location for an active delivery*; on iPhone a blue indicator shows in the status bar.
+
+- The first time, Flavrly explains what it collects and why. Tap **Continue** and choose **Allow all the time** (Android) or **Always** (iPhone).
+- If you don't allow it, tracking pauses whenever the app is not on screen and the delivery screen shows **Tracking pauses in the background** with a button to fix it.
+- It stops by itself when the delivery ends, when you go offline or when you sign out.
+
+If location is switched off completely, the app warns that your live position will not show on the customer's tracker. Turn it on in your phone settings so the customer can follow the order.`,
       },
       {
         kind: 'TEXT',
         title: 'Delivering and confirming the handover',
         body: `## Getting to the customer
 
-- Tap **Navigate to customer** to open directions to the drop.
+- Tap **Navigate to customer in Google Maps** to open directions to the drop. Tracking keeps running while Google Maps is open.
 - Read the **DROP** details: address, *Floor / flat*, *Landmark* and any *Note*. Check the **CUSTOMER NOTE** too.
 - If you need to speak to the customer, pull over and tap the **call** button next to their details.
 - When you arrive, tap **I've reached the customer**.

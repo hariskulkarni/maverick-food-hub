@@ -12,13 +12,15 @@
  * fix still reaches the super-admin fleet map. When `orderId` is set we also
  * upgrade to `BestForNavigation` accuracy for tighter turn-by-turn tracking.
  *
- * Foreground only — streaming stops when the app is backgrounded. Background
- * tracking needs expo-task-manager + a background-location permission and is a
- * separate, larger piece of work.
+ * Foreground only — streaming stops when the app is backgrounded. During an
+ * accepted delivery with background permission, lib/background-location.ts
+ * takes over posting (it keeps running in the background); this hook then only
+ * feeds the in-app map and sends nothing, so points aren't duplicated.
  */
 import { useEffect, useState } from 'react';
 import * as Location from 'expo-location';
 import { api } from './api';
+import { isBackgroundTrackingActive } from './background-location';
 
 export interface LatLng {
   lat: number;
@@ -61,7 +63,9 @@ export function useRiderLocation(opts: { orderId: string | null; enabled: boolea
           const lat = first.coords.latitude;
           const lng = first.coords.longitude;
           setPosition({ lat, lng });
-          api.sendLocation(lat, lng, orderId ?? undefined).catch(() => {});
+          if (!isBackgroundTrackingActive()) {
+            api.sendLocation(lat, lng, orderId ?? undefined, undefined, first.timestamp).catch(() => {});
+          }
         }
       } catch {
         // Non-fatal — the watch below will deliver the first fix shortly.
@@ -89,7 +93,10 @@ export function useRiderLocation(opts: { orderId: string | null; enabled: boolea
             rawSpeed != null && rawSpeed >= 0 ? rawSpeed * 3.6 : undefined;
           setPosition({ lat, lng });
           // Fire-and-forget — a dropped ping just means one missed update.
-          api.sendLocation(lat, lng, orderId ?? undefined, speedKph).catch(() => {});
+          // Skipped while the background task is streaming the same fixes.
+          if (!isBackgroundTrackingActive()) {
+            api.sendLocation(lat, lng, orderId ?? undefined, speedKph, loc.timestamp).catch(() => {});
+          }
         }
       );
     })();

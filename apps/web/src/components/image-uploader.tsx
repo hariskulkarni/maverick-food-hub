@@ -275,7 +275,9 @@ export function ImageUploader({
         <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-1.5 text-[11px]">
           <Check className="size-3.5 shrink-0 text-success" />
           <span className="text-muted-foreground shrink-0">Saved URL:</span>
-          <code className="flex-1 font-mono text-foreground truncate" title={value}>{value}</code>
+          {/* w-0 + flex-1: a long unbreakable URL must not set the row's
+              min-content width, or it blows out the parent grid on phones. */}
+          <code className="w-0 min-w-0 flex-1 font-mono text-foreground truncate" title={value}>{value}</code>
           <a
             href={value}
             target="_blank"

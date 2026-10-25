@@ -33,6 +33,8 @@ vi.mock('@/server/audit', () => ({ audit: async () => {} }));
 vi.mock('@/server/realtime', () => ({ publish: () => {} }));
 vi.mock('@/server/rider-push', () => ({ notifyRidersOfNewOrder: async () => {} }));
 vi.mock('@/server/rider-payments', () => ({ applyIncentivesForDelivery: async () => [] }));
+vi.mock('@/server/dispatch/events', () => ({ recordOrderEvent: async () => true }));
+vi.mock('@/server/dispatch/jit', () => ({ PRE_READY_STATUSES: ['ACCEPTED', 'PREPARING'], isReleasedForDispatch: async () => false }));
 vi.mock('@/server/http/rate-limit', () => ({ rateLimit: async () => ({ ok: true }) }));
 vi.mock('@/server/db', () => ({
   prisma: {

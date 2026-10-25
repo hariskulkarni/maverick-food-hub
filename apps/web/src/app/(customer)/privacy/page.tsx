@@ -244,8 +244,8 @@ export default function PrivacyPage() {
             at{' '}
             <a href={`mailto:${brand.privacyEmail}`} className="text-primary underline">
               {brand.privacyEmail}
-            </a>{' '}
-            or call {brand.supportPhone}. {brand.name} is operated from Andhra Pradesh, India.
+            </a>
+            {brand.supportPhone ? <> or call {brand.supportPhone}.</> : '.'} {brand.name} is operated from Andhra Pradesh, India.
           </p>
         </section>
       </div>

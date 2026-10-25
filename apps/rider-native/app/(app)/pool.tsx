@@ -24,6 +24,8 @@ import { api, ApiError, type PoolOrder, type RiderMe } from '../../lib/api';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 import { useOrderAlerts } from '../../lib/use-order-alerts';
 import { NewOrderBanner } from '../../components/new-order-banner';
+import { openNavigation, canNavigate, type NavTarget } from '../../lib/maps-nav';
+import { resyncDeliveryTracking } from '../../lib/delivery-tracking';
 
 function rupees(n: number): string {
   return Number.isFinite(n) ? `₹${Math.round(n)}` : '₹0';
@@ -38,6 +40,13 @@ function PoolCard({
   claiming: boolean;
   onClaim: () => void;
 }) {
+  // Pickup location — visible as soon as the offer arrives, so the rider can
+  // check the route in Google Maps before claiming.
+  const pickupTarget: NavTarget = {
+    lat: order.branchLoc?.lat,
+    lng: order.branchLoc?.lng,
+    label: order.branchAddress ? `${order.restaurant}, ${order.branchAddress}` : null,
+  };
   return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
@@ -94,6 +103,22 @@ function PoolCard({
             {order.delivery.line}
           </Text>
         </View>
+      ) : null}
+
+      {canNavigate(pickupTarget) ? (
+        <Pressable
+          onPress={() => {
+            openNavigation(pickupTarget).then((ok) => {
+              if (!ok) Alert.alert('Could not open maps', 'Install Google Maps or another maps app and try again.');
+            });
+          }}
+          style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
+          accessibilityRole="button"
+          accessibilityHint="Opens Google Maps with directions to the pickup"
+        >
+          <Ionicons name="navigate" size={16} color={colors.primary} />
+          <Text style={styles.navButtonText}>Navigate to pickup in Google Maps</Text>
+        </Pressable>
       ) : null}
 
       <Pressable
@@ -166,6 +191,9 @@ export default function PoolScreen() {
     setClaimingId(order.orderId);
     try {
       await api.claimOrder(order.orderId);
+      // Start background tracking right away when it is already allowed (the
+      // disclosure, if needed, appears on the delivery screen).
+      void resyncDeliveryTracking();
       // Won the race — drop it from the pool and jump to Home where it's now
       // the rider's active delivery.
       setOrders((prev) => prev.filter((o) => o.orderId !== order.orderId));
@@ -421,8 +449,21 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
 
+  navButton: {
+    marginTop: spacing.md,
+    height: 44,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  navButtonPressed: { backgroundColor: colors.primarySoft },
+  navButtonText: { color: colors.primary, fontSize: font.size.sm, fontWeight: font.weight.semibold },
   claimButton: {
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     height: 48,
     borderRadius: radius.md,
     backgroundColor: colors.primary,

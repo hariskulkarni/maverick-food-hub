@@ -154,10 +154,14 @@ export function OrderTrackerClient({
         </div>
         {/* Support buttons — stack vertically on mobile, side-by-side on sm+.
             44×44 tap targets enforced on mobile. */}
-        <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex">
+        {(brand.supportPhone || brand.supportWhatsapp) && (
+        <div className={`grid ${brand.supportPhone && brand.supportWhatsapp ? 'grid-cols-2' : 'grid-cols-1'} gap-2 w-full sm:w-auto sm:flex`}>
+          {brand.supportPhone && (
           <a href={`tel:${brand.supportPhone}`} className="inline-flex h-11 sm:h-9 items-center justify-center gap-2 rounded-md border px-3 text-sm hover:bg-accent tap-press">
             <Phone className="size-4" /> Support
           </a>
+          )}
+          {brand.supportWhatsapp && (
           <a
             href={`https://wa.me/${brand.supportWhatsapp.replace(/\D/g, '')}?text=Order%20${encodeURIComponent(order.code)}`}
             target="_blank" rel="noreferrer"
@@ -165,7 +169,9 @@ export function OrderTrackerClient({
           >
             <MessageCircle className="size-4" /> WhatsApp
           </a>
+          )}
         </div>
+        )}
       </header>
 
       {/* ───────────────────────── Progress stepper ───────────────────────── */}

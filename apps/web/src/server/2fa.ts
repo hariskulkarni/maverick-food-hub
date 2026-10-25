@@ -43,6 +43,16 @@ export interface PlatformSecurity {
   // Training: block riders from going online until required shift-blocking
   // (safety) modules are passed. Default off. Read via platform-settings.ts.
   trainingShiftGate?: boolean;
+  // Dispatch telemetry: JIT rider invitations (default OFF) + tuning. Not a
+  // secret. Read/written via server/dispatch/settings.ts (clamps + defaults).
+  dispatchJit?: {
+    enabled?: boolean;
+    bufferMin?: number;
+    roadFactor?: number;
+    speedKph?: number;
+    rangeKm?: number;
+    promiseSlaMin?: number;
+  };
 }
 
 /** Make sure the sentinel Restaurant row exists so the FK on IntegrationCredential holds. */

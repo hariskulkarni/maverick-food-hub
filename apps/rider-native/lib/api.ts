@@ -463,14 +463,18 @@ export const api = {
 
   // ── Live location ─────────────────────────────────────────────────────────
   /** High-frequency GPS ping — fans out to customer + admin trackers via SSE. */
-  sendLocation: (lat: number, lng: number, orderId?: string, speedKph?: number) =>
-    request<{ ok: true }>('/api/rider/location', {
+  sendLocation: (lat: number, lng: number, orderId?: string, speedKph?: number, recordedAt?: number) =>
+    request<{ ok: true; orderActive?: boolean }>('/api/rider/location', {
       method: 'POST',
       body: {
         lat,
         lng,
         ...(orderId ? { orderId } : {}),
         ...(speedKph != null ? { speedKph } : {}),
+        // Fix time (ms epoch) — lets the server ignore stale / out-of-order points.
+        ...(recordedAt != null && Number.isFinite(recordedAt)
+          ? { recordedAt: Math.round(recordedAt), sentAt: Date.now() }
+          : {}),
       },
     }),
 

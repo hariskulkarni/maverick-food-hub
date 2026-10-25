@@ -117,6 +117,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // (RIDER_REACHED_CUSTOMER → DELIVERY_OTP_FAILED); otherwise the lock alone holds.
       await transitionOrder(a.orderId, OrderStatus.DELIVERY_OTP_FAILED, {
         actorId: session.user.id,
+        eventSource: 'RIDER',
         note: `Delivery OTP failed ${MAX_DELIVERY_OTP_ATTEMPTS} times`,
       }).catch(() => {});
       return fail(429, 'too-many-attempts', LOCKED_MESSAGE);
@@ -129,7 +130,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // single-winner write that credits the rider.
   await prisma.order.update({ where: { id: a.order.id }, data: { deliveryOtpVerified: true } });
   try {
-    await transitionOrder(a.order.id, OrderStatus.DELIVERED, { actorId: session.user.id, skipRiderIncentives: true });
+    await transitionOrder(a.order.id, OrderStatus.DELIVERED, { actorId: session.user.id, eventSource: 'RIDER', skipRiderIncentives: true });
   } catch (e) {
     if (!(e instanceof OrderTransitionError)) throw e;
     // Lost a race (concurrent retry or a cancellation). Report the truth.

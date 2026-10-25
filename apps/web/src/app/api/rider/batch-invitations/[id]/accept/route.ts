@@ -36,6 +36,7 @@ import { log } from '@/server/log';
 import { requireRider } from '../../_helpers';
 import { checkRiderEligibility } from '@/server/rider-eligibility';
 import { ensureCodCollection } from '@/server/rider-cod';
+import { recordOrderEvent } from '@/server/dispatch/events';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -153,6 +154,16 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return new Response('Could not accept the batch', { status: 500 });
   }
 
+  // P1-9: no order transition here — the order moves to OUT_FOR_DELIVERY at
+  // pickup, so the customer's hand-over code isn't texted early.
+  await recordOrderEvent({
+    orderId: inv.orderId,
+    type: 'ASSIGNED',
+    source: 'RIDER',
+    actorId: guard.rider.userId,
+    riderId: profileId,
+    meta: { via: 'batch', invitationId: id },
+  });
   publish('rider:pool', { kind: 'order:claimed', orderId: inv.orderId });
   publish(`order:${inv.orderId}`, {
     kind: 'assigned',

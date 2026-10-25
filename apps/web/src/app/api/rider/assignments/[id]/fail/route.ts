@@ -82,7 +82,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // ── After pickup: the delivery failed ──────────────────────────────────────
   const before = { status: a.order.status, cancellationReason: a.order.cancellationReason, cancelReason: a.order.cancelReason };
   try {
-    await transitionOrder(a.orderId, OrderStatus.DELIVERY_FAILED, { actorId: session.user.id, note: note ?? reason });
+    await transitionOrder(a.orderId, OrderStatus.DELIVERY_FAILED, { actorId: session.user.id, note: note ?? reason, eventSource: 'RIDER' });
   } catch (e) {
     if (e instanceof OrderTransitionError) {
       return Response.json({ error: 'This order can no longer be marked as failed. Contact support.' }, { status: 409 });
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const capturedPayment = a.order.payments.find((p) => p.status === PaymentStatus.CAPTURED);
   if (capturedPayment) {
     try {
-      await transitionOrder(a.orderId, OrderStatus.REFUND_PENDING, { actorId: session.user.id, note: `Auto-queued after delivery failure (${reason})` });
+      await transitionOrder(a.orderId, OrderStatus.REFUND_PENDING, { actorId: session.user.id, note: `Auto-queued after delivery failure (${reason})`, eventSource: 'RIDER' });
     } catch {
       // Some prior state may block the transition — admin can still drive it manually.
     }

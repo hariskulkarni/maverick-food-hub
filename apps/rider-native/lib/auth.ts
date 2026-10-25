@@ -9,6 +9,7 @@ import * as SecureStore from 'expo-secure-store';
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { AppState } from 'react-native';
 import { api, ApiError, setAuthToken, type Rider } from './api';
+import { saveBackgroundToken, stopDeliveryTracking } from './background-location';
 
 const TOKEN_KEY = 'flavrly_rider_token';
 const RIDER_KEY = 'flavrly_rider_profile';
@@ -69,6 +70,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (savedToken) {
           setToken(savedToken);
           setAuthToken(savedToken);
+          // Copy readable while the phone is locked, for the background
+          // delivery-tracking task (also migrates sessions from older builds).
+          saveBackgroundToken(savedToken).catch(() => {});
         }
         if (savedRider) {
           try {
@@ -88,13 +92,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       SecureStore.setItemAsync(TOKEN_KEY, newToken),
       SecureStore.setItemAsync(RIDER_KEY, JSON.stringify(newRider)),
     ]);
+    await saveBackgroundToken(newToken);
     setAuthToken(newToken);
     setToken(newToken);
     setRider(newRider);
   }, []);
 
   const clearLocal = useCallback(async () => {
+    // End any background delivery tracking and drop unsent points + the
+    // background token copy before the session goes away.
+    await stopDeliveryTracking({ clearQueue: true }).catch(() => {});
     await Promise.all([
+      saveBackgroundToken(null),
       SecureStore.deleteItemAsync(TOKEN_KEY),
       SecureStore.deleteItemAsync(RIDER_KEY),
     ]);
@@ -139,6 +148,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await api.refreshToken();
       if (tokenRef.current !== current) return; // signed out / swapped meanwhile
       await SecureStore.setItemAsync(TOKEN_KEY, res.token);
+      // Keep the background delivery-tracking task's copy in step, or it would
+      // keep sending the old token until that one expires.
+      await saveBackgroundToken(res.token);
       setAuthToken(res.token);
       setToken(res.token);
     } catch (e) {

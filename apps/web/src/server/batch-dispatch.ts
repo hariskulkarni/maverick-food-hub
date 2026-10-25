@@ -25,6 +25,7 @@ import { publish } from './realtime';
 import { log } from './log';
 import { sendBatchInvitationPush } from './rider-push';
 import { checkRiderEligibility } from './rider-eligibility';
+import { recordOrderEvent } from './dispatch/events';
 
 /** Hard caps that gate whether a rider is even considered. */
 const MAX_RIDER_TO_PICKUP_KM = 5;
@@ -230,6 +231,15 @@ export async function maybeOfferAsBatch(
           },
         });
         invited++;
+        await recordOrderEvent({
+          orderId,
+          type: 'INVITED',
+          source: 'SYSTEM',
+          at: now,
+          riderId: c.riderId,
+          dedupeKey: `INVITED:batch:${c.riderId}`,
+          meta: { via: 'batch', invitationId: inv.id, detourKm: Number(c.detourKm.toFixed(2)) },
+        });
 
         // 6. Best-effort push. Errors are swallowed inside the helper.
         if (c.expoPushToken) {
