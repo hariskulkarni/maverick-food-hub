@@ -9,6 +9,7 @@ import { resolveGroupReport, groupSalesSeries, childBreakdownRange } from './_gr
 import { Network, Info } from 'lucide-react';
 import { NoBranchNotice } from '../no-branch-notice';
 import { STAFF_BRANCH_ORDER } from '@/server/branch-pause';
+import { DispatchCard } from './dispatch-card';
 
 /**
  * ReportsWorkspace — the full reporting surface: a custom date-range report
@@ -115,6 +116,8 @@ export async function ReportsWorkspace({ showHeader = true }: { showHeader?: boo
           <ul className="text-sm divide-y">{ls.map((b) => <li key={b.name} className="flex justify-between py-2"><span>{b.name}</span><span>{b.qty}</span></li>)}</ul>
         </CardContent></Card>
       </div>
+
+      <DispatchCard restaurantId={restaurant.id} />
 
       <Card><CardContent className="p-5">
         <h3 className="font-semibold mb-3">Customer insights</h3>

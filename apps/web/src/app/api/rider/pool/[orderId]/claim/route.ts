@@ -11,6 +11,9 @@ import { transitionOrder } from '@/server/orders';
 import { computeBasePayout } from '@/server/payouts';
 import { publish } from '@/server/realtime';
 import { riderCanClaimOrder, resolveDedicatedGroup } from '@/server/rider-sourcing';
+import { OrderEventSource, OrderEventType, FulfillmentType } from '@prisma/client';
+import { recordOrderEvent } from '@/server/dispatch/events';
+import { isReleasedForDispatch, PRE_READY_STATUSES } from '@/server/dispatch/jit';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
@@ -28,7 +31,15 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ or
   });
   if (!order) return new Response('Order not found', { status: 404 });
   if (order.assignment) return new Response('Order already claimed', { status: 409 });
-  if (order.status !== OrderStatus.READY) return new Response('Order not in pool yet', { status: 400 });
+  if (order.status !== OrderStatus.READY) {
+    // JIT: a DELIVERY order still being prepared is claimable once the JIT
+    // sweep has released it to riders (setting on; see server/dispatch/jit.ts).
+    const jitReleased =
+      PRE_READY_STATUSES.includes(order.status) &&
+      order.fulfillmentType === FulfillmentType.DELIVERY &&
+      (await isReleasedForDispatch(orderId));
+    if (!jitReleased) return new Response('Order not in pool yet', { status: 400 });
+  }
 
   // Enforce the restaurant's rider-dispatch policy: a fleet rider can't grab a
   // dedicated-only order, a dedicated rider can't grab a fleet-only order, and
@@ -65,6 +76,16 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ or
     });
     publish('rider:pool', { kind: 'order:claimed', orderId });
     publish(`order:${orderId}`, { kind: 'assigned', orderId, riderId: profile.id });
+    await recordOrderEvent({
+      orderId,
+      type: OrderEventType.ASSIGNED,
+      source: OrderEventSource.RIDER,
+      actorId: session.user.id,
+      riderId: profile.id,
+      lat: profile.currentLat,
+      lng: profile.currentLng,
+      meta: { via: 'pool', preReady: order.status !== OrderStatus.READY },
+    });
     return Response.json(assignment);
   } catch (e) {
     // Unique constraint violation → race lost

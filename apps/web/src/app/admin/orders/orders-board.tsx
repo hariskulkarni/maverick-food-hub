@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { OrderStatusBadge } from '@/components/order-status-badge';
 import { useSSE } from '@/hooks/use-sse';
 import { money, fmtDate } from '@/lib/utils';
-import { Printer, X, Check, Bike, RefreshCw, Wifi, WifiOff, Gift } from 'lucide-react';
+import { Printer, X, Check, Bike, RefreshCw, Wifi, WifiOff, Gift, UtensilsCrossed } from 'lucide-react';
 import { toast } from 'sonner';
 import { reportApiError } from '@/lib/api-error';
 import { completionAction, isCancelledStatus, needsRider } from '@/lib/order-actions';
@@ -278,6 +278,18 @@ export function OrdersBoard({
     }
   }
 
+  // Single-tap "Food ready" (idempotent + audited server-side; feeds dispatch telemetry).
+  async function foodReady(id: string) {
+    if (busy[id]) return;
+    setBusy((b) => ({ ...b, [id]: true }));
+    try {
+      const r = await fetch(`/api/admin/orders/${id}/food-ready`, { method: 'POST' });
+      if (!r.ok) await reportApiError(r, 'Could not mark food ready');
+    } finally {
+      setBusy((b) => ({ ...b, [id]: false }));
+    }
+  }
+
   // Remove the free gift from an order (only allowed RECEIVED/ACCEPTED — the
   // API enforces this too). Snapshot polling reconciles the line list shortly
   // after; we optimistically clear it so the badge disappears immediately.
@@ -411,8 +423,8 @@ export function OrdersBoard({
                   </Button>
                 )}
                 {o.status === 'PREPARING' && (
-                  <Button size="sm" disabled={busy[o.id]} onClick={() => transition(o.id, 'READY')}>
-                    {needsRider(o) ? 'Mark ready — release to rider pool' : 'Mark ready'}
+                  <Button size="sm" className="bg-success text-success-foreground hover:bg-success/90" disabled={busy[o.id]} onClick={() => foodReady(o.id)}>
+                    <UtensilsCrossed className="size-4" /> {needsRider(o) ? 'Food ready — call rider' : 'Food ready'}
                   </Button>
                 )}
                 {completionAction(o) && (

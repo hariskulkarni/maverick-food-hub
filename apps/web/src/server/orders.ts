@@ -6,7 +6,7 @@
  * dispatches the appropriate customer notification, and updates ETA timestamps.
  */
 
-import { OrderStatus, PaymentMethod, PaymentStatus, AssignmentStatus, FulfillmentType, Prisma } from '@prisma/client';
+import { OrderStatus, PaymentMethod, PaymentStatus, AssignmentStatus, FulfillmentType, Prisma, OrderEventSource } from '@prisma/client';
 import { releaseAssignmentOnOrderClose } from './rider-assignment-release';
 import { prisma } from './db';
 import { publish } from './realtime';
@@ -780,7 +780,13 @@ export async function maybeAutoAccept(orderId: string, restaurantId: string, act
 export async function transitionOrder(
   orderId: string,
   next: OrderStatus,
-  opts: { actorId?: string; note?: string; scopeRestaurantId?: string } = {}
+  opts: {
+    actorId?: string;
+    note?: string;
+    scopeRestaurantId?: string;
+    /** Dispatch-telemetry source for the OrderEvent row (default: ADMIN when an actor is known, else SYSTEM). */
+    eventSource?: OrderEventSource;
+  } = {}
 ) {
   // C12: when an untrusted (tenant-admin) caller passes scopeRestaurantId, the
   // lookup is constrained to that restaurant so a cross-tenant id throws rather
@@ -880,16 +886,31 @@ export async function transitionOrder(
   // and DINE_IN orders never need a rider — they're collected/served in-house —
   // so we skip all rider dispatch for them. A READY pickup order just waits at
   // the counter for the customer to collect (with their pickupCode).
+  // Dispatch telemetry: append the milestone (never throws), and on ACCEPTED
+  // build the prep prediction / JIT release plan for DELIVERY orders.
+  const telemetry = await import('./dispatch/hooks').catch(() => null);
+  await telemetry?.onOrderTransition({
+    orderId,
+    next,
+    fulfillmentType: order.fulfillmentType,
+    source: opts.eventSource ?? (opts.actorId ? OrderEventSource.ADMIN : OrderEventSource.SYSTEM),
+    actorId: opts.actorId ?? null,
+    note: opts.note ?? null,
+  });
   if (next === OrderStatus.READY && order.fulfillmentType === FulfillmentType.DELIVERY) {
     publish('rider:pool', { kind: 'order:new', orderId, branchId: order.branchId });
+    // JIT may already have offered this order to riders before the food was
+    // ready (and a rider may already hold it). Don't push or batch-invite twice.
+    const ready = (await telemetry?.onFoodReady(orderId)) ?? { alreadyNotified: false };
+    const assigned = (await telemetry?.hasAssignment(orderId)) ?? false;
     // Push-notify online riders who have a registered device token. Best-effort
     // — a push failure must never roll back or block the transition.
-    notifyRidersOfNewOrder(orderId).catch(() => {});
+    if (!assigned && !ready.alreadyNotified) notifyRidersOfNewOrder(orderId).catch(() => {});
     // Batch-dispatch: if free rider capacity is tight, offer this order as an
     // append-to-route invitation to OUT_FOR_DELIVERY riders nearby. The engine
     // self-gates on capacity (returns {invited:0} when there are enough free
     // riders), so it's safe to call on every READY transition. Fire-and-forget.
-    maybeOfferAsBatch(orderId).catch(() => {});
+    if (!assigned) maybeOfferAsBatch(orderId).catch(() => {});
   }
   // Challenge progress refresh fires AFTER the order transition commits so a
   // challenge-update failure never rolls back a delivered order. The function

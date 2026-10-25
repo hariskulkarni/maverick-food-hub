@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { transitionOrder, OrderTransitionError } from '@/server/orders';
 import { requireOwnedOrder } from '../../_helpers';
 import { OrderStatus } from '@prisma/client';
+import { sourceForRole } from '@/server/dispatch/events';
 
 const Body = z.object({ status: z.nativeEnum(OrderStatus), note: z.string().optional() });
 
@@ -17,7 +18,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const o = await transitionOrder(id, body.status, {
       actorId: session?.user.id,
       note: body.note,
-      scopeRestaurantId: scope.scopeRestaurantId ?? undefined
+      scopeRestaurantId: scope.scopeRestaurantId ?? undefined,
+      eventSource: sourceForRole((session?.user as { role?: string } | undefined)?.role)
     });
     return Response.json(o);
   } catch (e) {

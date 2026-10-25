@@ -187,6 +187,7 @@ enum EscalationType {
   CUSTOMER_UNREACHABLE
   PAYMENT_WEBHOOK_DELAY
   COD_NOT_RECONCILED
+  RIDER_STATIONARY // dispatch telemetry: on-task rider parked away from pickup/drop (server-side GPS check)
 }
 
 enum EscalationSeverity {
@@ -4000,4 +4001,101 @@ model OnboardingProgress {
   updatedAt    DateTime  @updatedAt
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Dispatch telemetry v1 (feat/dispatch-telemetry, 2026-10-24)
+// ─────────────────────────────────────────────────────────────────────────────
+// Additive only. No relations to existing models on purpose (keeps the Order /
+// Restaurant models untouched); every row carries the plain ids it needs.
+//
+//   OrderEvent         append-only dispatch milestones per order (src/server/dispatch/events.ts)
+//   OrderDispatchPlan  prep prediction + JIT rider-release plan per DELIVERY order
+//   RestaurantPrepStat nightly prep-time percentiles per restaurant × IST hour
+//   ZoneSupplyDemand   5-min H3 res-8 snapshot of open orders vs riders
+
+enum OrderEventType {
+  ACCEPTED
+  PREP_STARTED
+  FOOD_READY
+  INVITED
+  ASSIGNED
+  ARRIVED_RESTAURANT
+  PICKED_UP
+  ARRIVED_CUSTOMER
+  DELIVERED
+  CANCELLED
+}
+
+enum OrderEventSource {
+  SYSTEM
+  KITCHEN // restaurant staff (KITCHEN or restaurant ADMIN role)
+  RIDER
+  ADMIN // platform team
+}
+
+model OrderEvent {
+  id        String           @id @default(cuid())
+  orderId   String
+  type      OrderEventType
+  source    OrderEventSource
+  at        DateTime         @default(now())
+  actorId   String?
+  riderId   String?
+  lat       Float?
+  lng       Float?
+  // Once-only events set this (e.g. "FOOD_READY") so replays are no-ops via
+  // ON CONFLICT DO NOTHING; repeatable events (INVITED per rider, re-ASSIGNED)
+  // use a per-rider key or NULL (NULLs never conflict in Postgres).
+  dedupeKey String?
+  meta      Json?
+
+  @@unique([orderId, dedupeKey])
+  @@index([orderId, at])
+  @@index([type, at])
+}
+
+model OrderDispatchPlan {
+  orderId          String    @id
+  restaurantId     String
+  predictedPrepMin Float
+  prepSource       String // "hour" | "all" | "quoted"
+  prepSamples      Int       @default(0)
+  acceptedAt       DateTime
+  // JIT: when riders should be invited. NULL when JIT was off at accept time.
+  releaseAt        DateTime?
+  // When the order was offered to riders (JIT job, or food ready).
+  releasedAt       DateTime?
+  releaseReason    String? // "jit_due" | "no_rider_in_range" | "promise_at_risk" | "food_ready" | "jit_immediate"
+  jit              Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([jit, releasedAt, releaseAt])
+  @@index([restaurantId, acceptedAt])
+}
+
+model RestaurantPrepStat {
+  id           String   @id @default(cuid())
+  restaurantId String
+  hourBucket   Int // IST hour 0..23, or -1 = all hours
+  samples      Int
+  p50Min       Float
+  p60Min       Float
+  p90Min       Float
+  computedAt   DateTime @default(now())
+
+  @@unique([restaurantId, hourBucket])
+}
+
+model ZoneSupplyDemand {
+  id         String   @id @default(cuid())
+  bucketAt   DateTime // 5-minute bucket start (UTC)
+  h3Cell     String // H3 res-8 index, or "none" for riders with no fix
+  openOrders Int      @default(0)
+  idleRiders Int      @default(0)
+  busyRiders Int      @default(0)
+
+  @@unique([bucketAt, h3Cell])
+  @@index([bucketAt])
 }
