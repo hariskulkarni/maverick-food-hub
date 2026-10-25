@@ -39,6 +39,7 @@ export function HeldOrders({ rows }: { rows: HeldOrderRow[] }) {
 
   return (
     <Card className="border-warning/50">
+      <ConfirmActionDialog spec={action} onClose={() => setAction(null)} />
       <CardContent className="p-4 sm:p-6 space-y-3">
         <h2 className="font-semibold">Paid orders waiting for your confirmation</h2>
         <p className="text-sm text-muted-foreground">
