@@ -654,7 +654,11 @@ export async function retryUnmatchedCredits(limit = 200): Promise<{ tried: numbe
     WHERE t.status = 'UNMATCHED' AND t.direction = 'CREDIT'
       AND EXISTS (SELECT 1 FROM "PgPaymentAttempt" a
                   WHERE a."receivingAccountId" = t."receivingAccountId" AND a."observedUtr" = t."bankReference")
-    ORDER BY t."createdAt" ASC
+      -- P2: a credit the engine already refused (open invariant exception) waits for an operator;
+      -- retrying it every tick only starves the others. Resolving the exception makes it eligible again.
+      AND NOT EXISTS (SELECT 1 FROM "PgReconException" x
+                      WHERE x."bankTransactionId" = t.id AND x.status <> 'RESOLVED' AND x.kind <> 'UNMATCHED_CREDIT')
+    ORDER BY t."updatedAt" ASC
     LIMIT ${limit}`;
   let captured = 0;
   let failed = 0;
@@ -665,6 +669,8 @@ export async function retryUnmatchedCredits(limit = 200): Promise<{ tried: numbe
       failed++;
       log.warn({ bankTransactionId: id, err: (e as Error).message }, 'pg.retry_unmatched.allocate_failed');
     }
+    // Rotate: a credit that is still UNMATCHED goes to the back of the queue (ORDER BY updatedAt).
+    await prisma.pgBankTransaction.updateMany({ where: { id, status: PgBankTxnStatus.UNMATCHED }, data: { updatedAt: new Date() } }).catch(() => undefined);
   }
   return { tried: rows.length, captured, failed };
 }

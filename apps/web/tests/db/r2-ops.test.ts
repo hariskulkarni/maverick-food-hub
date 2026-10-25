@@ -21,7 +21,10 @@ import { prisma } from '@/server/db';
 import { createPgAttempt } from '@/server/pg/attempts';
 import { approveManualAllocation, proposeManualAllocation, recordObservation, rejectManualAllocation, tryAllocateBankTxn } from '@/server/pg/reconcile-engine';
 import { runOutbox } from '@/server/pg/outbox';
-import { approvePgRefund } from '@/server/pg/refunds';
+import { approvePgRefund, completePgRefund, requestPgRefund } from '@/server/pg/refunds';
+import { retryUnmatchedCredits } from '@/server/pg/reconcile-engine';
+import { ingestBankTransactions } from '@/server/pg/bank-ingest';
+import { ordersToCsv } from '@/server/exports';
 import { transitionOrder } from '@/server/orders';
 import { runEscalationScan } from '@/server/escalations';
 import { POST as refundsPOST } from '@/app/api/platform/youpi/refunds/route';
@@ -387,5 +390,77 @@ describe('P2 manual allocation proposals can be rejected', () => {
     await expect(approveManualAllocation({ proposalId, approverId: 'ops-b' })).rejects.toThrow(/rejected/);
     await expect(rejectManualAllocation({ proposalId, actorId: 'ops-c', reason: 'again' })).rejects.toThrow(/already decided/);
     expect((await prisma.pgBankTransaction.findUniqueOrThrow({ where: { id: c.id } })).status).toBe('UNMATCHED');
+  });
+});
+
+describe('P2 reconciliation hygiene', () => {
+  it('a UTR printed with leading zeros on the statement still matches the observed UTR', async () => {
+    const T = await makeTenant();
+    const order = await makePendingOrder(T, 11000);
+    const s = await makeSession(T, order.id, 11000);
+    const digits = `${Date.now()}`.slice(-10);
+    await observe(s.attempt.id, `00${digits}`, 11000); // gateway prints the UTR zero-padded
+    const r = await ingestBankTransactions(T.account.id, 'STATEMENT_IMPORT', [
+      { direction: 'CREDIT', amountPaise: 11000, currency: 'INR', bankReference: digits, valueAt: new Date(), narrationRedacted: null, counterpartyMasked: null, sourceRowHash: uid() },
+    ], 'fin-1');
+    expect(r.insertedIds).toHaveLength(1);
+    expect((await prisma.pgPaymentAttempt.findUniqueOrThrow({ where: { id: s.attempt.id } })).state).toBe('CAPTURED');
+    // The parser strips zeros, so "00" + digits normalizes to the same reference.
+    const { normalizeBankReference } = await import('@/server/pg/bank-source');
+    expect(normalizeBankReference(`00${digits}`)).toBe(digits);
+  });
+
+  it('retryUnmatchedCredits skips credits with an open invariant exception (no starvation) and rotates the rest', async () => {
+    const T = await makeTenant();
+    const order = await makePendingOrder(T, 12000);
+    const s = await makeSession(T, order.id, 12000, { state: 'OBSERVED' });
+    const ref = utr();
+    await prisma.pgPaymentAttempt.update({ where: { id: s.attempt.id }, data: { observedUtr: ref } });
+    const wrong = await credit(T, 12001, ref); // amount mismatch -> REJECTED + AMOUNT_MISMATCH exception
+    expect((await tryAllocateBankTxn(wrong.id)).outcome).toBe('REJECTED');
+    const before = (await prisma.pgBankTransaction.findUniqueOrThrow({ where: { id: wrong.id } })).updatedAt;
+    await retryUnmatchedCredits(500);
+    expect((await prisma.pgBankTransaction.findUniqueOrThrow({ where: { id: wrong.id } })).updatedAt).toEqual(before); // not retried
+    await prisma.pgReconException.updateMany({ where: { bankTransactionId: wrong.id }, data: { status: 'RESOLVED' } });
+    await retryUnmatchedCredits(500);
+    expect((await prisma.pgBankTransaction.findUniqueOrThrow({ where: { id: wrong.id } })).updatedAt.getTime()).toBeGreaterThan(before.getTime());
+  });
+
+  it('a completed refund is linked to the statement DEBIT with the same reference and amount (either order)', async () => {
+    const T = await makeTenant();
+    const lp = await latePayment(T, 14500);
+    const req1 = await requestPgRefund({ attemptId: lp.attempt.id, kind: 'LATE_PAYMENT', amountPaise: 14500, reason: 'late', actor: { id: sa1.id } });
+    await approvePgRefund({ refundId: req1.refundId, actor: { id: T.ownerId } });
+    const refundRef = `RF${uid().toUpperCase()}`;
+    // DEBIT imported first, refund completed second.
+    await ingestBankTransactions(T.account.id, 'STATEMENT_IMPORT', [
+      { direction: 'DEBIT', amountPaise: 14500, currency: 'INR', bankReference: refundRef, valueAt: new Date(), narrationRedacted: null, counterpartyMasked: null, sourceRowHash: uid() },
+    ], 'fin-1');
+    await completePgRefund({ refundId: req1.refundId, bankReference: refundRef, evidence: { note: 'bank app screenshot ref 1' }, actor: { id: T.ownerId } });
+    const rec = await prisma.pgRefundRecord.findUniqueOrThrow({ where: { refundId: req1.refundId } });
+    const debit = await prisma.pgBankTransaction.findFirstOrThrow({ where: { receivingAccountId: T.account.id, direction: 'DEBIT', bankReference: refundRef } });
+    expect(rec.bankTransactionId).toBe(debit.id);
+    expect(debit.status).toBe('ALLOCATED');
+
+    // Refund completed first, DEBIT imported second; a DEBIT with a different amount is never linked.
+    const lp2 = await latePayment(T, 14600);
+    const req2 = await requestPgRefund({ attemptId: lp2.attempt.id, kind: 'LATE_PAYMENT', amountPaise: 14600, reason: 'late', actor: { id: sa1.id } });
+    await approvePgRefund({ refundId: req2.refundId, actor: { id: T.ownerId } });
+    const ref2 = `RF${uid().toUpperCase()}`;
+    await completePgRefund({ refundId: req2.refundId, bankReference: ref2, evidence: { note: 'ok' }, actor: { id: T.ownerId } });
+    await ingestBankTransactions(T.account.id, 'STATEMENT_IMPORT', [
+      { direction: 'DEBIT', amountPaise: 14600, currency: 'INR', bankReference: ref2, valueAt: new Date(), narrationRedacted: null, counterpartyMasked: null, sourceRowHash: uid() },
+    ], 'fin-1');
+    expect((await prisma.pgRefundRecord.findUniqueOrThrow({ where: { refundId: req2.refundId } })).bankTransactionId).not.toBeNull();
+    expect(await prisma.pgFinancialEvent.count({ where: { kind: 'REFUND_BANK_LINKED', refundId: { in: [req1.refundId, req2.refundId] } } })).toBe(2);
+  });
+
+  it('order exports label Flavrly PG orders as direct UPI, not RAZORPAY/PHONEPE', async () => {
+    const T = await makeTenant();
+    const order = await makePendingOrder(T, 9000);
+    await makeSession(T, order.id, 9000);
+    const csv = await ordersToCsv(T.branchId);
+    const line = csv.split('\n').find((l) => l.startsWith(order.code))!;
+    expect(line.endsWith(',FLAVRLY_PG_DIRECT_UPI')).toBe(true);
   });
 });
