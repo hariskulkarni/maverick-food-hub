@@ -598,3 +598,9 @@ export async function shiftGateBlockers(user: { id: string; createdAt: Date }): 
 }
 
 export { asStringArray };
+
+export type LearnerModuleDetail = NonNullable<Awaited<ReturnType<typeof getLearnerModule>>>;
+export type LearnerLibrary = Awaited<ReturnType<typeof listLearnerModules>>;
+export type LearnerCertificates = Awaited<ReturnType<typeof listCertificates>>;
+type SubmitOutcome = Awaited<ReturnType<typeof submitQuiz>>;
+export type QuizSubmitResult = Extract<SubmitOutcome, { result: unknown }>['result'];

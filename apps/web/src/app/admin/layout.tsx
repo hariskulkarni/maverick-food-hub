@@ -5,7 +5,7 @@ import { currentRestaurant, accessibleRestaurants } from '@/server/tenancy';
 import {
   LayoutDashboard, ScrollText, CalendarClock, Armchair, Radio, Building2,
   Bike, ShieldAlert, MessagesSquare, BarChart3, History, MessageSquare,
-  Settings, Paintbrush, Star, MapPinned,
+  Settings, Paintbrush, Star, MapPinned, GraduationCap,
 } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { RestaurantSwitcher } from './restaurant-switcher';
@@ -37,6 +37,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/activity',       icon: <History className={ICON} />,         label: 'Activity' },
       { href: '/admin/feedback',       icon: <MessageSquare className={ICON} />,   label: 'Feedback' },
       { href: '/admin/reviews',        icon: <Star className={ICON} />,            label: 'Reviews' },
+      { href: '/admin/training',       icon: <GraduationCap className={ICON} />,   label: 'Training' },
     ],
   },
   {

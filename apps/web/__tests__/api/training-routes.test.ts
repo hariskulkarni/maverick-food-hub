@@ -56,7 +56,7 @@ import { POST as online } from '@/app/api/rider/online/route';
 
 const req = (url: string, body?: unknown) =>
   ({ nextUrl: new URL(url, 'http://x.test'), json: async () => body, headers: new Headers() }) as any;
-const ctx = (p: Record<string, string>) => ({ params: Promise.resolve(p) });
+const ctx = <T extends Record<string, string>>(p: T) => ({ params: Promise.resolve(p) });
 
 beforeEach(() => {
   vi.clearAllMocks();
