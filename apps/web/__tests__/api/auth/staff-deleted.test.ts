@@ -32,9 +32,9 @@ describe('staff gate rejects soft-deleted accounts', () => {
     const j = await (await precheck(mk({ email: 'a@x.com', password: 'p' }))).json();
     expect(j.status).toBe('enroll');
   });
-  it('precheck: deleted user -> ok:false, no enrollment', async () => {
+  it('precheck: deleted user -> ok:false (closed, after a correct password), no enrollment', async () => {
     db.user.findUnique.mockResolvedValue({ ...base, deletedAt: new Date() });
-    expect(await (await precheck(mk({ email: 'a@x.com', password: 'p' }))).json()).toEqual({ ok: false });
+    expect(await (await precheck(mk({ email: 'a@x.com', password: 'p' }))).json()).toMatchObject({ ok: false, closed: true });
     expect(start).not.toHaveBeenCalled();
   });
   it('enroll: deleted user -> ok:false, no confirmation', async () => {

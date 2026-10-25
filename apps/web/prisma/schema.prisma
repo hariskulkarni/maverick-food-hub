@@ -4021,3 +4021,14 @@ model JobLease {
   expiresAt DateTime
   updatedAt DateTime @updatedAt
 }
+
+// ---- platform-auth r3: persisted password-login lockout ----
+// One row per lower-cased email (exists or not) with recent failures. Survives
+// restarts and is shared across PM2 instances. See src/server/2fa.ts.
+model LoginLockout {
+  email          String    @id
+  failures       Int       @default(0)
+  firstFailureAt DateTime  @default(now())
+  lockedUntil    DateTime?
+  updatedAt      DateTime  @updatedAt
+}

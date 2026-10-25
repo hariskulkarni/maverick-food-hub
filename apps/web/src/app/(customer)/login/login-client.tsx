@@ -237,6 +237,7 @@ export function LoginClient({
         toast.error(`Too many failed attempts. Try again in ${mins} min, or ask a platform super admin to unlock your account.`);
         return;
       }
+      if (d?.suspended || d?.closed) { toast.error(d.message || 'This account cannot sign in. Contact your platform super admin.'); return; }
       if (!d?.ok) { toast.error('Invalid credentials'); return; }
       if (d.status === 'change_password') {
         setNewPassword(''); setNewPassword2('');

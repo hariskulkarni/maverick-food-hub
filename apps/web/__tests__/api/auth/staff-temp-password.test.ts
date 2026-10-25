@@ -117,3 +117,15 @@ describe('email-password provider', () => {
     expect(auditFn).toHaveBeenCalledWith('auth.login.failed', expect.objectContaining({ after: { reason: 'must_change_password' } }));
   });
 });
+
+describe('precheck: blocked accounts', () => {
+  it('suspended + correct password -> clear suspended message', async () => {
+    db.user.findUnique.mockResolvedValue(user({ suspendedAt: new Date(), mustChangePassword: false }));
+    expect(await (await precheck(mk({ email: 'a@x.com', password: 'p' }))).json()).toMatchObject({ ok: false, suspended: true });
+  });
+  it('suspended + wrong password -> generic invalid (no account-state leak)', async () => {
+    verify.mockResolvedValue(false);
+    db.user.findUnique.mockResolvedValue(user({ suspendedAt: new Date() }));
+    expect(await (await precheck(mk({ email: 'a@x.com', password: 'bad' }))).json()).toEqual({ ok: false });
+  });
+});

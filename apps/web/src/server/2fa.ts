@@ -21,6 +21,7 @@
 
 import { authenticator } from 'otplib';
 import { prisma } from './db';
+import { log } from './log';
 import { encryptJSON, decryptJSON } from './crypto';
 import { IntegrationStatus, RestaurantStatus, type IntegrationProvider } from '@prisma/client';
 
@@ -194,48 +195,55 @@ export function ipMatchesAllowlist(ip: string, allowlist: string[]): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  In-memory login-attempt tracker (per-process; reset on deploy — acceptable
-//  for super-admin login since the cohort is tiny).
+//  Login-attempt tracker — persisted in LoginLockout (keyed by lower-cased
+//  email, whether or not the account exists) so a deploy/restart or another
+//  PM2 instance cannot reset a lockout, and a super admin's Unlock clears it
+//  everywhere. DB errors fail OPEN (logged): a blip must not lock everyone out.
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface AttemptRecord {
-  failures: number;
-  firstFailureAt: number;
-  lockedUntil?: number;
-}
-
-const attempts = new Map<string, AttemptRecord>();
 const FAILURE_WINDOW_MS = 10 * 60_000;
 const MAX_FAILURES = 5;
 
-export function isLockedOut(email: string): boolean {
-  const rec = attempts.get(email);
-  if (!rec?.lockedUntil) return false;
-  if (Date.now() < rec.lockedUntil) return true;
-  attempts.delete(email);
-  return false;
+async function lockoutRow(email: string) {
+  try {
+    return await prisma.loginLockout.findUnique({ where: { email } });
+  } catch (e) {
+    log.warn({ err: (e as Error).message }, 'login lockout read failed; failing open');
+    return null;
+  }
+}
+
+export async function isLockedOut(email: string): Promise<boolean> {
+  return (await lockoutRemainingMs(email)) > 0;
 }
 
 /** Milliseconds left on an active lockout for `email` (0 when not locked). */
-export function lockoutRemainingMs(email: string): number {
-  const until = attempts.get(email)?.lockedUntil;
+export async function lockoutRemainingMs(email: string): Promise<number> {
+  const until = (await lockoutRow(email))?.lockedUntil?.getTime();
   return until ? Math.max(0, until - Date.now()) : 0;
 }
 
-export function recordLoginFailure(email: string, lockoutMinutes: number): void {
-  const now = Date.now();
-  const rec = attempts.get(email);
-  if (!rec || now - rec.firstFailureAt > FAILURE_WINDOW_MS) {
-    attempts.set(email, { failures: 1, firstFailureAt: now });
-    return;
+export async function recordLoginFailure(email: string, lockoutMinutes: number): Promise<void> {
+  try {
+    const now = new Date();
+    const rec = await prisma.loginLockout.findUnique({ where: { email } });
+    const fresh = !rec || now.getTime() - rec.firstFailureAt.getTime() > FAILURE_WINDOW_MS;
+    const failures = fresh ? 1 : rec!.failures + 1;
+    const lockedUntil = failures >= MAX_FAILURES ? new Date(now.getTime() + Math.max(1, lockoutMinutes) * 60_000) : null;
+    await prisma.loginLockout.upsert({
+      where: { email },
+      create: { email, failures, firstFailureAt: now, lockedUntil },
+      update: fresh ? { failures, firstFailureAt: now, lockedUntil } : { failures, lockedUntil },
+    });
+  } catch (e) {
+    log.warn({ err: (e as Error).message }, 'login lockout write failed');
   }
-  rec.failures += 1;
-  if (rec.failures >= MAX_FAILURES) {
-    rec.lockedUntil = now + Math.max(1, lockoutMinutes) * 60_000;
-  }
-  attempts.set(email, rec);
 }
 
-export function recordLoginSuccess(email: string): void {
-  attempts.delete(email);
+export async function recordLoginSuccess(email: string): Promise<void> {
+  try {
+    await prisma.loginLockout.deleteMany({ where: { email } });
+  } catch (e) {
+    log.warn({ err: (e as Error).message }, 'login lockout clear failed');
+  }
 }

@@ -107,7 +107,7 @@ export async function adminResetPassword(
     });
     await revokeAllSessions(tx, target.id, 'admin_password_reset');
   });
-  if (target.email) recordLoginSuccess(target.email.toLowerCase().trim()); // clear lockout
+  if (target.email) await recordLoginSuccess(target.email.toLowerCase().trim()); // clear lockout
   await audit('platform.user.password.reset', {
     ...auditBase(actor, target.id, meta),
     after: { generated: chosen === undefined, mustChangePassword: true, sessionsRevoked: true, role: target.role },
@@ -139,7 +139,7 @@ export async function adminUnlock(actor: Actor, targetId: string, meta: ReqMeta 
   if (error) return error;
   // Password lockout lives in process memory (server/2fa.ts) — this clears it on
   // the instance serving the request; it also auto-expires (lockoutMinutes).
-  if (target.email) recordLoginSuccess(target.email.toLowerCase().trim());
+  if (target.email) await recordLoginSuccess(target.email.toLowerCase().trim());
   // Phone-OTP lockouts are DB rows keyed `${phone}:${PURPOSE}`.
   if (target.phone) {
     await prisma.otpAttempt.updateMany({

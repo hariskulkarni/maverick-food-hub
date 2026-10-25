@@ -166,14 +166,14 @@ export const authConfig: NextAuthConfig = {
         // the password so a brute-forcer can't bypass lockout by spamming.
         const sec = await getPlatformSecurity().catch(() => ({} as Awaited<ReturnType<typeof getPlatformSecurity>>));
         const lockoutMinutes = sec.lockoutMinutes ?? 15;
-        if (isLockedOut(email)) {
+        if (await isLockedOut(email)) {
           await audit('auth.login.locked', { entityType: 'User', after: { email } }).catch(() => {});
           return null;
         }
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user || !user.passwordHash) {
-          recordLoginFailure(email, lockoutMinutes);
+          await recordLoginFailure(email, lockoutMinutes);
           return null;
         }
         // Password login is for STAFF + PLATFORM-team roles only. Customers and
@@ -181,14 +181,14 @@ export const authConfig: NextAuthConfig = {
         if (user.role === Role.CUSTOMER || user.role === Role.RIDER) return null;
         // Suspended accounts cannot log in (a super-admin has blocked them).
         if (user.suspendedAt || user.deletedAt) {
-          recordLoginFailure(email, lockoutMinutes);
+          await recordLoginFailure(email, lockoutMinutes);
           await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: user.deletedAt ? 'deleted' : 'suspended' } }).catch(() => {});
           return null;
         }
 
         const ok = await argon2.verify(user.passwordHash, password);
         if (!ok) {
-          recordLoginFailure(email, lockoutMinutes);
+          await recordLoginFailure(email, lockoutMinutes);
           await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'bad_password' } }).catch(() => {});
           return null;
         }
@@ -210,7 +210,7 @@ export const authConfig: NextAuthConfig = {
           // C10: the allowlist must key on a header the client cannot forge.
           const ip = (req?.headers ? clientIp(req.headers as Headers) : null) ?? '';
           if (!ip || !ipMatchesAllowlist(ip, sec.allowlist)) {
-            recordLoginFailure(email, lockoutMinutes);
+            await recordLoginFailure(email, lockoutMinutes);
             await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'ip_not_allowlisted', ip } }).catch(() => {});
             return null;
           }
@@ -222,13 +222,13 @@ export const authConfig: NextAuthConfig = {
         // Break-glass accounts are exempt.
         if (!isBreak && isStaffTotpRole(user.role)) {
           if (!user.totpEnabledAt) {
-            recordLoginFailure(email, lockoutMinutes);
+            await recordLoginFailure(email, lockoutMinutes);
             await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'totp_not_enrolled' } }).catch(() => {});
             return null;
           }
           // F15: consume the code (single-use) — a replayed code is refused.
           if (!totp || !(await consumeUserTotp(user, totp))) {
-            recordLoginFailure(email, lockoutMinutes);
+            await recordLoginFailure(email, lockoutMinutes);
             await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'totp_invalid' } }).catch(() => {});
             return null;
           }
@@ -238,7 +238,7 @@ export const authConfig: NextAuthConfig = {
           await audit('auth.login.breakglass', { actorId: user.id, actorRole: user.role, entityType: 'User', entityId: user.id, after: { email: user.email } }).catch(() => {});
         }
 
-        recordLoginSuccess(email);
+        await recordLoginSuccess(email);
         return { id: user.id, name: user.name ?? null, email: user.email ?? null };
       }
     }),

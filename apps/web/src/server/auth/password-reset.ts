@@ -134,7 +134,7 @@ export async function consumePasswordReset(rawToken: string, newPassword: string
     throw e;
   }
 
-  if (row.user.email) recordLoginSuccess(row.user.email.toLowerCase().trim()); // clear failure lockout
+  if (row.user.email) await recordLoginSuccess(row.user.email.toLowerCase().trim()); // clear failure lockout
   await audit('auth.password.reset', {
     actorId: row.userId,
     actorRole: row.user.role,

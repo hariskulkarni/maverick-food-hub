@@ -28,22 +28,22 @@ export async function POST(req: NextRequest) {
 
   // F6: this route verifies the password, so it shares the login lockout —
   // otherwise it is a password oracle that sidesteps the email-password gate.
-  if (isLockedOut(email)) return Response.json({ ok: false });
+  if (await isLockedOut(email)) return Response.json({ ok: false });
   const sec = await getPlatformSecurity().catch(() => ({ lockoutMinutes: undefined }));
   const lockoutMinutes = sec.lockoutMinutes ?? 15;
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.passwordHash || !isStaffTotpRole(user.role) || user.suspendedAt || user.deletedAt) {
-    recordLoginFailure(email, lockoutMinutes);
+    await recordLoginFailure(email, lockoutMinutes);
     return Response.json({ ok: false });
   }
   const okPw = await argon2.verify(user.passwordHash, password).catch(() => false);
   if (!okPw) {
-    recordLoginFailure(email, lockoutMinutes);
+    await recordLoginFailure(email, lockoutMinutes);
     return Response.json({ ok: false });
   }
 
   const ok = await confirmEnrollment(user.id, code);
-  if (!ok) recordLoginFailure(email, lockoutMinutes);
+  if (!ok) await recordLoginFailure(email, lockoutMinutes);
   return Response.json({ ok });
 }

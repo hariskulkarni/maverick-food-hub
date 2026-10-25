@@ -37,20 +37,20 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Choose a password different from the temporary one.' }, { status: 400 });
   }
 
-  if (isLockedOut(email)) {
-    return Response.json({ ok: false, locked: true, retryAfterSeconds: Math.ceil(lockoutRemainingMs(email) / 1000) });
+  if (await isLockedOut(email)) {
+    return Response.json({ ok: false, locked: true, retryAfterSeconds: Math.ceil(await lockoutRemainingMs(email) / 1000) });
   }
   const sec = await getPlatformSecurity().catch(() => ({ lockoutMinutes: undefined }));
   const lockoutMinutes = sec.lockoutMinutes ?? 15;
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.passwordHash || user.suspendedAt || user.deletedAt || !user.mustChangePassword) {
-    recordLoginFailure(email, lockoutMinutes);
+    await recordLoginFailure(email, lockoutMinutes);
     return Response.json({ ok: false });
   }
   const okPw = await argon2.verify(user.passwordHash, password).catch(() => false);
   if (!okPw) {
-    recordLoginFailure(email, lockoutMinutes);
+    await recordLoginFailure(email, lockoutMinutes);
     return Response.json({ ok: false });
   }
 
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     data: { passwordHash, mustChangePassword: false },
   });
   if (claimed.count !== 1) return Response.json({ ok: false });
-  recordLoginSuccess(email);
+  await recordLoginSuccess(email);
   await audit('auth.password.changed_after_reset', {
     actorId: user.id, actorRole: user.role, entityType: 'User', entityId: user.id,
   }).catch(() => {});

@@ -6,6 +6,7 @@
  * account still needs to enrol a Google Authenticator or already has one:
  *   { ok:false }                              → bad credentials / not staff
  *   { ok:false, locked:true, retryAfterSeconds } → too many failures; wait
+ *   { ok:false, suspended|closed:true, message } → correct password, blocked account
  *   { ok:true, status:'change_password' }     → temp password: set a new one
  *                                               via /api/auth/staff/change-password
  *   { ok:true, status:'enroll', qr, secret }  → first-time: scan QR then confirm
@@ -39,21 +40,29 @@ export async function POST(req: NextRequest) {
   // The lockout is keyed by email whether or not the account exists (failures
   // are recorded for unknown emails too), so saying "locked, wait N min" leaks
   // nothing and stops a legitimate user from thinking their password is wrong.
-  if (isLockedOut(email)) {
-    return Response.json({ ok: false, locked: true, retryAfterSeconds: Math.ceil(lockoutRemainingMs(email) / 1000) });
+  if (await isLockedOut(email)) {
+    return Response.json({ ok: false, locked: true, retryAfterSeconds: Math.ceil(await lockoutRemainingMs(email) / 1000) });
   }
   const sec = await getPlatformSecurity().catch(() => ({ lockoutMinutes: undefined }));
   const lockoutMinutes = sec.lockoutMinutes ?? 15;
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !user.passwordHash || !isStaffTotpRole(user.role) || user.suspendedAt || user.deletedAt) {
-    recordLoginFailure(email, lockoutMinutes);
+  if (!user || !user.passwordHash || !isStaffTotpRole(user.role)) {
+    await recordLoginFailure(email, lockoutMinutes);
     return Response.json({ ok: false });
   }
   const okPw = await argon2.verify(user.passwordHash, password).catch(() => false);
   if (!okPw) {
-    recordLoginFailure(email, lockoutMinutes);
+    await recordLoginFailure(email, lockoutMinutes);
     return Response.json({ ok: false });
+  }
+  // Only AFTER a correct password: tell a blocked user why, instead of a
+  // misleading "invalid credentials". Unauthenticated callers learn nothing.
+  if (user.deletedAt) {
+    return Response.json({ ok: false, closed: true, message: 'This account has been closed. Contact your platform super admin.' });
+  }
+  if (user.suspendedAt) {
+    return Response.json({ ok: false, suspended: true, message: 'This account is suspended. Contact your platform super admin.' });
   }
 
   // A SUPER_ADMIN-issued password must be replaced before anything else.
