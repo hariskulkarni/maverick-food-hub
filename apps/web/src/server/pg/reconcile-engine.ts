@@ -285,11 +285,24 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
     if (t.receivingAccountId !== a.receivingAccountId) return reject(PgExceptionKind.WRONG_ACCOUNT, 'different receiving account');
     if (t.direction !== PgTxnDirection.CREDIT) return reject(PgExceptionKind.AMBIGUOUS_MATCH, 'not a credit');
     if (t.currency !== 'INR' || a.currency !== 'INR') return reject(PgExceptionKind.AMOUNT_MISMATCH, 'currency is not INR');
+    // P0-3: the payable amount (order + fork paise offset) normally comes from the signed webhook.
+    // If that webhook was lost, a dual-control MANUAL allocation may accept a credit within the
+    // documented offset band (expected < credit <= expected + 99) and records it as the payable.
+    let recordPayable: number | null = null;
     if (t.amountPaise !== (a.payableAmountPaise ?? a.expectedAmountPaise)) {
-      return reject(PgExceptionKind.AMOUNT_MISMATCH, 'amount differs from expected', {
-        expectedPaise: a.expectedAmountPaise,
-        creditPaise: t.amountPaise,
-      });
+      const offsetOk =
+        !!manual &&
+        a.payableAmountPaise == null &&
+        t.amountPaise > a.expectedAmountPaise &&
+        t.amountPaise <= a.expectedAmountPaise + MAX_GATEWAY_PAISE_OFFSET;
+      if (!offsetOk) {
+        return reject(PgExceptionKind.AMOUNT_MISMATCH, 'amount differs from expected', {
+          expectedPaise: a.expectedAmountPaise,
+          payablePaise: a.payableAmountPaise,
+          creditPaise: t.amountPaise,
+        });
+      }
+      recordPayable = t.amountPaise;
     }
     if (!manual) {
       if (!a.observedUtr) return reject(PgExceptionKind.MISSING_UTR, 'attempt has no observed UTR');
@@ -326,6 +339,9 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
       });
     }
 
+    if (recordPayable != null) {
+      await tx.pgPaymentAttempt.update({ where: { id: a.id }, data: { payableAmountPaise: recordPayable } });
+    }
     const alloc = await tx.pgAllocation.create({
       data: {
         bankTransactionId: t.id,
@@ -363,6 +379,7 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
         bankReference: t.bankReference,
         source: t.source,
         manual: manual ? { createdById: manual.createdById, reason: manual.reason } : null,
+        ...(recordPayable != null ? { payableRecordedPaise: recordPayable } : {}),
       },
     });
 
