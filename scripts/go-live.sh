@@ -45,20 +45,28 @@ preflight() {
 
 backup() {
   confirm "Back up the production database now?"
-  remote 'set -a; . ./.env; set +a; mkdir -p ~/predeploy-backups;
-          pg_dump -Fc "$DATABASE_URL" > ~/predeploy-backups/flavrly-'"$TS"'.dump;
-          ls -lh ~/predeploy-backups/flavrly-'"$TS"'.dump; pg_restore -l ~/predeploy-backups/flavrly-'"$TS"'.dump | head -3'
+  # Read ONLY DATABASE_URL from .env (sourcing the whole file breaks on any malformed line), and drop
+  # Prisma's ?schema=public query — pg_dump rejects it ("invalid URI query parameter").
+  remote 'DATABASE_URL=$(grep -E "^DATABASE_URL=" .env | tail -1 | cut -d= -f2- | tr -d "\"\047");
+          [ -n "$DATABASE_URL" ] || { echo "DATABASE_URL not found in .env"; exit 4; }; mkdir -p ~/predeploy-backups;
+          pg_dump -Fc "${DATABASE_URL%%\?*}" > ~/predeploy-backups/flavrly-'"$TS"'.dump;
+          ls -lh ~/predeploy-backups/flavrly-'"$TS"'.dump; pg_restore -l ~/predeploy-backups/flavrly-'"$TS"'.dump | sed -n "1,3p"'
   mkdir -p "$HOME/flavrly-backups"
   scp -i "$KEY" -o IdentitiesOnly=yes "$HOST:predeploy-backups/flavrly-$TS.dump" "$HOME/flavrly-backups/" && echo "copied to ~/flavrly-backups/flavrly-$TS.dump"
 }
 
 migrate() {
   confirm "Pull origin/main on the VPS and apply database migrations?"
-  remote 'git -C '"$APP_DIR"' rev-parse HEAD > ~/predeploy-backups/sha-before-'"$TS"'; git -C '"$APP_DIR"' pull --ff-only origin main;
+  # npm install on the VPS rewrites package-lock.json; that drift must not block the pull (the CI deploy does
+  # `git reset --hard origin/main` for the same reason). Keep a copy, discard it, show anything else changed.
+  remote 'git -C '"$APP_DIR"' rev-parse HEAD > ~/predeploy-backups/sha-before-'"$TS"';
+          cp package-lock.json ~/predeploy-backups/package-lock-'"$TS"'.json; git -C '"$APP_DIR"' checkout -- apps/web/package-lock.json;
+          echo "--- other local changes on the VPS (pull stops if any conflict):"; git -C '"$APP_DIR"' status --short --untracked-files=no;
+          git -C '"$APP_DIR"' pull --ff-only origin main;
           npm install --no-audit --no-fund; npx prisma generate >/dev/null'
   echo "== migrate status on the new code"
   if remote 'npx prisma migrate status' ; then echo "status ok"; else echo "(status reported pending/failed — inspecting)"; fi
-  if remote 'npx prisma migrate status 2>&1 | grep -qE "P3005|not found in the migrations table|_prisma_migrations.*does not exist|have not yet been applied: *0_init"'; then
+  if remote 'out=$(npx prisma migrate status 2>&1 || true); grep -qE "^[[:space:]]*0_init[[:space:]]*$|P3005|not found in the migrations table|_prisma_migrations.*does not exist" <<<"$out"'; then
     echo "Database looks db-push-managed (old migrations not recorded)."
     confirm "Mark the ${#OLD_MIGRATIONS[@]} pre-existing migrations as applied (no SQL runs)?"
     for m in "${OLD_MIGRATIONS[@]}"; do remote "npx prisma migrate resolve --applied $m || true"; done
@@ -69,7 +77,13 @@ migrate() {
 
 deploy() {
   confirm "Build and restart the production app (scripts/deploy-remote.sh)?"
-  "${SSH[@]}" "bash -lc 'cd $APP_DIR && APP_COMMIT_SHA=\$(git rev-parse --short HEAD) bash scripts/deploy-remote.sh'"
+  # next build type-checks in a worker that needs more than Node's default ~2 GB heap on this VPS
+  # (OOM 2026-10-25). Give it 3/4 of MemAvailable, capped at 4 GB.
+  local cmd='cd '"$APP_DIR"'; avail=$(awk "/MemAvailable/ {print int(\$2/1024)}" /proc/meminfo); heap=$(( avail * 3 / 4 ));
+    [ "$heap" -gt 4096 ] && heap=4096; echo "build heap: ${heap} MB (MemAvailable ${avail} MB)";
+    [ "$heap" -lt 3072 ] && echo "WARNING: under 3 GB available for the build; it may run out of memory (add swap or free memory)";
+    export NODE_OPTIONS=--max-old-space-size=$heap; APP_COMMIT_SHA=$(git rev-parse --short HEAD) bash scripts/deploy-remote.sh'
+  "${SSH[@]}" "bash -lc $(printf '%q' "$cmd")"
 }
 
 post() {
