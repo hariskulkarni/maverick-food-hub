@@ -2,11 +2,12 @@
  * POST /api/rider/auth/verify-otp
  *
  * Native rider app — step 2 of login. Confirms the account is a RIDER, verifies
- * the OTP, and issues a 30-day Bearer JWT the app stores in secure storage and
- * sends on every subsequent /api/rider/* request.
+ * the OTP, starts a server session (single active session) and issues a 7-day
+ * session-bound Bearer JWT the app stores in secure storage and sends on every
+ * subsequent /api/rider/* request (P1-11; refresh via /api/rider/auth/refresh).
  *
  * Body: { phone: string, code: string }
- * 200:  { token: string, rider: { id, name, phone } }
+ * 200:  { token: string, expiresAt: string, rider: { id, name, phone } }
  * 401:  { error: 'invalid_code' }
  * 403:  { error: 'not_a_rider' | 'suspended' }
  */
@@ -17,6 +18,8 @@ import { verifyOtp } from '@/server/otp';
 import { signRiderToken } from '@/server/rider-auth';
 import { rateLimit } from '@/server/http/rate-limit';
 import { audit } from '@/server/audit';
+import { startSession } from '@/server/sessions';
+import { clientIp } from '@/server/http/client-ip';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -37,9 +40,9 @@ export async function POST(req: NextRequest) {
     // consumes an OTP token.
     const user = await prisma.user.findUnique({
       where: { phone },
-      select: { id: true, name: true, phone: true, role: true, suspendedAt: true }
+      select: { id: true, name: true, phone: true, role: true, suspendedAt: true, deletedAt: true }
     });
-    if (!user || user.role !== 'RIDER') {
+    if (!user || user.role !== 'RIDER' || user.deletedAt) {
       return Response.json({ error: 'not_a_rider' }, { status: 403 });
     }
     // Suspended accounts cannot log in (a super-admin has blocked them). Mirror
@@ -59,9 +62,15 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'invalid_code' }, { status: 401 });
     }
 
-    const token = signRiderToken(user.id);
+    const sid = await startSession(user.id, {
+      userAgent: req.headers.get('user-agent'),
+      ipAddress: clientIp(req.headers)
+    });
+    if (!sid) return Response.json({ error: 'Could not start a session. Please try again.' }, { status: 503 });
+    const { token, expiresAt } = signRiderToken(user.id, sid);
     return Response.json({
       token,
+      expiresAt: expiresAt.toISOString(),
       rider: { id: user.id, name: user.name ?? null, phone: user.phone ?? null }
     });
   } catch (e) {
