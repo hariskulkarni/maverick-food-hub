@@ -15,7 +15,7 @@
  * Token lifetime / revocation: see the P1-11 block below.
  */
 import crypto from 'node:crypto';
-import { headers } from 'next/headers';
+import { headers, cookies } from 'next/headers';
 import { auth as sessionAuth } from './auth';
 import { prisma } from './db';
 import { Role } from '@prisma/client';
@@ -133,18 +133,82 @@ export async function riderTokenActive(claims: RiderTokenClaims, currentSessionI
   return newer === 0;
 }
 
+/**
+ * Rider web portal (/rider) transport — 2026-10-25.
+ *
+ * The browser portal holds the SAME v2 rider token in an httpOnly, Secure,
+ * SameSite=Lax cookie (set only by /api/rider/web/session*, never readable by
+ * JS). It is an alternative transport for the exact same token, so every
+ * /api/rider/* route, revocation (sid vs currentSessionId), suspension and
+ * deletion check applies unchanged. Precedence: Bearer header > rider cookie >
+ * NextAuth session.
+ *
+ * CSRF: a cookie-carried token is honoured only for same-origin requests —
+ * `Sec-Fetch-Site` must be absent / same-origin / none and any `Origin` must
+ * match `Host`. Combined with SameSite=Lax and the middleware csrfGuard (which
+ * rejects mismatched-Origin mutations on every /api route) a third-party page
+ * cannot drive a rider mutation with the cookie.
+ */
+export const RIDER_COOKIE = 'flavrly_rider_session';
+
+/** Same-origin test for cookie-authenticated rider API requests (see above). */
+export function riderCookieRequestAllowed(h: { get(name: string): string | null }): boolean {
+  const site = h.get('sec-fetch-site');
+  if (site && site !== 'same-origin' && site !== 'none') return false;
+  const origin = h.get('origin');
+  if (origin) {
+    try {
+      if (new URL(origin).host !== h.get('host')) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Cookie attributes for the rider portal session cookie. */
+export function riderCookieOptions(expiresAt: Date) {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+    expires: expiresAt,
+  };
+}
+
 export type RiderBearer =
   | { kind: 'none' }
   | { kind: 'invalid' }
-  | { kind: 'valid'; claims: RiderTokenClaims; user: { id: string; role: Role; name: string | null; email: string | null; phone: string | null } };
+  | {
+      kind: 'valid';
+      claims: RiderTokenClaims;
+      transport: 'bearer' | 'cookie';
+      user: { id: string; role: Role; name: string | null; email: string | null; phone: string | null };
+    };
 
-/** Resolve the request's Bearer token, including revocation + account checks. */
+/**
+ * Resolve the request's rider token — `Authorization: Bearer` (native app) or
+ * the rider portal cookie — including revocation + account checks.
+ */
 export async function readRiderBearer(): Promise<RiderBearer> {
   const h = await headers();
   const authz = h.get('authorization') ?? h.get('Authorization');
-  if (!authz || !authz.startsWith('Bearer ')) return { kind: 'none' };
-  const claims = verifyRiderToken(authz.slice(7).trim());
+  let raw: string | null = null;
+  let transport: 'bearer' | 'cookie' = 'bearer';
+  if (authz && authz.startsWith('Bearer ')) {
+    raw = authz.slice(7).trim();
+  } else {
+    const c = (await cookies()).get(RIDER_COOKIE)?.value;
+    if (!c) return { kind: 'none' };
+    if (!riderCookieRequestAllowed(h)) return { kind: 'invalid' };
+    raw = c;
+    transport = 'cookie';
+  }
+  const claims = verifyRiderToken(raw);
   if (!claims) return { kind: 'invalid' };
+  // The portal cookie only ever carries v2 (session-bound) tokens.
+  if (transport === 'cookie' && claims.legacy) return { kind: 'invalid' };
   const u = await prisma.user.findUnique({
     where: { id: claims.userId },
     select: { id: true, role: true, name: true, email: true, phone: true, suspendedAt: true, deletedAt: true, currentSessionId: true },
@@ -153,7 +217,7 @@ export async function readRiderBearer(): Promise<RiderBearer> {
   // can't outlive a rider being deactivated, blocked or deleted.
   if (!u || u.role !== Role.RIDER || u.suspendedAt || u.deletedAt) return { kind: 'invalid' };
   if (!(await riderTokenActive(claims, u.currentSessionId))) return { kind: 'invalid' };
-  return { kind: 'valid', claims, user: { id: u.id, role: u.role, name: u.name, email: u.email, phone: u.phone } };
+  return { kind: 'valid', claims, transport, user: { id: u.id, role: u.role, name: u.name, email: u.email, phone: u.phone } };
 }
 
 /**
@@ -161,9 +225,10 @@ export async function readRiderBearer(): Promise<RiderBearer> {
  * handlers. Returns the same `Session` shape so the route code below it never
  * changes — only the import line does.
  *
- *   Bearer token present + valid + live + user is an active RIDER → rider session
- *   Bearer token present but bad/expired/revoked                  → null (clean 403, no fallback)
- *   no Bearer header                                              → NextAuth cookie session
+ *   Bearer token / rider portal cookie valid + live + active RIDER → rider session
+ *   Bearer token / rider cookie present but bad/expired/revoked/
+ *     cross-site (cookie)                                         → null (clean 403, no fallback)
+ *   neither                                                       → NextAuth cookie session
  */
 export async function auth(): Promise<Session | null> {
   const bearer = await readRiderBearer();
@@ -177,7 +242,7 @@ export async function auth(): Promise<Session | null> {
   // NOT fall back to cookies, so a stale token returns 403 instead of
   // silently picking up some unrelated browser session.
   if (bearer.kind === 'invalid') return null;
-  // No Bearer header → ordinary web PWA request → use the NextAuth cookie session.
+  // No rider token at all → fall back to the NextAuth cookie session.
   return sessionAuth();
 }
 
