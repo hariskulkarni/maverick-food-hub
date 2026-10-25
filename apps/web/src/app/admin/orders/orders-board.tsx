@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/button';
 import { OrderStatusBadge } from '@/components/order-status-badge';
 import { useSSE } from '@/hooks/use-sse';
 import { money, fmtDate } from '@/lib/utils';
-import { Printer, X, Check, Bike, RefreshCw, Wifi, WifiOff, Gift } from 'lucide-react';
+import { Printer, X, Check, Bike, RefreshCw, Wifi, WifiOff, Gift, UtensilsCrossed } from 'lucide-react';
 import { toast } from 'sonner';
 import { reportApiError } from '@/lib/api-error';
 import { completionAction, isCancelledStatus, needsRider } from '@/lib/order-actions';
+import { itemLabel } from '@/lib/kot';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { SoundToggle } from '@/components/sound-toggle';
 // AssignRiderDialog removed — riders self-claim from the platform pool now.
@@ -272,7 +273,23 @@ export function OrdersBoard({
     setBusy((b) => ({ ...b, [id]: true }));
     try {
       const r = await fetch(`/api/admin/orders/${id}/transition`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: next, note: opts.note }) });
-      if (!r.ok) await reportApiError(r, 'Could not change order status');
+      if (!r.ok) { await reportApiError(r, 'Could not change order status'); return; }
+      // Apply the server's result immediately (don't wait for SSE/polling).
+      const res = await r.json().catch(() => null) as { status?: string; refundQueued?: boolean } | null;
+      if (res?.status) setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: res.status } : o)));
+      if (res?.refundQueued) toast.success('Order rejected — refund queued for the customer');
+    } finally {
+      setBusy((b) => ({ ...b, [id]: false }));
+    }
+  }
+
+  // Single-tap "Food ready" (idempotent + audited server-side; feeds dispatch telemetry).
+  async function foodReady(id: string) {
+    if (busy[id]) return;
+    setBusy((b) => ({ ...b, [id]: true }));
+    try {
+      const r = await fetch(`/api/admin/orders/${id}/food-ready`, { method: 'POST' });
+      if (!r.ok) await reportApiError(r, 'Could not mark food ready');
     } finally {
       setBusy((b) => ({ ...b, [id]: false }));
     }
@@ -389,7 +406,7 @@ export function OrdersBoard({
                   <span className="text-xs text-muted-foreground">{fmtDate(o.placedAt)}</span>
                 </div>
                 <div className="text-sm">{o.customer.name ?? o.customer.phone} · {o.address ? `${o.address.line1}, ${o.address.city}` : (o.fulfillmentType === 'PICKUP' ? 'Self-pickup' : o.fulfillmentType === 'DINE_IN' ? 'Dine-in' : 'No address')}</div>
-                <div className="text-sm text-muted-foreground">{o.items.map((i: any) => `${i.quantity}× ${i.name}`).join(', ')}</div>
+                <div className="text-sm text-muted-foreground">{o.items.map((i: any) => `${i.quantity}× ${itemLabel(i)}${i.notes ? ` — “${i.notes}”` : ''}`).join(', ')}</div>
                 <div className="text-sm">
                   Total <span className="font-semibold">{money(o.total)}</span> · {o.paymentMethod}
                   {o.assignment?.rider && <> · Rider: {o.assignment.rider.user.name}</>}
@@ -399,7 +416,7 @@ export function OrdersBoard({
                 {o.status === 'RECEIVED' && (
                   <>
                     <Button size="sm" disabled={busy[o.id]} onClick={() => transition(o.id, 'ACCEPTED')}><Check className="size-4" /> Accept</Button>
-                    <Button size="sm" variant="outline" disabled={busy[o.id]} onClick={() => transition(o.id, 'CANCELLED', { note: 'Rejected by admin' })}>
+                    <Button size="sm" variant="outline" disabled={busy[o.id]} onClick={() => transition(o.id, 'CANCELLED_BY_RESTAURANT', { note: 'Rejected by restaurant' })}>
                       <X className="size-4" /> Reject
                     </Button>
                   </>
@@ -411,8 +428,8 @@ export function OrdersBoard({
                   </Button>
                 )}
                 {o.status === 'PREPARING' && (
-                  <Button size="sm" disabled={busy[o.id]} onClick={() => transition(o.id, 'READY')}>
-                    {needsRider(o) ? 'Mark ready — release to rider pool' : 'Mark ready'}
+                  <Button size="sm" className="bg-success text-success-foreground hover:bg-success/90" disabled={busy[o.id]} onClick={() => foodReady(o.id)}>
+                    <UtensilsCrossed className="size-4" /> {needsRider(o) ? 'Food ready — call rider' : 'Food ready'}
                   </Button>
                 )}
                 {completionAction(o) && (

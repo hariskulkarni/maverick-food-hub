@@ -21,10 +21,21 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (session?.user.role !== 'RIDER') return new Response('Forbidden', { status: 403 });
 
-  const { token } = Body.parse(await req.json());
-  await prisma.riderProfile.update({
-    where: { userId: session.user.id },
-    data: { expoPushToken: token },
-  });
+  const parsed = Body.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return Response.json({ error: 'token is required' }, { status: 400 });
+  const { token } = parsed.data;
+  // P2-20: a device token belongs to exactly one rider — when a phone changes
+  // hands (or a rider re-logs on a shared device) detach it from every other
+  // profile so pings never reach the previous rider.
+  await prisma.$transaction([
+    prisma.riderProfile.updateMany({
+      where: { expoPushToken: token, NOT: { userId: session.user.id } },
+      data: { expoPushToken: null },
+    }),
+    prisma.riderProfile.update({
+      where: { userId: session.user.id },
+      data: { expoPushToken: token },
+    }),
+  ]);
   return Response.json({ ok: true });
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AssignmentStatus, OrderStatus } from '@prisma/client';
-import { releaseAssignmentOnOrderClose } from '@/server/rider-assignment-release';
+import { releaseAssignmentOnOrderClose, releaseAssignmentBeforePickup } from '@/server/rider-assignment-release';
 
 function fakeTx(status: AssignmentStatus | null) {
   return {
@@ -9,6 +9,7 @@ function fakeTx(status: AssignmentStatus | null) {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     riderProfile: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    codCollection: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
   } as any;
 }
 
@@ -26,6 +27,10 @@ describe('releaseAssignmentOnOrderClose', () => {
         where: { id: 'r1', currentLoad: { gt: 0 } },
         data: { currentLoad: { decrement: 1 } },
       });
+      // No hand-over will happen → a pending COD record is waived.
+      expect(tx.codCollection.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { orderId: 'o1', status: 'PENDING_COLLECTION' }, data: expect.objectContaining({ status: 'WAIVED' }) }),
+      );
     },
   );
 
@@ -48,5 +53,33 @@ describe('releaseAssignmentOnOrderClose', () => {
     tx.riderAssignment.updateMany.mockResolvedValue({ count: 0 });
     await expect(releaseAssignmentOnOrderClose(tx, 'o1', OrderStatus.CANCELLED_BY_RESTAURANT)).resolves.toBeNull();
     expect(tx.riderProfile.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('releaseAssignmentBeforePickup (P2-21)', () => {
+  function tx(status: AssignmentStatus | null, deleted = 1) {
+    return {
+      riderAssignment: {
+        findUnique: vi.fn().mockResolvedValue(status ? { id: 'a1', riderId: 'r1', status } : null),
+        deleteMany: vi.fn().mockResolvedValue({ count: deleted }),
+      },
+      riderProfile: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    } as any;
+  }
+  it('removes an ACCEPTED assignment and frees the load slot so the order re-enters the pool', async () => {
+    const t = tx(AssignmentStatus.ACCEPTED);
+    await expect(releaseAssignmentBeforePickup(t, 'a1')).resolves.toBe(true);
+    expect(t.riderAssignment.deleteMany).toHaveBeenCalledWith({ where: { id: 'a1', status: AssignmentStatus.ACCEPTED } });
+    expect(t.riderProfile.updateMany).toHaveBeenCalledWith({ where: { id: 'r1', currentLoad: { gt: 0 } }, data: { currentLoad: { decrement: 1 } } });
+  });
+  it('refuses once picked up / closed, and when a concurrent change won', async () => {
+    for (const st of [AssignmentStatus.PICKED_UP, AssignmentStatus.DELIVERED, null]) {
+      const t = tx(st);
+      await expect(releaseAssignmentBeforePickup(t, 'a1')).resolves.toBe(false);
+      expect(t.riderProfile.updateMany).not.toHaveBeenCalled();
+    }
+    const raced = tx(AssignmentStatus.ACCEPTED, 0);
+    await expect(releaseAssignmentBeforePickup(raced, 'a1')).resolves.toBe(false);
+    expect(raced.riderProfile.updateMany).not.toHaveBeenCalled();
   });
 });

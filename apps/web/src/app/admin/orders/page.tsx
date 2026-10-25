@@ -1,4 +1,5 @@
 import { prisma } from '@/server/db';
+import { loadAdminBoardOrders } from '@/server/staff-orders';
 import { requireRestaurant, accessibleOrderScope } from '@/server/tenancy';
 import { OrdersBoard } from './orders-board';
 import { PauseControl } from './pause-control';
@@ -29,12 +30,9 @@ export default async function AdminOrdersPage({ searchParams: _sp }: { searchPar
   const primaryBranchId = scope.primaryBranchId ?? scope.branchIds[0]!;
   const pause = await isPaused(primaryBranchId);
 
-  const orders = await prisma.order.findMany({
-    where: { branchId: { in: scope.branchIds } },
-    include: { customer: true, items: true, address: true, assignment: { include: { rider: { include: { user: true } } } } },
-    orderBy: { placedAt: 'desc' },
-    take: 100
-  });
+  // P2-15: every ACTIVE order + the latest 100 of any status (a busy day can't
+  // push a live order off the board). P2-13: customer/rider as {id,name,phone}.
+  const orders = await loadAdminBoardOrders(prisma, scope.branchIds);
   // Annotate each order with its source restaurant for the board's label/filter.
   const annotated = orders.map((o) => ({
     ...o,

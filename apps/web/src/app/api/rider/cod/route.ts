@@ -6,6 +6,7 @@
  */
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
+import { COD_CASH_HELD_STATUSES } from '@/server/rider-cod';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,7 +29,7 @@ export async function GET() {
 
   // Cash still on the rider: collected (full/partial) but not yet reconciled.
   const cashInHand = collections
-    .filter((c) => c.status === 'COLLECTED' || c.status === 'PARTIAL_COLLECTED')
+    .filter((c) => (COD_CASH_HELD_STATUSES as readonly string[]).includes(c.status))
     .reduce((s, c) => s + Number(c.amountCollected ?? 0), 0);
 
   return Response.json({

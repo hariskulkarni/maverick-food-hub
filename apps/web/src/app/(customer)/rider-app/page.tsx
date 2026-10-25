@@ -33,7 +33,7 @@ const APK_PATH = '/downloads/flavrly-rider.apk';
 
 export async function generateMetadata() {
   const title = `Become a ${brand.name} rider — download the app`;
-  const description = `Earn flexibly delivering with ${brand.name}. Set your own hours, get paid per delivery + tips + surge bonuses. Install the Android app in under a minute.`;
+  const description = `Earn flexibly delivering with ${brand.name}. Set your own hours, get paid per delivery + surge bonuses. Install the Android app in under a minute.`;
   return {
     title,
     description,
@@ -87,11 +87,11 @@ export default async function RiderAppPage() {
             </div>
             <h1 className="display mt-4 text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.05] tracking-tight">
               Deliver on your own time.<br />
-              <span className="text-primary">Get paid daily.</span>
+              <span className="text-primary">Withdraw anytime.</span>
             </h1>
             <p className="mt-5 text-base md:text-lg text-muted-foreground max-w-xl">
               Join hundreds of riders earning with {brand.name}. Set your own hours, get paid for every delivery
-              plus tips and surge bonuses — straight to your wallet, daily payouts to your bank.
+              plus surge bonuses — tracked in the app, withdraw to your UPI or bank whenever you like.
             </p>
 
             <div className="mt-7 flex flex-col sm:flex-row gap-3">

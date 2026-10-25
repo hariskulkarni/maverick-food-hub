@@ -41,7 +41,7 @@ const platformRule = {
 // override effect cleanly.
 const ctxFor = (overrides: Partial<CalcContext> = {}): CalcContext => ({
   distanceKm: 3,
-  placedAt: new Date('2026-05-13T11:00:00'),
+  placedAt: new Date('2026-05-13T11:00:00+05:30'),
   subtotal: 400,
   paymentMethod: 'RAZORPAY',
   rainActive: false,

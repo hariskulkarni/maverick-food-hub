@@ -9,6 +9,7 @@ import { resolveGroupReport, groupSalesSeries, childBreakdownRange } from './_gr
 import { Network, Info } from 'lucide-react';
 import { NoBranchNotice } from '../no-branch-notice';
 import { STAFF_BRANCH_ORDER } from '@/server/branch-pause';
+import { DispatchCard } from './dispatch-card';
 
 /**
  * ReportsWorkspace — the full reporting surface: a custom date-range report
@@ -34,12 +35,13 @@ export async function ReportsWorkspace({ showHeader = true }: { showHeader?: boo
   if (!branch) return <NoBranchNotice />;
 
   // Group scope: roll the sales chart + per-restaurant breakdown up across the
-  // group when this is a parent with rollup enabled; otherwise stay single-branch.
-  const report = await resolveGroupReport(restaurant.id, branch.id);
+  // group when this is a parent with rollup enabled; otherwise this restaurant's branches.
+  const report = await resolveGroupReport(restaurant.id);
+  const ids = report.branchIds; // every branch of this restaurant (or the group) — P1-9
 
   const [sales, bs, ls, rp, ci, breakdown] = await Promise.all([
-    report.rollup ? groupSalesSeries(report.branchIds, 30) : salesSeries(branch.id, 30),
-    bestSellers(branch.id, 10), leastSellers(branch.id, 5), riderPerformance(branch.id), customerInsights(branch.id),
+    report.rollup ? groupSalesSeries(ids, 30) : salesSeries(ids, 30),
+    bestSellers(ids, 10), leastSellers(ids, 5), riderPerformance(ids), customerInsights(ids),
     report.rollup ? childBreakdownRange(report.ctx, 30) : Promise.resolve([]),
   ]);
 
@@ -115,6 +117,8 @@ export async function ReportsWorkspace({ showHeader = true }: { showHeader?: boo
           <ul className="text-sm divide-y">{ls.map((b) => <li key={b.name} className="flex justify-between py-2"><span>{b.name}</span><span>{b.qty}</span></li>)}</ul>
         </CardContent></Card>
       </div>
+
+      <DispatchCard restaurantId={restaurant.id} />
 
       <Card><CardContent className="p-5">
         <h3 className="font-semibold mb-3">Customer insights</h3>

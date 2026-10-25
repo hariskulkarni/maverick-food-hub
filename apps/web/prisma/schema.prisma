@@ -187,6 +187,7 @@ enum EscalationType {
   CUSTOMER_UNREACHABLE
   PAYMENT_WEBHOOK_DELAY
   COD_NOT_RECONCILED
+  RIDER_STATIONARY // dispatch telemetry: on-task rider parked away from pickup/drop (server-side GPS check)
 }
 
 enum EscalationSeverity {
@@ -2227,6 +2228,9 @@ model RiderAssignment {
   customerRating   Int?
   customerComment  String?
   notes            String?
+  // ── Rider audit r3 (2026-10-25) ── wrong delivery-OTP submissions on this
+  // assignment; the deliver route locks hand-over after 5 (brute-force cap).
+  deliveryOtpAttempts Int @default(0)
 
   order Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
   rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Restrict)
@@ -3532,10 +3536,16 @@ model ObsErrorLog {
   firstSeenAt DateTime  @default(now())
   lastSeenAt  DateTime  @default(now())
   resolvedAt  DateTime?
+  // ── Observability Center (round 2, additive) ──
+  kind        String    @default("SERVER") // SERVER | CLIENT | NATIVE (rider app)
+  route       String?                      // normalised route template, e.g. /api/orders/[id]
+  requestId   String?                      // sample request id (x-request-id) of the latest occurrence
+  release     String?                      // app version / commit SHA when last seen
 
   @@index([lastSeenAt])
   @@index([level])
   @@index([resolvedAt])
+  @@index([kind, lastSeenAt])
 }
 
 model ObsProbe {
@@ -3565,6 +3575,104 @@ model ObsProbeEvent {
 
   @@index([target, at])
   @@index([at])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Observability Center (round 2) — super-admin only. All tables are bounded by
+//  the obs-retention job (src/server/observability/retention.ts):
+//    ObsRequestMinute 30d · ObsEventMinute 30d · ObsJobRun 90d · ObsAlert 90d
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Golden signals per route, aggregated per minute (never one row per request).
+/// `hist` is a fixed-bucket latency histogram (see observability/histogram.ts)
+/// so P50/P95/P99 can be merged across minutes and processes.
+model ObsRequestMinute {
+  minute   DateTime // UTC, truncated to the minute
+  method   String
+  route    String   // normalised template (/api/orders/[id]); "other" past the cardinality cap
+  kind     String   @default("API") // API | PAGE
+  count    Int      @default(0)
+  s2xx     Int      @default(0)
+  s3xx     Int      @default(0)
+  s4xx     Int      @default(0)
+  s5xx     Int      @default(0)
+  s401     Int      @default(0)
+  s403     Int      @default(0)
+  s429     Int      @default(0)
+  durSumMs Float    @default(0)
+  durMaxMs Int      @default(0)
+  hist     Int[]
+
+  @@id([minute, method, route])
+  @@index([minute])
+  @@index([route, minute])
+}
+
+/// Generic per-minute counters: permission denials (route, role), webhook
+/// signature failures (provider), notification outcomes (channel, provider),
+/// client-error beacons (source), rate-limit hits (route, tier) …
+model ObsEventMinute {
+  minute DateTime
+  kind   String
+  dim1   String   @default("")
+  dim2   String   @default("")
+  count  Int      @default(0)
+
+  @@id([minute, kind, dim1, dim2])
+  @@index([kind, minute])
+}
+
+/// One row per scheduled-job execution (captured generically at the HTTP layer
+/// for every /api/platform/jobs/<name>/run call, or via withJobRun()).
+model ObsJobRun {
+  id         String    @id @default(cuid())
+  job        String
+  trigger    String    @default("CRON") // CRON | MANUAL
+  status     String    @default("RUNNING") // RUNNING | SUCCESS | FAILED
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  durationMs Int?
+  httpStatus Int?
+  summary    String?   // redacted, truncated response summary
+  error      String?   // redacted, truncated
+  requestId  String?
+
+  @@index([job, startedAt])
+  @@index([startedAt])
+  @@index([status])
+}
+
+/// Alert instances. One FIRING row per ruleKey at a time; resolved rows are history.
+model ObsAlert {
+  id             String    @id @default(cuid())
+  rule           String    // rule id, e.g. "job_overdue"
+  ruleKey        String    // rule + subject, e.g. "job_overdue:google-reviews"
+  severity       String    // CRITICAL | WARNING
+  state          String    @default("FIRING") // FIRING | RESOLVED
+  title          String
+  detail         String?
+  value          Float?
+  threshold      Float?
+  firstFiredAt   DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  resolvedAt     DateTime?
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  notifiedAt     DateTime?
+  notifyCount    Int       @default(0)
+
+  @@index([state, lastSeenAt])
+  @@index([ruleKey, state])
+  @@index([firstFiredAt])
+}
+
+/// Mutes suppress notifications (not evaluation) for a rule or a ruleKey until `until`.
+model ObsAlertMute {
+  key       String   @id // rule id ("stuck_orders") or exact ruleKey ("job_overdue:kyc-expiry")
+  until     DateTime
+  reason    String?
+  createdBy String?
+  createdAt DateTime @default(now())
 }
 
 /// Generic platform-level CMS / content store. A key/value JSON singleton table:
@@ -4044,4 +4152,101 @@ model TotpRecoveryCode {
   createdAt DateTime  @default(now())
 
   @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Dispatch telemetry v1 (feat/dispatch-telemetry, 2026-10-24)
+// ─────────────────────────────────────────────────────────────────────────────
+// Additive only. No relations to existing models on purpose (keeps the Order /
+// Restaurant models untouched); every row carries the plain ids it needs.
+//
+//   OrderEvent         append-only dispatch milestones per order (src/server/dispatch/events.ts)
+//   OrderDispatchPlan  prep prediction + JIT rider-release plan per DELIVERY order
+//   RestaurantPrepStat nightly prep-time percentiles per restaurant × IST hour
+//   ZoneSupplyDemand   5-min H3 res-8 snapshot of open orders vs riders
+
+enum OrderEventType {
+  ACCEPTED
+  PREP_STARTED
+  FOOD_READY
+  INVITED
+  ASSIGNED
+  ARRIVED_RESTAURANT
+  PICKED_UP
+  ARRIVED_CUSTOMER
+  DELIVERED
+  CANCELLED
+}
+
+enum OrderEventSource {
+  SYSTEM
+  KITCHEN // restaurant staff (KITCHEN or restaurant ADMIN role)
+  RIDER
+  ADMIN // platform team
+}
+
+model OrderEvent {
+  id        String           @id @default(cuid())
+  orderId   String
+  type      OrderEventType
+  source    OrderEventSource
+  at        DateTime         @default(now())
+  actorId   String?
+  riderId   String?
+  lat       Float?
+  lng       Float?
+  // Once-only events set this (e.g. "FOOD_READY") so replays are no-ops via
+  // ON CONFLICT DO NOTHING; repeatable events (INVITED per rider, re-ASSIGNED)
+  // use a per-rider key or NULL (NULLs never conflict in Postgres).
+  dedupeKey String?
+  meta      Json?
+
+  @@unique([orderId, dedupeKey])
+  @@index([orderId, at])
+  @@index([type, at])
+}
+
+model OrderDispatchPlan {
+  orderId          String    @id
+  restaurantId     String
+  predictedPrepMin Float
+  prepSource       String // "hour" | "all" | "quoted"
+  prepSamples      Int       @default(0)
+  acceptedAt       DateTime
+  // JIT: when riders should be invited. NULL when JIT was off at accept time.
+  releaseAt        DateTime?
+  // When the order was offered to riders (JIT job, or food ready).
+  releasedAt       DateTime?
+  releaseReason    String? // "jit_due" | "no_rider_in_range" | "promise_at_risk" | "food_ready" | "jit_immediate"
+  jit              Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([jit, releasedAt, releaseAt])
+  @@index([restaurantId, acceptedAt])
+}
+
+model RestaurantPrepStat {
+  id           String   @id @default(cuid())
+  restaurantId String
+  hourBucket   Int // IST hour 0..23, or -1 = all hours
+  samples      Int
+  p50Min       Float
+  p60Min       Float
+  p90Min       Float
+  computedAt   DateTime @default(now())
+
+  @@unique([restaurantId, hourBucket])
+}
+
+model ZoneSupplyDemand {
+  id         String   @id @default(cuid())
+  bucketAt   DateTime // 5-minute bucket start (UTC)
+  h3Cell     String // H3 res-8 index, or "none" for riders with no fix
+  openOrders Int      @default(0)
+  idleRiders Int      @default(0)
+  busyRiders Int      @default(0)
+
+  @@unique([bucketAt, h3Cell])
+  @@index([bucketAt])
 }

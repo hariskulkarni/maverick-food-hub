@@ -5,6 +5,8 @@
  *                              ADMIN/KITCHEN user (honours the account switcher
  *                              cookie), or null if super-admin/customer.
  *   requireRestaurant()      — same, but throws 404 if the user is not a member.
+ *   requireTenantAdmin()     — same, but 403 unless the caller's MEMBERSHIP role
+ *                              in that restaurant is ADMIN (admin-only writes).
  *   accessibleRestaurants()  — every restaurant the user may switch into
  *                              (their RestaurantUser grants), grouped parent→child.
  *   resolveGroupSharing()    — effective group sharing flags for a restaurant
@@ -106,7 +108,14 @@ export async function userCanAccessRestaurant(userId: string, restaurantId: stri
   return set.has(restaurantId);
 }
 
-export async function currentRestaurant() {
+/**
+ * The caller's ACTIVE restaurant plus their EFFECTIVE role in it (the
+ * per-restaurant membership role — explicit grant, ownership, or implied via
+ * the parent), or null if they are not a tenant user / have no access.
+ * Authorisation decisions must use `role` here, never the global User.role: a
+ * global ADMIN holding only a KITCHEN grant on a child is KITCHEN there.
+ */
+export async function activeMembership(): Promise<{ restaurant: RestaurantRecord; role: Role; userId: string } | null> {
   const session = await auth();
   if (!session?.user) return null;
   if (!TENANT_ROLES.includes(session.user.role)) return null;
@@ -119,11 +128,15 @@ export async function currentRestaurant() {
   // user can actually access (defends against a tampered cookie).
   const cookieStore = await cookies();
   const activeId = cookieStore.get(ACTIVE_RESTAURANT_COOKIE)?.value;
-  if (activeId && set.has(activeId)) {
-    return set.get(activeId)!.restaurant;
-  }
-  // Fallback: first accessible restaurant (explicit grants ordered first).
-  return entries[0].restaurant;
+  const entry = activeId && set.has(activeId)
+    ? set.get(activeId)!
+    // Fallback: first accessible restaurant (explicit grants ordered first).
+    : entries[0];
+  return { restaurant: entry.restaurant, role: entry.role, userId: session.user.id };
+}
+
+export async function currentRestaurant() {
+  return (await activeMembership())?.restaurant ?? null;
 }
 
 export async function requireRestaurant() {
@@ -154,6 +167,47 @@ export async function requireManagedRestaurant(restaurantId?: string | null) {
     }
   }
   return requireRestaurant();
+}
+
+function tenantAuthError(status: 401 | 403, error: string): Response {
+  return Response.json(
+    { error, code: status === 401 ? 'auth/unauthenticated' : 'auth/forbidden', reason: status === 401 ? 'session_expired' : 'role' },
+    { status },
+  );
+}
+
+/**
+ * The active restaurant, but ONLY when the caller is an ADMIN *of that
+ * restaurant* (membership role, not the global User.role). Use for every
+ * admin-only write and every report/export. KITCHEN members get 403.
+ *
+ * Like requireManagedRestaurant, a SUPER_ADMIN may target any restaurant by
+ * passing an explicit `restaurantId`; for everyone else it is ignored.
+ * Throws a Response (401/403/404) — callers `catch (e) { if (e instanceof Response) return e; }`.
+ */
+export async function requireTenantAdmin(restaurantId?: string | null): Promise<RestaurantRecord> {
+  const session = await auth();
+  if (!session?.user) throw tenantAuthError(401, 'You are signed out. Please sign in again to continue.');
+  if (restaurantId && session.user.role === Role.SUPER_ADMIN) {
+    const r = await prisma.restaurant.findUnique({ where: { id: restaurantId } });
+    if (!r) throw new Response('No such restaurant', { status: 404 });
+    return r;
+  }
+  if (!TENANT_ROLES.includes(session.user.role)) throw tenantAuthError(403, 'Only a restaurant admin can do that.');
+  const m = await activeMembership();
+  if (!m) throw new Response('No restaurant for this user', { status: 404 });
+  if (m.role !== Role.ADMIN) throw tenantAuthError(403, 'Only a restaurant admin can do that. Kitchen accounts can run orders but not change settings.');
+  return m.restaurant;
+}
+
+/** Non-throwing requireTenantAdmin(): the restaurant, or the 401/403/404 Response to return as-is. */
+export async function tenantAdminOrError(restaurantId?: string | null): Promise<RestaurantRecord | Response> {
+  try {
+    return await requireTenantAdmin(restaurantId);
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
 }
 
 export interface AccessibleRestaurant {

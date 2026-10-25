@@ -10,9 +10,10 @@
  *   adminUnlock         — clear the password-login lockout + phone-OTP lockouts.
  *   adminSetRole        — change role (signs the user out).
  *   adminSetSuspended   — suspend / reinstate (suspend signs out).
- *   adminSignOut        — sign out everywhere: currentSessionId → null and every
- *                         UserSession revoked. Web JWTs (and rider tokens that
- *                         carry the same sid) stop validating on the next request.
+ *   adminSignOut        — sign out everywhere: every UserSession revoked and
+ *                         currentSessionId moved to a new revoked marker session,
+ *                         so web JWTs, v2 rider tokens AND legacy (pre-sid)
+ *                         rider tokens stop validating on the next request.
  *   getUserActivity     — recent sessions + audit events by / about the user.
  *
  * Guards: a super admin cannot run these against themselves (self-lockout), and
@@ -67,12 +68,28 @@ async function isLastActiveSuperAdmin(targetId: string): Promise<boolean> {
   return others === 0;
 }
 
-/** Revoke every session row for the user (the caller nulls currentSessionId). */
-async function revokeAllSessions(tx: Pick<typeof prisma, 'userSession'>, userId: string, reason: string) {
+/**
+ * End every session the user has, on every surface:
+ *  - revoke all live UserSession rows;
+ *  - point User.currentSessionId at a fresh, already-revoked "marker" session
+ *    created now (not null). Web JWTs and v2 rider tokens compare their sid with
+ *    currentSessionId, so they all fail. Legacy (pre-sid) rider tokens are only
+ *    rejected when currentSessionId points at a session started after they were
+ *    issued (src/server/rider-auth.ts riderTokenActive) — with a null pointer
+ *    and no newer session row they would survive a forced sign-out. The marker
+ *    is that newer session. The next real login replaces it.
+ */
+async function revokeAllSessions(tx: Pick<typeof prisma, 'userSession' | 'user'>, userId: string, reason: string) {
+  const now = new Date();
   await tx.userSession.updateMany({
     where: { userId, revokedAt: null },
-    data: { revokedAt: new Date(), revokedReason: reason },
+    data: { revokedAt: now, revokedReason: reason },
   });
+  const marker = await tx.userSession.create({
+    data: { userId, createdAt: now, lastSeenAt: now, revokedAt: now, revokedReason: reason },
+    select: { id: true },
+  });
+  await tx.user.update({ where: { id: userId }, data: { currentSessionId: marker.id } });
 }
 
 function auditBase(actor: Actor, targetId: string, meta: ReqMeta) {
@@ -103,7 +120,7 @@ export async function adminResetPassword(
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: target.id },
-      data: { passwordHash, mustChangePassword: true, currentSessionId: null },
+      data: { passwordHash, mustChangePassword: true },
     });
     await revokeAllSessions(tx, target.id, 'admin_password_reset');
   });
@@ -126,7 +143,7 @@ export async function adminResetTotp(actor: Actor, targetId: string, meta: ReqMe
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: target.id },
-      data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null, totpLastStep: null, currentSessionId: null },
+      data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null, totpLastStep: null },
     });
     await tx.totpRecoveryCode.deleteMany({ where: { userId: target.id } });
     await revokeAllSessions(tx, target.id, 'admin_totp_reset');
@@ -138,8 +155,7 @@ export async function adminResetTotp(actor: Actor, targetId: string, meta: ReqMe
 export async function adminUnlock(actor: Actor, targetId: string, meta: ReqMeta = {}): Promise<AdminResult> {
   const { target, error } = await loadTarget(actor, targetId, { allowSelf: true });
   if (error) return error;
-  // Password lockout lives in process memory (server/2fa.ts) — this clears it on
-  // the instance serving the request; it also auto-expires (lockoutMinutes).
+  // Password lockout is a LoginLockout row (server/2fa.ts); it also auto-expires.
   if (target.email) await recordLoginSuccess(target.email.toLowerCase().trim());
   // Phone-OTP lockouts are DB rows keyed `${phone}:${PURPOSE}`.
   if (target.phone) {
@@ -176,7 +192,7 @@ export async function adminSetRole(actor: Actor, targetId: string, role: Role, m
   }
   const keepsRestaurantAccess = RESTAURANT_ROLES.has(role);
   const removed = await prisma.$transaction(async (tx) => {
-    await tx.user.update({ where: { id: target.id }, data: { role, currentSessionId: null } });
+    await tx.user.update({ where: { id: target.id }, data: { role } });
     await revokeAllSessions(tx, target.id, 'admin_role_change');
     if (keepsRestaurantAccess) {
       await tx.restaurantUser.updateMany({ where: { userId: target.id }, data: { role } });
@@ -212,7 +228,7 @@ export async function adminSetSuspended(
     await tx.user.update({
       where: { id: target.id },
       data: suspended
-        ? { suspendedAt: new Date(), suspendedReason: why, currentSessionId: null }
+        ? { suspendedAt: new Date(), suspendedReason: why }
         : { suspendedAt: null, suspendedReason: null },
     });
     if (suspended) await revokeAllSessions(tx, target.id, 'admin_suspended');
@@ -229,7 +245,6 @@ export async function adminSignOut(actor: Actor, targetId: string, meta: ReqMeta
   const { target, error } = await loadTarget(actor, targetId);
   if (error) return error;
   await prisma.$transaction(async (tx) => {
-    await tx.user.update({ where: { id: target.id }, data: { currentSessionId: null } });
     await revokeAllSessions(tx, target.id, 'admin_signout');
   });
   await audit('platform.user.signout', { ...auditBase(actor, target.id, meta), after: { sessionsRevoked: true } }).catch(() => {});

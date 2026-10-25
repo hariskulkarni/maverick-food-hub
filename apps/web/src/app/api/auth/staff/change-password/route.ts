@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (await isLockedOut(email)) {
+    await audit('auth.login.locked', { entityType: 'User', after: { email, via: 'staff.change-password' } }).catch(() => {});
     return Response.json({ ok: false, locked: true, retryAfterSeconds: Math.ceil(await lockoutRemainingMs(email) / 1000) });
   }
   const sec = await getPlatformSecurity().catch(() => ({ lockoutMinutes: undefined }));

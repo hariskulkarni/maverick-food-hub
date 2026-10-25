@@ -39,6 +39,7 @@ vi.mock('@/server/auth.config', () => ({ authEdgeConfig: {} }));
 
 import { POST as precheck } from '@/app/api/auth/staff/precheck/route';
 import { POST as changePassword } from '@/app/api/auth/staff/change-password/route';
+import { POST as enroll } from '@/app/api/auth/staff/enroll/route';
 import { authConfig } from '@/server/auth';
 
 const mk = (body: unknown) =>
@@ -127,5 +128,23 @@ describe('precheck: blocked accounts', () => {
     verify.mockResolvedValue(false);
     db.user.findUnique.mockResolvedValue(user({ suspendedAt: new Date() }));
     expect(await (await precheck(mk({ email: 'a@x.com', password: 'bad' }))).json()).toEqual({ ok: false });
+  });
+});
+
+describe('observability: locked attempts are audited as auth.login.locked', () => {
+  const lockedAudit = () => auditFn.mock.calls.filter((c) => c[0] === 'auth.login.locked');
+  beforeEach(() => { sec.isLockedOut.mockReturnValue(true); sec.lockoutRemainingMs.mockReturnValue(60_000); });
+  it('precheck', async () => {
+    await precheck(mk({ email: 'a@x.com', password: 'p' }));
+    expect(lockedAudit()).toHaveLength(1);
+    expect(lockedAudit()[0][1]).toMatchObject({ entityType: 'User', after: { email: 'a@x.com', via: 'staff.precheck' } });
+  });
+  it('enroll', async () => {
+    await enroll(mk({ email: 'a@x.com', password: 'p', code: '123456' }));
+    expect(lockedAudit()[0][1]).toMatchObject({ after: { via: 'staff.enroll' } });
+  });
+  it('change-password', async () => {
+    await changePassword(mk({ email: 'a@x.com', password: 'p', newPassword: 'a-brand-new-password' }));
+    expect(lockedAudit()[0][1]).toMatchObject({ after: { via: 'staff.change-password' } });
   });
 });

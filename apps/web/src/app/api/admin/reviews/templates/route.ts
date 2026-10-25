@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { auditReview } from '@/server/reviews/review-audit';
 import { parseOrJsonError } from '@/server/zod-helpers';
 import { STARTER_TEMPLATES } from '@/lib/review-templates';
@@ -14,7 +14,8 @@ const dto = (t: { id: string; name: string; body: string; updatedAt: Date }) => 
 
 export async function GET(req: NextRequest) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     const rows = await prisma.reviewReplyTemplate.findMany({ where: { restaurantId: restaurant.id }, orderBy: { createdAt: 'asc' } });
     return Response.json({ templates: rows.map(dto) });
   } catch (e) {
@@ -31,7 +32,8 @@ const Body = z.union([
 /** Create a template, or `{ starter: true }` to add the starter set. */
 export async function POST(req: NextRequest) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     const parsed = parseOrJsonError(Body, await req.json().catch(() => null));
     if (parsed instanceof Response) return parsed;
     const existing = await prisma.reviewReplyTemplate.count({ where: { restaurantId: restaurant.id } });

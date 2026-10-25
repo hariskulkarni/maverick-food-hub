@@ -15,6 +15,7 @@
 
 import { prisma } from './db';
 import { log } from './log';
+import { recordNotifyOutcome } from './observability/hooks';
 import { getConfig } from './integrations';
 import { sendMsg91 } from './notifications/msg91';
 import { sendMetaWhatsApp } from './notifications/meta-whatsapp';
@@ -306,6 +307,7 @@ async function dispatch(channel: Channel, args: SendArgs) {
     log.error({ err: (e as Error).message, channel, to: args.to, template: args.template }, 'notify dispatcher threw');
     result = { ok: false, error: (e as Error).message };
   }
+  recordNotifyOutcome(channel, result); // observability: live/mock + sent/failed per channel
   // H6: never persist a live OTP code. The admin notifications view returns and
   // can substring-search `body`, so journaling the raw "Your verification code is
   // 123456" (and meta.otpCode) let a restaurant admin harvest live codes. Redact

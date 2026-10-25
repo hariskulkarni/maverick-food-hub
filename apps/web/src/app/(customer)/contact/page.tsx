@@ -22,7 +22,7 @@ export const metadata = {
 
 export default async function ContactPage() {
   const branch = await prisma.branch.findFirst({ where: { isActive: true } });
-  const waNumber = brand.supportWhatsapp.replace(/\D/g, '');
+  const waNumber = brand.supportWhatsapp?.replace(/\D/g, '') ?? null;
 
   return (
     <div className="container py-12 md:py-16 max-w-3xl">
@@ -35,6 +35,7 @@ export default async function ContactPage() {
 
       {/* Channels */}
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        {brand.supportPhone && (
         <Card>
           <CardContent className="p-5">
             <h3 className="font-semibold flex items-center gap-2">
@@ -46,6 +47,8 @@ export default async function ContactPage() {
             <p className="mt-1 text-xs text-muted-foreground">For urgent help with a live order.</p>
           </CardContent>
         </Card>
+        )}
+        {waNumber && (
         <Card>
           <CardContent className="p-5">
             <h3 className="font-semibold flex items-center gap-2">
@@ -59,6 +62,7 @@ export default async function ContactPage() {
             </p>
           </CardContent>
         </Card>
+        )}
         <Card>
           <CardContent className="p-5">
             <h3 className="font-semibold flex items-center gap-2">

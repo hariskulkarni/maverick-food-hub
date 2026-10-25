@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { requireManagedRestaurant, tenantAdminOrError } from '@/server/tenancy';
 import { exchangeCode, listAccounts, listAllLocations } from '@/server/reviews/google-business';
 import { saveConfig } from '@/server/integrations';
 import { verifyState } from '@/server/reviews/oauth-state';
@@ -31,7 +31,8 @@ export async function GET(req: NextRequest) {
   // Security preconditions reject HARD (403) and never redirect or save — a
   // tampered/absent state, a missing code, or a cross-restaurant state binding
   // is not a user-recoverable condition.
-  const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+  const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+  if (restaurant instanceof Response) return restaurant;
   const code = req.nextUrl.searchParams.get('code');
   const state = req.nextUrl.searchParams.get('state') ?? '';
   if (!code || !verifyState(state, restaurant.id)) return new Response('Forbidden', { status: 403 });

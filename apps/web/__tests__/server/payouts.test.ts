@@ -5,6 +5,9 @@ vi.mock('@/server/db', () => ({ prisma: {} }));
 
 import { computeFromRule, type CalcContext } from '@/server/payouts';
 
+// Pay windows are IST wall-clock (P1-16): build instants as IST, independent of the machine TZ.
+const ist = (y: number, mo: number, d: number, h: number, mi = 0) => new Date(Date.UTC(y, mo, d, h, mi) - 330 * 60_000);
+
 const defaultRule = {
   baseAmount: 30,
   perKmAmount: 5,
@@ -40,7 +43,7 @@ const defaultRule = {
 // A Monday afternoon (3pm) — outside lunch, dinner, late-night, weekend windows.
 function neutralAfternoon(): Date {
   // 2026-05-11 (Monday) 15:00 IST → use local-time constructor so getDay/getHours match.
-  return new Date(2026, 4, 11, 15, 0, 0);
+  return ist(2026, 4, 11, 15, 0);
 }
 
 const baseCtx = (over: Partial<CalcContext> = {}): CalcContext => ({
@@ -69,25 +72,25 @@ describe('payouts.computeFromRule — base + perKm + long distance', () => {
 
 describe('payouts.computeFromRule — peak boundaries', () => {
   it('applies lunch bonus at 12:00 (inclusive start)', () => {
-    const placed = new Date(2026, 4, 11, 12, 0, 0);
+    const placed = ist(2026, 4, 11, 12, 0);
     const r = computeFromRule(defaultRule, baseCtx({ placedAt: placed }));
     expect(r.peakBonus).toBe(10);
   });
 
   it('drops lunch bonus at 14:30 (exclusive end)', () => {
-    const placed = new Date(2026, 4, 11, 14, 30, 0);
+    const placed = ist(2026, 4, 11, 14, 30);
     const r = computeFromRule(defaultRule, baseCtx({ placedAt: placed }));
     expect(r.peakBonus).toBe(0);
   });
 
   it('applies dinner bonus at 19:00 (inclusive start)', () => {
-    const placed = new Date(2026, 4, 11, 19, 0, 0);
+    const placed = ist(2026, 4, 11, 19, 0);
     const r = computeFromRule(defaultRule, baseCtx({ placedAt: placed }));
     expect(r.peakBonus).toBe(12);
   });
 
   it('drops dinner bonus at 23:00 (exclusive end)', () => {
-    const placed = new Date(2026, 4, 11, 23, 0, 0);
+    const placed = ist(2026, 4, 11, 23, 0);
     const r = computeFromRule(defaultRule, baseCtx({ placedAt: placed }));
     expect(r.peakBonus).toBe(0);
   });
@@ -95,13 +98,13 @@ describe('payouts.computeFromRule — peak boundaries', () => {
 
 describe('payouts.computeFromRule — late night across midnight', () => {
   it('pays the late-night bonus at 23:00', () => {
-    const placed = new Date(2026, 4, 11, 23, 0, 0);
+    const placed = ist(2026, 4, 11, 23, 0);
     const r = computeFromRule(defaultRule, baseCtx({ placedAt: placed }));
     expect(r.lateNightBonus).toBe(20);
   });
 
   it('pays the late-night bonus at 02:30 (post-midnight)', () => {
-    const placed = new Date(2026, 4, 12, 2, 30, 0);
+    const placed = ist(2026, 4, 12, 2, 30);
     const r = computeFromRule(defaultRule, baseCtx({ placedAt: placed }));
     expect(r.lateNightBonus).toBe(20);
   });
@@ -114,13 +117,13 @@ describe('payouts.computeFromRule — late night across midnight', () => {
 
 describe('payouts.computeFromRule — weekend bonus', () => {
   it('pays weekendBonus on a Saturday', () => {
-    const sat = new Date(2026, 4, 9, 15, 0, 0); // 2026-05-09 = Saturday
+    const sat = ist(2026, 4, 9, 15, 0); // 2026-05-09 = Saturday
     const r = computeFromRule(defaultRule, baseCtx({ placedAt: sat }));
     expect(r.weekendBonus).toBe(25);
   });
 
   it('pays weekendBonus on a Sunday', () => {
-    const sun = new Date(2026, 4, 10, 15, 0, 0); // 2026-05-10 = Sunday
+    const sun = ist(2026, 4, 10, 15, 0); // 2026-05-10 = Sunday
     const r = computeFromRule(defaultRule, baseCtx({ placedAt: sun }));
     expect(r.weekendBonus).toBe(25);
   });

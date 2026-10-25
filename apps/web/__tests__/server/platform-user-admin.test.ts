@@ -15,7 +15,7 @@ const { db, auditFn, sec, hash } = vi.hoisted(() => ({
     restaurant: { count: vi.fn(async () => 0) },
     restaurantUser: { updateMany: vi.fn(async () => ({ count: 1 })), deleteMany: vi.fn(async () => ({ count: 2 })) },
     branchUser: { updateMany: vi.fn(async () => ({ count: 1 })), deleteMany: vi.fn(async () => ({ count: 1 })) },
-    userSession: { updateMany: vi.fn(), findMany: vi.fn() },
+    userSession: { updateMany: vi.fn(), findMany: vi.fn(), create: vi.fn() },
     otpAttempt: { updateMany: vi.fn() },
     totpRecoveryCode: { deleteMany: vi.fn(async () => ({ count: 10 })) },
     auditLog: { findMany: vi.fn() },
@@ -51,6 +51,7 @@ beforeEach(() => {
   db.user.count.mockImplementation(async ({ where }: any) =>
     [...users.values()].filter((u) => u.role === where.role && !u.suspendedAt && !u.deletedAt && u.id !== where.id?.not).length);
   db.userSession.updateMany.mockImplementation(async ({ where }: any) => { sessionsRevoked.push(where.userId); return { count: 1 }; });
+  db.userSession.create.mockImplementation(async ({ data }: any) => ({ id: `marker-${data.userId}`, ...data }));
   db.otpAttempt.updateMany.mockResolvedValue({ count: 1 });
   db.$transaction.mockImplementation(async (fn: any) => fn(db));
 });
@@ -66,7 +67,7 @@ describe('adminResetPassword', () => {
     const u = users.get('k1')!;
     expect(u.passwordHash).toBe(`hashed:${temp}`);
     expect(u.mustChangePassword).toBe(true);
-    expect(u.currentSessionId).toBeNull();
+    expect(u.currentSessionId).toBe('marker-k1');
     expect(sessionsRevoked).toContain('k1');
     expect(sec.recordLoginSuccess).toHaveBeenCalledWith('k1@x.com');
     expect(auditFn).toHaveBeenCalledWith('platform.user.password.reset', expect.objectContaining({ actorId: 'su1', entityId: 'k1' }));
@@ -124,7 +125,7 @@ describe('adminSetRole', () => {
     const r = await adminSetRole(actor, 'c1', 'KITCHEN', meta);
     expect(r.ok).toBe(true);
     expect(users.get('c1')!.role).toBe('KITCHEN');
-    expect(users.get('c1')!.currentSessionId).toBeNull();
+    expect(users.get('c1')!.currentSessionId).toBe('marker-c1');
     expect(auditFn).toHaveBeenCalledWith('platform.user.role.change', expect.objectContaining({ before: { role: 'CUSTOMER' }, after: expect.objectContaining({ role: 'KITCHEN' }) }));
   });
   it('KITCHEN -> ADMIN keeps restaurant memberships and re-roles them', async () => {
@@ -163,7 +164,7 @@ describe('adminSetSuspended', () => {
   it('suspends with reason + signs out; unsuspend clears it', async () => {
     expect((await adminSetSuspended(actor, 'k1', true, 'fraud', meta)).ok).toBe(true);
     expect(users.get('k1')!.suspendedAt).toBeInstanceOf(Date);
-    expect(users.get('k1')!.currentSessionId).toBeNull();
+    expect(users.get('k1')!.currentSessionId).toBe('marker-k1');
     expect(sessionsRevoked).toContain('k1');
     expect((await adminSetSuspended(actor, 'k1', false, undefined, meta)).ok).toBe(true);
     expect(users.get('k1')!.suspendedAt).toBeNull();
@@ -179,10 +180,17 @@ describe('adminSetSuspended', () => {
 });
 
 describe('adminSignOut', () => {
+  it('points currentSessionId at a new, already-revoked marker session', async () => {
+    await adminSignOut(actor, 'k1', meta);
+    const data = db.userSession.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({ userId: 'k1', revokedReason: 'admin_signout' });
+    expect(data.revokedAt).toBeInstanceOf(Date);
+    expect(data.createdAt).toBeInstanceOf(Date);
+  });
   it('rotates currentSessionId and revokes every session', async () => {
     users.get('k1')!.currentSessionId = 'sess-old';
     expect((await adminSignOut(actor, 'k1', meta)).ok).toBe(true);
-    expect(users.get('k1')!.currentSessionId).toBeNull();
+    expect(users.get('k1')!.currentSessionId).toBe('marker-k1');
     expect(sessionsRevoked).toContain('k1');
     expect(auditFn).toHaveBeenCalledWith('platform.user.signout', expect.anything());
   });

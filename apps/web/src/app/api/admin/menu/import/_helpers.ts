@@ -22,7 +22,7 @@
  */
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
-import { currentRestaurant } from '@/server/tenancy';
+import { activeMembership } from '@/server/tenancy';
 import { STAFF_BRANCH_ORDER } from '@/server/branch-pause';
 
 export type ScopeError = {
@@ -71,13 +71,26 @@ export async function resolveBranchScope(): Promise<BranchScope> {
 
   // 3) Active restaurant. Don't throw — `requireRestaurant` raises a Response
   //    we'd have to catch and translate anyway. Use the underlying helper.
-  const restaurant = await currentRestaurant();
+  const membership = await activeMembership();
+  const restaurant = membership?.restaurant;
   if (!restaurant) {
     return {
       error: jsonError({
         status: 404,
         reason: 'no_restaurant',
         error: 'Your account isn\'t linked to a restaurant yet. Ask the platform team to grant access, then retry.',
+      }),
+    };
+  }
+
+  // 3b) Membership role: the ADMIN check above is the GLOBAL role; the caller
+  //     must also be an ADMIN *of this restaurant* (not a KITCHEN grant).
+  if (membership.role !== 'ADMIN') {
+    return {
+      error: jsonError({
+        status: 403,
+        reason: 'role',
+        error: 'Only a restaurant admin can bulk-import the menu.',
       }),
     };
   }

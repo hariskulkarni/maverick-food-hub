@@ -6,8 +6,9 @@
  * dispatches the appropriate customer notification, and updates ETA timestamps.
  */
 
-import { OrderStatus, PaymentMethod, PaymentStatus, AssignmentStatus, FulfillmentType, Prisma } from '@prisma/client';
+import { OrderStatus, PaymentMethod, PaymentStatus, AssignmentStatus, FulfillmentType, Prisma, OrderEventSource } from '@prisma/client';
 import { releaseAssignmentOnOrderClose } from './rider-assignment-release';
+import { markCodCollectedOnDelivery } from './rider-cod';
 import { prisma } from './db';
 import { publish } from './realtime';
 import { notify } from './notifications';
@@ -75,6 +76,9 @@ export const ALLOWED_NEXT: Record<OrderStatus, OrderStatus[]> = {
 };
 
 export class OrderTransitionError extends Error {}
+
+/** Assignment states that still hold a rider load slot. */
+const RIDER_ACTIVE_ASSIGNMENT: AssignmentStatus[] = [AssignmentStatus.PENDING, AssignmentStatus.ACCEPTED, AssignmentStatus.PICKED_UP];
 
 export interface PlaceOrderInput {
   branchId: string;
@@ -780,7 +784,15 @@ export async function maybeAutoAccept(orderId: string, restaurantId: string, act
 export async function transitionOrder(
   orderId: string,
   next: OrderStatus,
-  opts: { actorId?: string; note?: string; scopeRestaurantId?: string } = {}
+  opts: {
+    actorId?: string;
+    note?: string;
+    scopeRestaurantId?: string;
+    /** Dispatch-telemetry source for the OrderEvent row (default: ADMIN when an actor is known, else SYSTEM). */
+    eventSource?: OrderEventSource;
+    /** Rider deliver route runs incentives itself (to show unlocked bonuses). */
+    skipRiderIncentives?: boolean;
+  } = {}
 ) {
   // C12: when an untrusted (tenant-admin) caller passes scopeRestaurantId, the
   // lookup is constrained to that restaurant so a cross-tenant id throws rather
@@ -810,10 +822,8 @@ export async function transitionOrder(
       stamp.cancelledAt = new Date(); break;
   }
 
-  // If THIS transition is what flips a rider's assignment to DELIVERED (e.g. an
-  // admin force-deliver, not the rider's own deliver route which already
-  // flipped it), capture the riderId so we can advance incentive progress after
-  // the txn commits. Left null in the common rider-app path.
+  // If THIS transition is what flips a rider's assignment to DELIVERED, capture
+  // the riderId so we can advance incentive progress after the txn commits.
   let forceDeliveredRiderId: string | null = null;
   let releasedRiderId: string | null = null;
 
@@ -839,22 +849,43 @@ export async function transitionOrder(
         await tx.loyaltyAccount.update({ where: { id: account.id }, data: { pointsBalance: { increment: points }, lifetimeEarn: { increment: points } } });
         await tx.loyaltyTransaction.create({ data: { accountId: account.id, orderId, type: 'EARN', points } });
       }
-      // Mark assignment delivered
+      // P0-2: this transaction is the SINGLE place a rider assignment becomes
+      // DELIVERED — for the rider's own deliver route and for admin/system
+      // force-deliveries alike. Flip it conditionally (single winner), then in
+      // the same txn: free the load slot, count the delivery, credit the
+      // assignment's earnings (+ tip) and mark COD cash as collected.
       const a = await tx.riderAssignment.findUnique({ where: { orderId } });
-      if (a && a.status !== AssignmentStatus.DELIVERED) {
-        await tx.riderAssignment.update({ where: { id: a.id }, data: { status: 'DELIVERED', deliveredAt: new Date() } });
-        await tx.riderProfile.update({ where: { id: a.riderId }, data: { currentLoad: { decrement: 1 }, totalDeliveries: { increment: 1 } } });
-        forceDeliveredRiderId = a.riderId;
+      if (a && RIDER_ACTIVE_ASSIGNMENT.includes(a.status)) {
+        const flipped = await tx.riderAssignment.updateMany({
+          where: { id: a.id, status: a.status },
+          data: { status: AssignmentStatus.DELIVERED, deliveredAt: new Date() }
+        });
+        if (flipped.count === 1) {
+          await tx.riderProfile.update({
+            where: { id: a.riderId },
+            data: {
+              totalDeliveries: { increment: 1 },
+              totalEarnings: { increment: a.earningsAmt },
+              totalTips: { increment: a.tipAmt }
+            }
+          });
+          await tx.riderProfile.updateMany({
+            where: { id: a.riderId, currentLoad: { gt: 0 } },
+            data: { currentLoad: { decrement: 1 } }
+          });
+          await markCodCollectedOnDelivery(tx, orderId);
+          forceDeliveredRiderId = a.riderId;
+        }
       }
     }
     releasedRiderId = await releaseAssignmentOnOrderClose(tx, orderId, next);
     return tx.order.findUniqueOrThrow({ where: { id: orderId } });
   });
 
-  // Advance incentive progress for force-delivered orders. The rider's own
-  // deliver route handles this for the normal path; here we cover admin/system
-  // deliveries. Best-effort — import lazily to avoid a module cycle.
-  if (forceDeliveredRiderId) {
+  // Advance incentive progress. The rider's deliver route passes
+  // skipRiderIncentives and runs this itself so it can show the rider which
+  // bonuses they just unlocked. Best-effort — import lazily to avoid a cycle.
+  if (forceDeliveredRiderId && !opts.skipRiderIncentives) {
     try {
       const { applyIncentivesForDelivery } = await import('./rider-payments');
       await applyIncentivesForDelivery(forceDeliveredRiderId);
@@ -880,16 +911,31 @@ export async function transitionOrder(
   // and DINE_IN orders never need a rider — they're collected/served in-house —
   // so we skip all rider dispatch for them. A READY pickup order just waits at
   // the counter for the customer to collect (with their pickupCode).
+  // Dispatch telemetry: append the milestone (never throws), and on ACCEPTED
+  // build the prep prediction / JIT release plan for DELIVERY orders.
+  const telemetry = await import('./dispatch/hooks').catch(() => null);
+  await telemetry?.onOrderTransition({
+    orderId,
+    next,
+    fulfillmentType: order.fulfillmentType,
+    source: opts.eventSource ?? (opts.actorId ? OrderEventSource.ADMIN : OrderEventSource.SYSTEM),
+    actorId: opts.actorId ?? null,
+    note: opts.note ?? null,
+  });
   if (next === OrderStatus.READY && order.fulfillmentType === FulfillmentType.DELIVERY) {
     publish('rider:pool', { kind: 'order:new', orderId, branchId: order.branchId });
+    // JIT may already have offered this order to riders before the food was
+    // ready (and a rider may already hold it). Don't push or batch-invite twice.
+    const ready = (await telemetry?.onFoodReady(orderId)) ?? { alreadyNotified: false };
+    const assigned = (await telemetry?.hasAssignment(orderId)) ?? false;
     // Push-notify online riders who have a registered device token. Best-effort
     // — a push failure must never roll back or block the transition.
-    notifyRidersOfNewOrder(orderId).catch(() => {});
+    if (!assigned && !ready.alreadyNotified) notifyRidersOfNewOrder(orderId).catch(() => {});
     // Batch-dispatch: if free rider capacity is tight, offer this order as an
     // append-to-route invitation to OUT_FOR_DELIVERY riders nearby. The engine
     // self-gates on capacity (returns {invited:0} when there are enough free
     // riders), so it's safe to call on every READY transition. Fire-and-forget.
-    maybeOfferAsBatch(orderId).catch(() => {});
+    if (!assigned) maybeOfferAsBatch(orderId).catch(() => {});
   }
   // Challenge progress refresh fires AFTER the order transition commits so a
   // challenge-update failure never rolls back a delivered order. The function

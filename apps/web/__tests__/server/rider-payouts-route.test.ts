@@ -9,17 +9,23 @@ let created: any = null;
 
 vi.mock('@/server/rider-auth', () => ({ auth: async () => session }));
 vi.mock('@/server/rider-payments', () => ({ computeAvailableBalance: async () => 1000 }));
-vi.mock('@/server/db', () => ({
-  prisma: {
-    riderProfile: { findUnique: async () => ({ id: 'rp1' }) },
+vi.mock('@/server/db', () => {
+  const tx = {
+    $executeRaw: async () => 0, // advisory lock (P1-6)
     riderPayout: {
       create: async ({ data }: any) => {
         created = { ...data };
         return { requestedAt: new Date(), processedAt: null, reference: null, note: null, ...data, id: 'po1' };
       }
     }
-  }
-}));
+  };
+  return {
+    prisma: {
+      riderProfile: { findUnique: async () => ({ id: 'rp1' }) },
+      $transaction: async (fn: any) => fn(tx)
+    }
+  };
+});
 
 import { POST } from '@/app/api/rider/payouts/route';
 

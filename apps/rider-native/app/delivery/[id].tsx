@@ -36,7 +36,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { api, ApiError, type Assignment } from '../../lib/api';
+import { api, ApiError, type Assignment, type FailReason } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRiderLocation } from '../../lib/use-rider-location';
 import { DeliveryMap } from '../../components/delivery-map';
@@ -44,6 +44,9 @@ import { SuccessCelebration } from '../../components/success-celebration';
 import { CollectOnlineCard } from '../../components/collect-online-card';
 import { haversineKm, estimateEtaMinutes } from '../../lib/geo';
 import { orderHold } from '../../lib/order-hold';
+import { openNavigation, canNavigate } from '../../lib/maps-nav';
+import { useDeliveryTracking } from '../../lib/delivery-tracking';
+import { BackgroundLocationBanner } from '../../components/background-location-banner';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 
 type Step =
@@ -94,16 +97,22 @@ function rupees(s: string): string {
   return Number.isFinite(n) ? `₹${Math.round(n)}` : '₹0';
 }
 
-type Waypoint = { coords: { lat: number; lng: number } | null; label: string };
+type Waypoint = {
+  coords: { lat: number; lng: number } | null;
+  label: string;
+  /** Address text — a navigation label, or the search query when coords are missing. */
+  address: string | null;
+};
 
 /**
  * The next place the rider is heading for, given the current step:
- * the restaurant for the to_restaurant/at_restaurant steps, the customer
- * for the to_customer/at_customer steps.
+ * the restaurant for the accept/to_restaurant/at_restaurant steps (shown on a
+ * fresh offer too, so the rider can preview the pickup), the customer for the
+ * to_customer/at_customer steps.
  */
 function nextWaypoint(a: Assignment, step: Step): Waypoint | null {
   const o = a.order;
-  if (step === 'to_restaurant' || step === 'at_restaurant') {
+  if (step === 'accept' || step === 'to_restaurant' || step === 'at_restaurant') {
     const b = o.branch;
     return {
       label: 'pickup',
@@ -111,6 +120,9 @@ function nextWaypoint(a: Assignment, step: Step): Waypoint | null {
         b && b.latitude != null && b.longitude != null
           ? { lat: b.latitude, lng: b.longitude }
           : null,
+      address: b
+        ? [b.restaurantName ?? b.name, b.line1, b.city].filter(Boolean).join(', ')
+        : null,
     };
   }
   if (step === 'to_customer' || step === 'at_customer' || step === 'unreachable') {
@@ -121,17 +133,18 @@ function nextWaypoint(a: Assignment, step: Step): Waypoint | null {
         ad && ad.latitude != null && ad.longitude != null
           ? { lat: ad.latitude, lng: ad.longitude }
           : null,
+      address: ad ? [ad.line1, ad.line2, ad.city].filter(Boolean).join(', ') : null,
     };
   }
   return null;
 }
 
-/** Open external turn-by-turn navigation to a coordinate. */
-function openNavigation(coords: { lat: number; lng: number } | null) {
-  if (!coords) return;
-  Linking.openURL(
-    `https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}&travelmode=driving`
-  );
+/** Open the waypoint in the phone's Google Maps app (see lib/maps-nav.ts). */
+function navigateTo(wp: Waypoint | null) {
+  if (!wp) return;
+  openNavigation({ lat: wp.coords?.lat, lng: wp.coords?.lng, label: wp.address }).then((ok) => {
+    if (!ok) Alert.alert('Could not open maps', 'Install Google Maps or another maps app and try again.');
+  });
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -256,6 +269,11 @@ export default function DeliveryScreen() {
   const [unreachOpen, setUnreachOpen] = useState(false);
   const [unreachNote, setUnreachNote] = useState('');
   const [unreachError, setUnreachError] = useState<string | null>(null);
+  // "Can't complete this delivery" sheet.
+  const [failOpen, setFailOpen] = useState(false);
+  const [failReason, setFailReason] = useState<FailReason | null>(null);
+  const [failNote, setFailNote] = useState('');
+  const [failError, setFailError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -287,6 +305,18 @@ export default function DeliveryScreen() {
       !!assignment &&
       !delivered &&
       assignment.status !== 'DELIVERED' &&
+      orderHold(assignment) !== 'closed',
+  });
+
+  // Background tracking (keeps streaming while the rider is in Google Maps or
+  // the phone is locked) from acceptance until delivered / closed. Shows the
+  // prominent disclosure before asking for background permission.
+  const tracking = useDeliveryTracking({
+    orderId: assignment?.orderId ?? null,
+    active:
+      !!assignment &&
+      !delivered &&
+      (assignment.status === 'ACCEPTED' || assignment.status === 'PICKED_UP') &&
       orderHold(assignment) !== 'closed',
   });
 
@@ -333,10 +363,36 @@ export default function DeliveryScreen() {
     setActing(true);
     setOtpError(null);
     try {
-      await api.deliver(assignment.id, clean);
+      // The server makes a repeat confirm idempotent (it answers
+      // alreadyDelivered and never pays twice), so a lost response on a weak
+      // network is safe to retry. Retry network-level failures twice with a
+      // short backoff before asking the rider to tap again.
+      let lastErr: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await api.deliver(assignment.id, clean);
+          lastErr = null;
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (!(err instanceof ApiError && err.status === 0) || attempt === 2) break;
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        }
+      }
+      if (lastErr) throw lastErr;
       setDelivered(true);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 400) {
+      if (e instanceof ApiError && e.status === 0) {
+        setOtpError(
+          "Couldn't reach Flavrly. Check your connection and tap Confirm again — you won't be paid twice."
+        );
+      } else if (e instanceof ApiError && (e.status === 409 || e.status === 429)) {
+        // 409: order no longer deliverable (cancelled / closed). 429: too many
+        // wrong codes — both carry rider-facing copy from the server.
+        const body = e.body as { message?: string } | null;
+        setOtpError(body && typeof body.message === 'string' && body.message ? body.message : e.message);
+        if (e.status === 409) await load();
+      } else if (e instanceof ApiError && e.status === 400) {
         // Backend now returns { reason, message } — show its message verbatim
         // when present so wrong-length / mismatch / missing-expected each
         // surface their own copy.
@@ -421,6 +477,49 @@ export default function DeliveryScreen() {
     } finally {
       setActing(false);
     }
+  }
+
+  async function submitFail() {
+    if (acting || !assignment || !failReason) return;
+    const note = failNote.trim();
+    if (failReason === 'OTHER' && note.length < 5) {
+      setFailError('Tell support what happened (at least 5 characters).');
+      return;
+    }
+    setActing(true);
+    setFailError(null);
+    try {
+      await api.failAssignment(assignment.id, failReason, note || undefined);
+      setFailOpen(false);
+      router.replace('/');
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 0) {
+        setFailError("You're offline — nothing was changed. Check your connection and try again.");
+      } else {
+        setFailError(e instanceof ApiError ? e.message : 'Could not report this. Please try again.');
+        if (e instanceof ApiError && e.status === 409) await load();
+      }
+    } finally {
+      setActing(false);
+    }
+  }
+
+  function confirmFail() {
+    if (!failReason) {
+      setFailError('Pick a reason first.');
+      return;
+    }
+    const afterPickup = assignment?.status === 'PICKED_UP';
+    Alert.alert(
+      afterPickup ? 'Mark delivery as failed?' : 'Give up this pickup?',
+      afterPickup
+        ? 'This ends the delivery and alerts Flavrly support. Only do this if you really cannot deliver.'
+        : 'The order goes back to other riders and you are freed for new orders.',
+      [
+        { text: 'Back', style: 'cancel' },
+        { text: afterPickup ? 'Mark failed' : 'Give up pickup', style: 'destructive', onPress: submitFail },
+      ]
+    );
   }
 
   async function capturePhoto() {
@@ -573,34 +672,43 @@ export default function DeliveryScreen() {
               customer&apos;s tracker. Enable it in your phone&apos;s settings.
             </Text>
           ) : null}
-          {step === 'to_restaurant' || step === 'at_restaurant' ? (
+          {step !== 'accept' ? (
+            <BackgroundLocationBanner
+              status={tracking.status}
+              onEnable={tracking.openDisclosure}
+              onOpenSettings={tracking.openSettings}
+            />
+          ) : null}
+          {waypoint ? (
             <Pressable
               style={({ pressed }) => [
                 styles.navBtn,
                 pressed && styles.navBtnPressed,
-                !waypoint?.coords && styles.navBtnDisabled,
+                !canNavigate({ ...waypoint.coords, label: waypoint.address }) && styles.navBtnDisabled,
               ]}
-              onPress={() => openNavigation(waypoint?.coords ?? null)}
-              disabled={!waypoint?.coords}
+              onPress={() => navigateTo(waypoint)}
+              disabled={!canNavigate({ ...waypoint.coords, label: waypoint.address })}
+              accessibilityRole="button"
+              accessibilityHint="Opens Google Maps with driving directions"
             >
               <Ionicons name="navigate" size={18} color={colors.primary} />
-              <Text style={styles.navBtnText}>Navigate to pickup</Text>
-            </Pressable>
-          ) : step === 'to_customer' || step === 'at_customer' || step === 'unreachable' ? (
-            <Pressable
-              style={({ pressed }) => [
-                styles.navBtn,
-                pressed && styles.navBtnPressed,
-                !waypoint?.coords && styles.navBtnDisabled,
-              ]}
-              onPress={() => openNavigation(waypoint?.coords ?? null)}
-              disabled={!waypoint?.coords}
-            >
-              <Ionicons name="navigate" size={18} color={colors.primary} />
-              <Text style={styles.navBtnText}>Navigate to customer</Text>
+              <Text style={styles.navBtnText}>
+                {waypoint.label === 'pickup' ? 'Navigate to pickup' : 'Navigate to customer'} in Google Maps
+              </Text>
             </Pressable>
           ) : null}
           <Stepper activeIndex={idx} />
+          {/* JIT dispatch: the rider may be sent before the kitchen finishes.
+              Show a friendly label instead of the raw order status. */}
+          {(step === 'to_restaurant' || step === 'at_restaurant' || step === 'accept') &&
+          (o.status === 'PREPARING' || o.status === 'ACCEPTED' || o.status === 'RECEIVED') ? (
+            <View style={styles.notReady}>
+              <Ionicons name="time-outline" size={16} color={colors.warning} />
+              <Text style={styles.notReadyText}>
+                Being prepared — food not ready yet, head to the restaurant
+              </Text>
+            </View>
+          ) : null}
           <RouteBlock a={assignment} />
 
           {o.customerNotes ? (
@@ -717,6 +825,29 @@ export default function DeliveryScreen() {
               ) : null}
             </View>
           ) : null}
+
+          {/* Escape hatch for a delivery that can't be completed — before or
+              after pickup (vehicle breakdown, restaurant closed, wrong address…). */}
+          {step === 'to_restaurant' ||
+          step === 'at_restaurant' ||
+          step === 'to_customer' ||
+          step === 'at_customer' ||
+          step === 'unreachable' ? (
+            <Pressable
+              style={styles.unreachBtn}
+              onPress={() => {
+                setFailError(null);
+                setFailReason(null);
+                setFailOpen(true);
+              }}
+              disabled={acting}
+            >
+              <Ionicons name="close-circle-outline" size={18} color={colors.danger} />
+              <Text style={styles.unreachBtnText}>
+                {assignment.status === 'PICKED_UP' ? 'Can\u2019t deliver' : 'Can\u2019t do this pickup'}
+              </Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
 
         {/* Sticky action button */}
@@ -807,10 +938,106 @@ export default function DeliveryScreen() {
             </View>
           </KeyboardAvoidingView>
         </Modal>
+        {/* "Can't complete this delivery" — reason + optional note, then confirm. */}
+        <Modal
+          visible={failOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => !acting && setFailOpen(false)}
+        >
+          <KeyboardAvoidingView
+            style={styles.sheetBackdrop}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <View style={styles.sheet}>
+              <Text style={styles.sheetTitle}>
+                {assignment.status === 'PICKED_UP' ? 'Can\u2019t deliver' : 'Can\u2019t do this pickup'}
+              </Text>
+              <Text style={styles.sheetHint}>
+                {assignment.status === 'PICKED_UP'
+                  ? 'Support will be alerted. What went wrong?'
+                  : 'The order goes back to other riders. What went wrong?'}
+              </Text>
+              <View style={styles.reasonWrap}>
+                {(assignment.status === 'PICKED_UP' ? FAIL_REASONS_AFTER_PICKUP : FAIL_REASONS_BEFORE_PICKUP).map((r) => (
+                  <Pressable
+                    key={r.value}
+                    onPress={() => {
+                      setFailReason(r.value);
+                      if (failError) setFailError(null);
+                    }}
+                    disabled={acting}
+                    style={[styles.reasonChip, failReason === r.value && styles.reasonChipActive]}
+                  >
+                    <Text
+                      style={[styles.reasonChipText, failReason === r.value && styles.reasonChipTextActive]}
+                    >
+                      {r.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput
+                style={styles.sheetInput}
+                value={failNote}
+                onChangeText={(t) => setFailNote(t.slice(0, 500))}
+                placeholder={failReason === 'OTHER' ? 'Describe what happened (required)' : 'Add a note for support (optional)'}
+                placeholderTextColor={colors.textMuted}
+                multiline
+                maxLength={500}
+                editable={!acting}
+              />
+              {failError ? <Text style={styles.otpErrorText}>{failError}</Text> : null}
+              <View style={styles.sheetActions}>
+                <Pressable
+                  style={[styles.sheetBtn, styles.sheetBtnGhost]}
+                  onPress={() => setFailOpen(false)}
+                  disabled={acting}
+                >
+                  <Text style={styles.sheetBtnGhostText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.sheetBtn, styles.sheetBtnDanger, (acting || !failReason) && styles.primaryBtnDisabled]}
+                  onPress={confirmFail}
+                  disabled={acting || !failReason}
+                >
+                  {acting ? (
+                    <ActivityIndicator color={colors.white} />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>
+                      {assignment.status === 'PICKED_UP' ? 'Mark failed' : 'Give up pickup'}
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+/**
+ * Rider-facing reasons (subset of the server's CancellationReason). Before
+ * pickup the server hands the order back to the pool for another rider; after
+ * pickup it marks the order DELIVERY_FAILED and alerts support.
+ */
+const FAIL_REASONS_BEFORE_PICKUP: { value: FailReason; label: string }[] = [
+  { value: 'RIDER_VEHICLE_ISSUE', label: 'Vehicle problem' },
+  { value: 'RIDER_PERSONAL_EMERGENCY', label: 'Personal emergency' },
+  { value: 'RESTAURANT_TOO_BUSY', label: 'Restaurant too busy' },
+  { value: 'RESTAURANT_OUT_OF_STOCK', label: 'Items out of stock' },
+  { value: 'RESTAURANT_KITCHEN_CLOSED', label: 'Restaurant closed' },
+  { value: 'OTHER', label: 'Other' },
+];
+const FAIL_REASONS_AFTER_PICKUP: { value: FailReason; label: string }[] = [
+  { value: 'CUSTOMER_UNREACHABLE', label: 'Customer unreachable' },
+  { value: 'CUSTOMER_WRONG_ADDRESS', label: 'Wrong address' },
+  { value: 'RIDER_VEHICLE_ISSUE', label: 'Vehicle problem' },
+  { value: 'RIDER_PERSONAL_EMERGENCY', label: 'Personal emergency' },
+  { value: 'OTHER', label: 'Other' },
+];
 
 function ActionButton({
   label,
@@ -842,6 +1069,28 @@ function ActionButton({
 }
 
 const styles = StyleSheet.create({
+  notReady: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningSoft,
+  },
+  notReadyText: { flex: 1, fontSize: font.size.sm, fontWeight: font.weight.semibold, color: colors.warning },
+  reasonWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
+  reasonChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  reasonChipActive: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
+  reasonChipText: { fontSize: font.size.sm, color: colors.text },
+  reasonChipTextActive: { color: colors.danger, fontWeight: font.weight.semibold },
   safe: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   center: {

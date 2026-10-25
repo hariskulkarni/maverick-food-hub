@@ -20,9 +20,17 @@ vi.mock('argon2', () => ({ default: { hash: async () => 'hash' } }));
 vi.mock('@/server/tenancy', () => ({
   requireRestaurant: async () => { if (!h.session) throw new Response('nope', { status: 404 }); return h.restaurant; },
   currentRestaurant: async () => (h.session ? h.restaurant : null),
+  activeMembership: async () => (h.session ? { restaurant: h.restaurant, role: h.session.user.role, userId: h.session.user.id } : null),
   requireManagedRestaurant: async (rid?: string | null) => {
     if (rid && h.session?.user.role === 'SUPER_ADMIN') return { ...h.restaurant, id: rid };
     if (!h.session) throw new Response('nope', { status: 404 });
+    return h.restaurant;
+  },
+  // Mirrors the real membership-aware gate: 401 signed out, 403 for KITCHEN.
+  requireTenantAdmin: async (rid?: string | null) => {
+    if (!h.session) throw new Response('signed out', { status: 401 });
+    if (rid && h.session.user.role === 'SUPER_ADMIN') return { ...h.restaurant, id: rid };
+    if (h.session.user.role !== 'ADMIN') throw new Response('forbidden', { status: 403 });
     return h.restaurant;
   },
 }));

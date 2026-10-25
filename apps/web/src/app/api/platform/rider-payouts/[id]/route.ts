@@ -11,6 +11,7 @@ import { prisma } from '@/server/db';
 import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
+import { clientIp } from '@/server/http/client-ip';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,16 +27,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (gate instanceof Response) return gate;
   const session = await auth();
   const { id } = await params;
-  const data = Body.parse(await req.json());
+  const parsed = Body.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return Response.json({ error: 'status must be PAID or FAILED' }, { status: 400 });
+  const data = parsed.data;
 
   const before = await prisma.riderPayout.findUnique({ where: { id } });
   if (!before) return new Response('Not found', { status: 404 });
-  if (before.status === 'PAID' || before.status === 'FAILED') {
-    return new Response(`Payout already ${before.status}`, { status: 409 });
-  }
 
-  const after = await prisma.riderPayout.update({
-    where: { id },
+  // P1-6: conditional settle — only a still-open payout can move, so a late
+  // FAILED can never overwrite PAID (which would make paid money withdrawable
+  // again) and two admins can't both settle the same request.
+  const res = await prisma.riderPayout.updateMany({
+    where: { id, status: { in: ['REQUESTED', 'PROCESSING'] } },
     data: {
       status: data.status,
       processedAt: new Date(),
@@ -43,6 +46,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       note: data.note ?? before.note
     }
   });
+  if (res.count === 0) {
+    const now = await prisma.riderPayout.findUnique({ where: { id }, select: { status: true } });
+    return new Response(`Payout already ${now?.status ?? before.status}`, { status: 409 });
+  }
+  const after = await prisma.riderPayout.findUniqueOrThrow({ where: { id } });
 
   await audit('rider.payout.settle', {
     actorId: session?.user?.id,
@@ -51,7 +59,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     entityId: id,
     before: { status: before.status, amount: Number(before.amount) },
     after: { status: after.status, reference: after.reference },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+    ipAddress: clientIp(req.headers),
     userAgent: req.headers.get('user-agent') ?? null
   });
 

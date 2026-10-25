@@ -52,8 +52,10 @@ function PayTile({
   );
 }
 
-const DAILY_GOAL = 1500;
-const WEEKLY_GOAL = 9000;
+// Fallbacks only for an older server that doesn't send `goals`; the live
+// values come from platform config via GET /api/rider/earnings.
+const FALLBACK_DAILY_GOAL = 1500;
+const FALLBACK_WEEKLY_GOAL = 9000;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function rupees(n: number): string {
@@ -157,8 +159,28 @@ export default function EarningsScreen() {
   }, [load]);
 
   // Derive all the gamification stats from the single earnings payload.
-  const week = useMemo(() => buildWeek(data?.recent ?? []), [data]);
-  const weekTotal = useMemo(() => week.reduce((s, d) => s + d.total, 0), [week]);
+  // Prefer the server's IST 7-day aggregate (covers ALL deliveries); fall back
+  // to bucketing the recent feed for an older server.
+  const serverDays = data?.last7Days && data.last7Days.length > 0 ? data.last7Days : null;
+  const week = useMemo<DayBucket[]>(
+    () =>
+      serverDays
+        ? serverDays.map((d) => ({
+            key: d.date,
+            label: WEEKDAYS[new Date(`${d.date}T12:00:00`).getDay()],
+            total: d.earnings,
+            count: d.deliveries,
+          }))
+        : buildWeek(data?.recent ?? []),
+    [data, serverDays]
+  );
+  // Chart total (last 7 days of the recent list) vs. the authoritative IST
+  // calendar-week aggregate the server computes over ALL deliveries.
+  const chartTotal = useMemo(() => week.reduce((s, d) => s + d.total, 0), [week]);
+  const weekTotal = data?.week?.earnings ?? chartTotal;
+  const DAILY_GOAL = data?.goals?.daily && data.goals.daily > 0 ? data.goals.daily : FALLBACK_DAILY_GOAL;
+  const WEEKLY_GOAL = data?.goals?.weekly && data.goals.weekly > 0 ? data.goals.weekly : FALLBACK_WEEKLY_GOAL;
+  const totalTips = data?.lifetime.totalTips ?? 0;
   const maxDay = useMemo(
     () => week.reduce((m, d) => Math.max(m, d.total), 0),
     [week]
@@ -339,7 +361,8 @@ export default function EarningsScreen() {
           </View>
           <View style={styles.chartFooter}>
             <Text style={styles.chartFooterText}>
-              {rupees(weekTotal)} earned over the last 7 days
+              {rupees(chartTotal)} earned over the last 7 days
+              {!serverDays && (data?.recent.length ?? 0) >= 20 ? ' (latest 20 deliveries)' : ''}
             </Text>
           </View>
         </View>
@@ -357,10 +380,19 @@ export default function EarningsScreen() {
           </View>
         </View>
         <View style={styles.statRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{rupees(data?.lifetime.totalTips ?? 0)}</Text>
-            <Text style={styles.statLabel}>Tips earned</Text>
-          </View>
+          {/* Tips are only shown once any have actually been recorded — orders
+              don't carry a tip yet, so a permanent ₹0 would be misleading. */}
+          {totalTips > 0 ? (
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{rupees(totalTips)}</Text>
+              <Text style={styles.statLabel}>Tips earned</Text>
+            </View>
+          ) : (
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{data?.week?.deliveries ?? 0}</Text>
+              <Text style={styles.statLabel}>Deliveries this week</Text>
+            </View>
+          )}
           <View style={styles.statCard}>
             <Text style={styles.statValue}>
               {(data?.lifetime.rating ?? 5).toFixed(1)} ★

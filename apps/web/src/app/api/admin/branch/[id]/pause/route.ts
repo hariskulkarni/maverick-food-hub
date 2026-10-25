@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { pauseBranch, isPaused } from '@/server/branch-pause';
 
 const Body = z.object({
@@ -10,7 +10,9 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const restaurant = await requireRestaurant();
+  // Admin-only (kitchen UI never calls this) — membership-role gate.
+  const restaurant = await tenantAdminOrError();
+  if (restaurant instanceof Response) return restaurant;
   const { id } = await params;
 
   const branch = await prisma.branch.findFirst({ where: { id, restaurantId: restaurant.id } });

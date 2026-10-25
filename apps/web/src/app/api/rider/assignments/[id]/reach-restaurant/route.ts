@@ -11,6 +11,8 @@ import { NextRequest } from 'next/server';
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { transitionOrder } from '@/server/orders';
+import { OrderEventSource, OrderEventType } from '@prisma/client';
+import { recordOrderEvent } from '@/server/dispatch/events';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -26,8 +28,19 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     where: { id: a.id },
     data: { notes: ((a.notes ?? '') + '\n[reached-restaurant ' + new Date().toISOString() + ']').trim() }
   });
+  // Telemetry milestone is recorded directly: a pool-claimed order is still
+  // READY, from which the status machine does not allow RIDER_REACHED_RESTAURANT.
+  await recordOrderEvent({
+    orderId: a.orderId,
+    type: OrderEventType.ARRIVED_RESTAURANT,
+    source: OrderEventSource.RIDER,
+    actorId: session.user.id,
+    riderId: profile.id,
+    lat: profile.currentLat,
+    lng: profile.currentLng,
+  });
   try {
-    await transitionOrder(a.orderId, 'RIDER_REACHED_RESTAURANT' as any, { actorId: session.user.id });
+    await transitionOrder(a.orderId, 'RIDER_REACHED_RESTAURANT' as any, { actorId: session.user.id, eventSource: OrderEventSource.RIDER });
   } catch {
     // Order may already be past this state — non-fatal.
   }

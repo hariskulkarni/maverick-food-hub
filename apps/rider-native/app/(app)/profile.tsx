@@ -3,7 +3,7 @@
  * and sign-out. KYC *uploads* stay on the web portal (multi-document forms);
  * this screen surfaces the verification status at a glance.
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { api, API_BASE, ApiError, type KycDoc, type RiderMe } from '../../lib/api';
+import { api, API_BASE, ApiError, type KycDoc, type KycGating, type RiderMe } from '../../lib/api';
 import { growth, type TierName } from '../../lib/api-growth';
 import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
@@ -81,6 +81,10 @@ export default function ProfileScreen() {
   const { rider, signOut, updateRider } = useAuth();
 
   const [docs, setDocs] = useState<KycDoc[]>([]);
+  const [gating, setGating] = useState<KycGating | null>(null);
+  // Document fileUrls are short-lived signed links (~15 min); remember when we
+  // fetched them so a stale one is refreshed before opening.
+  const kycFetchedAt = useRef(0);
   const [kycLoading, setKycLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [nameInput, setNameInput] = useState(rider?.name ?? '');
@@ -94,10 +98,30 @@ export default function ProfileScreen() {
     try {
       const res = await api.kyc();
       setDocs(res.documents);
+      setGating(res.gating ?? null);
+      kycFetchedAt.current = Date.now();
+      return res.documents;
     } catch {
       setDocs([]);
+      return [] as KycDoc[];
     }
   }, []);
+
+  /** Open a document, refetching first if its signed link may have expired. */
+  async function openDoc(d: KycDoc) {
+    let doc: KycDoc | undefined = d;
+    if (Date.now() - kycFetchedAt.current > 10 * 60 * 1000) {
+      const fresh = await loadKyc();
+      doc = fresh.find((x) => x.id === d.id);
+    }
+    if (!doc?.fileUrl) return;
+    setViewerDoc({
+      type: doc.type,
+      fileUrl: doc.fileUrl,
+      fileMimeType: doc.fileMimeType,
+      fileName: doc.fileName,
+    });
+  }
 
   const loadTier = useCallback(async () => {
     try {
@@ -342,6 +366,12 @@ export default function ProfileScreen() {
 
         {/* KYC */}
         <Text style={styles.sectionLabel}>MY DOCUMENTS</Text>
+        {gating && !gating.canGoOnline && gating.message ? (
+          <View style={styles.gateCard}>
+            <Ionicons name="alert-circle" size={18} color={colors.danger} />
+            <Text style={styles.gateText}>{gating.message}</Text>
+          </View>
+        ) : null}
         {kycLoading ? (
           <View style={styles.kycLoading}>
             <ActivityIndicator color={colors.primary} />
@@ -349,8 +379,8 @@ export default function ProfileScreen() {
         ) : docs.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>
-              No KYC documents on file. Upload your ID, licence and insurance on
-              the web rider portal to get verified.
+              No KYC documents on file yet. Upload your ID, licence, RC and
+              insurance below to get verified.
             </Text>
           </View>
         ) : (
@@ -366,15 +396,9 @@ export default function ProfileScreen() {
                       styles.kycRow,
                       pressed && canView && styles.kycRowPressed,
                     ]}
-                    onPress={() =>
-                      canView &&
-                      setViewerDoc({
-                        type: d.type,
-                        fileUrl: d.fileUrl,
-                        fileMimeType: d.fileMimeType,
-                        fileName: d.fileName,
-                      })
-                    }
+                    onPress={() => {
+                      if (canView) openDoc(d).catch(() => {});
+                    }}
                     disabled={!canView}
                   >
                     <View style={styles.kycLeft}>
@@ -408,6 +432,13 @@ export default function ProfileScreen() {
             </Text>
           </>
         )}
+        <Pressable
+          style={({ pressed }) => [styles.kycUploadBtn, pressed && styles.kycRowPressed]}
+          onPress={() => router.push('/kyc')}
+        >
+          <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />
+          <Text style={styles.kycUploadText}>Upload or update documents</Text>
+        </Pressable>
 
         {/* Rider tools — communication */}
         <Text style={styles.sectionLabel}>MESSAGES</Text>
@@ -733,6 +764,29 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderStyle: 'dashed',
   },
+  gateCard: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'flex-start',
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.dangerSoft,
+    marginBottom: spacing.sm,
+  },
+  gateText: { flex: 1, fontSize: font.size.sm, color: colors.danger, lineHeight: 20 },
+  kycUploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.card,
+  },
+  kycUploadText: { fontSize: font.size.md, fontWeight: font.weight.semibold, color: colors.primary },
   emptyText: { fontSize: font.size.sm, color: colors.textMuted, lineHeight: 20 },
 
   signOut: {

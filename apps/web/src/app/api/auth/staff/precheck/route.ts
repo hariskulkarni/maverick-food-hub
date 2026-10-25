@@ -18,6 +18,7 @@
 import { NextRequest } from 'next/server';
 import argon2 from 'argon2';
 import { prisma } from '@/server/db';
+import { audit } from '@/server/audit';
 import { rateLimit } from '@/server/http/rate-limit';
 import { getPlatformSecurity, isLockedOut, lockoutRemainingMs, recordLoginFailure } from '@/server/2fa';
 import { isStaffTotpRole, isTotpEnrolled, startEnrollment } from '@/server/user-totp';
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
   // are recorded for unknown emails too), so saying "locked, wait N min" leaks
   // nothing and stops a legitimate user from thinking their password is wrong.
   if (await isLockedOut(email)) {
+    await audit('auth.login.locked', { entityType: 'User', after: { email, via: 'staff.precheck' } }).catch(() => {});
     return Response.json({ ok: false, locked: true, retryAfterSeconds: Math.ceil(await lockoutRemainingMs(email) / 1000) });
   }
   const sec = await getPlatformSecurity().catch(() => ({ lockoutMinutes: undefined }));

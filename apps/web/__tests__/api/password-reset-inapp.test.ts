@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { db, audit, authMock, argon } = vi.hoisted(() => {
   const db: any = {
     user: { findUnique: vi.fn(), update: vi.fn(async () => ({})) },
-    userSession: { updateMany: vi.fn(async () => ({ count: 1 })) },
+    userSession: { updateMany: vi.fn(async () => ({ count: 1 })), create: vi.fn(async () => ({ id: 'marker-1' })) },
   };
   db.$transaction = vi.fn(async (cb: any) => cb(db));
   return {
@@ -68,7 +68,8 @@ describe('POST /api/platform/users/[id]/reset-password', () => {
     expect(body).toEqual({ ok: true, staffReenroll: false });
     const data = db.user.update.mock.calls[0][0].data;
     expect(data.passwordHash).toBe(`hashed:${PW}`);
-    expect(data.currentSessionId).toBeNull();
+    // Sessions end via a revoked marker session (kills legacy rider tokens too).
+    expect(db.user.update.mock.calls.some((c: any) => c[0].data.currentSessionId === 'marker-1')).toBe(true);
     expect(data.mustChangePassword).toBe(true);
     expect(data).not.toHaveProperty('totpSecret');
     expect(db.userSession.updateMany.mock.calls[0][0]).toMatchObject({

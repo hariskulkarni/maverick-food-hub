@@ -35,6 +35,7 @@
 import { auth } from '@/server/auth';
 import { Role } from '@prisma/client';
 import { can, type Capability } from './permissions';
+import { requireTenantAdmin } from './tenancy';
 
 /** Stable error codes for the client to switch on. */
 export type ApiAuthError = 'auth/unauthenticated' | 'auth/forbidden';
@@ -132,8 +133,8 @@ export async function requireAnyAdminApi() {
 }
 
 /**
- * Require a RESTAURANT-ADMIN session (Role.ADMIN only — not KITCHEN, not
- * SUPER_ADMIN). Use for the destructive menu / settings / branch surfaces
+ * Require a RESTAURANT-ADMIN session: the caller's membership role in the
+ * active restaurant must be ADMIN (not KITCHEN; SUPER_ADMIN is not a member). Use for the destructive menu / settings / branch surfaces
  * where a KITCHEN account should be read-only.
  *
  * Returns the session on success, or a 401/403 Response the route MUST
@@ -146,8 +147,17 @@ export async function requireAnyAdminApi() {
 export async function requireRestaurantAdminApi() {
   const session = await auth();
   if (!session?.user) return unauthenticated();
-  if (session.user.role !== Role.ADMIN) {
+  if (session.user.role !== Role.ADMIN && session.user.role !== Role.KITCHEN) {
     return forbidden('Only a restaurant admin can do that.');
+  }
+  // Membership-aware: the caller must be an ADMIN of the ACTIVE restaurant, not
+  // merely hold the global ADMIN role (a global ADMIN with only a KITCHEN grant
+  // on a child is KITCHEN there). See requireTenantAdmin().
+  try {
+    await requireTenantAdmin();
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
   }
   return session;
 }

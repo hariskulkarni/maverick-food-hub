@@ -9,6 +9,7 @@
 import { NextRequest } from 'next/server';
 import argon2 from 'argon2';
 import { prisma } from '@/server/db';
+import { audit } from '@/server/audit';
 import { rateLimit } from '@/server/http/rate-limit';
 import { getPlatformSecurity, isLockedOut, recordLoginFailure } from '@/server/2fa';
 import { isStaffTotpRole, confirmEnrollment, generateRecoveryCodes } from '@/server/user-totp';
@@ -29,7 +30,10 @@ export async function POST(req: NextRequest) {
 
   // F6: this route verifies the password, so it shares the login lockout —
   // otherwise it is a password oracle that sidesteps the email-password gate.
-  if (await isLockedOut(email)) return Response.json({ ok: false });
+  if (await isLockedOut(email)) {
+    await audit('auth.login.locked', { entityType: 'User', after: { email, via: 'staff.enroll' } }).catch(() => {});
+    return Response.json({ ok: false });
+  }
   const sec = await getPlatformSecurity().catch(() => ({ lockoutMinutes: undefined }));
   const lockoutMinutes = sec.lockoutMinutes ?? 15;
 

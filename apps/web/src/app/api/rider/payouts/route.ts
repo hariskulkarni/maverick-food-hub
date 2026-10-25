@@ -6,8 +6,9 @@
  * settled out-of-band — an admin marks it PAID (platform/payouts) after an
  * actual bank/UPI transfer. The route must NOT self-report PAID with a fake
  * reference: that told riders they had been paid when no money moved.
- * computeAvailableBalance already holds every non-FAILED payout, so a REQUESTED
- * row immediately reduces the withdrawable balance and blocks double-withdrawal.
+ * computeAvailableBalance holds every non-FAILED payout and nets COD cash the
+ * rider still carries; the POST runs under a per-rider advisory lock so two
+ * concurrent requests can't both pass the balance check (P1-6).
  */
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
@@ -93,37 +94,46 @@ export async function POST(req: Request) {
     return Response.json({ error: 'A UPI ID is required for UPI withdrawals.' }, { status: 400 });
   }
 
-  const available = await computeAvailableBalance(profile.id);
-  // Round to paise to dodge floating-point edge cases on the boundary.
-  if (Math.round(amount * 100) > Math.round(available * 100)) {
+  // P1-6: balance check + insert are one serialised unit per rider. The
+  // transaction-scoped advisory lock makes concurrent withdrawals queue behind
+  // each other, so the second one sees the first one's REQUESTED row.
+  const amountPaise = Math.round(amount * 100);
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rider-payout:' + profile.id}))`;
+    const available = await computeAvailableBalance(profile.id, tx);
+    // Compare in paise to dodge floating-point edge cases on the boundary.
+    if (amountPaise > Math.round(available * 100)) return { ok: false as const, available };
+    const payout = await tx.riderPayout.create({
+      data: {
+        riderId: profile.id,
+        amount: amountPaise / 100,
+        method,
+        upiId,
+        // C6: recorded as a request; an admin settles it out-of-band and marks it
+        // PAID after a real transfer. No fabricated reference, no processedAt.
+        status: 'REQUESTED',
+      },
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        method: true,
+        upiId: true,
+        reference: true,
+        note: true,
+        requestedAt: true,
+        processedAt: true,
+      },
+    });
+    return { ok: true as const, payout };
+  });
+  if (!result.ok) {
     return Response.json(
-      { error: `You can withdraw up to ₹${available.toFixed(2)} right now.` },
+      { error: `You can withdraw up to ₹${result.available.toFixed(2)} right now.` },
       { status: 400 }
     );
   }
-
-  const payout = await prisma.riderPayout.create({
-    data: {
-      riderId: profile.id,
-      amount,
-      method,
-      upiId,
-      // C6: recorded as a request; an admin settles it out-of-band and marks it
-      // PAID after a real transfer. No fabricated reference, no processedAt.
-      status: 'REQUESTED',
-    },
-    select: {
-      id: true,
-      amount: true,
-      status: true,
-      method: true,
-      upiId: true,
-      reference: true,
-      note: true,
-      requestedAt: true,
-      processedAt: true,
-    },
-  });
+  const payout = result.payout;
 
   return Response.json({
     payout: {

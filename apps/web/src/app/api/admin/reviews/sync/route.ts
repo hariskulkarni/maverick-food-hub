@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { fetchReviews, safeErrorMessage } from '@/server/reviews/google-business';
 import { upsertReview, syncGoogleReply, saveGoogleStats } from '@/server/reviews/store';
 import { invalidateAnalysis } from '@/server/reviews/insights';
@@ -15,7 +15,8 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(req: NextRequest) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     let fetched;
     try {
       fetched = await fetchReviews(restaurant.id);

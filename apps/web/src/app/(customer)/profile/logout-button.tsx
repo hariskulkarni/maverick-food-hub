@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { signOut } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 /**
  * Robust sign-out button. Works reliably inside Capacitor WebViews where the
@@ -11,7 +12,7 @@ import { LogOut } from 'lucide-react';
  *   2. Then unconditionally hard-navigate to /login.
  * So the user is always escorted out even if the cookie-clear request times out.
  */
-export function LogoutButton() {
+export function LogoutButton({ className }: { className?: string } = {}) {
   const [busy, setBusy] = useState(false);
   async function handle() {
     if (busy) return;
@@ -25,7 +26,7 @@ export function LogoutButton() {
       size="md"
       onClick={handle}
       disabled={busy}
-      className="w-full justify-center gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive font-medium"
+      className={cn('w-full justify-center gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive font-medium', className)}
     >
       <LogOut className="size-4" />
       {busy ? 'Signing out…' : 'Sign out'}

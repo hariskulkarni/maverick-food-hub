@@ -474,7 +474,9 @@ function VersionHistory({ articleId, version, onRestored }: { articleId: string;
   return (
     <Card>
       <CardContent className="grid gap-4 p-4 lg:grid-cols-2">
-        <div>
+        {/* min-w-0 on both grid items: without it the long truncated meta line
+            sets the column's min width and pushes View/Restore off a phone screen. */}
+        <div className="min-w-0">
           <h3 className="mb-2 text-sm font-semibold">Version history</h3>
           {versions === null ? (
             <Loader2 className="size-4 animate-spin" aria-label="Loading" />
@@ -503,7 +505,7 @@ function VersionHistory({ articleId, version, onRestored }: { articleId: string;
             </ul>
           )}
         </div>
-        <div>
+        <div className="min-w-0">
           {preview ? (
             <div className="rounded-lg border p-3">
               <div className="mb-1 text-xs text-muted-foreground">Preview of v{preview.version}</div>

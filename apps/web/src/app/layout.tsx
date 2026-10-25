@@ -4,6 +4,7 @@ import { Toaster } from 'sonner';
 import '@/styles/globals.css';
 import { brand } from '@/lib/brand';
 import { BuiltCredit } from '@/components/built-credit';
+import { ClientErrorReporter } from '@/components/observability/client-error-reporter';
 
 // One friendly geometric-sans family across the whole product (body + headings),
 // mirroring Swiggy's single-typeface look. `--font-display` is bound to the same
@@ -82,6 +83,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </div>
         <BuiltCredit />
         <Toaster position="top-right" richColors closeButton />
+        <ClientErrorReporter />
       </body>
     </html>
   );

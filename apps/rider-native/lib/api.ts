@@ -13,7 +13,12 @@
  * the cert (issued for flavrly.in) actually validates.
  */
 
-export const API_BASE = 'https://flavrly.in';
+/**
+ * EAS build profiles set EXPO_PUBLIC_API_BASE (e.g. demo-preview →
+ * https://demo.flavrly.in) so demo APKs never talk to production. Expo inlines
+ * EXPO_PUBLIC_* at bundle time; production falls back to flavrly.in.
+ */
+export const API_BASE = (process.env.EXPO_PUBLIC_API_BASE || 'https://flavrly.in').replace(/\/+$/, '');
 
 let authToken: string | null = null;
 
@@ -72,8 +77,13 @@ async function request<T = unknown>(path: string, opts: RequestOptions = {}): Pr
     let msg: string;
     const looksLikeHtml =
       typeof body === 'string' && /^\s*<(?:!doctype|html)/i.test(body);
-    if (body && typeof body === 'object' && 'error' in body && typeof (body as any).error === 'string') {
-      msg = (body as any).error;
+    const errField = body && typeof body === 'object' ? (body as any).error : undefined;
+    const msgField = body && typeof body === 'object' ? (body as any).message : undefined;
+    if (typeof errField === 'string' && /^[a-z0-9_-]+$/.test(errField) && typeof msgField === 'string' && msgField) {
+      // Machine code (e.g. 'kyc_incomplete', 'session_expired') + human copy.
+      msg = msgField;
+    } else if (typeof errField === 'string') {
+      msg = errField;
     } else if (res.status >= 500 || res.status === 0 || looksLikeHtml) {
       // A 5xx, or an HTML error page (e.g. nginx 502/503/504 while the API is
       // down or restarting). Never surface raw markup or a bare status code to
@@ -125,6 +135,13 @@ export interface RequestOtpResponse {
 export interface VerifyOtpResponse {
   token: string;
   rider: Rider;
+  /** ISO expiry of the token (older servers omit it). */
+  expiresAt?: string;
+}
+
+export interface RefreshTokenResponse {
+  token: string;
+  expiresAt: string;
 }
 
 export interface RiderMe {
@@ -226,6 +243,11 @@ export interface PoolOrder {
   payout: number; // what the rider earns if they claim
   distanceKm: number;
   readyAt: string | null;
+  /**
+   * Just-in-time dispatch: false while the kitchen is still cooking (the rider
+   * should head to the restaurant). Absent on older servers → treat as ready.
+   */
+  foodReady?: boolean;
 }
 
 /** POST /api/rider/pool/[id]/claim — the freshly created assignment row. */
@@ -244,6 +266,12 @@ export interface EarningsSummary {
     rating: number;
   };
   today: { earnings: number; deliveries: number };
+  /** Current IST week (Mon–Sun), aggregated server-side. */
+  week?: { earnings: number; deliveries: number };
+  /** 7 IST calendar days, oldest first, aggregated over ALL deliveries. */
+  last7Days?: { date: string; earnings: number; deliveries: number }[];
+  /** Daily / weekly earnings goals from platform config. */
+  goals?: { daily: number; weekly: number };
   recent: {
     id: string;
     orderCode: string;
@@ -266,12 +294,48 @@ export interface KycDoc {
   fileMimeType?: string | null;
   issuedOn?: string | null;
   expiresOn?: string | null;
+  rejectionReason?: string | null;
+  submittedAt?: string | null;
+}
+
+/** One document type the rider can / must upload, described by the server. */
+export interface KycRequirement {
+  type: string;
+  label: string;
+  required: boolean;
+  needsExpiry: boolean;
+  numberLabel: string;
+  numberPlaceholder: string;
+  hint: string | null;
+}
+
+export interface KycGating {
+  enforced: boolean;
+  canGoOnline: boolean;
+  blockingTypes: string[];
+  message: string | null;
 }
 
 export interface KycResponse {
   documents: KycDoc[];
   summary: unknown; // shape varies server-side — the app just lists documents
+  /** Older servers omit the fields below; the KYC screen degrades to a list. */
+  requirements?: KycRequirement[];
+  accept?: string[];
+  maxBytes?: number;
+  gating?: KycGating;
 }
+
+/** Rider-facing reasons for "Can't complete this delivery". */
+export type FailReason =
+  | 'CUSTOMER_WRONG_ADDRESS'
+  | 'RESTAURANT_TOO_BUSY'
+  | 'RESTAURANT_OUT_OF_STOCK'
+  | 'RESTAURANT_KITCHEN_CLOSED'
+  | 'RIDER_VEHICLE_ISSUE'
+  | 'RIDER_PERSONAL_EMERGENCY'
+  | 'CUSTOMER_UNREACHABLE'
+  | 'OTHER';
 
 // ─── Rider ⇄ staff messaging ─────────────────────────────────────────────────
 
@@ -328,6 +392,13 @@ export const api = {
       noAuth: true,
     }),
 
+  /** Swap the current token for a fresh one (also migrates legacy tokens). 401 → session over. */
+  refreshToken: () =>
+    request<RefreshTokenResponse>('/api/rider/auth/refresh', { method: 'POST' }),
+
+  /** Revoke this device's server session + push token. Best-effort on sign-out. */
+  logout: () => request<{ ok: true }>('/api/rider/auth/logout', { method: 'POST' }),
+
   /** Lightweight self-status — online flag + last heartbeat. */
   me: () => request<RiderMe>('/api/rider/me'),
 
@@ -379,16 +450,31 @@ export const api = {
       body: { otp },
     }),
 
+  /**
+   * "Can't do this pickup" / "Can't deliver". Before pickup the order goes back
+   * to the pool (outcome 'released'); after pickup it becomes DELIVERY_FAILED
+   * and support is alerted (outcome 'failed'). 409 if no longer active.
+   */
+  failAssignment: (id: string, reason: FailReason, note?: string) =>
+    request<{ ok: true; outcome?: 'released' | 'failed' }>(`/api/rider/assignments/${id}/fail`, {
+      method: 'POST',
+      body: note ? { reason, note } : { reason },
+    }),
+
   // ── Live location ─────────────────────────────────────────────────────────
   /** High-frequency GPS ping — fans out to customer + admin trackers via SSE. */
-  sendLocation: (lat: number, lng: number, orderId?: string, speedKph?: number) =>
-    request<{ ok: true }>('/api/rider/location', {
+  sendLocation: (lat: number, lng: number, orderId?: string, speedKph?: number, recordedAt?: number) =>
+    request<{ ok: true; orderActive?: boolean }>('/api/rider/location', {
       method: 'POST',
       body: {
         lat,
         lng,
         ...(orderId ? { orderId } : {}),
         ...(speedKph != null ? { speedKph } : {}),
+        // Fix time (ms epoch) — lets the server ignore stale / out-of-order points.
+        ...(recordedAt != null && Number.isFinite(recordedAt)
+          ? { recordedAt: Math.round(recordedAt), sentAt: Date.now() }
+          : {}),
       },
     }),
 
@@ -473,6 +559,40 @@ export const api = {
   // ── Profile & KYC ─────────────────────────────────────────────────────────
   /** Rider's KYC documents (masked) + status summary. */
   kyc: () => request<KycResponse>('/api/rider/kyc'),
+
+  /**
+   * Multipart upload of one KYC document (replaces any earlier upload of the
+   * same type). Server errors are plain text (400/413/415) — surfaced verbatim.
+   */
+  uploadKyc: async (input: {
+    type: string;
+    number: string;
+    expiresOn?: string | null;
+    issuedOn?: string | null;
+    file: { uri: string; name: string; mimeType: string };
+  }): Promise<{ document: KycDoc }> => {
+    const form = new FormData();
+    form.append('type', input.type);
+    form.append('number', input.number);
+    if (input.expiresOn) form.append('expiresOn', input.expiresOn);
+    if (input.issuedOn) form.append('issuedOn', input.issuedOn);
+    // React Native's FormData accepts this {uri,name,type} shape for file parts.
+    form.append('file', { uri: input.file.uri, name: input.file.name, type: input.file.mimeType } as any);
+    const headers: Record<string, string> = {};
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/api/rider/kyc`, { method: 'POST', headers, body: form });
+    } catch {
+      throw new ApiError('Network error — check your connection.', 0, null);
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      const clean = text && text.trim().length <= 300 && !/^\s*</.test(text) ? text.trim() : '';
+      throw new ApiError(clean || `Upload failed (${res.status})`, res.status, text);
+    }
+    return res.json();
+  },
 
   /** Self-service profile edit — name / email. */
   updateProfile: (patch: { name?: string; email?: string | null }) =>

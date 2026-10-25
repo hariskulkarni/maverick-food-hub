@@ -174,8 +174,8 @@ export default function RefundsPage() {
             For any refund or cancellation question, contact{' '}
             <a href={`mailto:${brand.supportEmail}`} className="text-primary underline">
               {brand.supportEmail}
-            </a>{' '}
-            or call {brand.supportPhone}. Or{' '}
+            </a>
+            {brand.supportPhone ? <> or call {brand.supportPhone}.</> : '.'} Or{' '}
             <a href="/help" className="text-primary underline">
               report a problem with an order
             </a>{' '}
