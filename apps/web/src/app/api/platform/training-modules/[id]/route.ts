@@ -1,67 +1,58 @@
 /**
- * Training module — single-row mutations (super-admin only).
- *   PATCH  — update any subset of fields (incl. toggle isActive / isRequired).
- *   DELETE — hard-delete the module (cascades RiderTrainingProgress).
+ * Training module — single row.
+ *   GET    (cms:read)    — full editor payload (lessons, questions, translations).
+ *   PATCH  (super-admin) — update settings and/or replace the ordered lesson +
+ *                          question set; `bumpVersion: true` starts a new
+ *                          version so every learner must re-certify.
+ *   DELETE (super-admin) — hard-delete (cascades lessons, progress, certificates).
  */
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
-import { auth } from '@/server/auth';
+import { requireCapabilityApi, requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
+import { parseOrJsonError } from '@/server/zod-helpers';
+import { applyModuleContent, loadModuleForEditor, ModuleContentSchema } from '@/server/training/authoring';
 import { serializeModule } from '../_serializers';
-import { optionalString } from '@/server/zod-helpers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const CATEGORIES = ['ONBOARDING', 'SAFETY', 'CUSTOMER_SERVICE', 'EARNINGS', 'APP_GUIDE'] as const;
+const withCounts = { _count: { select: { lessons: true, questions: true } } } as const;
 
-const PatchBody = z.object({
-  title: optionalString(160),
-  summary: z.string().max(500).nullable().optional(),
-  category: z.enum(CATEGORIES).optional(),
-  contentBody: optionalString(20000),
-  contentBlocks: z.array(z.any()).optional(),
-  heroImageUrl: z.string().max(2048).nullable().optional(),
-  quizQuestions: z.any().optional(),
-  durationMin: z.number().int().min(1).max(600).optional(),
-  order: z.number().int().min(0).max(9999).optional(),
-  isRequired: z.boolean().optional(),
-  isActive: z.boolean().optional(),
-});
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const gate = await requireCapabilityApi('cms:read');
+  if (gate instanceof Response) return gate;
+  const { id } = await params;
+  const mod = await loadModuleForEditor(prisma, id);
+  if (!mod) return Response.json({ error: 'Training module not found' }, { status: 404 });
+  return Response.json({ module: mod });
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
-  const session = await auth();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const { id } = await params;
-  const data = PatchBody.parse(await req.json());
+  const data = parseOrJsonError(ModuleContentSchema, await req.json().catch(() => null));
+  if (data instanceof Response) return data;
 
-  const before = await prisma.trainingModule.findUnique({ where: { id } });
-  if (!before) return new Response('Training module not found', { status: 404 });
+  const before = await prisma.trainingModule.findUnique({ where: { id }, include: withCounts });
+  if (!before) return Response.json({ error: 'Training module not found' }, { status: 404 });
 
-  const patch: any = {};
-  if (data.title !== undefined) patch.title = data.title;
-  if (data.summary !== undefined) patch.summary = data.summary;
-  if (data.category !== undefined) patch.category = data.category;
-  if (data.contentBody !== undefined) patch.contentBody = data.contentBody;
-  if (data.contentBlocks !== undefined) {
-    const { parseContentBlocks } = await import('@/server/training-cms');
-    patch.contentBlocks = parseContentBlocks(data.contentBlocks);
-    patch.contentVersion = 2;
+  if (data.isActive === true) {
+    const lessons = data.lessons?.length ?? before._count.lessons;
+    const hasLegacy = !!before.contentBody?.trim() || Array.isArray(before.contentBlocks);
+    if (lessons === 0 && !hasLegacy) {
+      return Response.json({ error: 'Add at least one lesson before publishing.' }, { status: 400 });
+    }
   }
-  if (data.heroImageUrl !== undefined) patch.heroImageUrl = data.heroImageUrl ?? null;
-  if (data.quizQuestions !== undefined) patch.quizQuestions = data.quizQuestions ?? undefined;
-  if (data.durationMin !== undefined) patch.durationMin = data.durationMin;
-  if (data.order !== undefined) patch.order = data.order;
-  if (data.isRequired !== undefined) patch.isRequired = data.isRequired;
-  if (data.isActive !== undefined) patch.isActive = data.isActive;
 
-  const after = await prisma.trainingModule.update({ where: { id }, data: patch });
+  await prisma.$transaction((tx) => applyModuleContent(tx, id, data), { timeout: 20_000 });
+  const after = await prisma.trainingModule.findUniqueOrThrow({ where: { id }, include: withCounts });
 
-  await audit('training.module.update', {
-    actorId: session?.user?.id,
-    actorRole: session?.user?.role,
+  await audit(data.bumpVersion ? 'training.module.version_bump' : 'training.module.update', {
+    actorId: session.user.id,
+    actorRole: session.user.role,
     entityType: 'TrainingModule',
     entityId: id,
     before: serializeModule(before),
@@ -70,22 +61,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     userAgent: req.headers.get('user-agent') ?? null,
   });
 
-  return Response.json({ module: serializeModule(after) });
+  return Response.json({ module: serializeModule(after), editor: await loadModuleForEditor(prisma, id) });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
-  const session = await auth();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
+  const session = gate;
   const { id } = await params;
 
-  const before = await prisma.trainingModule.findUnique({ where: { id } });
-  if (!before) return new Response('Training module not found', { status: 404 });
+  const before = await prisma.trainingModule.findUnique({ where: { id }, include: withCounts });
+  if (!before) return Response.json({ error: 'Training module not found' }, { status: 404 });
 
   await prisma.trainingModule.delete({ where: { id } });
 
   await audit('training.module.delete', {
-    actorId: session?.user?.id,
-    actorRole: session?.user?.role,
+    actorId: session.user.id,
+    actorRole: session.user.role,
     entityType: 'TrainingModule',
     entityId: id,
     before: serializeModule(before),

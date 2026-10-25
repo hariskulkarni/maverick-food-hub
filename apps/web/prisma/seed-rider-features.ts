@@ -10,7 +10,8 @@
  * Per-rider rows (payouts, SOS alerts, referrals, support tickets, progress)
  * are intentionally NOT seeded — those are created by riders using the app.
  *
- * Idempotent: clears and re-creates only these three config tables. Run with
+ * Idempotent: clears and re-creates surge zones + incentives; training modules
+ * are only added when missing (never deleted). Run with
  *   npm run db:seed:rider-features
  */
 import {
@@ -304,11 +305,17 @@ async function main() {
   console.log(`  ✓ ${INCENTIVES.length} incentive slabs`);
 
   // ── Training modules ───────────────────────────────────────────────────────
-  await prisma.trainingModule.deleteMany({});
+  // Never delete: training modules now own lessons, progress and certificates.
+  // Only add demo modules whose title doesn't exist yet (see seed-training-library.ts
+  // for the real starter library).
+  let addedModules = 0;
   for (const m of TRAINING_MODULES) {
+    const exists = await prisma.trainingModule.findFirst({ where: { title: m.title }, select: { id: true } });
+    if (exists) continue;
     await prisma.trainingModule.create({ data: { ...m, isActive: true } });
+    addedModules++;
   }
-  console.log(`  ✓ ${TRAINING_MODULES.length} training modules`);
+  console.log(`  ✓ ${addedModules} training modules added (${TRAINING_MODULES.length - addedModules} already present)`);
 
   // ── Rider types & restaurant dispatch mode (demo) ──────────────────────────
   // Make one ACTIVE restaurant run "dedicated-first" with a couple of its own
