@@ -1,8 +1,8 @@
 /**
  * POST /api/rider/auth/logout  (Bearer)
  *
- * Ends the rider's server session so the token stops working everywhere
- * (P1-11), and clears the device push token so a signed-out phone stops
+ * Ends THIS token's rider session (P1-11; the app's or the web portal's — the
+ * other surface stays signed in), and clears the device push token so a signed-out phone stops
  * getting order pings (P2-20). Always 200 — logging out an already-dead token
  * is a no-op.
  */
@@ -24,10 +24,15 @@ export async function POST() {
     // Legacy token (no sid): a session row created now marks every token
     // issued before this instant as dead (see riderTokenActive).
     await prisma.userSession
-      .create({ data: { userId, revokedAt: new Date(), revokedReason: 'logout' } })
+      .create({ data: { userId, client: 'rider-app', revokedAt: new Date(), revokedReason: 'logout' } })
       .catch(() => {});
   }
-  await prisma.riderProfile.updateMany({ where: { userId }, data: { expoPushToken: null, isOnline: false } });
-  await audit('auth.logout', { actorId: userId, actorRole: 'RIDER', entityType: 'User', entityId: userId, after: { provider: 'rider-token' } }).catch(() => {});
+  // Only the APP's logout takes the rider offline and drops the phone's push
+  // token. Signing out of the web portal (cookie transport) must not touch a
+  // delivery that may be running in the app right now.
+  if (bearer.transport === 'bearer') {
+    await prisma.riderProfile.updateMany({ where: { userId }, data: { expoPushToken: null, isOnline: false } });
+  }
+  await audit('auth.logout', { actorId: userId, actorRole: 'RIDER', entityType: 'User', entityId: userId, after: { provider: bearer.transport === 'cookie' ? 'rider-web' : 'rider-token' } }).catch(() => {});
   return Response.json({ ok: true });
 }

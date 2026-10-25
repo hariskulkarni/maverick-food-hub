@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, Loader2, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Loader2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
@@ -114,14 +114,6 @@ export function LoginForm() {
 
   return (
     <div className="mt-6 space-y-4">
-      <div className="flex items-start gap-2 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-        <p>
-          <span className="font-semibold">One sign-in at a time.</span> Signing in here signs the Flavrly Rider app on your phone out. Don&apos;t
-          sign in on the web while you&apos;re on a delivery — finish it in the app first.
-        </p>
-      </div>
-
       <div className="rounded-3xl border bg-card p-5 shadow-sm sm:p-6">
         {step === 'phone' ? (
           <form onSubmit={sendCode} className="space-y-4" noValidate>

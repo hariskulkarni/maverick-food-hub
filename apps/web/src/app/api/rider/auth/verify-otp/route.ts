@@ -2,7 +2,8 @@
  * POST /api/rider/auth/verify-otp
  *
  * Native rider app — step 2 of login. Confirms the account is a RIDER, verifies
- * the OTP, starts a server session (single active session) and issues a 7-day
+ * the OTP, starts a rider app session (supersedes older APP sessions only — a
+ * web-portal session stays signed in) and issues a 7-day
  * session-bound Bearer JWT the app stores in secure storage and sends on every
  * subsequent /api/rider/* request (P1-11; refresh via /api/rider/auth/refresh).
  *
@@ -12,68 +13,11 @@
  * 403:  { error: 'not_a_rider' | 'suspended' }
  */
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { prisma } from '@/server/db';
-import { verifyOtp } from '@/server/otp';
-import { signRiderToken } from '@/server/rider-auth';
-import { rateLimit } from '@/server/http/rate-limit';
-import { audit } from '@/server/audit';
-import { startSession } from '@/server/sessions';
-import { clientIp } from '@/server/http/client-ip';
+import { verifyRiderOtp } from '@/server/rider-otp-login';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const Body = z.object({
-  phone: z.string().min(8).max(20),
-  code: z.string().min(4).max(8)
-});
-
 export async function POST(req: NextRequest) {
-  const rl = await rateLimit(req, { name: 'rider-otp-verify', limit: 20, windowMs: 60_000 });
-  if (!rl.ok) return rl.response;
-
-  try {
-    const { phone, code } = Body.parse(await req.json());
-
-    // Role check first — so a non-rider hitting this directly never even
-    // consumes an OTP token.
-    const user = await prisma.user.findUnique({
-      where: { phone },
-      select: { id: true, name: true, phone: true, role: true, suspendedAt: true, deletedAt: true }
-    });
-    if (!user || user.role !== 'RIDER' || user.deletedAt) {
-      return Response.json({ error: 'not_a_rider' }, { status: 403 });
-    }
-    // Suspended accounts cannot log in (a super-admin has blocked them). Mirror
-    // the web NextAuth flow so suspension reaches the native rider app too.
-    if (user.suspendedAt) {
-      await audit('auth.login.failed', {
-        actorId: user.id,
-        entityType: 'User',
-        entityId: user.id,
-        after: { reason: 'suspended', provider: 'rider-otp' }
-      }).catch(() => {});
-      return Response.json({ error: 'suspended' }, { status: 403 });
-    }
-
-    const ok = await verifyOtp({ phone, code, purpose: 'login' });
-    if (!ok) {
-      return Response.json({ error: 'invalid_code' }, { status: 401 });
-    }
-
-    const sid = await startSession(user.id, {
-      userAgent: req.headers.get('user-agent'),
-      ipAddress: clientIp(req.headers)
-    });
-    if (!sid) return Response.json({ error: 'Could not start a session. Please try again.' }, { status: 503 });
-    const { token, expiresAt } = signRiderToken(user.id, sid);
-    return Response.json({
-      token,
-      expiresAt: expiresAt.toISOString(),
-      rider: { id: user.id, name: user.name ?? null, phone: user.phone ?? null }
-    });
-  } catch (e) {
-    return Response.json({ error: (e as Error).message }, { status: 400 });
-  }
+  return verifyRiderOtp(req, 'rider-app');
 }

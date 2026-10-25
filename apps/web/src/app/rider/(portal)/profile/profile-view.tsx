@@ -124,7 +124,7 @@ export function ProfileView({
       </div>
       <Panel>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">Signing out ends this web session. Sign in again in the app to keep taking deliveries.</p>
+          <p className="text-sm text-muted-foreground">Signing out ends this web session only — the Rider app on your phone stays signed in.</p>
           <Button
             variant="outline"
             className="min-h-11"

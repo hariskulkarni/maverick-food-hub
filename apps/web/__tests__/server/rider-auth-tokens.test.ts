@@ -2,14 +2,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import crypto from 'node:crypto';
 
-const m = vi.hoisted(() => ({ newerSessions: 0, current: null as null | { createdAt: Date } }));
+const m = vi.hoisted(() => ({
+  newerSessions: 0,
+  current: null as null | { createdAt: Date },
+  rows: {} as Record<string, { userId: string; revokedAt: Date | null }>,
+}));
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 vi.mock('@/server/auth', () => ({ auth: async () => null }));
 vi.mock('@/server/db', () => ({
   prisma: {
     userSession: {
       count: async () => m.newerSessions,
-      findUnique: async () => m.current
+      // v2 tokens look up their own session row; legacy checks read m.current.
+      findUnique: async ({ where }: { where: { id: string } }) => m.rows[where.id] ?? m.current
     }
   }
 }));
@@ -30,6 +35,7 @@ beforeEach(() => {
   delete process.env.RIDER_TOKEN_SECRET;
   m.newerSessions = 0;
   m.current = null;
+  m.rows = {};
 });
 
 describe('v2 rider tokens', () => {
@@ -54,10 +60,16 @@ describe('v2 rider tokens', () => {
     vi.useRealTimers();
   });
 
-  it('is live only while its sid is the current session (logout / new login / admin bump revoke it)', async () => {
+  it('is live only while its own session row exists, belongs to the rider and is unrevoked', async () => {
     const c = verifyRiderToken(signRiderToken('u1', 's1').token)!;
-    expect(await riderTokenActive(c, 's1')).toBe(true);
-    expect(await riderTokenActive(c, 's2')).toBe(false);
+    expect(await riderTokenActive(c, null)).toBe(false); // no row
+    m.rows.s1 = { userId: 'u1', revokedAt: null };
+    expect(await riderTokenActive(c, null)).toBe(true);
+    // currentSessionId pointing elsewhere (e.g. a web or NextAuth login) is irrelevant for v2.
+    expect(await riderTokenActive(c, 's2')).toBe(true);
+    m.rows.s1 = { userId: 'someone-else', revokedAt: null };
+    expect(await riderTokenActive(c, null)).toBe(false);
+    m.rows.s1 = { userId: 'u1', revokedAt: new Date() }; // logout / superseded / admin sign-out
     expect(await riderTokenActive(c, null)).toBe(false);
   });
 });

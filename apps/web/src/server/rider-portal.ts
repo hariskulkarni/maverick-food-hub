@@ -84,7 +84,7 @@ export async function getRiderPortalState(): Promise<RiderPortalState> {
 
 /** Human copy for each non-ok state (login page banner). */
 export const PORTAL_STATE_MESSAGE: Record<Exclude<RiderPortalState['state'], 'ok' | 'signed_out'>, string> = {
-  expired: 'Your session has ended — you signed in somewhere else (for example the Rider app) or signed out. Please sign in again.',
+  expired: 'Your web session has ended — you signed out, signed in on another browser, or were signed out by Flavrly. Please sign in again.',
   suspended: 'Your rider account is suspended. Contact Flavrly rider support to find out why and how to get reinstated.',
   deleted: 'This rider account no longer exists. If you think this is a mistake, contact Flavrly rider support.',
   not_rider: 'This phone number is not registered as a Flavrly rider.',

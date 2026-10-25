@@ -27,15 +27,17 @@ import type { Session } from 'next-auth';
  * v2 tokens: `{ sub, sid, iat, exp, kind:'rider', v:2 }`, 7-day TTL, signed
  * with a rider-specific key (RIDER_TOKEN_SECRET, else a key DERIVED from
  * NEXTAUTH_SECRET — never the NextAuth secret itself). `sid` is a UserSession
- * id: the token is honoured only while `User.currentSessionId === sid`, so
- * logout, a newer login (single active session, all roles) or a super-admin
- * suspension/reset (which clears currentSessionId) kills it on the next
- * request. The app slides the expiry forward via POST /api/rider/auth/refresh.
+ * id: the token is honoured only while that row is unrevoked (see
+ * riderTokenActive — multi-session: one app + one web-portal session), so
+ * logout, a newer login on the same surface, or a super-admin sign-out /
+ * suspension / reset kills it on the next request. The app slides the expiry
+ * forward via POST /api/rider/auth/refresh.
  *
  * Legacy tokens (30-day, no sid, signed with NEXTAUTH_SECRET) from builds
  * already installed keep working until they expire, EXCEPT once the rider
- * has logged in again or logged out (any UserSession created after the
- * token's iat) — so they are revocable too. Old builds have no refresh; when
+ * has logged in again on the app or logged out (any non-web UserSession
+ * created after the token's iat) or been signed out everywhere — so they are
+ * revocable too. Old builds have no refresh; when
  * their token stops validating, /api/rider/me answers 401 and the existing
  * app signs out to the login screen (clean re-login). New builds call refresh,
  * which upgrades a legacy token to v2.
@@ -116,19 +118,36 @@ export function verifyRiderToken(token: string): RiderTokenClaims | null {
 }
 
 /**
- * Is a signature-valid token still live? v2: its sid is the user's current
- * session. Legacy: no session has started (login/logout) since it was issued.
+ * Is a signature-valid token still live?
+ *
+ * v2 (multi-session, 2026-10-25): the token's sid must be a UserSession row of
+ * THIS user that has not been revoked. Riders can therefore hold an app session
+ * and a web-portal session at once; logout revokes only its own row; a new app
+ * login supersedes only older app rows; super-admin "sign out everywhere",
+ * suspension and password reset revoke every live row.
+ *
+ * Legacy (pre-sid, app-only): dead once the user's currentSessionId points at a
+ * session newer than the token (the super-admin sign-out marker) or once any
+ * non-web session (an app login / app logout marker / NextAuth login) started
+ * after it was issued. Web-portal logins do NOT kill legacy app tokens.
+ * `currentSessionId` is only consulted for legacy tokens.
  */
 export async function riderTokenActive(claims: RiderTokenClaims, currentSessionId: string | null): Promise<boolean> {
-  if (!claims.legacy) return !!claims.sid && claims.sid === currentSessionId;
-  // A super-admin "sign out everywhere" bumps currentSessionId; a pointer to a
-  // session the legacy token predates (or to no session row) revokes it too.
+  if (!claims.legacy) {
+    if (!claims.sid) return false;
+    const row = await prisma.userSession.findUnique({ where: { id: claims.sid }, select: { userId: true, revokedAt: true } });
+    return !!row && row.userId === claims.userId && row.revokedAt === null;
+  }
   if (currentSessionId) {
     const cur = await prisma.userSession.findUnique({ where: { id: currentSessionId }, select: { createdAt: true } });
     if (!cur || cur.createdAt.getTime() > claims.iat * 1000) return false;
   }
   const newer = await prisma.userSession.count({
-    where: { userId: claims.userId, createdAt: { gt: new Date(claims.iat * 1000) } },
+    where: {
+      userId: claims.userId,
+      createdAt: { gt: new Date(claims.iat * 1000) },
+      OR: [{ client: null }, { client: { not: 'rider-web' } }],
+    },
   });
   return newer === 0;
 }
@@ -139,7 +158,7 @@ export async function riderTokenActive(claims: RiderTokenClaims, currentSessionI
  * The browser portal holds the SAME v2 rider token in an httpOnly, Secure,
  * SameSite=Lax cookie (set only by /api/rider/web/session*, never readable by
  * JS). It is an alternative transport for the exact same token, so every
- * /api/rider/* route, revocation (sid vs currentSessionId), suspension and
+ * /api/rider/* route, revocation (session row), suspension and
  * deletion check applies unchanged. Precedence: Bearer header > rider cookie >
  * NextAuth session.
  *

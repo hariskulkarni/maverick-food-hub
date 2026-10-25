@@ -344,6 +344,10 @@ model UserSession {
   lastSeenAt    DateTime  @default(now())
   revokedAt     DateTime?
   revokedReason String? // "superseded" | "user_terminated" | "logout"
+  // Rider multi-session (2026-10-25): which rider surface owns this session —
+  // "rider-app" (native app, one phone at a time) or "rider-web" (the /rider
+  // portal). null = NextAuth web login / admin marker rows (single-session).
+  client        String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

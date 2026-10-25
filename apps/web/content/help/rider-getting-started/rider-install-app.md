@@ -45,4 +45,4 @@ The long code it prints must match the checksum on the download card exactly. If
 
 You can also sign in on the web at [flavrly.in/rider](/rider) with the same phone number and code. The portal shows your earnings, lets you request payouts, upload KYC documents, book shifts, take training, read help articles and edit your profile and emergency contacts.
 
-Going online and running deliveries only works in the app, because live GPS tracking is required. Your account has one active sign-in at a time, so signing in on the web signs the app on your phone out. Don't sign in on the web while you're on a delivery.
+Going online and running deliveries only works in the app, because live GPS tracking is required. You can be signed in on the web and in the app at the same time — signing in or out of the web portal never signs the app on your phone out.

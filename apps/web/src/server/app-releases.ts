@@ -7,7 +7,6 @@
  *   - /download/rider-app streams the active stable Android APK (counted);
  *     /api/app/rider/latest answers the app's update check.
  */
-import 'server-only';
 import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';

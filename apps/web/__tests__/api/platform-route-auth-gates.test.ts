@@ -34,6 +34,7 @@ const routes: Array<[string, () => Promise<any>]> = [
   ['settlements', () => import('@/app/api/platform/settlements/route')],
   ['riders/live', () => import('@/app/api/platform/riders/live/route')],
   ['rider-sos', () => import('@/app/api/platform/rider-sos/route')],
+  ['app-releases', () => import('@/app/api/platform/app-releases/route')],
 ];
 
 const req = () => new Request('http://x/api/platform/x') as any;

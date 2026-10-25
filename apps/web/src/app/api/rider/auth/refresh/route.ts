@@ -10,7 +10,7 @@
  */
 import { NextRequest } from 'next/server';
 import { readRiderBearer, signRiderToken, sessionExpiredResponse } from '@/server/rider-auth';
-import { startSession } from '@/server/sessions';
+import { startRiderSession } from '@/server/sessions';
 import { clientIp } from '@/server/http/client-ip';
 import { rateLimit } from '@/server/http/rate-limit';
 
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   if (bearer.kind !== 'valid') return sessionExpiredResponse();
   let sid = bearer.claims.sid;
   if (!sid) {
-    sid = await startSession(bearer.user.id, { userAgent: req.headers.get('user-agent'), ipAddress: clientIp(req.headers) });
+    sid = await startRiderSession(bearer.user.id, 'rider-app', { userAgent: req.headers.get('user-agent'), ipAddress: clientIp(req.headers) });
     if (!sid) return Response.json({ error: 'Could not refresh the session. Please try again.' }, { status: 503 });
   }
   const { token, expiresAt } = signRiderToken(bearer.user.id, sid);

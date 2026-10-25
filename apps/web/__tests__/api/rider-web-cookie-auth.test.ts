@@ -4,12 +4,15 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+type Sess = { id: string; userId: string; client: string | null; createdAt: Date; revokedAt: Date | null; revokedReason?: string | null };
 const m = vi.hoisted(() => ({
   headers: new Headers(),
   cookies: new Map<string, string>(),
   user: null as null | Record<string, unknown>,
   profile: null as null | Record<string, unknown>,
-  revoked: [] as string[],
+  sessions: [] as Sess[],
+  n: 0,
+  profileUpdates: [] as unknown[],
 }));
 
 vi.mock('next/headers', () => ({
@@ -17,18 +20,35 @@ vi.mock('next/headers', () => ({
   cookies: async () => ({ get: (k: string) => (m.cookies.has(k) ? { name: k, value: m.cookies.get(k)! } : undefined) }),
 }));
 vi.mock('@/server/auth', () => ({ auth: async () => ({ user: { id: 'nextauth-user', role: 'CUSTOMER' } }) }));
-vi.mock('@/server/db', () => ({
-  prisma: {
-    user: { findUnique: async () => m.user },
-    userSession: { count: async () => 0, findUnique: async () => null, create: async () => ({}) },
-    riderProfile: { findUnique: async () => m.profile, updateMany: async () => ({ count: 1 }) },
+vi.mock('@/server/db', () => {
+  const matches = (s: Sess, w: Record<string, unknown>) =>
+    Object.entries(w).every(([k, v]) => (s as Record<string, unknown>)[k] === v);
+  const prisma: Record<string, any> = {
+    user: { findUnique: async () => m.user, updateMany: async () => ({ count: 0 }) },
+    userSession: {
+      findUnique: async ({ where }: any) => m.sessions.find((s) => s.id === where.id) ?? null,
+      count: async () => 0,
+      create: async ({ data }: any) => {
+        const s = { id: `sess${++m.n}`, client: null, createdAt: new Date(), revokedAt: null, ...data };
+        m.sessions.push(s);
+        return s;
+      },
+      update: async ({ where, data }: any) => Object.assign(m.sessions.find((s) => s.id === where.id)!, data),
+      updateMany: async ({ where, data }: any) => {
+        const hit = m.sessions.filter((s) => matches(s, where));
+        hit.forEach((s) => Object.assign(s, data));
+        return { count: hit.length };
+      },
+    },
+    riderProfile: {
+      findUnique: async () => m.profile,
+      updateMany: async (args: unknown) => { m.profileUpdates.push(args); return { count: 1 }; },
+    },
     riderHeartbeat: { findUnique: async () => ({ lastSeenAt: new Date('2026-10-25T10:00:00Z') }) },
-  },
-}));
-vi.mock('@/server/sessions', () => ({
-  startSession: async () => 'sid-new',
-  revokeSession: async (sid: string) => { m.revoked.push(sid); },
-}));
+  };
+  prisma.$transaction = async (fn: any) => fn(prisma);
+  return { prisma };
+});
 vi.mock('@/server/audit', () => ({ audit: async () => {} }));
 vi.mock('@/server/http/rate-limit', () => ({ rateLimit: async () => ({ ok: true }) }));
 vi.mock('@/server/otp', () => ({
@@ -42,6 +62,8 @@ import { auth, readRiderBearer, signRiderToken, RIDER_COOKIE, riderCookieRequest
 import { POST as webLogin } from '@/app/api/rider/web/session/route';
 import { POST as webRefresh } from '@/app/api/rider/web/session/refresh/route';
 import { POST as webLogout } from '@/app/api/rider/web/session/logout/route';
+import { POST as appLogin } from '@/app/api/rider/auth/verify-otp/route';
+import { POST as appLogout } from '@/app/api/rider/auth/logout/route';
 import { GET as riderMe } from '@/app/api/rider/me/route';
 
 const HOST = 'flavrly.in';
@@ -70,7 +92,11 @@ beforeEach(() => {
   m.cookies.clear();
   m.user = rider();
   m.profile = null;
-  m.revoked = [];
+  m.sessions = [];
+  m.n = 0;
+  m.profileUpdates = [];
+  // A live session row 's1' (as created by a login) for the default rider.
+  m.sessions.push({ id: 's1', userId: 'r1', client: 'rider-web', createdAt: new Date(), revokedAt: null });
   setReq({});
 });
 
@@ -106,8 +132,9 @@ describe('rider-auth cookie transport', () => {
 
   it('honours revocation, suspension and deletion exactly like the Bearer path', async () => {
     m.cookies.set(RIDER_COOKIE, signRiderToken('r1', 's1').token);
-    m.user = rider({ currentSessionId: 's2' }); // signed in elsewhere / logged out
+    m.sessions[0].revokedAt = new Date(); // logged out / superseded / signed out everywhere
     expect((await readRiderBearer()).kind).toBe('invalid');
+    m.sessions[0].revokedAt = null;
     m.user = rider({ suspendedAt: new Date() });
     expect((await readRiderBearer()).kind).toBe('invalid');
     m.user = rider({ deletedAt: new Date() });
@@ -136,7 +163,7 @@ describe('rider-auth cookie transport', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ online: true, riderType: 'FLEET' });
     // …and a dead cookie gets the app's 401 session_expired.
-    m.user = rider({ currentSessionId: 'other' });
+    m.sessions[0].revokedAt = new Date();
     expect((await riderMe()).status).toBe(401);
   });
 });
@@ -177,7 +204,7 @@ describe('/api/rider/web/session routes', () => {
     const ok = await webRefresh(req('/api/rider/web/session/refresh', { headers: { origin: `https://${HOST}` } }));
     expect(ok.status).toBe(200);
     expect(ok.headers.get('set-cookie')).toContain(`${RIDER_COOKIE}=ey`);
-    m.user = rider({ currentSessionId: 's9' });
+    m.sessions[0].revokedAt = new Date();
     const dead = await webRefresh(req('/api/rider/web/session/refresh', { headers: { origin: `https://${HOST}` } }));
     expect(dead.status).toBe(401);
     expect(dead.headers.get('set-cookie')).toMatch(new RegExp(`${RIDER_COOKIE}=;`));
@@ -188,7 +215,83 @@ describe('/api/rider/web/session routes', () => {
     setReq({ origin: `https://${HOST}` });
     const res = await webLogout();
     expect(res.status).toBe(200);
-    expect(m.revoked).toEqual(['s1']);
+    expect(m.sessions[0].revokedAt).toBeInstanceOf(Date);
     expect(res.headers.get('set-cookie')).toMatch(new RegExp(`${RIDER_COOKIE}=;`));
+  });
+});
+
+describe('rider multi-session: app and web portal coexist', () => {
+  const riderRow = () => ({ id: 'r1', name: 'Ravi', phone: '+919000000001', role: 'RIDER', suspendedAt: null, deletedAt: null, email: null, currentSessionId: null });
+  const live = async (token: string, h: Record<string, string>) => {
+    setReq(h);
+    return (await readRiderBearer()).kind === 'valid';
+  };
+  async function loginApp(): Promise<string> {
+    const res = await appLogin(req('/api/rider/auth/verify-otp', { body: { phone: '+919000000001', code: '123456' } }));
+    expect(res.status).toBe(200);
+    return (await res.json()).token;
+  }
+  async function loginWeb(): Promise<string> {
+    const res = await webLogin(req('/api/rider/web/session', { body: { phone: '+919000000001', code: '123456' }, headers: { origin: `https://${HOST}` } }));
+    expect(res.status).toBe(200);
+    return /flavrly_rider_session=([^;]+)/.exec(res.headers.get('set-cookie') ?? '')![1];
+  }
+  const asApp = (t: string) => ({ authorization: `Bearer ${t}` });
+  const asWeb = (t: string) => { m.cookies.set(RIDER_COOKIE, t); return { 'sec-fetch-site': 'same-origin' }; };
+
+  beforeEach(() => {
+    m.sessions = [];
+    m.user = riderRow();
+  });
+
+  it('signing in on the web does not sign the app out (and vice versa)', async () => {
+    const app = await loginApp();
+    const web = await loginWeb();
+    expect(m.sessions.map((s) => s.client)).toEqual(['rider-app', 'rider-web']);
+    expect(await live(app, asApp(app))).toBe(true);
+    m.cookies.clear();
+    expect(await live(web, asWeb(web))).toBe(true);
+  });
+
+  it('web logout revokes only the web session and never takes the rider offline', async () => {
+    const app = await loginApp();
+    const web = await loginWeb();
+    asWeb(web);
+    setReq({ origin: `https://${HOST}`, 'sec-fetch-site': 'same-origin' });
+    await webLogout();
+    m.cookies.clear();
+    expect(await live(app, asApp(app))).toBe(true);
+    expect(await live(web, asWeb(web))).toBe(false);
+    expect(m.profileUpdates).toHaveLength(0); // isOnline / push token untouched
+  });
+
+  it('app logout revokes only the app session', async () => {
+    const app = await loginApp();
+    const web = await loginWeb();
+    m.cookies.clear();
+    setReq(asApp(app));
+    await appLogout();
+    expect(m.profileUpdates).toHaveLength(1); // app sign-out goes offline + drops push token
+    expect(await live(app, asApp(app))).toBe(false);
+    expect(await live(web, asWeb(web))).toBe(true);
+  });
+
+  it('a new app login supersedes the older app session (one phone) but not the web session', async () => {
+    const app1 = await loginApp();
+    const web = await loginWeb();
+    const app2 = await loginApp();
+    m.cookies.clear();
+    expect(await live(app1, asApp(app1))).toBe(false);
+    expect(await live(app2, asApp(app2))).toBe(true);
+    expect(await live(web, asWeb(web))).toBe(true);
+  });
+
+  it('suspension kills both surfaces', async () => {
+    const app = await loginApp();
+    const web = await loginWeb();
+    m.user = { ...riderRow(), suspendedAt: new Date() };
+    m.cookies.clear();
+    expect(await live(app, asApp(app))).toBe(false);
+    expect(await live(web, asWeb(web))).toBe(false);
   });
 });

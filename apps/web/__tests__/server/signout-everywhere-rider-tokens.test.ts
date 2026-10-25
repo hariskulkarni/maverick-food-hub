@@ -1,6 +1,7 @@
 /**
  * Merge reconciliation: super-admin "Sign out everywhere" must revoke EVERY
- * rider token — v2 tokens (sid === currentSessionId) and legacy pre-sid tokens
+ * rider token — v2 tokens (their UserSession row is revoked; riders may hold an
+ * app AND a web-portal session at once) and legacy pre-sid tokens
  * (rejected only when currentSessionId points at a session newer than the
  * token). Uses the real rider-auth riderTokenActive against an in-memory store.
  */
@@ -17,13 +18,16 @@ const db = vi.hoisted(() => {
     },
     userSession: {
       findUnique: vi.fn(async ({ where }: any) => store.sessions.find((s: any) => s.id === where.id) ?? null),
-      count: vi.fn(async ({ where }: any) => store.sessions.filter((s: any) => s.userId === where.userId && s.createdAt > where.createdAt.gt).length),
+      count: vi.fn(async ({ where }: any) =>
+        store.sessions.filter(
+          (s: any) => s.userId === where.userId && s.createdAt > where.createdAt.gt && (!where.OR || s.client !== 'rider-web'),
+        ).length),
       updateMany: vi.fn(async ({ where, data }: any) => {
         let c = 0;
-        for (const s of store.sessions) if (s.userId === where.userId && s.revokedAt === null) { Object.assign(s, data); c++; }
+        for (const s of store.sessions) if (s.userId === where.userId && s.revokedAt === null && (where.client === undefined || s.client === where.client)) { Object.assign(s, data); c++; }
         return { count: c };
       }),
-      create: vi.fn(async ({ data }: any) => { const s = { id: `s${++store.n}`, ...data }; store.sessions.push(s); return s; }),
+      create: vi.fn(async ({ data }: any) => { const s = { id: `s${++store.n}`, createdAt: new Date(), revokedAt: null, ...data }; store.sessions.push(s); return s; }),
     },
   };
   d.$transaction = vi.fn(async (fn: any) => fn(d));
@@ -37,6 +41,7 @@ vi.mock('@/server/2fa', () => ({ recordLoginSuccess: vi.fn() }));
 
 import { signRiderToken, verifyRiderToken, riderTokenActive } from '@/server/rider-auth';
 import { adminSignOut } from '@/server/platform-user-admin';
+import { startRiderSession } from '@/server/sessions';
 
 const SECRET = 'test-nextauth-secret-0123456789abcdef';
 function legacyToken(userId: string): string {
@@ -90,5 +95,28 @@ describe('sign out everywhere revokes rider tokens', () => {
     expect(store.sessions.every((s: any) => s.revokedAt instanceof Date)).toBe(true);
     const marker = store.sessions.find((s: any) => s.id === store.user.currentSessionId);
     expect(marker.revokedReason).toBe('admin_signout');
+  });
+
+  it('kills a rider app session AND a web-portal session held at the same time', async () => {
+    const appSid = (await startRiderSession('r1', 'rider-app'))!;
+    const webSid = (await startRiderSession('r1', 'rider-web'))!;
+    const app = signRiderToken('r1', appSid).token;
+    const web = signRiderToken('r1', webSid).token;
+    expect(await live(app)).toBe(true);
+    expect(await live(web)).toBe(true);
+    vi.setSystemTime(T0 + 5_000);
+    await adminSignOut(actor, 'r1');
+    expect(await live(app)).toBe(false);
+    expect(await live(web)).toBe(false);
+  });
+
+  it('a legacy app token survives a web-portal login but not a new app login', async () => {
+    const token = legacyToken('r1');
+    vi.setSystemTime(T0 + 1_000);
+    await startRiderSession('r1', 'rider-web');
+    expect(await live(token)).toBe(true);
+    vi.setSystemTime(T0 + 2_000);
+    await startRiderSession('r1', 'rider-app');
+    expect(await live(token)).toBe(false);
   });
 });
