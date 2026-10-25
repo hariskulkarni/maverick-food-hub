@@ -107,27 +107,20 @@ after the pilot.
 retries with fresh signatures. Upstream retries after 5 minutes are rejected as stale, and the
 reconcile sweep recovers those payments by polling status. Check `inboxLagSec` after recovery.
 
-**Dead-lettered inbound event.** Find it with `PgReconException kind=WEBHOOK_DEAD_LETTER`, and read
-`detail.lastError`.
+**Dead-lettered inbound event.** Find it on the platform PG ops page (`/platform/youpi/ops`,
+"Dead letters → Gateway webhooks") or as `PgReconException kind=WEBHOOK_DEAD_LETTER`; read the last error.
 - Unmatched local payment: check the attempt mapping by `orderId`/`paymentId`.
 - Indeterminate: check the gateway status API and credentials.
 
-After fixing the cause, replay with:
+After fixing the cause, click **Requeue…** (`POST /api/platform/youpi/dead-letters {type:'webhook'}`,
+`requeueDeadWebhook` in `pg/inbox.ts`): clears `deadLetteredAt`, resets `attempts`, due now, resolves the
+exception, appends `WEBHOOK_REQUEUED`, audited. Refused for a body already redacted by retention. Safe
+because processing is idempotent and never trusts the body's status. No hand-written SQL.
 
-```sql
-UPDATE "PaymentWebhookEvent" SET "deadLetteredAt" = NULL, "attempts" = 0, "nextAttemptAt" = timezone('utc', now()) WHERE id = '<id>';
-```
-
-Then resolve the exception. Replay is safe because processing is idempotent and never trusts the
-body's status.
-
-**Dead-lettered outbox row (for example ORDER_RELEASE).** Fix the handler or wire the topic, then:
-
-```sql
-UPDATE "PgOutbox" SET status = 'PENDING', attempts = 0, "nextAttemptAt" = timezone('utc', now()) WHERE id = '<id>';
-```
-
-Handlers are idempotent; ORDER_RELEASE is a no-op unless the order is still PAYMENT_PENDING.
+**Dead-lettered outbox row (for example ORDER_RELEASE).** Fix the handler or wire the topic, then
+**Requeue…** under "Dead letters → Outbox" (`requeueDeadOutbox` in `pg/outbox.ts`): DEAD -> PENDING,
+attempts 0, exception resolved, `OUTBOX_REQUEUED` appended, audited. Handlers are idempotent;
+ORDER_RELEASE is a no-op unless the order is still PAYMENT_PENDING and the money CAPTURED.
 
 **Worker stuck or lease held.** A `PgJobLease` row expires on its own (2 minutes per stage,
 5 minutes for the sweep). Delete it only if the holder process is confirmed dead.
@@ -149,3 +142,18 @@ endpoint, so update the gateway and Flavrly together.
   integration the lead adds `recordObservation({...webhookObservation(ev), paymentId})` from
   `pg/reconcile-engine.ts`.
 - No outbox handlers are registered yet (`pg/outbox-handlers.ts`).
+
+## 8. Round-2 recovery behaviour (money-r2, tested in `tests/db/r2-money.test.ts`, `tests/db/r2-ops.test.ts`)
+
+| Situation | What happens now | Where |
+|---|---|---|
+| Customer retries after the attempt expired / failed | The new attempt is created in the same transaction that moves the order PAYMENT_FAILED -> PAYMENT_PENDING; its credit is ORDER_PAYMENT. Refused if a benefit was already given back (BENEFITS_RELEASED). PG prepay orders keep coupon/wallet/points/bonus/freebie held through PAYMENT_FAILED. | `createPgAttempt`, `pg/order-state.ts` |
+| Checkout refusal knowable before the order exists (₹0 total, no binding, amount/daily/pending/velocity cap, non-INR, checkout origin) | `placeOrder` refuses with 409 before the order transaction; nothing is consumed. | `precheckPgAttempt`, `orders.ts` |
+| Order committed but no live attempt (create rejected/unknown-then-failed, voided, gateway FAILED) | pg-worker stage `orders`: PAYMENT_FAILED after 30 min; gateway FAILED does it at once; PAYMENT_FAILED untouched 24 h -> cancelled with benefits restored. | `sweepUnpaidPgOrders`, `payments/youpi-reconcile.ts` |
+| Create timed out but the gateway made the session | Re-probed every 90 s; the checkout URL is kept (readback failure) or recovered by re-posting the same attemptKey (gateway de-duplicates), so the customer can reuse it. | `resolveUnknownAttempt`, `expireStaleAttempts` |
+| Session window passed but the gateway still reports it live | Not expired until `expiresAt + 2 h`; then expired (a later payment is LATE_PAYMENT). | `expireStaleAttempts` |
+| Gateway-dead session (FAILED/EXPIRED) with no observation | Daily-cap reservation released. | `youpi-reconcile.ts`, `resolveUnknownAttempt`, expiry |
+| Order cancelled while a session is open | Open attempts CANCELLED, Payment FAILED; status page says "order cancelled, do not pay"; a later credit is LATE_PAYMENT. | `settlePgOrderOnCancel` |
+| Capture more than 90 min after placement | Held for restaurant confirmation (RELEASE_HELD); never auto-accepted. | `handleOrderRelease`, `decideHeldRelease` |
+
+The customer `SMS: awaiting payment verification` is sent only after a payment session was opened.
