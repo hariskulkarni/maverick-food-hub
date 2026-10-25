@@ -8,8 +8,9 @@ const db: any = vi.hoisted(() => ({
   order: { findUnique: vi.fn() },
   payment: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn(), count: vi.fn() },
   refund: { findMany: vi.fn() },
-  $queryRaw: vi.fn(),
 }));
+const lease = vi.hoisted(() => ({ acquireJobLease: vi.fn(async () => 'tok1'), releaseJobLease: vi.fn(async () => {}) }));
+vi.mock('@/server/jobs/lease', () => lease);
 const payments = vi.hoisted(() => ({ paymentProvider: vi.fn() }));
 const reconcile = vi.hoisted(() => ({
   reconcilePhonePePayment: vi.fn(),
@@ -58,7 +59,7 @@ beforeEach(() => {
   db.payment.create.mockImplementation(async ({ data }: any) => ({ id: 'pay_new', ...data }));
   db.payment.update.mockResolvedValue({});
   db.payment.count.mockResolvedValue(0);
-  db.$queryRaw.mockResolvedValue([{ locked: true }]); // H15 advisory lock acquired
+  lease.acquireJobLease.mockResolvedValue('tok1'); // overlap-guard lease acquired
   payments.paymentProvider.mockResolvedValue({ name: 'phonepe', createOrder: vi.fn().mockResolvedValue(providerOrder) });
 });
 

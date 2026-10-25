@@ -4005,3 +4005,15 @@ model OnboardingProgress {
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 }
+
+// ---- F9 (platform-auth r3): job overlap-guard leases ----
+// One row per scheduled job. A run claims the lease until `expiresAt`; a
+// crashed run's lease just expires. Replaces session advisory locks, which on
+// pooled connections could be released on a different connection (no-op) and
+// stay held by the pooled one. See src/server/jobs/lease.ts.
+model JobLease {
+  name      String   @id
+  holder    String
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+}

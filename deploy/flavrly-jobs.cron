@@ -49,3 +49,11 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 */5 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 60 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/review-requests/run >> /var/log/restaurant-manager/jobs.log 2>&1
 # Google reviews weekly digest to restaurant owners — Mondays 09:00 IST.
 0 9 * * 1 deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 300 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/review-digest/run >> /var/log/restaurant-manager/jobs.log 2>&1
+
+# Stale rider heartbeats → offline, so the allocator never assigns a rider whose
+# app died (route docs: 1-minute cron).
+* * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 50 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/rider-heartbeat/sweep >> /var/log/restaurant-manager/jobs.log 2>&1
+
+# Stuck-order detector → live-ops escalations (route docs: 1-minute cron; the
+# dashboard "Scan now" button stays as a manual trigger).
+* * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 50 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/escalations/scan >> /var/log/restaurant-manager/jobs.log 2>&1
