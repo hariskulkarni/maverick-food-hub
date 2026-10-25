@@ -20,6 +20,7 @@ import { Role } from '@prisma/client';
 import { createReservation, confirmReservation, attachDepositOrder } from '@/server/reservations';
 import { paymentProvider } from '@/server/payments';
 import { log } from '@/server/log';
+import { brand } from '@/lib/brand';
 import { resolveBranchForSlug, serializeReservation } from './_helpers';
 
 export const runtime = 'nodejs';
@@ -164,6 +165,11 @@ export async function POST(
       amount: depositAmount,
       currency: 'INR',
       customer: { name: customer?.name, phone: customer?.phone, email: customer?.email },
+      restaurantId: branch.restaurantId,
+      branchId: branch.branchId,
+      // P1-11: PhonePe returns the browser here (not the order return route, which only knows
+      // order Payments). The reserve page then asks /confirm-deposit, which verifies by status API.
+      redirectUrl: `${(brand.url || '').replace(/\/+$/, '')}/r/${encodeURIComponent(slug)}/reserve?depositFor=${encodeURIComponent(created.id)}`,
     });
     await attachDepositOrder(created.id, providerOrder.providerOrderId);
   } catch (e) {
@@ -187,6 +193,9 @@ export async function POST(
         amount: providerOrder.amount,
         currency: providerOrder.currency,
         publicKey: providerOrder.publicKey ?? null,
+        // PhonePe: PayPage token URL + mercury bundle (iframe, with redirect fallback).
+        redirectUrl: providerOrder.redirectUrl ?? null,
+        checkoutScriptUrl: providerOrder.checkoutScriptUrl ?? null,
       },
     },
     { status: 201 }
