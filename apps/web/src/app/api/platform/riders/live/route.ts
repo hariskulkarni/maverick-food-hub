@@ -1,62 +1,32 @@
-import { requireSuperAdminApi } from '@/server/api-auth';
-import { prisma } from '@/server/db';
+import { requireCapabilityApi } from '@/server/api-auth';
+import { loadFleetSnapshot } from '@/server/live-fleet';
 
 /**
  * GET /api/platform/riders/live
  *
- * Super-admin only. Returns every rider currently `isOnline` with their latest
- * stored GPS position, so the /platform/live map can plot the whole fleet and
- * keep it fresh by polling — independent of the SSE firehose.
+ * The 4 s poll behind /platform/live. Returns exactly what the page's first
+ * paint uses (server/live-fleet.ts): every online rider plus anyone still
+ * working an active order, each with
+ *   - `at`      the real GPS-fix time of the plotted position,
+ *   - `seenAt`  the last time the app was heard from, and `stale` when that is
+ *               older than the auto-offline window ("signal lost"),
+ *   - `status`  the leg they are on (IDLE / PENDING / ACCEPTED / PICKED_UP),
+ *               `orderId`, `activeOrders` and the leg's destination for ETA.
+ * Plus `customers`: drop pins for those orders.
  *
- * `lastSeenAt` is the freshest signal we have for the rider: the GPS-fix time
- * (RiderHeartbeat.lastLocationAt) if the location stream is running, else the
- * heartbeat time, else when the profile row was last written.
+ * Gated by the same `ops:read` capability as the page (delegated platform
+ * roles that can open the page no longer get a frozen map). Rider phone
+ * numbers are not included — the map never shows them; the rider panel loads
+ * contact details through its own endpoint.
  */
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const gate = await requireSuperAdminApi();
+  const gate = await requireCapabilityApi('ops:read');
   if (gate instanceof Response) return gate;
 
-  const riders = await prisma.riderProfile.findMany({
-    where: { isOnline: true },
-    select: {
-      id: true,
-      currentLat: true,
-      currentLng: true,
-      riderType: true,
-      currentLoad: true,
-      updatedAt: true,
-      user: { select: { name: true, phone: true } }
-    }
-  });
-
-  // Heartbeats carry the most accurate "last GPS fix" / "last seen" times.
-  const heartbeats = await prisma.riderHeartbeat.findMany({
-    where: { riderId: { in: riders.map((r) => r.id) } },
-    select: { riderId: true, lastSeenAt: true, lastLocationAt: true }
-  });
-  const hbById = new Map(heartbeats.map((h) => [h.riderId, h]));
-
-  const result = riders
-    // Only riders with a real stored position can be plotted precisely.
-    .filter((r) => r.currentLat != null && r.currentLng != null)
-    .map((r) => {
-      const hb = hbById.get(r.id);
-      const lastSeenAt = (hb?.lastLocationAt ?? hb?.lastSeenAt ?? r.updatedAt).toISOString();
-      return {
-        id: r.id,
-        name: r.user?.name ?? 'Rider',
-        phone: r.user?.phone ?? null,
-        lat: r.currentLat!,
-        lng: r.currentLng!,
-        lastSeenAt,
-        riderType: r.riderType,
-        currentLoad: r.currentLoad
-      };
-    });
-
-  return Response.json({ riders: result });
+  const snapshot = await loadFleetSnapshot();
+  return Response.json(snapshot, { headers: { 'Cache-Control': 'no-store' } });
 }

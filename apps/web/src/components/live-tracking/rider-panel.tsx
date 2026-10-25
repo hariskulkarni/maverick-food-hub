@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { computeEta, formatEta } from '@/server/eta';
+import { formatAgo } from '@/lib/live-fleet';
 import { ReassignModal } from './reassign-modal';
 
 export interface RiderPanelRider {
@@ -22,6 +23,15 @@ export interface RiderPanelRider {
   name: string;
   lat: number;
   lng: number;
+  /** ISO time of the plotted GPS fix. */
+  at?: string;
+  /** ISO time the rider app was last heard from. */
+  seenAt?: string;
+  /** No contact for longer than the auto-offline window. */
+  stale?: boolean;
+  /** Current leg — the active-order card refetches when it changes. */
+  status?: string;
+  orderId?: string;
 }
 
 interface Props {
@@ -74,7 +84,9 @@ export function RiderPanel({ rider, isSuperAdmin, trailVisible, onToggleTrail, o
       .then((data) => { if (!cancelled) setActive(data); })
       .catch((e) => { if (!cancelled) setError(String(e.message ?? e)); });
     return () => { cancelled = true; };
-  }, [rider.riderId]);
+    // Refetch when the rider's leg or order changes (accepted → picked up →
+    // delivered), not only when a different rider is selected.
+  }, [rider.riderId, rider.status, rider.orderId]);
 
   // Fetch trail pings
   useEffect(() => {
@@ -120,8 +132,12 @@ export function RiderPanel({ rider, isSuperAdmin, trailVisible, onToggleTrail, o
           <div className="min-w-0">
             <div className="font-semibold truncate flex items-center gap-2">
               {rider.name}
-              <span className="inline-block size-2 rounded-full bg-success" title="Online" />
+              <span
+                className={`inline-block size-2 rounded-full ${rider.stale ? 'bg-muted-foreground' : 'bg-success'}`}
+                title={rider.stale ? 'Signal lost' : 'Online'}
+              />
             </div>
+            <LastFix at={rider.at} seenAt={rider.seenAt} stale={rider.stale} />
             {active && (
               <div className="text-xs text-muted-foreground truncate">
                 {active.rider.vehicleType}{active.rider.vehicleNumber ? ` · ${active.rider.vehicleNumber}` : ''}
@@ -232,6 +248,21 @@ export function RiderPanel({ rider, isSuperAdmin, trailVisible, onToggleTrail, o
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** "GPS fix 12s ago" — ticks every second so the age is always honest. */
+function LastFix({ at, seenAt, stale }: { at?: string; seenAt?: string; stale?: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(t);
+  }, []);
+  if (!at) return null;
+  return (
+    <div className={`text-[11px] ${stale ? 'text-warning' : 'text-muted-foreground'}`} aria-live="polite">
+      {stale ? `Signal lost · last heard ${formatAgo(seenAt ?? at, now)}` : `GPS fix ${formatAgo(at, now)}`}
     </div>
   );
 }

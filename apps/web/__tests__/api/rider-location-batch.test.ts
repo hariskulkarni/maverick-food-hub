@@ -165,6 +165,34 @@ describe('/api/rider/location', () => {
     expect(heartbeats[1].update.lastLocationAt).toBeInstanceOf(Date);
   });
 
+  it('stamps lastLocationAt with the live fix time, written together with the stored position', async () => {
+    const POST = await freshRoute();
+    const now = Date.now();
+    await POST(req({ lat: 12.9, lng: 77.5, orderId: 'o1', recordedAt: now - 20_000, sentAt: now }));
+    await flush();
+    expect(profileUpdates).toHaveLength(1);
+    expect(profileUpdates[0].data).toEqual({ currentLat: 12.9, currentLng: 77.5 });
+    // The live map shows "last fix" from this — it must be when the fix was
+    // taken, not when the request arrived.
+    expect(heartbeats[0].update.lastLocationAt.getTime()).toBe(now - 20_000);
+  });
+
+  it('does not advance lastLocationAt when the live point itself was not stored', async () => {
+    const POST = await freshRoute();
+    const now = Date.now();
+    // Oldest point is stored; the newest (live) one is within the 3 s trail
+    // spacing, so RiderProfile.currentLat/Lng is NOT updated — the fix time
+    // must not move either, or the poll would pair an old position with a new time.
+    await POST(req({ points: [
+      { lat: 12.9, lng: 77.5, orderId: 'o1', recordedAt: now - 2_500 },
+      { lat: 12.91, lng: 77.51, orderId: 'o1', recordedAt: now - 1_000 }
+    ], sentAt: now }));
+    await flush();
+    expect(profileUpdates).toHaveLength(0);
+    expect(heartbeats[0].update.lastLocationAt).toBeUndefined();
+    expect(heartbeats[0].update.lastSeenAt).toBeInstanceOf(Date);
+  });
+
   it('omits orderActive for untagged fleet pings', async () => {
     const POST = await freshRoute();
     const body = await (await POST(req({ lat: 12.9, lng: 77.5 }))).json();

@@ -2,17 +2,19 @@
 /**
  * Platform live-tracking client surface. Wraps <LiveRiderFleetMap/> with the
  * filter chip row + the live stat strip. Stat counts re-derive on every SSE
- * tick because the fleet map calls back into us with the freshest positions.
+ * frame / poll (the fleet map calls back with the freshest positions) and on
+ * a 5 s clock, so "signal lost" and ETAs age correctly between updates.
+ * All counting lives in lib/live-fleet.ts (computeFleetStats).
  *
  * Filters:
- *   - Status: All / Idle / On-delivery / Awaiting-pickup
+ *   - Status: All / Idle / Awaiting pickup / On delivery / Signal lost
  *   - Branch: dropdown narrows to a single branch (server-page passes list)
  *   - Visible layers: 🍽️ branches, 🏠 customers, breadcrumb trails
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Bike, Truck, Activity, Package, Timer } from 'lucide-react';
+import { Bike, Truck, Activity, Timer, WifiOff } from 'lucide-react';
 // Use the SSR-safe loader — Leaflet touches `window` at import time, which
 // crashes /admin/live and /platform/live during server render.
 import {
@@ -24,16 +26,13 @@ import {
   type VisibleLayers
 } from '@/components/live-rider-fleet-map-loader';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { computeEta } from '@/server/eta';
-
-interface Destination { riderId: string; lat: number; lng: number }
+import { computeFleetStats } from '@/lib/live-fleet';
 
 interface Props {
+  /** Server snapshot (server/live-fleet.ts): real fix times, leg + destination per rider. */
   initial: RiderPosition[];
   branches: BranchPin[];
   customers: CustomerPin[];
-  /** rider → drop point (used to derive avg ETA live) */
-  destinations: Destination[];
   isSuperAdmin?: boolean;
   channel?: string;
   /** Whether to render the branch dropdown. Hidden on the admin page since
@@ -48,15 +47,23 @@ interface Props {
 const STATUS_TABS: { id: StatusFilter; label: string }[] = [
   { id: 'ALL', label: 'All' },
   { id: 'IDLE', label: 'Idle' },
+  { id: 'AWAITING_PICKUP', label: 'Awaiting pickup' },
   { id: 'ON_DELIVERY', label: 'On delivery' },
-  { id: 'AWAITING_PICKUP', label: 'Awaiting pickup' }
+  { id: 'SIGNAL_LOST', label: 'Signal lost' }
 ];
 
-export function LivePlatformClient({ initial, branches, customers, destinations, isSuperAdmin = true, channel = 'platform:riders', showBranchFilter = true, pollUrl }: Props) {
+export function LivePlatformClient({ initial, branches, customers: initialCustomers, isSuperAdmin = true, channel = 'platform:riders', showBranchFilter = true, pollUrl }: Props) {
   const [status, setStatus] = useState<StatusFilter>('ALL');
   const [branchId, setBranchId] = useState<string>('');
   const [layers, setLayers] = useState<VisibleLayers>({ branches: true, customers: false, trails: false });
   const [positions, setPositions] = useState<RiderPosition[]>(initial);
+  const [customers, setCustomers] = useState<CustomerPin[]>(initialCustomers);
+  // Clock for time-based stats ("signal lost", ETA) between data updates.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(t);
+  }, []);
 
   // Branch filter narrows pins (rider home base or destination) — for the demo
   // we simply scope `branches` shown on the map; rider scoping happens server-side
@@ -66,43 +73,28 @@ export function LivePlatformClient({ initial, branches, customers, destinations,
     [branches, branchId]
   );
 
-  const stats = useMemo(() => {
-    let online = 0, onDelivery = 0, awaitingPickup = 0;
-    for (const p of positions) {
-      online++;
-      if (p.status === 'PICKED_UP' || p.status === 'ACCEPTED') onDelivery++;
-      else if (p.status === 'PENDING') awaitingPickup++;
-    }
-    const destMap = new Map(destinations.map((d) => [d.riderId, d]));
-    const etas: number[] = [];
-    for (const p of positions) {
-      const d = destMap.get(p.riderId);
-      if (!d) continue;
-      const m = computeEta({ lat: p.lat, lng: p.lng }, { lat: d.lat, lng: d.lng });
-      if (m != null) etas.push(m);
-    }
-    const avgEta = etas.length ? Math.round(etas.reduce((a, b) => a + b, 0) / etas.length) : null;
-    return { online, onDelivery, awaitingPickup, avgEta };
-  }, [positions, destinations]);
+  const stats = useMemo(() => computeFleetStats(positions, now), [positions, now]);
 
   return (
     <div className="space-y-4">
       {/* Stat strip */}
-      <div className="grid gap-3 md:grid-cols-4">
-        <StatChip icon={Bike}     label="Online"           value={stats.online}                 tone="success" />
-        <StatChip icon={Truck}    label="On delivery"      value={stats.onDelivery}             tone="primary" />
-        <StatChip icon={Activity} label="Awaiting pickup"  value={stats.awaitingPickup}         tone="warning" />
-        <StatChip icon={Timer}    label="Avg ETA"          value={stats.avgEta != null ? `${stats.avgEta} min` : '—'} tone="primary" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <StatChip icon={Bike}     label="Online"           value={stats.online}                 tone="success" hint="App heard from in the last 2 min" />
+        <StatChip icon={Activity} label="Awaiting pickup"  value={stats.headingToPickup}        tone="warning" hint="Heading to the restaurant, or offer not yet accepted" />
+        <StatChip icon={Truck}    label="On delivery"      value={stats.onDelivery}             tone="primary" hint="Food picked up, heading to the customer" />
+        <StatChip icon={WifiOff}  label="Signal lost"      value={stats.signalLost}             tone="muted"   hint="No contact from the rider app for over 2 min" />
+        <StatChip icon={Timer}    label="Avg ETA"          value={stats.avgEta != null ? `${stats.avgEta} min` : '—'} tone="primary" hint="To the end of each rider's current leg" />
       </div>
 
       {/* Filter chips row */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card px-3 py-2.5">
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Filter riders by status">
           {STATUS_TABS.map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => setStatus(t.id)}
+              aria-pressed={status === t.id}
               className={
                 'rounded-full px-3 py-1 text-xs font-medium transition-colors ' +
                 (status === t.id ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/70 text-muted-foreground')
@@ -159,6 +151,7 @@ export function LivePlatformClient({ initial, branches, customers, destinations,
             isSuperAdmin={isSuperAdmin}
             pollUrl={pollUrl}
             onPositionsChange={setPositions}
+            onCustomersChange={setCustomers}
           />
         </CardContent>
       </Card>
@@ -166,10 +159,15 @@ export function LivePlatformClient({ initial, branches, customers, destinations,
   );
 }
 
-function StatChip({ icon: Icon, label, value, tone }: { icon: any; label: string; value: number | string; tone: 'primary' | 'success' | 'warning' }) {
-  const cls = { primary: 'bg-primary/10 text-primary border-primary/30', success: 'bg-success/10 text-success border-success/30', warning: 'bg-warning/10 text-warning border-warning/30' }[tone];
+function StatChip({ icon: Icon, label, value, tone, hint }: { icon: any; label: string; value: number | string; tone: 'primary' | 'success' | 'warning' | 'muted'; hint?: string }) {
+  const cls = {
+    primary: 'bg-primary/10 text-primary border-primary/30',
+    success: 'bg-success/10 text-success border-success/30',
+    warning: 'bg-warning/10 text-warning border-warning/30',
+    muted: 'bg-muted text-muted-foreground border-border'
+  }[tone];
   return (
-    <div className={`flex items-center gap-3 rounded-xl border p-3 ${cls}`}>
+    <div className={`flex items-center gap-3 rounded-xl border p-3 ${cls}`} title={hint}>
       <Icon className="size-5 shrink-0" />
       <div>
         <div className="text-[10px] uppercase tracking-wider opacity-70">{label}</div>

@@ -2,6 +2,7 @@ import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
 import { resolveGroupContext } from '@/server/group-scope';
 import { LivePlatformClient } from '@/components/live-tracking/live-platform-client';
+import { loadFleetSnapshot } from '@/server/live-fleet';
 import { Radio } from 'lucide-react';
 
 export const metadata = { title: 'Admin · Live tracking' };
@@ -33,36 +34,11 @@ export default async function AdminLivePage() {
   });
   const branchIds = branches.map((b) => b.id);
 
-  const assignments = await prisma.riderAssignment.findMany({
-    where: {
-      status: { in: ['PENDING', 'ACCEPTED', 'PICKED_UP'] },
-      order: { branchId: { in: branchIds } }
-    },
-    include: {
-      rider: { include: { user: { select: { name: true } } } },
-      order: {
-        select: {
-          id: true,
-          code: true,
-          customer: { select: { id: true, name: true } },
-          address: { select: { id: true, latitude: true, longitude: true } },
-          branch: { select: { id: true, latitude: true, longitude: true } }
-        }
-      }
-    }
-  });
-
-  const initial = assignments
-    .filter((a) => a.rider.currentLat != null && a.rider.currentLng != null)
-    .map((a) => ({
-      riderId: a.rider.id,
-      lat: a.rider.currentLat!,
-      lng: a.rider.currentLng!,
-      orderId: a.orderId,
-      at: new Date().toISOString(),
-      name: a.rider.user?.name ?? 'Rider',
-      status: a.status as 'PENDING' | 'ACCEPTED' | 'PICKED_UP'
-    }));
+  // Riders working this restaurant's (or group's) orders, with real GPS-fix
+  // times, "signal lost" and their current leg — the same derivation as the
+  // platform map (server/live-fleet.ts). Assignments are scoped to these
+  // branches, so other restaurants' orders never show here.
+  const snapshot = await loadFleetSnapshot({ branchIds });
 
   const branchPins = branches
     .filter((b) => b.latitude != null && b.longitude != null)
@@ -74,30 +50,6 @@ export default async function AdminLivePage() {
       lat: b.latitude!,
       lng: b.longitude!
     }));
-
-  const customers: { id: string; name?: string; lat: number; lng: number }[] = [];
-  const destinations: { riderId: string; lat: number; lng: number }[] = [];
-  for (const a of assignments) {
-    const isPickedUp = a.status === 'PICKED_UP';
-    const dropLat = a.order.address?.latitude;
-    const dropLng = a.order.address?.longitude;
-    const branchLat = a.order.branch.latitude;
-    const branchLng = a.order.branch.longitude;
-    const dest = isPickedUp && dropLat != null && dropLng != null
-      ? { lat: dropLat, lng: dropLng }
-      : branchLat != null && branchLng != null
-        ? { lat: branchLat, lng: branchLng }
-        : null;
-    if (dest) destinations.push({ riderId: a.riderId, ...dest });
-    if (dropLat != null && dropLng != null) {
-      customers.push({
-        id: a.order.id,
-        name: a.order.customer?.name ?? 'Customer',
-        lat: dropLat,
-        lng: dropLng
-      });
-    }
-  }
 
   // Pick the most active branch's channel — for multi-branch restaurants we
   // would ideally subscribe to *all* of them; for now use the first which is
@@ -118,10 +70,9 @@ export default async function AdminLivePage() {
       </header>
 
       <LivePlatformClient
-        initial={initial}
+        initial={snapshot.riders}
         branches={branchPins}
-        customers={customers}
-        destinations={destinations}
+        customers={snapshot.customers}
         isSuperAdmin={false}
         channel={channel}
         showBranchFilter={false}

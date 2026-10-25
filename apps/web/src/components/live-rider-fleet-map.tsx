@@ -6,9 +6,12 @@
  *   channel="platform:riders"             →  super-admin firehose
  *   channel={`branch:${branchId}:riders`} →  restaurant ops view
  *
- * Rider rows are kept in a Map<riderId, { lat, lng, at }>. Stale entries
- * (> 60s old) auto-fade out so the view doesn't show riders who've gone
- * offline.
+ * Rider rows are kept in a Map<riderId, FleetRider>. Every row carries the
+ * real GPS-fix time (`at`) and the last time the app was heard from
+ * (`seenAt`); riders silent for longer than the auto-offline window are drawn
+ * grey ("signal lost") instead of looking live. With `pollUrl` the poll is the
+ * authority on who is on the map and what leg they are on; SSE only moves
+ * known pins forward in time.
  *
  * Interactive surface:
  *   - clicking a pin opens a 360px <RiderPanel/> over the map
@@ -22,18 +25,13 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSSE } from '@/hooks/use-sse';
 import { RiderPanel } from '@/components/live-tracking/rider-panel';
+import { isStale, mergePolled, mergeSse, type FleetRider } from '@/lib/live-fleet';
 
-export interface RiderPosition {
-  riderId: string;
-  lat: number;
-  lng: number;
-  speedKph?: number;
-  orderId?: string;
-  at: string;
-  name?: string;
-  /** workflow-status — derived server-side from RiderAssignment.status */
-  status?: 'IDLE' | 'PENDING' | 'ACCEPTED' | 'PICKED_UP';
-}
+/** A rider pin. Workflow status / leg are derived server-side (lib/live-fleet.ts). */
+export type RiderPosition = FleetRider;
+
+/** Without a poll (restaurant view) a rider silent this long leaves the map. */
+const NO_POLL_DROP_MS = 10 * 60 * 1000;
 
 export interface BranchPin {
   id: string;
@@ -49,7 +47,7 @@ export interface CustomerPin {
   lng: number;
 }
 
-export type StatusFilter = 'ALL' | 'IDLE' | 'ON_DELIVERY' | 'AWAITING_PICKUP';
+export type StatusFilter = 'ALL' | 'IDLE' | 'ON_DELIVERY' | 'AWAITING_PICKUP' | 'SIGNAL_LOST';
 
 export interface VisibleLayers {
   branches: boolean;
@@ -82,16 +80,25 @@ interface Props {
   pollUrl?: string;
   /** Fires whenever the live position map mutates. */
   onPositionsChange?: (positions: RiderPosition[]) => void;
+  /** Fires with the drop pins from each poll (orders the fleet is working). */
+  onCustomersChange?: (customers: CustomerPin[]) => void;
 }
 
-function riderIcon(name?: string, selected = false) {
-  const label = (name ?? '').split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase() || '🛵';
-  const ring = selected ? 'box-shadow:0 0 0 4px #fbbf24,0 4px 10px rgba(22,163,74,.45)' : 'box-shadow:0 4px 10px rgba(22,163,74,.45)';
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+}
+
+function riderIcon(name?: string, selected = false, stale = false) {
+  const label = escapeHtml((name ?? '').split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase() || '🛵');
+  const bg = stale ? '#9ca3af' : '#16a34a';
+  const glow = stale ? 'rgba(107,114,128,.35)' : 'rgba(22,163,74,.45)';
+  const ring = selected ? `box-shadow:0 0 0 4px #fbbf24,0 4px 10px ${glow}` : `box-shadow:0 4px 10px ${glow}`;
+  const caption = name ? escapeHtml(name) + (stale ? ' · signal lost' : '') : stale ? 'signal lost' : '';
   return L.divIcon({
     html: `
-      <div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer">
-        <div style="font-size:14px;display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#16a34a;color:white;font-weight:700;${ring};border:2px solid white">${label}</div>
-        ${name ? `<div style="background:rgba(255,255,255,0.95);border-radius:6px;padding:1px 6px;font-size:10px;font-weight:600;color:#1f2937;box-shadow:0 1px 3px rgba(0,0,0,.15);white-space:nowrap">${name}</div>` : ''}
+      <div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;${stale ? 'opacity:.75' : ''}">
+        <div style="font-size:14px;display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:${bg};color:white;font-weight:700;${ring};border:2px solid white">${label}</div>
+        ${caption ? `<div style="background:rgba(255,255,255,0.95);border-radius:6px;padding:1px 6px;font-size:10px;font-weight:600;color:#1f2937;box-shadow:0 1px 3px rgba(0,0,0,.15);white-space:nowrap">${caption}</div>` : ''}
       </div>
     `,
     className: '',
@@ -133,12 +140,15 @@ function animateMarker(marker: L.Marker, target: { lat: number; lng: number }, m
   requestAnimationFrame(step);
 }
 
-function matchesStatus(pos: RiderPosition, filter: StatusFilter): boolean {
+export function matchesStatus(pos: RiderPosition, filter: StatusFilter): boolean {
   if (filter === 'ALL') return true;
   const s = pos.status ?? 'IDLE';
   if (filter === 'IDLE') return s === 'IDLE';
-  if (filter === 'ON_DELIVERY') return s === 'PICKED_UP' || s === 'ACCEPTED';
-  if (filter === 'AWAITING_PICKUP') return s === 'PENDING';
+  // "On delivery" = has the food; "Awaiting pickup" = heading to the restaurant
+  // (accepted) or an offer still waiting for the rider to accept.
+  if (filter === 'ON_DELIVERY') return s === 'PICKED_UP';
+  if (filter === 'AWAITING_PICKUP') return s === 'ACCEPTED' || s === 'PENDING';
+  if (filter === 'SIGNAL_LOST') return Boolean(pos.stale);
   return true;
 }
 
@@ -153,7 +163,8 @@ export function LiveRiderFleetMap({
   visibleLayers = { branches: true, customers: false, trails: false },
   isSuperAdmin = false,
   pollUrl,
-  onPositionsChange
+  onPositionsChange,
+  onCustomersChange
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -194,7 +205,7 @@ export function LiveRiderFleetMap({
     // Seed initial markers
     for (const p of initial) {
       if (!matchesStatus(p, statusFilter)) continue;
-      const m = L.marker([p.lat, p.lng], { icon: riderIcon(p.name) }).addTo(map);
+      const m = L.marker([p.lat, p.lng], { icon: riderIcon(p.name, false, p.stale) }).addTo(map);
       m.on('click', () => setSelectedId(p.riderId));
       markers.current.set(p.riderId, m);
     }
@@ -272,25 +283,40 @@ export function LiveRiderFleetMap({
   useEffect(() => {
     for (const [id, m] of markers.current) {
       const pos = positions.current.get(id);
-      m.setIcon(riderIcon(pos?.name, id === selectedId));
+      m.setIcon(riderIcon(pos?.name, id === selectedId, pos?.stale));
     }
   }, [selectedId]);
 
-  // Stale-rider sweep — fade out anyone we haven't heard from in 60s.
-  // Skipped when `pollUrl` is set: in that mode the REST poll is the
-  // authority on who's online and does its own pruning, so a sweep here
-  // would just fight it (remove → poll re-adds → flicker).
+  // Signal sweep (every 5 s): a rider whose app has been silent longer than
+  // the auto-offline window turns grey ("signal lost") instead of looking
+  // live. Without a poll (restaurant view) nobody else prunes, so riders silent
+  // for NO_POLL_DROP_MS leave the map; with a poll, membership is the poll's job.
   useEffect(() => {
-    if (pollUrl) return;
     const t = setInterval(() => {
       const now = Date.now();
+      const map = mapRef.current;
       let changed = false;
-      for (const [id, p] of positions.current) {
-        if (now - new Date(p.at).getTime() > 60_000) {
+      for (const [id, p] of Array.from(positions.current)) {
+        const seen = p.seenAt ?? p.at;
+        if (!pollUrl && now - new Date(seen).getTime() > NO_POLL_DROP_MS) {
           markers.current.get(id)?.remove();
           markers.current.delete(id);
           positions.current.delete(id);
-          if (id === selectedId) setSelectedId(null);
+          if (id === selectedIdRef.current) setSelectedId(null);
+          changed = true;
+          continue;
+        }
+        const stale = isStale(seen, now);
+        if (stale !== Boolean(p.stale)) {
+          const next = { ...p, stale };
+          positions.current.set(id, next);
+          const m = markers.current.get(id);
+          if (m) {
+            m.setIcon(riderIcon(next.name, id === selectedIdRef.current, stale));
+            const show = matchesStatus(next, statusFilter);
+            if (map && show && !map.hasLayer(m)) m.addTo(map);
+            if (map && !show && map.hasLayer(m)) m.remove();
+          }
           changed = true;
         }
       }
@@ -300,7 +326,7 @@ export function LiveRiderFleetMap({
       }
     }, 5_000);
     return () => clearInterval(t);
-  }, [selectedId, onPositionsChange, pollUrl]);
+  }, [onPositionsChange, pollUrl, statusFilter]);
 
   useSSE(channel, {
     onMessage: (e: any) => {
@@ -308,25 +334,22 @@ export function LiveRiderFleetMap({
       const map = mapRef.current;
       if (!map) return;
       const prev = positions.current.get(e.riderId);
-      const next: RiderPosition = {
-        riderId: e.riderId,
-        lat: e.lat,
-        lng: e.lng,
-        speedKph: e.speedKph,
-        orderId: e.orderId,
-        at: e.at,
-        name: e.name ?? prev?.name,
-        status: e.status ?? prev?.status
-      };
-      positions.current.set(next.riderId, { ...prev, ...next });
+      // With a poll, the poll decides who is on the map (it knows who is
+      // online and what they are doing); an SSE frame for an unknown rider
+      // waits for the next poll instead of creating a status-less ghost pin.
+      if (!prev && pollUrl) return;
+      const next = mergeSse(prev, e);
+      if (!next) return; // out-of-order frame: never rewind a pin
+      positions.current.set(next.riderId, next);
       let m = markers.current.get(next.riderId);
       const show = matchesStatus(next, statusFilter);
       if (m) {
         animateMarker(m, { lat: next.lat, lng: next.lng });
+        if (prev?.stale) m.setIcon(riderIcon(next.name, next.riderId === selectedId, false));
         if (!show && map.hasLayer(m)) m.remove();
         if (show && !map.hasLayer(m)) m.addTo(map);
       } else if (show) {
-        m = L.marker([next.lat, next.lng], { icon: riderIcon(next.name, next.riderId === selectedId) }).addTo(map);
+        m = L.marker([next.lat, next.lng], { icon: riderIcon(next.name, next.riderId === selectedId, next.stale) }).addTo(map);
         m.on('click', () => setSelectedId(next.riderId));
         markers.current.set(next.riderId, m);
       }
@@ -357,41 +380,38 @@ export function LiveRiderFleetMap({
         if (cancelled) return;
         const map = mapRef.current;
         if (!map) return;
-        const rows: any[] = Array.isArray(data?.riders) ? data.riders : [];
+        const rows: RiderPosition[] = Array.isArray(data?.riders) ? data.riders : [];
+        if (Array.isArray(data?.customers)) onCustomersChange?.(data.customers);
         const seen = new Set<string>();
         let changed = false;
 
         for (const row of rows) {
-          if (typeof row?.lat !== 'number' || typeof row?.lng !== 'number') continue;
-          seen.add(row.id);
-          const prev = positions.current.get(row.id);
-          const next: RiderPosition = {
-            riderId: row.id,
-            lat: row.lat,
-            lng: row.lng,
-            at: row.lastSeenAt ?? new Date().toISOString(),
-            name: row.name ?? prev?.name,
-            // Don't clobber a workflow-status the SSE stream already gave us.
-            status: prev?.status,
-            orderId: prev?.orderId
-          };
-          // If SSE delivered a strictly newer fix, keep it — the poll only
-          // fills gaps, it never rewinds a live rider.
-          if (prev && new Date(prev.at).getTime() >= new Date(next.at).getTime()
-              && Math.abs(prev.lat - next.lat) < 1e-7 && Math.abs(prev.lng - next.lng) < 1e-7) {
-            continue;
-          }
-          positions.current.set(row.id, { ...prev, ...next });
-          let m = markers.current.get(row.id);
-          const show = matchesStatus(positions.current.get(row.id)!, statusFilter);
+          if (typeof row?.lat !== 'number' || typeof row?.lng !== 'number' || !row.riderId) continue;
+          seen.add(row.riderId);
+          const prev = positions.current.get(row.riderId);
+          // Status / leg / signal come from the poll (authoritative); the
+          // position never rewinds behind a newer SSE fix.
+          const next = mergePolled(prev, row);
+          const moved = !prev || prev.lat !== next.lat || prev.lng !== next.lng;
+          const restyled = !prev || prev.stale !== next.stale || prev.name !== next.name;
+          const sameState = prev && !moved && !restyled && prev.status === next.status
+            && prev.orderId === next.orderId && prev.activeOrders === next.activeOrders
+            && prev.at === next.at && prev.seenAt === next.seenAt
+            && prev.dest?.lat === next.dest?.lat && prev.dest?.lng === next.dest?.lng;
+          if (sameState) continue;
+          positions.current.set(row.riderId, next);
+          let m = markers.current.get(row.riderId);
+          const show = matchesStatus(next, statusFilter);
           if (m) {
-            animateMarker(m, { lat: next.lat, lng: next.lng });
+            if (moved) animateMarker(m, { lat: next.lat, lng: next.lng });
+            if (restyled) m.setIcon(riderIcon(next.name, row.riderId === selectedIdRef.current, next.stale));
             if (!show && map.hasLayer(m)) m.remove();
             if (show && !map.hasLayer(m)) m.addTo(map);
           } else if (show) {
-            m = L.marker([next.lat, next.lng], { icon: riderIcon(next.name, row.id === selectedIdRef.current) }).addTo(map);
-            m.on('click', () => setSelectedId(row.id));
-            markers.current.set(row.id, m);
+            m = L.marker([next.lat, next.lng], { icon: riderIcon(next.name, row.riderId === selectedIdRef.current, next.stale) }).addTo(map);
+            const id = row.riderId;
+            m.on('click', () => setSelectedId(id));
+            markers.current.set(row.riderId, m);
           }
           changed = true;
         }
@@ -428,7 +448,7 @@ export function LiveRiderFleetMap({
       clearInterval(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pollUrl, statusFilter, onPositionsChange]);
+  }, [pollUrl, statusFilter, onPositionsChange, onCustomersChange]);
 
   const selectedPos = selectedId ? positions.current.get(selectedId) : null;
 
@@ -485,7 +505,17 @@ export function LiveRiderFleetMap({
 
       {selectedPos && (
         <RiderPanel
-          rider={{ riderId: selectedPos.riderId, name: selectedPos.name ?? 'Rider', lat: selectedPos.lat, lng: selectedPos.lng }}
+          rider={{
+            riderId: selectedPos.riderId,
+            name: selectedPos.name ?? 'Rider',
+            lat: selectedPos.lat,
+            lng: selectedPos.lng,
+            at: selectedPos.at,
+            seenAt: selectedPos.seenAt,
+            stale: selectedPos.stale,
+            status: selectedPos.status,
+            orderId: selectedPos.orderId
+          }}
           isSuperAdmin={isSuperAdmin}
           trailVisible={panelTrailOn}
           onToggleTrail={(next) => setPanelTrailOn(next)}
