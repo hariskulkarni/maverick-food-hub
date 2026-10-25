@@ -7,9 +7,13 @@
  *  - Token: 32 random bytes (base64url). Only its sha256 is stored; the raw
  *    value exists solely in the emailed link. Single-use (atomic claim on
  *    usedAt IS NULL) and expires after 30 minutes.
- *  - On reset: password replaced, ALL sessions revoked, and for staff roles the
- *    TOTP secret is cleared (forces fresh enrolment; breaks the circular
- *    super-admin lockout).
+ *  - On reset: password replaced and ALL sessions revoked. Staff TOTP is KEPT
+ *    (F2): clearing it let anyone controlling the mailbox enrol their own
+ *    authenticator at /api/auth/staff/precheck and take the account over.
+ *    Lost-device recovery is a SUPER_ADMIN action — /platform/users → "Reset
+ *    Google Authenticator" (POST /api/platform/users/[id]/reset-totp →
+ *    resetUserTotp, audited as auth.totp.reset). A sole super-admin who loses
+ *    their device signs in via a BREAKGLASS_EMAILS account.
  *  - The raw token is never logged, audited or journaled.
  */
 import crypto from 'node:crypto';
@@ -19,7 +23,6 @@ import { audit } from '../audit';
 import { log } from '../log';
 import { notify } from '../notifications';
 import { recordLoginSuccess } from '../2fa';
-import { isStaffTotpRole } from '../user-totp';
 import { brand } from '@/lib/brand';
 
 export const RESET_TTL_MS = 30 * 60_000;
@@ -102,7 +105,6 @@ export async function consumePasswordReset(rawToken: string, newPassword: string
 
   if (row.user.deletedAt) return { ok: false, reason: 'invalid' }; // soft-deleted: never recoverable
 
-  const staff = isStaffTotpRole(row.user.role);
   const passwordHash = await argon2.hash(newPassword);
 
   try {
@@ -119,7 +121,6 @@ export async function consumePasswordReset(rawToken: string, newPassword: string
         data: {
           passwordHash,
           currentSessionId: null,
-          ...(staff ? { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null } : {}),
         },
       });
       await tx.userSession.updateMany({
@@ -138,16 +139,8 @@ export async function consumePasswordReset(rawToken: string, newPassword: string
     actorRole: row.user.role,
     entityType: 'User',
     entityId: row.userId,
-    after: { sessionsRevoked: true, totpCleared: staff },
+    after: { sessionsRevoked: true, totpCleared: false },
   }).catch(() => {});
-  if (staff) {
-    await audit('auth.totp.cleared_by_reset', {
-      actorId: row.userId,
-      actorRole: row.user.role,
-      entityType: 'User',
-      entityId: row.userId,
-      after: { reason: 'password_reset' },
-    }).catch(() => {});
-  }
-  return { ok: true, staffReenroll: staff };
+  // TOTP is never cleared by an email reset (F2), so no staff re-enrolment.
+  return { ok: true, staffReenroll: false };
 }

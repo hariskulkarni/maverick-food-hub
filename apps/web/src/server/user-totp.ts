@@ -1,6 +1,6 @@
 /**
- * Per-user Google Authenticator (TOTP) 2FA for staff roles
- * (ADMIN / SUPER_ADMIN / KITCHEN). Customers and riders never use this — they
+ * Per-user Google Authenticator (TOTP) 2FA for staff + platform-team roles
+ * (ADMIN / SUPER_ADMIN / KITCHEN / ADMIN_ASSIST / DEVELOPER / QA / GUEST). Customers and riders never use this — they
  * authenticate via phone OTP.
  *
  * Model (fields on User):
@@ -27,8 +27,15 @@ const ISSUER = 'Flavrly';
 // server/2fa.ts; it is set explicitly there too.)
 authenticator.options = { ...authenticator.options, window: 1 };
 
-/** Roles that must use a Google Authenticator code as a second factor. */
-export const STAFF_TOTP_ROLES: Role[] = [Role.ADMIN, Role.SUPER_ADMIN, Role.KITCHEN];
+/**
+ * Roles that must use a Google Authenticator code as a second factor: every
+ * role that signs in with email + password (restaurant staff and the platform
+ * team). Customers and riders use phone OTP instead.
+ */
+export const STAFF_TOTP_ROLES: Role[] = [
+  Role.ADMIN, Role.SUPER_ADMIN, Role.KITCHEN,
+  Role.ADMIN_ASSIST, Role.DEVELOPER, Role.QA, Role.GUEST,
+];
 export function isStaffTotpRole(role: Role | string | null | undefined): boolean {
   return !!role && (STAFF_TOTP_ROLES as string[]).includes(String(role));
 }
@@ -62,9 +69,35 @@ export function verifyTotpSecret(secret: string | null, token: string | null | u
   catch { return false; }
 }
 
-/** Verify a login code against a user's ACTIVE secret. */
-export function verifyUserTotp(user: { totpSecret: string | null }, token: string | null | undefined): boolean {
-  return verifyTotpSecret(dec(user.totpSecret), token);
+/** Absolute 30s step the token matches for `secret` (±window), or null. */
+export function matchTotpStep(secret: string | null, token: string | null | undefined): number | null {
+  if (!secret || !token) return null;
+  try {
+    const delta = authenticator.checkDelta(String(token).replace(/\s+/g, ''), secret);
+    if (delta === null || delta === undefined) return null;
+    return Math.floor(Date.now() / 1000 / 30) + delta; // otplib default step = 30s
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * F15: verify a LOGIN code against the user's active secret AND consume it.
+ * The matched step must be strictly newer than the last accepted one; the
+ * conditional updateMany makes the claim atomic, so a replayed (or concurrent
+ * duplicate) code is refused even inside the ±1 step skew window.
+ */
+export async function consumeUserTotp(
+  user: { id: string; totpSecret: string | null },
+  token: string | null | undefined
+): Promise<boolean> {
+  const step = matchTotpStep(dec(user.totpSecret), token);
+  if (step === null) return false;
+  const claimed = await prisma.user.updateMany({
+    where: { id: user.id, OR: [{ totpLastStep: null }, { totpLastStep: { lt: step } }] },
+    data: { totpLastStep: step },
+  });
+  return claimed.count === 1;
 }
 
 export function isTotpEnrolled(user: { totpEnabledAt: Date | null }): boolean {
@@ -99,6 +132,6 @@ export async function confirmEnrollment(userId: string, code: string): Promise<b
 export async function resetUserTotp(userId: string): Promise<void> {
   await prisma.user.update({
     where: { id: userId },
-    data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null },
+    data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null, totpLastStep: null },
   });
 }

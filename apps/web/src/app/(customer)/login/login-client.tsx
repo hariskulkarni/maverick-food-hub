@@ -28,7 +28,7 @@ type RoleSpec = {
 const ROLES: RoleSpec[] = [
   { id: 'customer', label: 'Customer',         tagline: 'Order from anywhere',  Icon: User,        auth: 'phone' },
   { id: 'staff',    label: 'Restaurant Staff', tagline: 'Manage orders & menu', Icon: ChefHat,     auth: 'email' },
-  { id: 'super',    label: 'Super Admin',      tagline: 'Platform operations',  Icon: ShieldCheck, auth: 'email' }
+  { id: 'super',    label: 'Super Admin',      tagline: 'Platform team & operations', Icon: ShieldCheck, auth: 'email' }
 ];
 
 /**
@@ -167,6 +167,8 @@ export function LoginClient({
       const r = me?.role;
       const target =
           r === 'SUPER_ADMIN' ? '/platform'
+        // Platform-team roles (same password + Google Authenticator gate).
+        : r === 'ADMIN_ASSIST' || r === 'DEVELOPER' || r === 'QA' || r === 'GUEST' ? '/platform'
         : r === 'ADMIN'       ? '/admin'
         : r === 'KITCHEN'     ? '/kitchen'
         : r === 'CUSTOMER'    ? '/restaurants'

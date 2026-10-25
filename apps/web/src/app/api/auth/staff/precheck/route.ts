@@ -1,7 +1,7 @@
 /**
  * POST /api/auth/staff/precheck  { email, password }
  *
- * Step 1 of the staff (ADMIN/SUPER_ADMIN/KITCHEN) login. Validates the password
+ * Step 1 of the staff + platform-team (see STAFF_TOTP_ROLES) login. Validates the password
  * (never leaking which factor failed), then tells the client whether this
  * account still needs to enrol a Google Authenticator or already has one:
  *   { ok:false }                              → bad credentials / not staff
@@ -15,6 +15,7 @@ import { NextRequest } from 'next/server';
 import argon2 from 'argon2';
 import { prisma } from '@/server/db';
 import { rateLimit } from '@/server/http/rate-limit';
+import { getPlatformSecurity, isLockedOut, recordLoginFailure } from '@/server/2fa';
 import { isStaffTotpRole, isTotpEnrolled, startEnrollment } from '@/server/user-totp';
 
 export const runtime = 'nodejs';
@@ -30,12 +31,22 @@ export async function POST(req: NextRequest) {
   const password = String(body.password ?? '');
   if (!email || !password) return Response.json({ ok: false });
 
+  // F6: this route verifies the password, so it shares the login lockout —
+  // otherwise it is a password oracle that sidesteps the email-password gate.
+  if (isLockedOut(email)) return Response.json({ ok: false });
+  const sec = await getPlatformSecurity().catch(() => ({ lockoutMinutes: undefined }));
+  const lockoutMinutes = sec.lockoutMinutes ?? 15;
+
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.passwordHash || !isStaffTotpRole(user.role) || user.suspendedAt || user.deletedAt) {
+    recordLoginFailure(email, lockoutMinutes);
     return Response.json({ ok: false });
   }
   const okPw = await argon2.verify(user.passwordHash, password).catch(() => false);
-  if (!okPw) return Response.json({ ok: false });
+  if (!okPw) {
+    recordLoginFailure(email, lockoutMinutes);
+    return Response.json({ ok: false });
+  }
 
   if (!isTotpEnrolled(user)) {
     const { qr, secret, otpauth } = await startEnrollment(user.id, user.email ?? email);

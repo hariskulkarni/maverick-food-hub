@@ -136,14 +136,17 @@ describe('consumePasswordReset', () => {
     expect(recordLoginSuccess).toHaveBeenCalledWith('a@x.com');
   });
 
-  it.each(['ADMIN', 'SUPER_ADMIN', 'KITCHEN'])('staff role %s: totp cleared and staffReenroll true', async (role) => {
+  // F2: mailbox control alone must not let an attacker re-enrol a staff
+  // authenticator. Email reset keeps TOTP; a lost device is recovered by a
+  // SUPER_ADMIN via /platform/users → Reset Google Authenticator (resetUserTotp).
+  it.each(['ADMIN', 'SUPER_ADMIN', 'KITCHEN', 'ADMIN_ASSIST', 'DEVELOPER', 'QA', 'GUEST'])('staff role %s: totp kept, staffReenroll false', async (role) => {
     db.passwordResetToken.findFirst.mockResolvedValue(row({}, { role }));
     const r = await consumePasswordReset(RAW, 'a-long-password-1');
-    expect(r).toEqual({ ok: true, staffReenroll: true });
+    expect(r).toEqual({ ok: true, staffReenroll: false });
     const upd = (db.user.update.mock.calls[0] as any)[0];
-    expect(upd.data.totpSecret).toBeNull();
-    expect(upd.data.totpPendingSecret).toBeNull();
-    expect(upd.data.totpEnabledAt).toBeNull();
+    expect(upd.data).not.toHaveProperty('totpSecret');
+    expect(upd.data).not.toHaveProperty('totpPendingSecret');
+    expect(upd.data).not.toHaveProperty('totpEnabledAt');
   });
 
   it('expired token: reason expired, nothing changed', async () => {

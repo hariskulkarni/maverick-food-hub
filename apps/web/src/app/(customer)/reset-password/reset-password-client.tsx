@@ -49,6 +49,10 @@ export function ResetPasswordClient({ token }: { token: string }) {
             ? "Sign in with your new password — you'll set up Google Authenticator again."
             : 'Sign in with your new password. You have been signed out of all other devices.'}
         </p>
+        <p className="text-xs text-muted-foreground">
+          Staff accounts keep their existing Google Authenticator. Lost your device? Ask a platform super-admin to
+          reset it.
+        </p>
         <Button asChild size="lg" className="w-full">
           <Link href="/login">Go to sign in</Link>
         </Button>

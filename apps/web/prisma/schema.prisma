@@ -260,6 +260,10 @@ model User {
   totpSecret        String?   // active, verified secret (encrypted blob)
   totpPendingSecret String?   // secret awaiting first-time confirmation (encrypted)
   totpEnabledAt     DateTime? // set when enrollment is confirmed; null = not enrolled
+  // ---- F15 (platform-auth r3): TOTP replay guard ----
+  // Absolute 30s step (unix_seconds / 30) of the last code accepted at login.
+  // A login code must match a strictly newer step, so a code is single-use.
+  totpLastStep      Int?
   avatarUrl        String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

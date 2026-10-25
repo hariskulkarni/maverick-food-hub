@@ -257,6 +257,7 @@ export async function middleware(req: NextRequest) {
         const r = s?.user?.role ? String(s.user.role) : null;
         const home =
             r === 'SUPER_ADMIN' ? '/platform'
+          : r === 'ADMIN_ASSIST' || r === 'DEVELOPER' || r === 'QA' || r === 'GUEST' ? '/platform'
           : r === 'ADMIN'       ? '/admin'
           : r === 'KITCHEN'     ? '/kitchen'
           : '/login';
