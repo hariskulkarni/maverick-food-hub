@@ -277,7 +277,14 @@ export function KitchenBoard({
 
   async function transition(id: string, next: string) {
     const r = await fetch(`/api/admin/orders/${id}/transition`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: next }) });
-    if (!r.ok) toast.error(await r.text());
+    if (!r.ok) {
+      const err = await r.json().catch(() => null) as { error?: string } | null;
+      toast.error(err?.error ?? 'Could not change order status');
+      return;
+    }
+    // P2-17: apply the result locally so the card moves now, not on the next SSE/poll.
+    const res = await r.json().catch(() => null) as { status?: string } | null;
+    if (res?.status) setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: res.status } : o)));
   }
 
   return (

@@ -272,7 +272,11 @@ export function OrdersBoard({
     setBusy((b) => ({ ...b, [id]: true }));
     try {
       const r = await fetch(`/api/admin/orders/${id}/transition`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: next, note: opts.note }) });
-      if (!r.ok) await reportApiError(r, 'Could not change order status');
+      if (!r.ok) { await reportApiError(r, 'Could not change order status'); return; }
+      // Apply the server's result immediately (don't wait for SSE/polling).
+      const res = await r.json().catch(() => null) as { status?: string; refundQueued?: boolean } | null;
+      if (res?.status) setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: res.status } : o)));
+      if (res?.refundQueued) toast.success('Order rejected — refund queued for the customer');
     } finally {
       setBusy((b) => ({ ...b, [id]: false }));
     }
@@ -399,7 +403,7 @@ export function OrdersBoard({
                 {o.status === 'RECEIVED' && (
                   <>
                     <Button size="sm" disabled={busy[o.id]} onClick={() => transition(o.id, 'ACCEPTED')}><Check className="size-4" /> Accept</Button>
-                    <Button size="sm" variant="outline" disabled={busy[o.id]} onClick={() => transition(o.id, 'CANCELLED', { note: 'Rejected by admin' })}>
+                    <Button size="sm" variant="outline" disabled={busy[o.id]} onClick={() => transition(o.id, 'CANCELLED_BY_RESTAURANT', { note: 'Rejected by restaurant' })}>
                       <X className="size-4" /> Reject
                     </Button>
                   </>
