@@ -26,7 +26,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { api, ApiError, type Assignment, type AssignmentStatus, type RiderMe } from '../../lib/api';
+import { api, ApiError, type Assignment, type AssignmentStatus, type KycGating, type RiderMe } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 import { orderHold } from '../../lib/order-hold';
@@ -163,6 +163,9 @@ export default function DashboardScreen() {
   const { rider, signOut } = useAuth();
   const router = useRouter();
   const [online, setOnline] = useState(false);
+  // KYC gate: when required documents are missing/expired the server refuses
+  // to put the rider online — surface why next to the toggle.
+  const [kycGate, setKycGate] = useState<KycGating | null>(null);
   const [me, setMe] = useState<RiderMe | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -192,6 +195,11 @@ export default function DashboardScreen() {
       setMe(meRes);
       setAssignments(list);
       setLastSyncedAt(Date.now());
+      // Best-effort — an older server without gating simply shows nothing.
+      api
+        .kyc()
+        .then((k) => setKycGate(k.gating ?? null))
+        .catch(() => {});
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not load your dashboard.');
     }
@@ -263,6 +271,13 @@ export default function DashboardScreen() {
           { text: 'Later', style: 'cancel' },
           { text: 'Open training', onPress: () => router.push('/training') },
         ]);
+      } else if (e instanceof ApiError && e.status === 409 && (e.body as { error?: string } | null)?.error === 'kyc_incomplete') {
+        // KYC gate: a required document is missing, rejected or expired.
+        Alert.alert('Documents needed', e.message, [
+          { text: 'Later', style: 'cancel' },
+          { text: 'Upload documents', onPress: () => router.push('/kyc') },
+        ]);
+        api.kyc().then((k) => setKycGate(k.gating ?? null)).catch(() => {});
       } else {
         Alert.alert(
           'Could not update status',
@@ -363,6 +378,13 @@ export default function DashboardScreen() {
             thumbColor={colors.white}
           />
         </View>
+        {!online && kycGate && !kycGate.canGoOnline && kycGate.message ? (
+          <Pressable style={styles.kycGate} onPress={() => router.push('/kyc')}>
+            <Ionicons name="document-text-outline" size={18} color={colors.danger} />
+            <Text style={styles.kycGateText}>{kycGate.message}</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.danger} />
+          </Pressable>
+        ) : null}
 
         {/* Last-synced indicator — makes the 30s heartbeat visibly alive. */}
         <View style={styles.syncRow}>
@@ -448,6 +470,16 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
+  kycGate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.dangerSoft,
+  },
+  kycGateText: { flex: 1, fontSize: font.size.sm, color: colors.danger, lineHeight: 20 },
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: {
