@@ -136,3 +136,17 @@ Note: `test:db`'s safety guard requires a database name starting with `ci`, so t
 | `tests/db/reconcile-engine.test.ts` (date fix) | CSV rows use the IST date; the UTC date made the test fail daily 18:30–24:00 UTC. Engine window unchanged | not reproducible at the time of the run (00:51 UTC); fix verified by arithmetic |
 
 Not covered: browser rendering of the new ops/merchant dialogs (no Playwright run); real gateway/bank.
+
+## Round-2 integrated gate (`pg/lead` @ `b3d489c`)
+
+pg/ops-r2 + pg/deps-r2 + pg/money-r2 merged. Fresh DBs `ci_gate_r2` / `ci_gate_r2_shadow` on :55432, commands niced with `--maxWorkers=2`
+(a Novaryq acceptance run shared the machine). Logs: `~/flavrly-pg-evidence/2026-10-24/gate-r2/`.
+
+| Step | Exit | Result |
+|---|---|---|
+| prisma generate / migrate deploy (empty DB) | 0 / 0 | all migrations applied |
+| drift (`migrate diff --from-migrations … --exit-code`) | 0 | no difference |
+| typecheck / lint / check:responsive | 0 / 0 / 0 | clean (lint warnings pre-existing) |
+| test:ci | 0 | **1566 passed** |
+| test:db | 0 | **202 passed** |
+| build | — | deferred until the acceptance window closes |

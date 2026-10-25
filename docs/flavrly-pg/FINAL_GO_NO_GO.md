@@ -1,6 +1,6 @@
 # Flavrly PG — Final GO / NO-GO
 
-Date: 2026-10-24. Code: `pg/lead` (gate fully green at `2036bf5`; later commits are docs). Author: lead (Claude Code), for owner decision.
+Date: 2026-10-24. Code: `pg/lead` (round-2 gate green at `b3d489c`: 1566 unit, 202 real-Postgres; build pending the Novaryq acceptance window). Author: lead (Claude Code), for owner decision.
 
 ## Recommendation
 
@@ -22,7 +22,7 @@ This is not a claim of bank, NPCI, RBI or licence approval. None exists in evide
 - Webhooks are authenticated (timestamp-bound HMAC, per merchant), durably stored before 200, processed by a leased worker
   with retries and dead-letter; job overlap is guarded by DB leases.
 - Local synthetic UAT 9/9 PASS with the real fork gateway: signed webhooks, gateway and app SIGKILL, real expiry, refund, backup/restore, flag-off (STAGING_UAT_REPORT.md). Not a production or bank test.
-- Existing PhonePe / Razorpay / COD / wallet behaviour: full unit suite green (1545), no regressions found by independent QA.
+- Existing PhonePe / Razorpay / COD / wallet behaviour: full unit suite green (1566), no regressions found by independent QA.
 - Migrations reproduce the schema exactly from empty (drift check in CI).
 
 ## What blocks production (owner / external — cannot be solved in code)
@@ -37,7 +37,7 @@ This is not a claim of bank, NPCI, RBI or licence approval. None exists in evide
 | Licence | Written commercial licence for self-hosting, modification, rebranding, APK distribution (#56/#58, G-LIC-1/2, G-APK-1) | Owner + counsel |
 | Refund terms | Restaurant refund obligation + customer refund/grievance policy (G-REF-1/2) | Owner + counsel |
 | Gateway build | Fork is 96 commits behind upstream; #86 residual-gap patch is local only; container image provenance (#82); SonarCloud findings untriaged (#30) | Owner / lead |
-| Supply chain | `next`/`next-auth` critical advisories (T-20) — separate upgrade PR | Lead (separate PR) |
+| Supply chain | T-20 fixed in round 2 (0 critical/high in apps/web). Remaining: rider-native Expo SDK 54 tooling highs (no upstream fix) | Lead (monitor) |
 | Ops | Production DB migration baselining (DATABASE_MIGRATIONS.md §4), encrypted off-host backups + restore drill (T-22), live pm2 inventory (T-23), sqlite index check on gateway (T-25) | Owner / ops |
 | UAT | Authorised isolated staging with non-production credentials, on-device observer test without money, then controlled micro-payments with documented reconciliation | Owner |
 

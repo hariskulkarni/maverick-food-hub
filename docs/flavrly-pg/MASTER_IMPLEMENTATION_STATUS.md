@@ -10,8 +10,10 @@ lead machine `~/flavrly-pg-evidence/2026-10-24/` (gate logs, per-agent logs, #86
 generate/validate/db push/typecheck/lint/responsive OK; 137 files / 1304 unit tests; build OK; GitHub CI green.
 No real-database tests existed; the PR author had not run any tests (SAFE_PILOT_HARDENING.md).
 
-## Final gate (`pg/lead` @ `2036bf5`)
-migrate deploy from empty OK, drift 0, typecheck/lint/responsive OK, **1545 unit tests**, **172 real-Postgres tests**, build OK.
+## Final gate (`pg/lead` @ `b3d489c`, round 2)
+migrate deploy from empty OK, drift 0, typecheck/lint/responsive OK, **1566 unit tests**, **202 real-Postgres tests**. Production build: run after the concurrent Novaryq acceptance window (see TEST_EVIDENCE.md).
+
+Round 2 (2026-10-24 evening): independent production-readiness audit found 4 P0 / 10 P1 / 9 P2 defects around the capture core (retry after expiry booked as LATE, post-commit refusals stranding orders, lost-webhook paise offset unallocatable, gateway FAILED not failing the order, missing ops refund/void/reversal/requeue paths, stale releases). All fixed on `pg/money-r2` with red-before-green tests (`tests/db/r2-money.test.ts`, `tests/db/r2-ops.test.ts`). Also merged: `pg/ops-r2` (T-16/17/22/23/24) and `pg/deps-r2` (T-20).
 Local synthetic UAT: 9/9 PASS (STAGING_UAT_REPORT.md).
 
 ## Findings matrix (prior audit P0/P1 → fresh verification → status)
