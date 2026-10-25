@@ -10,6 +10,7 @@ import { normalizeBankReference } from './bank-source';
 import { decimalToPaise } from './money';
 import { inboxMetrics } from './inbox';
 import { outboxMetrics } from './outbox';
+import { OPS_ACTIONS, openProposals } from './ops-actions';
 
 export const ATTEMPT_BUCKETS = {
   awaiting: [PgAttemptState.CREATED, PgAttemptState.CREATE_UNKNOWN, PgAttemptState.AWAITING_PAYMENT],
@@ -179,6 +180,14 @@ export async function loadMerchantPgDashboard(restaurantId: string, opts: Mercha
       }),
     ]);
 
+  // Paid orders held for this restaurant's confirmation (stale release / accepted late payment).
+  const held = await prisma.pgReconException.findMany({
+    where: { restaurantId, kind: 'RELEASE_HELD', status: PgExceptionStatus.OPEN },
+    orderBy: { createdAt: 'asc' },
+    take: 50,
+    select: { id: true, orderId: true, amountPaise: true, detail: true, createdAt: true },
+  });
+
   const orderCodes = new Map(
     (
       await prisma.order.findMany({
@@ -186,6 +195,7 @@ export async function loadMerchantPgDashboard(restaurantId: string, opts: Mercha
           id: {
             in: [
               ...new Set([
+                ...held.flatMap((x) => (x.orderId ? [x.orderId] : [])),
                 ...attempts.map((a) => a.orderId),
                 ...exceptions.flatMap((e) => (e.orderId ? [e.orderId] : [])),
                 ...refunds.map((r) => r.refund.orderId),
@@ -222,6 +232,14 @@ export async function loadMerchantPgDashboard(restaurantId: string, opts: Mercha
       reason: r.refund.reason,
       createdAt: r.createdAt,
       orderCode: orderCodes.get(r.refund.orderId) ?? null,
+    })),
+    heldOrders: held.map((x) => ({
+      exceptionId: x.id,
+      orderId: x.orderId,
+      orderCode: x.orderId ? (orderCodes.get(x.orderId) ?? null) : null,
+      amountPaise: x.amountPaise,
+      reason: ((x.detail ?? {}) as { reason?: string }).reason === 'late_payment_accepted' ? ('late_payment_accepted' as const) : ('stale_release' as const),
+      createdAt: x.createdAt,
     })),
     health: {
       staleObserved,
@@ -296,6 +314,21 @@ export async function loadPlatformPgOps() {
       }),
     ]);
 
+  const [opsOpen, decisions, deadInbox] = await Promise.all([
+    Promise.all(OPS_ACTIONS.map((a) => openProposals(a, 50))).then((l) => l.flat()),
+    prisma.pgFinancialEvent.findMany({
+      where: { dedupeKey: { in: proposals.map((p) => `MANUAL_ALLOCATION_DECIDED:${p.id}`) } },
+      select: { dedupeKey: true, kind: true },
+    }),
+    prisma.$queryRaw<{ id: string; providerEventId: string | null; eventType: string; attempts: number; error: string | null; createdAt: Date; redacted: boolean }[]>`
+      SELECT "id", "providerEventId", "eventType", "attempts", "error", "createdAt",
+             COALESCE(jsonb_exists("rawPayload", 'redacted'), false) AS redacted
+      FROM "PaymentWebhookEvent"
+      WHERE "provider" = 'youpi' AND "processed" = false AND "deadLetteredAt" IS NOT NULL
+      ORDER BY "createdAt" DESC LIMIT 50`,
+  ]);
+  const decidedKind = new Map(decisions.map((d) => [d.dedupeKey, d.kind]));
+
   const proposalTxnIds = [...new Set(proposals.map((p) => p.bankTransactionId).filter((x): x is string => !!x))];
   const txnStatus = new Map(
     (
@@ -306,6 +339,7 @@ export async function loadPlatformPgOps() {
     ...new Set([
       ...accounts.map((a) => a.restaurantId),
       ...exceptions.flatMap((e) => (e.restaurantId ? [e.restaurantId] : [])),
+      ...opsOpen.flatMap((p) => (p.restaurantId ? [p.restaurantId] : [])),
     ]),
   ];
   const names = new Map(
@@ -345,7 +379,26 @@ export async function loadPlatformPgOps() {
       reason: String((p.data as { reason?: unknown } | null)?.reason ?? ''),
       createdAt: p.createdAt,
       bankTxnStatus: p.bankTransactionId ? (txnStatus.get(p.bankTransactionId) ?? null) : null,
+      decision:
+        decidedKind.get(`MANUAL_ALLOCATION_DECIDED:${p.id}`) === 'MANUAL_ALLOCATION_REJECTED'
+          ? ('REJECTED' as const)
+          : decidedKind.has(`MANUAL_ALLOCATION_DECIDED:${p.id}`)
+            ? ('APPROVED' as const)
+            : null,
     })),
+    opsProposals: opsOpen.map((p) => ({
+      id: p.id,
+      action: p.kind.replace(/_PROPOSED$/, ''),
+      attemptId: p.attemptId,
+      bankTransactionId: p.bankTransactionId,
+      orderId: p.orderId,
+      amountPaise: p.amountPaise,
+      proposedById: p.actorId,
+      reason: String((p.data as { reason?: unknown } | null)?.reason ?? ''),
+      restaurantName: p.restaurantId ? (names.get(p.restaurantId) ?? p.restaurantId) : null,
+      createdAt: p.createdAt,
+    })),
+    deadInbox,
     inbox,
     outbox,
     stale: {

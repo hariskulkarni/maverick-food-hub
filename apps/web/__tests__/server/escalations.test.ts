@@ -8,7 +8,9 @@ const { prismaMock } = vi.hoisted(() => ({
       create: vi.fn(),
       updateMany: vi.fn()
     },
-    deliveryLocationPing: { findFirst: vi.fn() }
+    deliveryLocationPing: { findFirst: vi.fn() },
+    // No RECEIVED event -> escalation clock falls back to placedAt (P1-6 uses the release time when present).
+    orderStatusEvent: { findFirst: vi.fn(async () => null) }
   } as any
 }));
 

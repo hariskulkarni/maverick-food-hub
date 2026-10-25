@@ -153,3 +153,35 @@ export async function outboxMetrics(): Promise<{ backlog: number; retrying: numb
     dead: row?.dead ?? 0,
   };
 }
+
+/**
+ * P1-5: an operator puts a DEAD outbox message back in the queue (attempts reset, due now). The
+ * handler re-verifies everything (ORDER_RELEASE only releases CAPTURED money), so this cannot move
+ * money by itself. Audited by the route; the ledger keeps an OUTBOX_REQUEUED event and the
+ * OUTBOX_DEAD_LETTER exception is resolved with the actor.
+ */
+export async function requeueDeadOutbox(input: { id: string; actorId: string }): Promise<{ requeued: boolean }> {
+  if (!input.actorId?.trim()) throw new Error('A signed-in operator is required.');
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.pgOutbox.findUnique({ where: { id: input.id } });
+    if (!row) throw new Error('Outbox message not found.');
+    if (row.status !== 'DEAD') throw new Error(`Only a dead message can be requeued (this one is ${row.status}).`);
+    const r = await tx.pgOutbox.updateMany({
+      where: { id: row.id, status: 'DEAD' },
+      data: { status: 'PENDING', attempts: 0, nextAttemptAt: new Date(), leaseOwner: null, leaseExpiresAt: null },
+    });
+    if (r.count !== 1) return { requeued: false };
+    const { appendFinancialEvent } = await import('./ledger');
+    await appendFinancialEvent(tx, {
+      kind: 'OUTBOX_REQUEUED',
+      orderId: row.topic === 'ORDER_RELEASE' ? row.aggregateId : null,
+      actorId: input.actorId,
+      data: { outboxId: row.id, topic: row.topic, previousAttempts: row.attempts, lastError: row.lastError },
+    });
+    await tx.pgReconException.updateMany({
+      where: { dedupeKey: `OUTBOX_DEAD_LETTER:${row.id}`, status: { not: 'RESOLVED' } },
+      data: { status: 'RESOLVED', resolution: 'Requeued by operator', resolvedById: input.actorId, resolvedAt: new Date() },
+    });
+    return { requeued: true };
+  });
+}

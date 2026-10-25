@@ -18,7 +18,7 @@ const h = vi.hoisted(() => {
       pgPaymentAttempt: { findUnique: vi.fn() },
       order: { findUnique: vi.fn() },
       orderStatusEvent: { findFirst: vi.fn() },
-      pgReconException: { upsert: vi.fn() },
+      pgReconException: { upsert: vi.fn(), count: vi.fn() },
     },
   };
 });
@@ -45,13 +45,14 @@ const attempt = (o: Record<string, unknown> = {}) => ({
   payment: { status: 'CAPTURED' },
   ...o,
 });
-const order = (status: string) => ({ status, branch: { restaurantId: 'r1' } });
+const order = (status: string, createdAt = new Date()) => ({ status, createdAt, branch: { restaurantId: 'r1' } });
 
 beforeEach(() => {
   vi.clearAllMocks();
   h.prisma.pgPaymentAttempt.findUnique.mockResolvedValue(attempt());
   h.prisma.orderStatusEvent.findFirst.mockResolvedValue(null);
   h.prisma.pgReconException.upsert.mockResolvedValue({ id: 'x1' });
+  h.prisma.pgReconException.count.mockResolvedValue(0);
   h.transitionOrder.mockResolvedValue({});
   h.maybeAutoAccept.mockResolvedValue(undefined);
 });
@@ -154,5 +155,35 @@ describe('handleOrderRelease', () => {
     h.prisma.pgPaymentAttempt.findUnique.mockResolvedValue(null);
     await expect(handleOrderRelease(payload)).rejects.toThrow(/not found/);
     await expect(handleOrderRelease({ orderId: 'o1' } as any)).rejects.toThrow(/payload/);
+  });
+
+  // Round-2 P1-6.
+  it('capture long after placement -> held for the restaurant (RELEASE_HELD), no transition, no auto-accept', async () => {
+    h.prisma.order.findUnique.mockResolvedValue(order('PAYMENT_PENDING', new Date(Date.now() - 2 * 3_600_000)));
+    const r = await handleOrderRelease(payload);
+    expect(r).toMatchObject({ outcome: 'HELD_FOR_RESTAURANT', exceptionDedupeKey: 'RELEASE_HELD:stale:o1' });
+    expect(h.transitionOrder).not.toHaveBeenCalled();
+    expect(h.maybeAutoAccept).not.toHaveBeenCalled();
+    expect(h.prisma.pgReconException.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ kind: 'RELEASE_HELD', orderId: 'o1' }) }),
+    );
+  });
+
+  it('restaurant-confirmed release (accepted late payment) skips the stale hold and auto-accept', async () => {
+    h.prisma.order.findUnique.mockResolvedValue(order('PAYMENT_PENDING', new Date(Date.now() - 5 * 3_600_000)));
+    const r = await handleOrderRelease({ ...payload, restaurantConfirmedById: 'u-admin' });
+    expect(r).toEqual({ outcome: 'RELEASED', orderId: 'o1' });
+    expect(h.transitionOrder).toHaveBeenCalledWith('o1', 'RECEIVED', expect.objectContaining({ pgRelease: true, actorId: 'u-admin' }));
+    expect(h.maybeAutoAccept).not.toHaveBeenCalled();
+  });
+
+  it('respects FLAVRLY_PG_STALE_RELEASE_MINUTES', async () => {
+    process.env.FLAVRLY_PG_STALE_RELEASE_MINUTES = '600';
+    try {
+      h.prisma.order.findUnique.mockResolvedValue(order('PAYMENT_PENDING', new Date(Date.now() - 2 * 3_600_000)));
+      expect((await handleOrderRelease(payload)).outcome).toBe('RELEASED');
+    } finally {
+      delete process.env.FLAVRLY_PG_STALE_RELEASE_MINUTES;
+    }
   });
 });

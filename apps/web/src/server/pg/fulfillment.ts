@@ -39,10 +39,25 @@ export interface OrderReleasePayload {
   orderId: string;
   attemptId: string;
   paymentId: string;
+  /** Set when a restaurant admin already confirmed this order (accepted late payment): no stale hold, no auto-accept. */
+  restaurantConfirmedById?: string;
 }
+
+/**
+ * P1-6: a capture this long after the order was placed does not go to the kitchen on its own: the
+ * restaurant must confirm it first (RELEASE_HELD exception, merchant PG page), and auto-accept is
+ * never applied to it. FLAVRLY_PG_STALE_RELEASE_MINUTES, default 90.
+ */
+export function staleReleaseMs(): number {
+  const v = Number(process.env.FLAVRLY_PG_STALE_RELEASE_MINUTES);
+  return (Number.isFinite(v) && v > 0 ? v : 90) * 60_000;
+}
+
+export const heldStaleDedupeKey = (orderId: string) => `RELEASE_HELD:stale:${orderId}`;
 
 export type OrderReleaseResult =
   | { outcome: 'RELEASED'; orderId: string }
+  | { outcome: 'HELD_FOR_RESTAURANT'; orderId: string; exceptionDedupeKey: string }
   | { outcome: 'ALREADY_RELEASED'; orderId: string; orderStatus: OrderStatus }
   | { outcome: 'LATE_PAYMENT'; orderId: string; orderStatus: OrderStatus; exceptionDedupeKey: string };
 
@@ -63,7 +78,7 @@ export function lateExceptionDedupeKey(attemptId: string): string {
 }
 
 export async function handleOrderRelease(payload: OrderReleasePayload): Promise<OrderReleaseResult> {
-  const { orderId, attemptId, paymentId } = payload ?? ({} as OrderReleasePayload);
+  const { orderId, attemptId, paymentId, restaurantConfirmedById } = payload ?? ({} as OrderReleasePayload);
   if (!orderId || !attemptId || !paymentId) throw new Error('ORDER_RELEASE: payload missing orderId/attemptId/paymentId');
 
   const attempt = await prisma.pgPaymentAttempt.findUnique({
@@ -92,21 +107,39 @@ export async function handleOrderRelease(payload: OrderReleasePayload): Promise<
   for (let pass = 0; pass < 2; pass += 1) {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      select: { status: true, branch: { select: { restaurantId: true } } },
+      select: { status: true, createdAt: true, branch: { select: { restaurantId: true } } },
     });
     if (!order) throw new Error(`ORDER_RELEASE: order ${orderId} not found`);
 
     if (order.status === OrderStatus.PAYMENT_PENDING) {
+      const ageMs = Date.now() - order.createdAt.getTime();
+      if (!restaurantConfirmedById && ageMs > staleReleaseMs()) {
+        // P1-6: too old to cook unannounced. Hold until a restaurant admin confirms (or declines -> refund).
+        const exceptionDedupeKey = heldStaleDedupeKey(orderId);
+        await openException(prisma, {
+          kind: 'RELEASE_HELD',
+          dedupeKey: exceptionDedupeKey,
+          restaurantId: attempt.restaurantId,
+          receivingAccountId: attempt.receivingAccountId,
+          attemptId,
+          orderId,
+          amountPaise: attempt.expectedAmountPaise,
+          detail: { reason: 'stale_release', paymentId, ageMinutes: Math.round(ageMs / 60_000), thresholdMinutes: Math.round(staleReleaseMs() / 60_000) },
+        });
+        log.warn({ orderId, attemptId, ageMinutes: Math.round(ageMs / 60_000) }, 'pg.release.held_stale');
+        return { outcome: 'HELD_FOR_RESTAURANT', orderId, exceptionDedupeKey };
+      }
       try {
         await transitionOrder(orderId, OrderStatus.RECEIVED, {
-          note: 'Payment bank-verified (Flavrly PG)',
+          note: restaurantConfirmedById ? 'Late payment accepted and confirmed by the restaurant (Flavrly PG)' : 'Payment bank-verified (Flavrly PG)',
+          actorId: restaurantConfirmedById,
           pgRelease: true,
         });
       } catch (e) {
         if (e instanceof OrderTransitionError && pass === 0) continue; // re-read and classify
         throw e;
       }
-      await applyAutoAccept(orderId, order.branch.restaurantId);
+      if (!restaurantConfirmedById) await applyAutoAccept(orderId, order.branch.restaurantId);
       log.info({ orderId, attemptId }, 'pg.release.released');
       return { outcome: 'RELEASED', orderId };
     }
@@ -128,10 +161,152 @@ export async function handleOrderRelease(payload: OrderReleasePayload): Promise<
     }
 
     // Already RECEIVED or further (or cancelled AFTER a release, which the refund flow owns).
-    if (order.status === OrderStatus.RECEIVED) await applyAutoAccept(orderId, order.branch.restaurantId);
+    if (order.status === OrderStatus.RECEIVED && !restaurantConfirmedById && !(await wasHeld(orderId))) {
+      await applyAutoAccept(orderId, order.branch.restaurantId);
+    }
     return { outcome: 'ALREADY_RELEASED', orderId, orderStatus: order.status };
   }
   throw new Error(`ORDER_RELEASE: order ${orderId} kept changing concurrently`);
+}
+
+/** True when this order's release was held for restaurant confirmation (never auto-accepted). */
+async function wasHeld(orderId: string): Promise<boolean> {
+  return (await prisma.pgReconException.count({ where: { orderId, kind: 'RELEASE_HELD' } })) > 0;
+}
+
+// ───────────────────────────── restaurant decision on a held release ─────────────────────────────
+
+export class HeldReleaseError extends Error {
+  status: number;
+  constructor(message: string, status = 409) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export interface HeldDecisionResult {
+  exceptionId: string;
+  orderId: string;
+  decision: 'CONFIRMED' | 'DECLINED';
+  reason: 'stale_release' | 'late_payment_accepted';
+  outcome: string;
+}
+
+/**
+ * A restaurant ADMIN decides on a RELEASE_HELD order of ITS restaurant (merchant PG page).
+ *  - stale_release + CONFIRM: the captured order goes to the kitchen now (RECEIVED, no auto-accept).
+ *  - late_payment_accepted + CONFIRM: capture via allocateBankCredit({acceptLate}) (two ops approvals
+ *    already recorded), then the ORDER_RELEASE outbox releases it (no auto-accept).
+ *  - DECLINE: the order is cancelled (CANCELLED_BY_ADMIN, note says the restaurant declined) and the
+ *    exception stays in the ops queue (ACKNOWLEDGED) for the refund.
+ */
+export async function decideHeldRelease(input: {
+  exceptionId: string;
+  restaurantId: string;
+  actorId: string;
+  decision: 'CONFIRM' | 'DECLINE';
+  note?: string;
+}): Promise<HeldDecisionResult> {
+  const actorId = input.actorId?.trim();
+  if (!actorId) throw new HeldReleaseError('A signed-in restaurant admin is required.', 401);
+  const ex = await prisma.pgReconException.findUnique({ where: { id: input.exceptionId } });
+  if (!ex || ex.kind !== 'RELEASE_HELD' || ex.restaurantId !== input.restaurantId || !ex.orderId || !ex.attemptId) {
+    throw new HeldReleaseError('Held order not found.', 404);
+  }
+  if (ex.status !== 'OPEN') throw new HeldReleaseError('This order was already decided.');
+  const detail = (ex.detail ?? {}) as Record<string, unknown>;
+  const reason = detail.reason === 'late_payment_accepted' ? 'late_payment_accepted' : 'stale_release';
+  const note = input.note?.trim() || null;
+
+  // Claim the decision first (OPEN -> ACKNOWLEDGED), so two admins cannot both act.
+  const claim = await prisma.pgReconException.updateMany({
+    where: { id: ex.id, status: 'OPEN' },
+    data: { status: 'ACKNOWLEDGED', resolution: `${input.decision === 'CONFIRM' ? 'Confirming' : 'Declining'} (restaurant ${actorId})` },
+  });
+  if (claim.count !== 1) throw new HeldReleaseError('This order was already decided.');
+  const reopen = () => prisma.pgReconException.updateMany({ where: { id: ex.id, status: 'ACKNOWLEDGED' }, data: { status: 'OPEN', resolution: null } });
+
+  if (input.decision === 'DECLINE') {
+    try {
+      await transitionOrder(ex.orderId, OrderStatus.CANCELLED_BY_ADMIN, { actorId, note: `Restaurant declined the held paid order${note ? `: ${note}` : ''}` });
+    } catch (e) {
+      await reopen();
+      throw new HeldReleaseError(`Could not cancel the order: ${(e as Error).message}`);
+    }
+    const refundKind = reason === 'late_payment_accepted' ? 'LATE_PAYMENT' : 'ORDER';
+    await prisma.pgReconException.update({
+      where: { id: ex.id },
+      data: { resolution: `Restaurant declined${note ? ` (${note})` : ''}; refund the customer (${refundKind} refund).` },
+    });
+    await appendDecisionEvent(ex, actorId, 'RELEASE_HELD_DECLINED', { reason, note, refundKind });
+    return { exceptionId: ex.id, orderId: ex.orderId, decision: 'DECLINED', reason, outcome: 'CANCELLED' };
+  }
+
+  if (reason === 'late_payment_accepted') {
+    if (!ex.bankTransactionId || typeof detail.proposalId !== 'string' || typeof detail.requestedById !== 'string' || typeof detail.approvedById !== 'string') {
+      await reopen();
+      throw new HeldReleaseError('The late-payment approval record is incomplete; ask operations to re-approve.');
+    }
+    const { allocateBankCredit } = await import('./reconcile-engine');
+    try {
+      const r = await allocateBankCredit({
+        attemptId: ex.attemptId,
+        bankTransactionId: ex.bankTransactionId,
+        acceptLate: {
+          proposalId: detail.proposalId,
+          requestedById: detail.requestedById,
+          approvedById: detail.approvedById,
+          restaurantConfirmedById: actorId,
+          heldExceptionId: ex.id,
+        },
+      });
+      await appendDecisionEvent(ex, actorId, 'RELEASE_HELD_CONFIRMED', { reason, note, allocationId: r.allocationId ?? null });
+      return { exceptionId: ex.id, orderId: ex.orderId, decision: 'CONFIRMED', reason, outcome: r.outcome };
+    } catch (e) {
+      await reopen();
+      throw new HeldReleaseError((e as Error).message);
+    }
+  }
+
+  // stale_release: money is already captured; release now without auto-accept.
+  const attempt = await prisma.pgPaymentAttempt.findUnique({ where: { id: ex.attemptId }, select: { state: true, payment: { select: { status: true } } } });
+  const order = await prisma.order.findUnique({ where: { id: ex.orderId }, select: { status: true } });
+  if (attempt?.state !== PgAttemptState.CAPTURED || attempt.payment.status !== PaymentStatus.CAPTURED || order?.status !== OrderStatus.PAYMENT_PENDING) {
+    await reopen();
+    throw new HeldReleaseError(`This order can no longer be released (order ${order?.status ?? 'missing'}, payment ${attempt?.payment.status ?? 'missing'}).`);
+  }
+  try {
+    await transitionOrder(ex.orderId, OrderStatus.RECEIVED, { actorId, note: 'Restaurant confirmed the held paid order (Flavrly PG)', pgRelease: true });
+  } catch (e) {
+    await reopen();
+    throw new HeldReleaseError(`Could not release the order: ${(e as Error).message}`);
+  }
+  await prisma.pgReconException.update({
+    where: { id: ex.id },
+    data: { status: 'RESOLVED', resolution: `Restaurant confirmed${note ? ` (${note})` : ''}; order released to the kitchen`, resolvedById: actorId, resolvedAt: new Date() },
+  });
+  await appendDecisionEvent(ex, actorId, 'RELEASE_HELD_CONFIRMED', { reason, note });
+  return { exceptionId: ex.id, orderId: ex.orderId, decision: 'CONFIRMED', reason, outcome: 'RELEASED' };
+}
+
+async function appendDecisionEvent(
+  ex: { id: string; restaurantId: string | null; attemptId: string | null; orderId: string | null; bankTransactionId: string | null; amountPaise: number | null },
+  actorId: string,
+  kind: string,
+  data: Record<string, unknown>,
+) {
+  const { appendFinancialEvent } = await import('./ledger');
+  await appendFinancialEvent(prisma, {
+    kind,
+    restaurantId: ex.restaurantId,
+    attemptId: ex.attemptId,
+    orderId: ex.orderId,
+    bankTransactionId: ex.bankTransactionId,
+    amountPaise: ex.amountPaise,
+    actorId,
+    dedupeKey: `RELEASE_HELD_DECIDED:${ex.id}`,
+    data: { exceptionId: ex.id, ...data } as never,
+  });
 }
 
 /** True when the order reached RECEIVED at some point (so it was released / went to the kitchen). */

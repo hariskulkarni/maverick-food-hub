@@ -35,6 +35,10 @@ export async function requirePgRestaurantAdmin() {
 export function pgServiceErrorResponse(e: unknown): Response {
   if (e instanceof ReceivingAccountError) return Response.json({ error: e.message, code: e.code }, { status: e.httpStatus });
   if (e instanceof Prisma.PrismaClientKnownRequestError || e instanceof Prisma.PrismaClientUnknownRequestError) throw e;
-  if (e instanceof Error) return Response.json({ error: e.message }, { status: 409 });
+  if (e instanceof Error) {
+    // Service errors that carry an operator-safe HTTP status (OpsActionError, PgRefundError, ...).
+    const status = (e as { status?: unknown }).status;
+    return Response.json({ error: e.message }, { status: typeof status === 'number' && status >= 400 && status < 500 ? status : 409 });
+  }
   throw e;
 }
