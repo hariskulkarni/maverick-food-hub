@@ -29,6 +29,7 @@
     "pretest": "prisma generate",
     "test:watch": "vitest",
     "test:ci": "vitest run --reporter=dot",
+    "test:db": "vitest run -c vitest.db.config.ts --reporter=dot",
     "pretest:ci": "prisma generate",
     "test:e2e": "playwright test",
     "uat:phonepe": "tsx scripts/phonepe-uat.ts",

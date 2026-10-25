@@ -4,13 +4,13 @@
  * POST /api/rider/referrals — log a new referral (PENDING) against the rider's
  *      code.
  *
- * The referral *code* is derived deterministically from the rider's profile id
- * via `genReferralCode` — stable, so we never need a row just to hold it.
- * RiderReferral rows track individual referees and their reward status.
+ * The rider's shareable code is derived deterministically from their profile
+ * id via `genReferralCode`. Each RiderReferral row (one per referee phone,
+ * platform-wide) stores its own unique `<code>-XXXX` so the @unique holds.
  */
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
-import { genReferralCode } from '@/server/rider-growth';
+import { genReferralCode, newReferralRowCode } from '@/server/rider-growth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -103,26 +103,55 @@ export async function POST(req: Request) {
     );
   }
 
-  const code = genReferralCode(profile.id);
-
-  const referral = await prisma.riderReferral.create({
-    data: {
-      referrerId: profile.id,
-      code,
-      refereePhone: normalized,
-      refereeName: refereeName || null,
-      status: 'PENDING',
-      bonusAmount: REFERRAL_BONUS,
-    },
-    select: {
-      id: true,
-      refereePhone: true,
-      refereeName: true,
-      status: true,
-      bonusAmount: true,
-      createdAt: true,
-    },
+  // P1-13: one referral per referee phone, platform-wide (a phone can only
+  // be paid out once), never yourself, never someone who's already a rider.
+  // Serialised per phone with an advisory lock so two riders racing to log the
+  // same number can't both succeed. Each row gets its own unique code (the
+  // schema's @unique on code made every second referral 500).
+  const me = await prisma.user.findUnique({ where: { id: session.user.id }, select: { phone: true } });
+  const myDigits = (me?.phone ?? '').replace(/\D/g, '').slice(-10);
+  if (myDigits && myDigits === normalized) {
+    return Response.json({ error: "You can't refer yourself." }, { status: 400 });
+  }
+  const existingRider = await prisma.user.findFirst({
+    where: { role: 'RIDER', phone: { in: [normalized, `+91${normalized}`, `91${normalized}`] } },
+    select: { id: true },
   });
+  if (existingRider) {
+    return Response.json({ error: 'This person is already a Flavrly rider.' }, { status: 409 });
+  }
+
+  const outcome = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'rider-referral:' + normalized}))`;
+    const dupe = await tx.riderReferral.findFirst({ where: { refereePhone: normalized }, select: { referrerId: true } });
+    if (dupe) return { ok: false as const, mine: dupe.referrerId === profile.id };
+    const referral = await tx.riderReferral.create({
+      data: {
+        referrerId: profile.id,
+        code: newReferralRowCode(genReferralCode(profile.id)),
+        refereePhone: normalized,
+        refereeName: refereeName || null,
+        status: 'PENDING',
+        bonusAmount: REFERRAL_BONUS,
+      },
+      select: {
+        id: true,
+        refereePhone: true,
+        refereeName: true,
+        status: true,
+        bonusAmount: true,
+        createdAt: true,
+      },
+    });
+    return { ok: true as const, referral };
+  });
+  if (!outcome.ok) {
+    return Response.json(
+      { error: outcome.mine ? 'You have already referred this number.' : 'This number has already been referred by another rider.' },
+      { status: 409 }
+    );
+  }
+  const referral = outcome.referral;
 
   return Response.json(
     {

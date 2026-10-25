@@ -24,6 +24,7 @@ import { haversineKm } from '@/lib/utils';
 import { publish } from './realtime';
 import { log } from './log';
 import { sendBatchInvitationPush } from './rider-push';
+import { checkRiderEligibility } from './rider-eligibility';
 
 /** Hard caps that gate whether a rider is even considered. */
 const MAX_RIDER_TO_PICKUP_KM = 5;
@@ -90,7 +91,7 @@ export async function maybeOfferAsBatch(
     //    detour and silently skip.
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { branch: true, address: true },
+      include: { branch: { include: { restaurant: true } }, address: true },
     });
     if (!order) return { invited: 0 };
     if (
@@ -119,6 +120,8 @@ export async function maybeOfferAsBatch(
     const busyRiders = await prisma.riderProfile.findMany({
       where: {
         isOnline: true,
+        approvedAt: { not: null },
+        user: { deletedAt: null, suspendedAt: null },
         currentLat: { not: null },
         currentLng: { not: null },
         assignments: {
@@ -186,6 +189,11 @@ export async function maybeOfferAsBatch(
 
       // Pickup ETA: 30 kph average → 2 minutes per km, ceil so we never under-promise.
       const pickupEtaMin = Math.ceil(riderToPickup * 2);
+
+      // P1-9: batch offers obey the same rules as a pool claim — approval,
+      // dispatch policy (FLEET/DEDICATED), KYC and the concurrent-order cap.
+      const eligible = await checkRiderEligibility(r.id, order, { requireOnline: true });
+      if (!eligible.ok) continue;
 
       candidates.push({
         riderId: r.id,

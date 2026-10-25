@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   // in exactly one place — see rider-sourcing.ts.)
   const candidates = await prisma.order.findMany({
     where: { status: 'READY', assignment: null },
-    include: { branch: { include: { restaurant: true } }, address: true, items: true, customer: true },
+    include: { branch: { include: { restaurant: true } }, address: true, items: true },
     orderBy: { readyAt: 'asc' },
     take: 60
   });

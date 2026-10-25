@@ -57,8 +57,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // `status: { not: 'REWARDED' }` ensures a concurrent/double request can't
   // double-credit.
   let credited = 0;
+  try {
   await prisma.$transaction(async (tx) => {
     if (body.status === 'REWARDED') {
+      // P1-13: a referee phone is paid out at most once across all referrers.
+      if (ref.refereePhone) {
+        const paid = await tx.riderReferral.count({
+          where: { refereePhone: ref.refereePhone, status: 'REWARDED', NOT: { id } }
+        });
+        if (paid > 0) throw new Response('This referee has already been rewarded on another referral', { status: 409 });
+      }
       const res = await tx.riderReferral.updateMany({
         where: { id, status: { not: 'REWARDED' } },
         data: {
@@ -87,6 +95,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
     }
   });
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
 
   await audit('rider.referral.advance', {
     actorId: session?.user?.id,

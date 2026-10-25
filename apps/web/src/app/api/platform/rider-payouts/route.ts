@@ -5,16 +5,28 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
 import { requireSuperAdmin } from '@/server/tenancy';
+import { Prisma, RiderPayoutStatus } from '@prisma/client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
-  const status = new URL(req.url).searchParams.get('status') || undefined;
+const STATUSES = Object.values(RiderPayoutStatus) as string[];
 
-  const where: any = {};
-  if (status) where.status = status;
+export async function GET(req: NextRequest) {
+  try {
+    await requireSuperAdmin();
+  } catch (e) {
+    if (e instanceof Response) return e;
+    throw e;
+  }
+  const status = new URL(req.url).searchParams.get('status') || undefined;
+  // P1-6: an unknown ?status= used to reach Prisma and 500.
+  if (status && !STATUSES.includes(status)) {
+    return Response.json({ error: `status must be one of ${STATUSES.join(', ')}` }, { status: 400 });
+  }
+
+  const where: Prisma.RiderPayoutWhereInput = {};
+  if (status) where.status = status as RiderPayoutStatus;
 
   const payouts = await prisma.riderPayout.findMany({
     where,

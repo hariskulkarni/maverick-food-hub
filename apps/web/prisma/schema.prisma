@@ -2219,6 +2219,9 @@ model RiderAssignment {
   customerRating   Int?
   customerComment  String?
   notes            String?
+  // ── Rider audit r3 (2026-10-25) ── wrong delivery-OTP submissions on this
+  // assignment; the deliver route locks hand-over after 5 (brute-force cap).
+  deliveryOtpAttempts Int @default(0)
 
   order Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
   rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Restrict)
