@@ -193,6 +193,13 @@ export const authConfig: NextAuthConfig = {
           return null;
         }
 
+        // A SUPER_ADMIN-issued password must be changed first (login UI does
+        // this via /api/auth/staff/change-password); no session until then.
+        if (user.mustChangePassword) {
+          await audit('auth.login.failed', { actorId: user.id, entityType: 'User', entityId: user.id, after: { reason: 'must_change_password' } }).catch(() => {});
+          return null;
+        }
+
         // Super-admin keeps the IP allowlist gate.
         // Break-glass accounts (env BREAKGLASS_EMAILS) skip the IP allowlist and
         // 2FA gates so they can always sign in with email + password in an

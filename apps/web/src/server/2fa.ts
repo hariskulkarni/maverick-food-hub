@@ -216,6 +216,12 @@ export function isLockedOut(email: string): boolean {
   return false;
 }
 
+/** Milliseconds left on an active lockout for `email` (0 when not locked). */
+export function lockoutRemainingMs(email: string): number {
+  const until = attempts.get(email)?.lockedUntil;
+  return until ? Math.max(0, until - Date.now()) : 0;
+}
+
 export function recordLoginFailure(email: string, lockoutMinutes: number): void {
   const now = Date.now();
   const rec = attempts.get(email);

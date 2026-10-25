@@ -21,6 +21,7 @@ vi.mock('@/server/db', () => ({ prisma: db }));
 vi.mock('@/server/audit', () => ({ audit: (...a: any[]) => (audit as any)(...a) }));
 vi.mock('@/server/auth', () => ({ auth: () => authMock() }));
 vi.mock('argon2', () => ({ default: argon }));
+vi.mock('@/server/2fa', () => ({ recordLoginSuccess: vi.fn() }));
 
 import { POST as adminReset } from '@/app/api/platform/users/[id]/reset-password/route';
 import { POST as changePw } from '@/app/api/account/change-password/route';
@@ -44,9 +45,9 @@ describe('POST /api/platform/users/[id]/reset-password', () => {
     expect(db.userSession.updateMany).not.toHaveBeenCalled();
   });
 
-  it('unauthenticated -> 403', async () => {
+  it('unauthenticated -> 401', async () => {
     authMock.mockResolvedValue(null);
-    expect((await adminReset(req({ password: PW }), ctx())).status).toBe(403);
+    expect((await adminReset(req({ password: PW }), ctx())).status).toBe(401);
   });
 
   it('weak password -> 400, nothing changed', async () => {
@@ -56,17 +57,20 @@ describe('POST /api/platform/users/[id]/reset-password', () => {
     expect(db.user.update).not.toHaveBeenCalled();
   });
 
-  it('staff target: sets hash, revokes all sessions, clears TOTP, audits without password', async () => {
+  // TOTP is now its own super-admin action (reset-totp); a password reset keeps
+  // it and forces a password change at next login instead.
+  it('staff target: sets hash, revokes all sessions, forces change, keeps TOTP, audits without password', async () => {
     authMock.mockResolvedValue({ user: { id: 'sa', role: 'SUPER_ADMIN' } });
     db.user.findUnique.mockResolvedValue({ id: 'u1', role: 'KITCHEN', deletedAt: null });
     const r = await adminReset(req({ password: PW }), ctx());
     expect(r.status).toBe(200);
     const body = await r.json();
-    expect(body).toEqual({ ok: true, staffReenroll: true });
+    expect(body).toEqual({ ok: true, staffReenroll: false });
     const data = db.user.update.mock.calls[0][0].data;
     expect(data.passwordHash).toBe(`hashed:${PW}`);
     expect(data.currentSessionId).toBeNull();
-    expect(data).toMatchObject({ totpSecret: null, totpPendingSecret: null, totpEnabledAt: null });
+    expect(data.mustChangePassword).toBe(true);
+    expect(data).not.toHaveProperty('totpSecret');
     expect(db.userSession.updateMany.mock.calls[0][0]).toMatchObject({
       where: { userId: 'u1', revokedAt: null },
       data: { revokedReason: 'admin_password_reset' },
@@ -125,7 +129,7 @@ describe('POST /api/account/change-password', () => {
     expect(r.status).toBe(200);
     const text = JSON.stringify(await r.json());
     expect(text).not.toContain(NEW);
-    expect(db.user.update.mock.calls[0][0].data).toEqual({ passwordHash: `hashed:${NEW}` });
+    expect(db.user.update.mock.calls[0][0].data).toEqual({ passwordHash: `hashed:${NEW}`, mustChangePassword: false });
     const rev = db.userSession.updateMany.mock.calls[0][0];
     expect(rev.where).toMatchObject({ userId: 'u1', revokedAt: null, id: { not: 'sess-cur' } });
     expect(rev.data.revokedReason).toBe('password_changed');

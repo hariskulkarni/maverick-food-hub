@@ -9,7 +9,7 @@ const { db, verify, start, confirm } = vi.hoisted(() => ({
 vi.mock('@/server/db', () => ({ prisma: db }));
 vi.mock('argon2', () => ({ default: { verify } }));
 vi.mock('@/server/http/rate-limit', () => ({ rateLimit: async () => ({ ok: true, remaining: 1 }) }));
-vi.mock('@/server/2fa', () => ({ isLockedOut: () => false, recordLoginFailure: vi.fn(), getPlatformSecurity: async () => ({}) }));
+vi.mock('@/server/2fa', () => ({ isLockedOut: () => false, lockoutRemainingMs: () => 0, recordLoginFailure: vi.fn(), getPlatformSecurity: async () => ({}) }));
 vi.mock('@/server/user-totp', () => ({
   isStaffTotpRole: () => true,
   isTotpEnrolled: () => false,

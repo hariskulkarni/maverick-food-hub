@@ -5,6 +5,8 @@ import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
 import { optionalString } from '@/server/zod-helpers';
+import { clientIp } from '@/server/http/rate-limit';
+import { adminSetSuspended } from '@/server/platform-user-admin';
 
 /**
  * GET    — return a full user profile (orders, wallet, loyalty, addresses, recent notifications)
@@ -16,7 +18,15 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   if (gate instanceof Response) return gate;
   const { id } = await params;
   const [u, orders, payments, wallet, loyalty, addresses, notifications, riderProfile] = await Promise.all([
-    prisma.user.findUnique({ where: { id } }),
+    // DTO: never ship passwordHash / TOTP secrets to the browser.
+    prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true, name: true, email: true, phone: true, role: true, createdAt: true,
+        suspendedAt: true, suspendedReason: true, deletedAt: true,
+        totpEnabledAt: true, mustChangePassword: true, passwordHash: true,
+      },
+    }),
     prisma.order.findMany({
       where: { customerId: id },
       orderBy: { placedAt: 'desc' },
@@ -38,8 +48,9 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
     _count: true
   });
 
+  const { passwordHash, ...safeUser } = u;
   return Response.json({
-    user: u,
+    user: { ...safeUser, hasPassword: !!passwordHash, totpEnrolled: !!u.totpEnabledAt },
     orders,
     payments,
     wallet,
@@ -68,7 +79,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const before = await prisma.user.findUnique({ where: { id }, select: { id: true, suspendedAt: true } });
   if (!before) return new Response('Not found', { status: 404 });
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  const ip = clientIp(req);
 
   await prisma.$transaction(async (tx) => {
     if (data.name) {
@@ -90,21 +101,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       });
     }
-    if (data.suspended !== undefined) {
-      // Real suspension: set/clear suspendedAt. On suspend, also null the
-      // active-session pointer so the user is force-logged-out everywhere
-      // immediately (their JWT's sid no longer matches). Login is blocked in
-      // src/server/auth.ts while suspendedAt is set.
-      await tx.user.update({
-        where: { id },
-        data: {
-          suspendedAt: data.suspended ? new Date() : null,
-          suspendedReason: data.suspended ? (data.suspendReason ?? 'Suspended by platform admin') : null,
-          ...(data.suspended ? { currentSessionId: null } : {})
-        }
-      });
-    }
   });
+
+  // Suspension goes through the shared admin action (self-lockout and
+  // last-super-admin guards, session revocation, audit).
+  if (data.suspended !== undefined) {
+    const r = await adminSetSuspended(
+      { id: gate.user.id, role: gate.user.role },
+      id,
+      data.suspended,
+      data.suspendReason,
+      { ip: clientIp(req), userAgent: req.headers.get('user-agent') },
+    );
+    if (!r.ok) return Response.json({ error: r.message, code: r.error }, { status: r.status });
+  }
 
   // Audit (each writes its own row; outside the txn so a logging hiccup can't
   // roll back the action).
@@ -115,17 +125,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       entityType: 'User',
       entityId: id,
       after: { amount: data.walletDelta, note: data.walletNote ?? null },
-      ipAddress: ip
-    }).catch(() => {});
-  }
-  if (data.suspended !== undefined) {
-    await audit('user.suspend', {
-      actorId: session?.user?.id,
-      actorRole: session?.user?.role,
-      entityType: 'User',
-      entityId: id,
-      before: { suspended: Boolean(before.suspendedAt) },
-      after: { suspended: data.suspended, reason: data.suspended ? (data.suspendReason ?? null) : null },
       ipAddress: ip
     }).catch(() => {});
   }

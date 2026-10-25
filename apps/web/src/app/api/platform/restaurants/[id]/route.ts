@@ -12,7 +12,8 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   const r = await prisma.restaurant.findUnique({
     where: { id },
     include: {
-      owner: true,
+      // DTO: never ship the owner's passwordHash / TOTP secrets.
+      owner: { select: { id: true, name: true, email: true, phone: true, role: true } },
       parent: { select: { id: true, name: true, slug: true } },
       children: { orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true, status: true } },
       branches: { include: { _count: { select: { menuItems: true, orders: true } } } },

@@ -14,6 +14,7 @@ const { db, verify, start, confirm, sec } = vi.hoisted(() => ({
   confirm: vi.fn(async () => true),
   sec: {
     isLockedOut: vi.fn(() => false),
+    lockoutRemainingMs: vi.fn(() => 120_000),
     recordLoginFailure: vi.fn(),
     recordLoginSuccess: vi.fn(),
     getPlatformSecurity: vi.fn(async () => ({ lockoutMinutes: 15 })),
@@ -63,7 +64,7 @@ describe('F6: precheck / enroll honour the login lockout', () => {
   it('precheck: locked-out email -> ok:false, password never checked', async () => {
     sec.isLockedOut.mockReturnValue(true);
     db.user.findUnique.mockResolvedValue(user('ADMIN'));
-    expect(await (await precheck(mk({ email: 'A@x.com', password: 'p' }))).json()).toEqual({ ok: false });
+    expect(await (await precheck(mk({ email: 'A@x.com', password: 'p' }))).json()).toEqual({ ok: false, locked: true, retryAfterSeconds: 120 });
     expect(sec.isLockedOut).toHaveBeenCalledWith('a@x.com');
     expect(verify).not.toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();

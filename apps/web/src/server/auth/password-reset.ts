@@ -121,6 +121,7 @@ export async function consumePasswordReset(rawToken: string, newPassword: string
         data: {
           passwordHash,
           currentSessionId: null,
+          mustChangePassword: false, // the user just chose their own password
         },
       });
       await tx.userSession.updateMany({

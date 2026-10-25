@@ -264,6 +264,10 @@ model User {
   // Absolute 30s step (unix_seconds / 30) of the last code accepted at login.
   // A login code must match a strictly newer step, so a code is single-use.
   totpLastStep      Int?
+  // ---- platform-auth r3: super-admin issued password must be changed ----
+  // Set when a SUPER_ADMIN resets the password (temp or chosen); the next
+  // password login must set a new one before any session is granted.
+  mustChangePassword Boolean  @default(false)
   avatarUrl        String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

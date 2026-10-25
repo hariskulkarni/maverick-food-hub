@@ -74,13 +74,26 @@ export function LoginClient({
   const [code, setCode] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [devCode, setDevCode] = useState<string | null>(null);
+  // OTP resend cooldown (server enforces 45s + hourly/daily caps; mirror it so
+  // the user sees when they can ask again instead of a dead end).
+  const [resendAt, setResendAt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (resendAt <= Date.now()) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [resendAt]);
+  const resendIn = Math.max(0, Math.ceil((resendAt - now) / 1000));
 
   // Email/password state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   // Staff 2FA (Google Authenticator) two-step flow.
-  const [staffPhase, setStaffPhase] = useState<'creds' | 'code'>('creds');
+  // 'newpw' = a super admin issued a temporary password that must be replaced.
+  const [staffPhase, setStaffPhase] = useState<'creds' | 'code' | 'newpw'>('creds');
+  const [newPassword, setNewPassword] = useState('');
+  const [newPassword2, setNewPassword2] = useState('');
   const [totpCode, setTotpCode] = useState('');
   const [enroll, setEnroll] = useState<{ qr: string; secret: string; otpauth: string } | null>(null);
 
@@ -132,7 +145,13 @@ export function LoginClient({
       }
       const r = await fetch('/api/auth/otp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
       const data = await r.json();
-      if (!r.ok) throw new Error(data?.error || 'Failed');
+      if (r.status === 429 && Number(data?.retryAfter) > 0) {
+        setResendAt(Date.now() + Number(data.retryAfter) * 1000);
+        setNow(Date.now());
+      }
+      if (!r.ok) throw new Error(data?.error || 'Could not send the code. Please try again.');
+      setResendAt(Date.now() + 45_000);
+      setNow(Date.now());
       setOtpSent(true);
       if (data.devCode) {
         setDevCode(data.devCode);
@@ -213,10 +232,49 @@ export function LoginClient({
         body: JSON.stringify({ email, password }),
       });
       const d = await r.json();
+      if (d?.locked) {
+        const mins = Math.max(1, Math.ceil(Number(d.retryAfterSeconds || 0) / 60));
+        toast.error(`Too many failed attempts. Try again in ${mins} min, or ask a platform super admin to unlock your account.`);
+        return;
+      }
       if (!d?.ok) { toast.error('Invalid credentials'); return; }
+      if (d.status === 'change_password') {
+        setNewPassword(''); setNewPassword2('');
+        setStaffPhase('newpw');
+        return;
+      }
       setEnroll(d.status === 'enroll' ? { qr: d.qr, secret: d.secret, otpauth: d.otpauth } : null);
       setTotpCode('');
       setStaffPhase('code');
+    } catch {
+      toast.error('Could not reach the server. Please try again.');
+    } finally { setBusy(false); }
+  }
+
+  // Temp-password step: replace a super-admin issued password, then continue
+  // with the normal precheck (→ authenticator enrolment or code).
+  async function changeTempPassword() {
+    if (newPassword.length < 12) return toast.error('Use at least 12 characters.');
+    if (newPassword !== newPassword2) return toast.error('Passwords do not match.');
+    setBusy(true);
+    try {
+      const r = await fetch('/api/auth/staff/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, newPassword }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.status === 400) { toast.error(d.error || 'Choose a different password.'); return; }
+      if (d?.locked) {
+        const mins = Math.max(1, Math.ceil(Number(d.retryAfterSeconds || 0) / 60));
+        toast.error(`Too many failed attempts. Try again in ${mins} min.`);
+        return;
+      }
+      if (!d?.ok) { toast.error('Your temporary password was not accepted. Ask your super admin for a new one.'); setStaffPhase('creds'); return; }
+      toast.success('Password updated.');
+      setPassword(newPassword);
+      setNewPassword(''); setNewPassword2('');
+      setStaffPhase('creds');
     } catch {
       toast.error('Could not reach the server. Please try again.');
     } finally { setBusy(false); }
@@ -364,6 +422,14 @@ export function LoginClient({
                     </Button>
                     <button
                       type="button"
+                      className="w-full min-h-11 text-sm text-primary disabled:text-muted-foreground"
+                      disabled={busy || resendIn > 0}
+                      onClick={() => { void sendOtp(); }}
+                    >
+                      {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
+                    </button>
+                    <button
+                      type="button"
                       className="w-full text-sm text-muted-foreground hover:text-foreground"
                       onClick={() => setOtpSent(false)}
                     >
@@ -372,8 +438,33 @@ export function LoginClient({
                   </form>
                 )
               ) : (
-                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (staffPhase === 'creds') staffContinue(); else staffSignIn(); }}>
-                  {staffPhase === 'creds' ? (
+                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (staffPhase === 'creds') staffContinue(); else if (staffPhase === 'newpw') changeTempPassword(); else staffSignIn(); }}>
+                  {staffPhase === 'newpw' ? (
+                    <>
+                      <div className="rounded-xl border bg-muted/30 p-4 text-sm">
+                        <div className="font-semibold">Choose a new password</div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Your password was reset by a platform super admin. Set your own password to continue.
+                        </p>
+                      </div>
+                      <div>
+                        <Label htmlFor="new-password">New password</Label>
+                        <Input id="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" minLength={12} required />
+                        <p className="mt-1 text-xs text-muted-foreground">At least 12 characters.</p>
+                      </div>
+                      <div>
+                        <Label htmlFor="new-password-2">Confirm new password</Label>
+                        <Input id="new-password-2" type="password" value={newPassword2} onChange={(e) => setNewPassword2(e.target.value)} autoComplete="new-password" minLength={12} required />
+                      </div>
+                      <Button className="w-full gap-2" size="lg" disabled={busy} type="submit">
+                        <ShieldCheck className="size-4" />
+                        {busy ? 'Saving…' : 'Save & continue'}
+                      </Button>
+                      <button type="button" className="w-full min-h-11 text-sm text-muted-foreground hover:text-foreground" onClick={() => setStaffPhase('creds')}>
+                        ← back
+                      </button>
+                    </>
+                  ) : staffPhase === 'creds' ? (
                     <>
                       {role === 'staff' && (
                         <div>
@@ -459,6 +550,12 @@ export function LoginClient({
                       >
                         ← back
                       </button>
+                      {!enroll && (
+                        <p className="text-xs text-muted-foreground">
+                          Lost your phone or authenticator app? Contact your platform super admin — they can reset it from
+                          Platform → Users, and you&apos;ll set it up again at your next sign-in.
+                        </p>
+                      )}
                     </>
                   )}
                 </form>

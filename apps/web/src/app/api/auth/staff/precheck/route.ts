@@ -5,6 +5,9 @@
  * (never leaking which factor failed), then tells the client whether this
  * account still needs to enrol a Google Authenticator or already has one:
  *   { ok:false }                              → bad credentials / not staff
+ *   { ok:false, locked:true, retryAfterSeconds } → too many failures; wait
+ *   { ok:true, status:'change_password' }     → temp password: set a new one
+ *                                               via /api/auth/staff/change-password
  *   { ok:true, status:'enroll', qr, secret }  → first-time: scan QR then confirm
  *   { ok:true, status:'totp' }                → enrolled: enter the 6-digit code
  *
@@ -15,7 +18,7 @@ import { NextRequest } from 'next/server';
 import argon2 from 'argon2';
 import { prisma } from '@/server/db';
 import { rateLimit } from '@/server/http/rate-limit';
-import { getPlatformSecurity, isLockedOut, recordLoginFailure } from '@/server/2fa';
+import { getPlatformSecurity, isLockedOut, lockoutRemainingMs, recordLoginFailure } from '@/server/2fa';
 import { isStaffTotpRole, isTotpEnrolled, startEnrollment } from '@/server/user-totp';
 
 export const runtime = 'nodejs';
@@ -33,7 +36,12 @@ export async function POST(req: NextRequest) {
 
   // F6: this route verifies the password, so it shares the login lockout —
   // otherwise it is a password oracle that sidesteps the email-password gate.
-  if (isLockedOut(email)) return Response.json({ ok: false });
+  // The lockout is keyed by email whether or not the account exists (failures
+  // are recorded for unknown emails too), so saying "locked, wait N min" leaks
+  // nothing and stops a legitimate user from thinking their password is wrong.
+  if (isLockedOut(email)) {
+    return Response.json({ ok: false, locked: true, retryAfterSeconds: Math.ceil(lockoutRemainingMs(email) / 1000) });
+  }
   const sec = await getPlatformSecurity().catch(() => ({ lockoutMinutes: undefined }));
   const lockoutMinutes = sec.lockoutMinutes ?? 15;
 
@@ -47,6 +55,9 @@ export async function POST(req: NextRequest) {
     recordLoginFailure(email, lockoutMinutes);
     return Response.json({ ok: false });
   }
+
+  // A SUPER_ADMIN-issued password must be replaced before anything else.
+  if (user.mustChangePassword) return Response.json({ ok: true, status: 'change_password' });
 
   if (!isTotpEnrolled(user)) {
     const { qr, secret, otpauth } = await startEnrollment(user.id, user.email ?? email);
