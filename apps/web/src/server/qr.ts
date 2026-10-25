@@ -57,3 +57,17 @@ export async function ensureRestaurantQr(restaurantId: string) {
   const qr = await mintQrCode({ restaurantId, type: 'RESTAURANT' });
   return { qr, created: true as const };
 }
+
+/**
+ * Ensure the restaurant has an active REVIEW-type QR for its printed review kit
+ * (table tent / packaging insert). Scans go /qr/<code> → tracked feedback page.
+ */
+export async function ensureReviewQr(restaurantId: string) {
+  const existing = await prisma.qrCode.findFirst({
+    where: { restaurantId, type: 'REVIEW', isActive: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (existing) return { qr: existing, created: false as const };
+  const qr = await mintQrCode({ restaurantId, type: 'REVIEW', campaignName: 'Review kit' });
+  return { qr, created: true as const };
+}

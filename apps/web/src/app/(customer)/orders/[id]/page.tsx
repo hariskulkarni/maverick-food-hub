@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { findFeedbackByOrder, FEEDBACK_WINDOW_MS } from '@/server/feedback';
+import { resolveGoogleReviewUrl } from '@/server/reviews/acquisition';
 import { OrderTrackerClient } from './tracker-client';
 
 export const metadata = { title: 'Order' };
@@ -22,6 +23,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const delivered: Date | null =
     (o.assignment as any)?.deliveredAt ?? (o as any).deliveredAt ?? (o.status === 'DELIVERED' ? o.updatedAt : null);
   const windowEndsAt = delivered ? new Date(delivered.getTime() + FEEDBACK_WINDOW_MS) : null;
+  // Google review link + tracked token (if a review ask exists) for the
+  // post-delivery "Review us on Google" block — shown the same at every rating.
+  // Resolved up front so the block appears when the live tracker flips to DELIVERED.
+  const [google, reviewRequest] = await Promise.all([
+    resolveGoogleReviewUrl(o.branch.restaurantId).catch(() => ({ url: null })),
+    prisma.reviewRequest.findUnique({ where: { orderId: id }, select: { token: true } }).catch(() => null)
+  ]);
 
   return (
     <OrderTrackerClient
@@ -29,6 +37,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       existingFeedback={feedback ? JSON.parse(JSON.stringify(feedback)) : null}
       deliveredAt={delivered ? delivered.toISOString() : null}
       feedbackWindowEndsAt={windowEndsAt ? windowEndsAt.toISOString() : null}
+      googleReviewUrl={google.url}
+      reviewToken={reviewRequest?.token ?? null}
     />
   );
 }

@@ -11,6 +11,7 @@ import { brand } from '@/lib/brand';
 import DeliveryMap from './delivery-map';
 import { ReorderButton } from './reorder-button';
 import { FeedbackDialog, type FeedbackLite } from '../feedback-dialog';
+import { GoogleReviewBlock } from '@/components/reviews/google-review-button';
 
 // Equirectangular distance approximation in km between two lat/lng points.
 // Used for the saffron ETA pill ("arriving in ~N min · 0.8 km away").
@@ -29,12 +30,16 @@ export function OrderTrackerClient({
   order: initial,
   existingFeedback: initialFeedback = null,
   deliveredAt = null,
-  feedbackWindowEndsAt = null
+  feedbackWindowEndsAt = null,
+  googleReviewUrl = null,
+  reviewToken = null
 }: {
   order: any;
   existingFeedback?: FeedbackLite | null;
   deliveredAt?: string | null;
   feedbackWindowEndsAt?: string | null;
+  googleReviewUrl?: string | null;
+  reviewToken?: string | null;
 }) {
   const [order, setOrder] = useState(initial);
   const [feedback, setFeedback] = useState<FeedbackLite | null>(initialFeedback);
@@ -210,6 +215,15 @@ export function OrderTrackerClient({
           windowClosed={feedbackWindowClosed}
           onOpen={() => setFeedbackOpen(true)}
         />
+      )}
+      {/* Same Google block at every rating, before and after feedback (no gating). */}
+      {isDelivered && googleReviewUrl && (
+        <div className="mb-6">
+          <GoogleReviewBlock
+            href={googleReviewUrl}
+            trackUrl={reviewToken ? `/api/review-requests/${encodeURIComponent(reviewToken)}/google` : undefined}
+          />
+        </div>
       )}
 
       {/* ───────────────────────── Live ETA pill + Map ───────────────────────── */}

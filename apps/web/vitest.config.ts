@@ -8,6 +8,8 @@ export default defineConfig({
     include: ['tests/unit/**/*.test.ts', 'tests/integration/**/*.test.ts', '__tests__/**/*.test.ts'],
     setupFiles: []
   },
+  // tsconfig keeps jsx: "preserve" for Next; tests that render components need it compiled.
+  oxc: { jsx: { runtime: 'automatic' } },
   resolve: {
     alias: { '@': path.resolve(__dirname, 'src') }
   }
