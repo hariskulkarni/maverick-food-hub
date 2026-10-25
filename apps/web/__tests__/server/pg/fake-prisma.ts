@@ -127,6 +127,7 @@ export function fakePrisma(store: Store) {
     pgAccountDailyUsage: model(store, 'usage', 'use', { __unique: [['receivingAccountId', 'day']] }),
     pgReconException: model(store, 'exceptions', 'exc'),
     order: model(store, 'orders', 'ord'),
+    pgPaymentEvidence: model(store, 'evidence', 'ev'),
     $queryRaw: async (_s: TemplateStringsArray, accountId: string) =>
       store.accounts.filter((a) => a.id === accountId).map((a) => ({ id: a.id })),
   };

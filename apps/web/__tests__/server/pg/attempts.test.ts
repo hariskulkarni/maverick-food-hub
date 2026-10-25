@@ -25,7 +25,7 @@ vi.mock('@/server/pg/merchant-binding', () => ({ resolveBinding: h.resolveBindin
 vi.mock('@/server/payments/youpi-reconcile', () => ({ reconcileYoupiPayment: h.reconcileYoupiPayment }));
 vi.mock('@/server/payments/reconcile', () => ({ markOrderPaymentFailed: h.markOrderPaymentFailed }));
 
-import { createPgAttempt, resolveUnknownAttempt, expireStaleAttempts, PgAttemptError, UNKNOWN_GRACE_MS } from '@/server/pg/attempts';
+import { createPgAttempt, resolveUnknownAttempt, expireStaleAttempts, PgAttemptError, UNKNOWN_GRACE_MS, LIVE_SESSION_MAX_EXTENSION_MS } from '@/server/pg/attempts';
 
 // Obviously fake credentials.
 const binding = (over: any = {}) => ({
@@ -300,6 +300,37 @@ describe('resolveUnknownAttempt', () => {
     expect(s().exceptions[0].status).toBe('RESOLVED');
   });
 
+  it('P1-8: a resolved AWAITING_PAYMENT gets its checkout URL by re-posting the same attemptKey, and is reusable', async () => {
+    const a = await unknownAttempt();
+    const calls = gateway({});
+    expect(await resolveUnknownAttempt(a.id, later())).toBe('AWAITING_PAYMENT');
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.body.orderId)).toEqual([a.attemptKey]);
+    expect(s().payments[0].providerData.checkoutUrl).toBe('https://pay.test/checkout/gp1');
+    const again = await createPgAttempt(order(), opts);
+    expect(again).toMatchObject({ reused: true, attemptId: a.id, checkoutUrl: 'https://pay.test/checkout/gp1' });
+  });
+
+  it('P1-8: readback failure keeps the create URL server-side; once the readback proves the receiver it is reused without a new POST', async () => {
+    gateway({ read: () => json(502, {}) });
+    await createPgAttempt(order(), opts).catch(() => undefined);
+    vi.restoreAllMocks();
+    expect(s().payments[0].providerData).toMatchObject({ checkoutUrl: 'https://pay.test/checkout/gp1', unverified: true });
+    const calls = gateway({ read: () => json(200, view(attempt().attemptKey)) });
+    expect(await resolveUnknownAttempt(attempt().id, later())).toBe('AWAITING_PAYMENT');
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+    expect(s().payments[0].providerData.checkoutUrl).toBe('https://pay.test/checkout/gp1');
+    expect(s().payments[0].providerData.unverified).toBeUndefined();
+  });
+
+  it('P1-8: the worker re-probes an unknown create after 90 s, long before the 30-min grace, without flagging it stale', async () => {
+    const a = await unknownAttempt();
+    const t = new Date(Date.now() - 3 * 60_000);
+    Object.assign(attempt(), { createdAt: t, updatedAt: t });
+    gateway({});
+    expect(await expireStaleAttempts()).toMatchObject({ resolved: 1, flagged: 0 });
+    expect(s().attempts.find((x) => x.id === a.id)!.state).toBe('AWAITING_PAYMENT');
+  });
+
   it('lookup error -> unchanged', async () => {
     const a = await unknownAttempt();
     gateway({ read: () => json(500, {}) });
@@ -313,8 +344,16 @@ describe('resolveUnknownAttempt', () => {
     expect(s().exceptions.map((e) => [e.kind, e.status])).toEqual([['CREATE_UNKNOWN', 'RESOLVED'], ['RECEIVER_MISMATCH', 'OPEN']]);
   });
 
-  it('remote EXPIRED -> EXPIRED without releasing (it was payable)', async () => {
+  it('remote EXPIRED with no observation -> EXPIRED and the daily-cap slot is released (round-2 P2, same rule as expiry)', async () => {
     const a = await unknownAttempt();
+    gateway({ read: (k) => json(200, view(k, { status: 'EXPIRED' })) });
+    expect(await resolveUnknownAttempt(a.id, later())).toBe('EXPIRED');
+    expect(s().reservations[0].state).toBe('RELEASED');
+  });
+
+  it('remote EXPIRED but the gateway was observed paying it -> EXPIRED, limit kept', async () => {
+    const a = await unknownAttempt();
+    s().evidence.push({ id: 'ev1', attemptId: a.id, status: 'RECORDED' });
     gateway({ read: (k) => json(200, view(k, { status: 'EXPIRED' })) });
     expect(await resolveUnknownAttempt(a.id, later())).toBe('EXPIRED');
     expect(s().reservations[0].state).toBe('RESERVED');
@@ -363,10 +402,13 @@ describe('expireStaleAttempts', () => {
     expect(h.markOrderPaymentFailed).toHaveBeenCalledWith('o1', expect.any(String));
   });
 
-  it('gateway still INITIATED -> EXPIRED but the limit is kept', async () => {
+  it('gateway still INITIATED -> not expired inside the bounded extension (P1-9); after it EXPIRED, limit kept', async () => {
     await awaiting();
     gateway({});
-    expect(await expireStaleAttempts({ now: pastExpiry() })).toMatchObject({ expired: 1, released: 0 });
+    expect(await expireStaleAttempts({ now: pastExpiry() })).toMatchObject({ expired: 0, skipped: 1 });
+    expect(attempt().state).toBe('AWAITING_PAYMENT');
+    const beyond = new Date(attempt().expiresAt.getTime() + LIVE_SESSION_MAX_EXTENSION_MS + 60_000);
+    expect(await expireStaleAttempts({ now: beyond })).toMatchObject({ expired: 1, released: 0 });
     expect(s().reservations[0].state).toBe('RESERVED');
   });
 

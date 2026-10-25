@@ -340,7 +340,7 @@ export async function createPgAttempt(
   const rb = await readYoupiPayment(cfg, out.paymentId);
   if (rb.kind !== 'found') {
     // The session exists but its receiver cannot be proven yet: unknown, never exposed.
-    await markUnknown(attempt, out.paymentId, rb.kind === 'error' ? `readback: ${rb.error}` : 'readback: not found');
+    await markUnknown(attempt, out.paymentId, rb.kind === 'error' ? `readback: ${rb.error}` : 'readback: not found', out.checkoutUrl);
     throw new PgAttemptError('We could not confirm the payment session. Please wait a minute before retrying.', 503, 'CREATE_UNKNOWN');
   }
   const reasons = readbackMismatch(rb.view, {
@@ -405,12 +405,19 @@ type AttemptRef = {
   expectedAmountPaise: number;
 };
 
-async function markUnknown(a: AttemptRef, gatewayPaymentId: string | null, error: string): Promise<void> {
+async function markUnknown(a: AttemptRef, gatewayPaymentId: string | null, error: string, checkoutUrl?: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
-    await tx.pgPaymentAttempt.updateMany({
+    const moved = await tx.pgPaymentAttempt.updateMany({
       where: { id: a.id, state: { in: ['CREATED', 'CREATE_UNKNOWN'] } },
       data: { state: 'CREATE_UNKNOWN', ...(gatewayPaymentId ? { gatewayPaymentId } : {}), lastStatusAt: new Date() },
     });
+    if (moved.count === 1 && checkoutUrl && gatewayPaymentId) {
+      // P1-8: kept server-side only (never shown while unknown); reused once the readback proves the receiver.
+      await tx.payment.update({
+        where: { id: a.paymentId },
+        data: { providerData: { paymentId: gatewayPaymentId, checkoutUrl, _merchantOrderId: a.attemptKey, attemptKey: a.attemptKey, unverified: true } },
+      });
+    }
     await openException(tx, 'CREATE_UNKNOWN', a, { gatewayPaymentId, error: error.slice(0, 200) });
   });
   // The limit reservation is deliberately kept: the remote session may still be paid.
@@ -505,6 +512,20 @@ export async function resolveUnknownAttempt(attemptId: string, now: Date = new D
   else if (view.status === 'PENDING' || view.status === 'OBSERVED') next = 'AWAITING_PAYMENT';
   else return a.state; // unrecognised gateway status: prove nothing
 
+  // P1-8: an AWAITING_PAYMENT attempt is only reusable with a checkout URL. Keep the one from the
+  // create response if we have it; otherwise re-POST the same attemptKey: the gateway de-duplicates by
+  // (merchant, orderId) and returns the SAME live session + checkoutUrl (UPSTREAM_CONTRACT §2).
+  let checkoutUrl: string | null = null;
+  if (next === 'AWAITING_PAYMENT') {
+    const pay = await prisma.payment.findUnique({ where: { id: a.paymentId }, select: { providerData: true } });
+    const kept = (pay?.providerData as Record<string, unknown> | null)?.checkoutUrl;
+    if (typeof kept === 'string' && checkoutOriginOk(cfg, kept)) checkoutUrl = kept;
+    else {
+      const again = await createYoupiSession(cfg, { orderId: a.attemptKey, amountPaise: a.expectedAmountPaise });
+      if (again.kind === 'created' && again.paymentId === view.paymentId && checkoutOriginOk(cfg, again.checkoutUrl)) checkoutUrl = again.checkoutUrl;
+    }
+  }
+
   // The session existed and was payable, so the limit is NOT released for FAILED/EXPIRED.
   // An OBSERVED (SUCCESS) session stays AWAITING_PAYMENT here; the reconciliation probe records
   // the observation and only bank evidence can capture it (D2/D3).
@@ -520,12 +541,32 @@ export async function resolveUnknownAttempt(attemptId: string, now: Date = new D
       },
     });
     if (moved.count === 0) return;
-    await tx.payment.update({ where: { id: a.paymentId }, data: { providerRef: view.paymentId! } });
+    const expiresAt = next === 'AWAITING_PAYMENT' ? new Date(now.getTime() + binding.limits.sessionTtlMinutes * 60_000) : null;
+    await tx.payment.update({
+      where: { id: a.paymentId },
+      data: {
+        providerRef: view.paymentId!,
+        ...(next === 'AWAITING_PAYMENT'
+          ? {
+              providerData: {
+                paymentId: view.paymentId!,
+                ...(checkoutUrl ? { checkoutUrl } : {}),
+                _merchantOrderId: a.attemptKey,
+                attemptKey: a.attemptKey,
+                _expireAt: expiresAt!.getTime(),
+              },
+            }
+          : {}),
+      },
+    });
     if (next !== 'AWAITING_PAYMENT') {
       await tx.payment.updateMany({
         where: { id: a.paymentId, status: 'PENDING' },
         data: { status: 'FAILED', errorMessage: `Gateway session ${view.gatewayStatus}.` },
       });
+      // P2 daily cap: the gateway itself reports the session dead and nothing was observed for it.
+      const observed = await tx.pgPaymentEvidence.count({ where: { attemptId: a.id } });
+      if (observed === 0) await releaseLimit(tx, a.id);
     }
     await closeException(tx, 'CREATE_UNKNOWN', a.id, `gateway lookup: ${view.gatewayStatus}`);
   });
@@ -534,6 +575,13 @@ export async function resolveUnknownAttempt(attemptId: string, now: Date = new D
 
 /** Past-expiry slack before a quiet AWAITING_PAYMENT attempt is expired, and before a stuck attempt is flagged. */
 export const STALE_GRACE_MS = 30 * 60_000;
+/** P1-8: minimum gap between two gateway probes of the same CREATED/CREATE_UNKNOWN attempt. */
+export const UNKNOWN_REPROBE_MS = 90_000;
+/**
+ * P1-9: while the gateway still reports the session live (INITIATED/QUEUED/ACTIVE), it is not expired
+ * until expiresAt + this bound; after that it is expired anyway (a later payment becomes LATE_PAYMENT).
+ */
+export const LIVE_SESSION_MAX_EXTENSION_MS = 2 * 3_600_000;
 /** OBSERVED is normal until the next bank statement: flag only after the bank-match window. */
 export const OBSERVED_STALE_MS = 48 * 3600_000;
 const FLAG_SCAN_PAGES = 10;
@@ -565,8 +613,10 @@ export async function expireStaleAttempts(
   // 1a. Unknown creates get their own query, so a backlog of OBSERVED/REVIEW attempts can never
   //     starve them (H-10). An attempt we could not resolve is touched (updatedAt bumps), which
   //     rotates it behind the others for the next tick.
+  //     P1-8: probed every UNKNOWN_REPROBE_MS (not only after the 30 min grace), so a timed-out create
+  //     that the gateway did make becomes payable again within minutes; STALE_PENDING only after the grace.
   const unknown = await prisma.pgPaymentAttempt.findMany({
-    where: { state: { in: ['CREATED', 'CREATE_UNKNOWN'] }, updatedAt: { lt: cutoff } },
+    where: { state: { in: ['CREATED', 'CREATE_UNKNOWN'] }, updatedAt: { lt: new Date(now.getTime() - UNKNOWN_REPROBE_MS) } },
     orderBy: { updatedAt: 'asc' },
     take: limit,
   });
@@ -576,11 +626,12 @@ export async function expireStaleAttempts(
       res.resolved++;
       continue;
     }
+    const stale = a.createdAt < cutoff;
     await prisma.$transaction(async (tx) => {
       await tx.pgPaymentAttempt.updateMany({ where: { id: a.id, state: a.state }, data: { lastStatusAt: now } });
-      await openException(tx, 'STALE_PENDING', a, { state, since: a.createdAt.toISOString() });
+      if (stale) await openException(tx, 'STALE_PENDING', a, { state, since: a.createdAt.toISOString() });
     });
-    res.flagged++;
+    if (stale) res.flagged++;
   }
 
   // 1b. REVIEW_REQUIRED past the grace, OBSERVED past the bank-match window: flag once each.
@@ -648,6 +699,10 @@ export async function expireStaleAttempts(
         log.warn({ attemptId: a.id, err: (e as Error).message }, 'pg.expiry.reconcile_failed');
       }
       res.skipped++;
+      continue;
+    }
+    if (r.view.status === 'PENDING' && a.expiresAt && now.getTime() < a.expiresAt.getTime() + LIVE_SESSION_MAX_EXTENSION_MS) {
+      res.skipped++; // P1-9: gateway says the session is still live; give it the bounded extension
       continue;
     }
     const gatewayDead = r.view.status === 'FAILED';
