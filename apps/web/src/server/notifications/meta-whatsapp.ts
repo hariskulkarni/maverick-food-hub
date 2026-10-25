@@ -6,9 +6,11 @@
  * renders the code plus a one-tap copy-code button. So when a `templateName` is
  * configured we send a template message with the code as the body parameter
  * (and, by default, the copy-code button parameter that Authentication
- * templates require). With no template configured we fall back to a plain text
- * message — that only reaches users inside the 24-hour customer-initiated
- * window, so it's really only useful for testing.
+ * templates require). F7: only OTP messages (template `otp.*` / meta.otpCode)
+ * use that template. Every other message (alerts, digests, review asks), and
+ * any message when no template is configured, is sent as plain text — which
+ * Meta only delivers inside the 24-hour customer-initiated window (otherwise
+ * the send fails and is journaled FAILED, never silently mis-delivered).
  *
  * Docs: https://developers.facebook.com/docs/whatsapp/cloud-api
  *
@@ -37,6 +39,7 @@ export interface MetaWhatsAppConfig {
 interface SendArgs {
   to: string;
   body: string;
+  template?: string;
   meta?: Record<string, unknown>;
 }
 
@@ -51,10 +54,14 @@ function normalizeNumber(to: string): string {
   return to.replace(/^whatsapp:/i, '').replace(/[^\d]/g, '');
 }
 
-/** Pull the OTP code: explicit meta.otpCode wins, else first 4–8 digit run. */
+/**
+ * The OTP code, for OTP messages only: explicit meta.otpCode wins; else, for an
+ * `otp.*` template, the first 4–8 digit run of the body. Non-OTP → null.
+ */
 function resolveCode(args: SendArgs): string | null {
   const explicit = args.meta?.otpCode;
   if (typeof explicit === 'string' && explicit.trim()) return explicit.trim();
+  if (!(args.template ?? '').startsWith('otp')) return null;
   const m = args.body.match(/\b(\d{4,8})\b/);
   return m ? m[1] : null;
 }
@@ -66,20 +73,19 @@ export async function sendMetaWhatsApp(cfg: MetaWhatsAppConfig, args: SendArgs):
     const to = normalizeNumber(args.to);
 
     let payload: Record<string, unknown>;
-    if (cfg.templateName?.trim()) {
-      const code = resolveCode(args);
-      const components: Record<string, unknown>[] = [];
-      if (code) {
-        components.push({ type: 'body', parameters: [{ type: 'text', text: code }] });
-        // Authentication-category templates require the copy-code button param.
-        if ((cfg.copyCodeButton ?? 'true') !== 'false') {
-          components.push({
-            type: 'button',
-            sub_type: 'url',
-            index: '0',
-            parameters: [{ type: 'text', text: code }],
-          });
-        }
+    const code = resolveCode(args);
+    if (cfg.templateName?.trim() && code) {
+      const components: Record<string, unknown>[] = [
+        { type: 'body', parameters: [{ type: 'text', text: code }] },
+      ];
+      // Authentication-category templates require the copy-code button param.
+      if ((cfg.copyCodeButton ?? 'true') !== 'false') {
+        components.push({
+          type: 'button',
+          sub_type: 'url',
+          index: '0',
+          parameters: [{ type: 'text', text: code }],
+        });
       }
       payload = {
         messaging_product: 'whatsapp',
@@ -88,11 +94,12 @@ export async function sendMetaWhatsApp(cfg: MetaWhatsAppConfig, args: SendArgs):
         template: {
           name: cfg.templateName.trim(),
           language: { code: cfg.templateLang?.trim() || 'en_US' },
-          ...(components.length ? { components } : {}),
+          components,
         },
       };
     } else {
-      // Plain text — only delivers inside the 24h customer-initiated window.
+      // Non-OTP message, or no template configured: plain text — only delivers
+      // inside the 24h customer-initiated window.
       payload = { messaging_product: 'whatsapp', to, type: 'text', text: { body: args.body } };
     }
 
