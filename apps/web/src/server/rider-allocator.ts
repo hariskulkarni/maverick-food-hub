@@ -7,6 +7,7 @@ import { prisma } from './db';
 import { haversineKm } from '@/lib/utils';
 import { AssignmentStatus, OrderStatus } from '@prisma/client';
 import { publish } from './realtime';
+import { recordOrderEvent } from './dispatch/events';
 
 export interface RiderScore {
   riderId: string;
@@ -91,5 +92,6 @@ export async function assignRider(orderId: string, riderId: string) {
   });
   publish(`rider:${riderId}`, { kind: 'assigned', orderId, riderId });
   publish(`order:${orderId}`, { kind: 'assigned', orderId, riderId });
+  await recordOrderEvent({ orderId, type: 'ASSIGNED', source: 'ADMIN', riderId, meta: { via: 'assign' } });
   return a;
 }

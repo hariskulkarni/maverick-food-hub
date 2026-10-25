@@ -30,6 +30,7 @@ import { computeBasePayout } from '@/server/payouts';
 import { publish } from '@/server/realtime';
 import { log } from '@/server/log';
 import { requireRider } from '../../_helpers';
+import { recordOrderEvent } from '@/server/dispatch/events';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -143,6 +144,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       await transitionOrder(inv.orderId, OrderStatus.OUT_FOR_DELIVERY, {
         actorId: guard.rider.userId,
         note: 'Batched onto rider via BatchInvitation',
+        eventSource: 'RIDER',
       });
     }
   } catch (e) {
@@ -152,6 +154,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     log.error({ err: e, invitationId: id, orderId: inv.orderId }, 'batch accept transition failed');
   }
 
+  await recordOrderEvent({
+    orderId: inv.orderId,
+    type: 'ASSIGNED',
+    source: 'RIDER',
+    actorId: guard.rider.userId,
+    riderId: profileId,
+    meta: { via: 'batch', invitationId: id },
+  });
   publish('rider:pool', { kind: 'order:claimed', orderId: inv.orderId });
   publish(`order:${inv.orderId}`, {
     kind: 'assigned',

@@ -49,3 +49,13 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 */5 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 60 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/review-requests/run >> /var/log/restaurant-manager/jobs.log 2>&1
 # Google reviews weekly digest to restaurant owners — Mondays 09:00 IST.
 0 9 * * 1 deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 300 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/review-digest/run >> /var/log/restaurant-manager/jobs.log 2>&1
+
+# ── Dispatch telemetry (feat/dispatch-telemetry) ──────────────────────────────
+# JIT rider invitations — releases held orders into the normal dispatch flow. No-op while the JIT setting is OFF (default).
+* * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 50 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/dispatch-jit/run >> /var/log/restaurant-manager/jobs.log 2>&1
+# Stationary on-task riders → RIDER_STATIONARY escalation on /platform/live-ops (debounced per assignment).
+*/2 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 90 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/rider-stationary/run >> /var/log/restaurant-manager/jobs.log 2>&1
+# H3 zone supply/demand snapshot (also the rider-hours source for orders-per-rider-hour).
+*/5 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 90 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/zone-snapshot/run >> /var/log/restaurant-manager/jobs.log 2>&1
+# Nightly prep-time percentiles per restaurant × hour (feeds predicted prep / JIT).
+10 3 * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 300 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/prep-stats/run >> /var/log/restaurant-manager/jobs.log 2>&1

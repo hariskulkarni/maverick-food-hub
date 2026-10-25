@@ -107,7 +107,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       data: { totalEarnings: { increment: a.earningsAmt as any } }
     })
   ]);
-  await transitionOrder(a.order.id, 'DELIVERED' as any, { actorId: session.user.id });
+  await transitionOrder(a.order.id, 'DELIVERED' as any, { actorId: session.user.id, eventSource: 'RIDER' });
 
   // Advance incentive progress and pay out any newly-achieved slabs. Best-effort
   // — this never blocks or fails the delivery confirmation.
