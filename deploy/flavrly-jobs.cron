@@ -38,8 +38,12 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # (route docs say daily ~06:00; the sender debounces per branch ~every 3 days)
 0 6 * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 120 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/food-license-expiry/run >> /var/log/restaurant-manager/jobs.log 2>&1
 
-# Google reviews — sync new reviews + apply auto-reply policy. Once daily (03:00 IST).
-0 3 * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 90 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/google-reviews/run >> /var/log/restaurant-manager/jobs.log 2>&1
+# Google reviews — sync + auto-reply rules + negative alerts + insights + SLA escalation.
+# Every 15 minutes (matches the route doc). Real-time Pub/Sub push is optional on top.
+*/15 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 90 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/google-reviews/run >> /var/log/restaurant-manager/jobs.log 2>&1
 
 # YouPI reconciliation — verifies in-flight YouPI payments (status + UTR + amount) and is the only path that captures them.
 */3 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 60 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/youpi-reconcile/run >> /var/log/restaurant-manager/jobs.log 2>&1
+
+# Google reviews weekly digest to restaurant owners — Mondays 09:00 IST.
+0 9 * * 1 deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 300 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/review-digest/run >> /var/log/restaurant-manager/jobs.log 2>&1
