@@ -243,6 +243,11 @@ export interface PoolOrder {
   payout: number; // what the rider earns if they claim
   distanceKm: number;
   readyAt: string | null;
+  /**
+   * Just-in-time dispatch: false while the kitchen is still cooking (the rider
+   * should head to the restaurant). Absent on older servers → treat as ready.
+   */
+  foodReady?: boolean;
 }
 
 /** POST /api/rider/pool/[id]/claim — the freshly created assignment row. */
@@ -263,6 +268,8 @@ export interface EarningsSummary {
   today: { earnings: number; deliveries: number };
   /** Current IST week (Mon–Sun), aggregated server-side. */
   week?: { earnings: number; deliveries: number };
+  /** 7 IST calendar days, oldest first, aggregated over ALL deliveries. */
+  last7Days?: { date: string; earnings: number; deliveries: number }[];
   /** Daily / weekly earnings goals from platform config. */
   goals?: { daily: number; weekly: number };
   recent: {

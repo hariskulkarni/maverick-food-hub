@@ -159,7 +159,21 @@ export default function EarningsScreen() {
   }, [load]);
 
   // Derive all the gamification stats from the single earnings payload.
-  const week = useMemo(() => buildWeek(data?.recent ?? []), [data]);
+  // Prefer the server's IST 7-day aggregate (covers ALL deliveries); fall back
+  // to bucketing the recent feed for an older server.
+  const serverDays = data?.last7Days && data.last7Days.length > 0 ? data.last7Days : null;
+  const week = useMemo<DayBucket[]>(
+    () =>
+      serverDays
+        ? serverDays.map((d) => ({
+            key: d.date,
+            label: WEEKDAYS[new Date(`${d.date}T12:00:00`).getDay()],
+            total: d.earnings,
+            count: d.deliveries,
+          }))
+        : buildWeek(data?.recent ?? []),
+    [data, serverDays]
+  );
   // Chart total (last 7 days of the recent list) vs. the authoritative IST
   // calendar-week aggregate the server computes over ALL deliveries.
   const chartTotal = useMemo(() => week.reduce((s, d) => s + d.total, 0), [week]);
@@ -348,7 +362,7 @@ export default function EarningsScreen() {
           <View style={styles.chartFooter}>
             <Text style={styles.chartFooterText}>
               {rupees(chartTotal)} earned over the last 7 days
-              {(data?.recent.length ?? 0) >= 20 ? ' (latest 20 deliveries)' : ''}
+              {!serverDays && (data?.recent.length ?? 0) >= 20 ? ' (latest 20 deliveries)' : ''}
             </Text>
           </View>
         </View>

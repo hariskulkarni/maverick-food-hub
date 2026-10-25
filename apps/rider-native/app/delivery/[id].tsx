@@ -675,6 +675,17 @@ export default function DeliveryScreen() {
             </Pressable>
           ) : null}
           <Stepper activeIndex={idx} />
+          {/* JIT dispatch: the rider may be sent before the kitchen finishes.
+              Show a friendly label instead of the raw order status. */}
+          {(step === 'to_restaurant' || step === 'at_restaurant' || step === 'accept') &&
+          (o.status === 'PREPARING' || o.status === 'ACCEPTED' || o.status === 'RECEIVED') ? (
+            <View style={styles.notReady}>
+              <Ionicons name="time-outline" size={16} color={colors.warning} />
+              <Text style={styles.notReadyText}>
+                Being prepared — food not ready yet, head to the restaurant
+              </Text>
+            </View>
+          ) : null}
           <RouteBlock a={assignment} />
 
           {o.customerNotes ? (
@@ -1035,6 +1046,16 @@ function ActionButton({
 }
 
 const styles = StyleSheet.create({
+  notReady: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningSoft,
+  },
+  notReadyText: { flex: 1, fontSize: font.size.sm, fontWeight: font.weight.semibold, color: colors.warning },
   reasonWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   reasonChip: {
     paddingHorizontal: spacing.md,

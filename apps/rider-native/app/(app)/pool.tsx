@@ -63,6 +63,13 @@ function PoolCard({
         </View>
       </View>
 
+      {order.foodReady === false ? (
+        <View style={styles.notReady}>
+          <Ionicons name="time-outline" size={14} color={colors.warning} />
+          <Text style={styles.notReadyText}>Food not ready yet — head to restaurant</Text>
+        </View>
+      ) : null}
+
       <Text style={styles.items} numberOfLines={2}>
         {order.itemSummary || 'Order items'}
       </Text>
@@ -267,6 +274,18 @@ export default function PoolScreen() {
 }
 
 const styles = StyleSheet.create({
+  notReady: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.warningSoft,
+  },
+  notReadyText: { fontSize: font.size.xs, fontWeight: font.weight.semibold, color: colors.warning },
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
