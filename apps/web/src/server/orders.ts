@@ -7,6 +7,7 @@
  */
 
 import { OrderStatus, PaymentMethod, PaymentStatus, AssignmentStatus, FulfillmentType, Prisma } from '@prisma/client';
+import { releaseAssignmentOnOrderClose } from './rider-assignment-release';
 import { prisma } from './db';
 import { publish } from './realtime';
 import { notify } from './notifications';
@@ -814,6 +815,7 @@ export async function transitionOrder(
   // flipped it), capture the riderId so we can advance incentive progress after
   // the txn commits. Left null in the common rider-app path.
   let forceDeliveredRiderId: string | null = null;
+  let releasedRiderId: string | null = null;
 
   const updated = await prisma.$transaction(async (tx) => {
     // H8: single-winner write. The status was validated from a read OUTSIDE the
@@ -845,6 +847,7 @@ export async function transitionOrder(
         forceDeliveredRiderId = a.riderId;
       }
     }
+    releasedRiderId = await releaseAssignmentOnOrderClose(tx, orderId, next);
     return tx.order.findUniqueOrThrow({ where: { id: orderId } });
   });
 
@@ -860,6 +863,7 @@ export async function transitionOrder(
     }
   }
 
+  if (releasedRiderId) publish(`rider:${releasedRiderId}`, { kind: 'status', orderId, status: next, at: new Date().toISOString() });
   publish(`order:${orderId}`, { kind: 'status', orderId, status: next, at: new Date().toISOString() });
   publish(`branch:${order.branchId}:orders`, { kind: 'status', orderId, status: next, at: new Date().toISOString() });
   // Mirror the status change to the group channel for the parent's unified board.
