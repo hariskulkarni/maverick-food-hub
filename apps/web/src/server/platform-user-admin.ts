@@ -153,6 +153,15 @@ export async function adminUnlock(actor: Actor, targetId: string, meta: ReqMeta 
 
 const ALL_ROLES = Object.values(Role) as string[];
 
+const RESTAURANT_ROLES = new Set<string>([Role.ADMIN, Role.KITCHEN]);
+
+/**
+ * Change any user's role. Restaurant membership stays consistent:
+ *  - to ADMIN / KITCHEN: existing RestaurantUser / BranchUser rows are kept and
+ *    re-roled (add new memberships from the restaurant's team section);
+ *  - to any other role: those rows are removed so no restaurant access lingers.
+ * A restaurant's primary owner must stay ADMIN (transfer ownership first).
+ */
 export async function adminSetRole(actor: Actor, targetId: string, role: Role, meta: ReqMeta = {}): Promise<AdminResult<{ role: Role }>> {
   if (!ALL_ROLES.includes(role)) return fail(400, 'invalid_role', 'Unknown role.');
   const { target, error } = await loadTarget(actor, targetId);
@@ -161,14 +170,26 @@ export async function adminSetRole(actor: Actor, targetId: string, role: Role, m
   if (target.role === Role.SUPER_ADMIN && (await isLastActiveSuperAdmin(target.id))) {
     return fail(409, 'last_super_admin', 'This is the last active super admin — promote someone else first.');
   }
-  await prisma.$transaction(async (tx) => {
+  if (role !== Role.ADMIN && (await prisma.restaurant.count({ where: { ownerUserId: target.id } })) > 0) {
+    return fail(409, 'restaurant_owner', 'This user is the primary owner of a restaurant — transfer ownership before changing their role.');
+  }
+  const keepsRestaurantAccess = RESTAURANT_ROLES.has(role);
+  const removed = await prisma.$transaction(async (tx) => {
     await tx.user.update({ where: { id: target.id }, data: { role, currentSessionId: null } });
     await revokeAllSessions(tx, target.id, 'admin_role_change');
+    if (keepsRestaurantAccess) {
+      await tx.restaurantUser.updateMany({ where: { userId: target.id }, data: { role } });
+      await tx.branchUser.updateMany({ where: { userId: target.id }, data: { role } });
+      return null;
+    }
+    const r = await tx.restaurantUser.deleteMany({ where: { userId: target.id } });
+    const b = await tx.branchUser.deleteMany({ where: { userId: target.id } });
+    return { restaurantMembershipsRemoved: r.count, branchMembershipsRemoved: b.count };
   });
   await audit('platform.user.role.change', {
     ...auditBase(actor, target.id, meta),
     before: { role: target.role },
-    after: { role },
+    after: { role, ...(removed ?? {}) },
   }).catch(() => {});
   return { ok: true, role };
 }

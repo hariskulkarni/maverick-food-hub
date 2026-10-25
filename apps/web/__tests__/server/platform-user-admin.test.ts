@@ -12,6 +12,9 @@ const sessionsRevoked: string[] = [];
 const { db, auditFn, sec, hash } = vi.hoisted(() => ({
   db: {
     user: { findUnique: vi.fn(), update: vi.fn(), count: vi.fn() },
+    restaurant: { count: vi.fn(async () => 0) },
+    restaurantUser: { updateMany: vi.fn(async () => ({ count: 1 })), deleteMany: vi.fn(async () => ({ count: 2 })) },
+    branchUser: { updateMany: vi.fn(async () => ({ count: 1 })), deleteMany: vi.fn(async () => ({ count: 1 })) },
     userSession: { updateMany: vi.fn(), findMany: vi.fn() },
     otpAttempt: { updateMany: vi.fn() },
     auditLog: { findMany: vi.fn() },
@@ -120,7 +123,24 @@ describe('adminSetRole', () => {
     expect(r.ok).toBe(true);
     expect(users.get('c1')!.role).toBe('KITCHEN');
     expect(users.get('c1')!.currentSessionId).toBeNull();
-    expect(auditFn).toHaveBeenCalledWith('platform.user.role.change', expect.objectContaining({ before: { role: 'CUSTOMER' }, after: { role: 'KITCHEN' } }));
+    expect(auditFn).toHaveBeenCalledWith('platform.user.role.change', expect.objectContaining({ before: { role: 'CUSTOMER' }, after: expect.objectContaining({ role: 'KITCHEN' }) }));
+  });
+  it('KITCHEN -> ADMIN keeps restaurant memberships and re-roles them', async () => {
+    await adminSetRole(actor, 'k1', 'ADMIN', meta);
+    expect(db.restaurantUser.updateMany).toHaveBeenCalledWith({ where: { userId: 'k1' }, data: { role: 'ADMIN' } });
+    expect(db.branchUser.updateMany).toHaveBeenCalledWith({ where: { userId: 'k1' }, data: { role: 'ADMIN' } });
+    expect(db.restaurantUser.deleteMany).not.toHaveBeenCalled();
+  });
+  it('KITCHEN -> CUSTOMER removes restaurant/branch access and audits the count', async () => {
+    await adminSetRole(actor, 'k1', 'CUSTOMER', meta);
+    expect(db.restaurantUser.deleteMany).toHaveBeenCalledWith({ where: { userId: 'k1' } });
+    expect(db.branchUser.deleteMany).toHaveBeenCalledWith({ where: { userId: 'k1' } });
+    expect(auditFn).toHaveBeenCalledWith('platform.user.role.change', expect.objectContaining({ after: { role: 'CUSTOMER', restaurantMembershipsRemoved: 2, branchMembershipsRemoved: 1 } }));
+  });
+  it('refuses to move a restaurant owner off ADMIN (transfer ownership first)', async () => {
+    users.set('o1', { id: 'o1', role: 'ADMIN', suspendedAt: null, deletedAt: null });
+    db.restaurant.count.mockResolvedValueOnce(1);
+    expect(await adminSetRole(actor, 'o1', 'CUSTOMER', meta)).toMatchObject({ ok: false, status: 409, error: 'restaurant_owner' });
   });
   it('refuses to change own role', async () => {
     expect(await adminSetRole(actor, 'su1', 'GUEST', meta)).toMatchObject({ ok: false, error: 'self_forbidden' });
