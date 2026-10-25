@@ -104,6 +104,19 @@ echo "==> [4/5] npm run build (runs prisma generate + next build)"
 # Next 15 intermittently fails the FINAL 404/500 page-copy step with a transient
 # rename ENOENT. It is not caused by our code — an identical rebuild succeeds —
 # so retry the build once on failure, clearing only the cache between attempts.
+# Node's default heap (~2 GB) runs out during `next build`'s type check on this
+# app (OOM 2026-10-25). Unless the caller already set a heap size, give the build
+# 3/4 of MemAvailable, capped at 4 GB.
+if [[ "${NODE_OPTIONS:-}" != *max-old-space-size* ]]; then
+  avail_mb=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+  heap_mb=$(( avail_mb * 3 / 4 ))
+  [ "$heap_mb" -gt 4096 ] && heap_mb=4096
+  if [ "$heap_mb" -ge 1024 ]; then
+    export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=$heap_mb"
+  fi
+  echo "    build heap: ${heap_mb} MB (MemAvailable ${avail_mb} MB)"
+  [ "$avail_mb" -lt 3072 ] && echo "    WARNING: under 3 GB available — the build may run out of memory"
+fi
 build_once() { rm -rf .next/cache; npm run build; }
 if ! build_once; then
   echo "    build failed — retrying once after clearing .next/cache (transient Next.js page-copy race)"
