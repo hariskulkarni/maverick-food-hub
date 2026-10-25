@@ -1,6 +1,7 @@
 import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
 import { log } from '@/server/log';
+import { customerHasActiveOrder } from '@/server/address-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,6 +26,14 @@ export async function POST() {
     return Response.json(
       { error: 'Staff and partner accounts are managed by the platform. Please contact support to close them.' },
       { status: 403 },
+    );
+  }
+
+  // P1-13: deleting saved addresses would strip the destination of an order still on its way.
+  if (await customerHasActiveOrder(userId)) {
+    return Response.json(
+      { error: 'You have an order in progress. You can delete your account once it is completed or cancelled.' },
+      { status: 409 },
     );
   }
 
