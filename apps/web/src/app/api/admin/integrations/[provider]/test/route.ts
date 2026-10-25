@@ -9,7 +9,7 @@ import { categoryFromProvider } from '@/server/integration-categories';
 import { prisma } from '@/server/db';
 import { log } from '@/server/log';
 
-const Body = z.object({ config: z.record(z.string()) });
+const Body = z.object({ config: z.record(z.string(), z.string()) });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
   const { provider } = await params;
