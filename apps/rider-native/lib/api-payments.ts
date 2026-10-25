@@ -127,7 +127,7 @@ export const payments = {
   /** Withdrawable balance + payout history. */
   payouts: () => apiRequest<PayoutsResponse>('/api/rider/payouts'),
 
-  /** Request an instant withdrawal. Demo backend settles it immediately. */
+  /** Request a withdrawal. Recorded as REQUESTED; Flavrly processes it and marks it PAID. */
   requestPayout: (amount: number, method: PayoutMethod, upiId?: string) =>
     apiRequest<{ payout: Payout }>('/api/rider/payouts', {
       method: 'POST',
