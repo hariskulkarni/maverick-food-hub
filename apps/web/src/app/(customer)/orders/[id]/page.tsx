@@ -3,6 +3,7 @@ import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { findFeedbackByOrder, FEEDBACK_WINDOW_MS } from '@/server/feedback';
 import { OrderTrackerClient } from './tracker-client';
+import { CUSTOMER_ORDER_INCLUDE } from '@/server/customer-order-view';
 
 export const metadata = { title: 'Order' };
 
@@ -12,7 +13,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   if (!session?.user?.id) redirect(`/login?next=/orders/${id}`);
   const o = await prisma.order.findUnique({
     where: { id },
-    include: { items: true, statusEvents: { orderBy: { createdAt: 'asc' } }, address: true, branch: true, payments: true, assignment: { include: { rider: { include: { user: true } } } } }
+    include: CUSTOMER_ORDER_INCLUDE
   });
   if (!o || o.customerId !== session.user.id) return notFound();
 

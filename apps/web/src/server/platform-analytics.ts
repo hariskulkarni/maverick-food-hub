@@ -14,10 +14,10 @@ export async function platformKpis() {
     prisma.user.count({ where: { role: 'CUSTOMER' } }),
     prisma.riderProfile.count(),
     prisma.riderProfile.count({ where: { isOnline: true } }),
-    prisma.order.count({ where: { placedAt: { gte: since30 }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED'] } } }),
-    prisma.order.aggregate({ _sum: { total: true }, where: { placedAt: { gte: since30 }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED'] } } }),
-    prisma.order.count({ where: { placedAt: { gte: new Date(new Date().setHours(0,0,0,0)) }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED'] } } }),
-    prisma.order.aggregate({ _sum: { total: true }, where: { placedAt: { gte: new Date(new Date().setHours(0,0,0,0)) }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED'] } } })
+    prisma.order.count({ where: { placedAt: { gte: since30 }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'PAYMENT_PENDING'] } } }),
+    prisma.order.aggregate({ _sum: { total: true }, where: { placedAt: { gte: since30 }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'PAYMENT_PENDING'] } } }),
+    prisma.order.count({ where: { placedAt: { gte: new Date(new Date().setHours(0,0,0,0)) }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'PAYMENT_PENDING'] } } }),
+    prisma.order.aggregate({ _sum: { total: true }, where: { placedAt: { gte: new Date(new Date().setHours(0,0,0,0)) }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'PAYMENT_PENDING'] } } })
   ]);
   return {
     restaurants, pending, customers, riders, online,
@@ -31,7 +31,7 @@ export async function platformKpis() {
 export async function gmvSeries(days = 30) {
   const since = daysAgo(days);
   const rows = await prisma.order.findMany({
-    where: { placedAt: { gte: since }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED'] } },
+    where: { placedAt: { gte: since }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'PAYMENT_PENDING'] } },
     select: { placedAt: true, total: true }
   });
   const buckets = new Map<string, number>();
@@ -52,7 +52,7 @@ export async function topRestaurants(limit = 10) {
     by: ['branchId'],
     _sum: { total: true },
     _count: { _all: true },
-    where: { placedAt: { gte: since }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED'] } },
+    where: { placedAt: { gte: since }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'PAYMENT_PENDING'] } },
     orderBy: { _sum: { total: 'desc' } },
     take: limit
   });
@@ -74,7 +74,7 @@ export async function topProducts(limit = 10) {
   const rows = await prisma.orderItem.groupBy({
     by: ['name'],
     _sum: { quantity: true },
-    where: { order: { placedAt: { gte: since }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED'] } } },
+    where: { order: { placedAt: { gte: since }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'PAYMENT_PENDING'] } } },
     orderBy: { _sum: { quantity: 'desc' } },
     take: limit
   });
@@ -95,7 +95,7 @@ export async function paymentSplit() {
     by: ['paymentMethod'],
     _sum: { total: true },
     _count: { _all: true },
-    where: { placedAt: { gte: since }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED'] } }
+    where: { placedAt: { gte: since }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'PAYMENT_PENDING'] } }
   });
   return rows.map((r) => ({ method: r.paymentMethod, count: r._count._all, gmv: Number(r._sum.total ?? 0) }));
 }
@@ -118,7 +118,7 @@ export async function spendDistribution() {
   // Bucketize order totals to a histogram
   const since = daysAgo(30);
   const rows = await prisma.order.findMany({
-    where: { placedAt: { gte: since }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED'] } },
+    where: { placedAt: { gte: since }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'PAYMENT_PENDING'] } },
     select: { total: true }
   });
   const buckets = [

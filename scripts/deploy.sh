@@ -5,7 +5,7 @@
 #
 # Usage:
 #   bash scripts/deploy.sh            # code-only deploy (no schema change)
-#   bash scripts/deploy.sh --migrate  # also apply schema changes (prisma db push)
+#   bash scripts/deploy.sh --migrate  # also apply schema changes (prisma migrate deploy)
 #
 # Override defaults via env vars if anything moves:
 #   REMOTE_HOST=deploy@1.2.3.4 APP_DIR=/opt/restaurant-manager bash scripts/deploy.sh

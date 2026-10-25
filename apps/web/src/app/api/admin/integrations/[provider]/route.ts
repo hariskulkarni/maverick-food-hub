@@ -9,7 +9,7 @@ import { categoryFromProvider } from '@/server/integration-categories';
 import { prisma } from '@/server/db';
 import { log } from '@/server/log';
 
-const Body = z.object({ config: z.record(z.string()) });
+const Body = z.object({ config: z.record(z.string(), z.string()) });
 
 function parseProvider(s: string): ProviderKey | null {
   return s in PROVIDERS ? (s as ProviderKey) : null;

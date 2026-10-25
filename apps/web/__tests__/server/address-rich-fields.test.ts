@@ -28,6 +28,8 @@ vi.mock('@/server/auth', () => ({ auth: async () => h.state.session }));
 vi.mock('@/server/db', () => ({
   prisma: {
     $transaction: async (fn: any) => fn(h.tx),
+    // No active order uses the address (P1-13 guard).
+    order: { count: async () => 0 },
     address: {
       ...h.tx.address,
       findUnique: async ({ where }: any) => h.state.store.find((r) => r.id === where.id) ?? null,

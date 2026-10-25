@@ -164,6 +164,15 @@ export async function resolveGatewayKey(restaurantId?: string | null): Promise<G
  *   2. Env-configured gateway (PAYMENT_PROVIDER).
  *   3. Mock (auto-confirms, dev only).
  */
+/**
+ * Safety switch affects NEW Flavrly PG payments only. Existing webhook and
+ * reconciliation paths deliberately do not consult this switch, so emergency
+ * disablement never abandons funds already sent by customers.
+ */
+export function youpiNewPaymentsEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production' || process.env.FLAVRLY_PG_NEW_PAYMENTS_ENABLED === 'true';
+}
+
 export async function paymentProvider(
   restaurantId?: string | null,
   opts?: { prefer?: 'youpi' },
@@ -171,11 +180,14 @@ export async function paymentProvider(
   // Flavrly PG is opt-in per call. An explicit Flavrly PG request never falls back to
   // another gateway: if it is not APPROVED/configured we fail loud.
   if (opts?.prefer === 'youpi') {
-    const ycfg = await resolveYoupiConfig(restaurantId);
+    if (!youpiNewPaymentsEnabled()) {
+      throw new Error('Flavrly PG new checkout is disabled (FLAVRLY_PG_NEW_PAYMENTS_ENABLED is not true)');
+    }
+    const ycfg = await resolveYoupiConfig(restaurantId, { forNew: true });
     if (ycfg) return youpiProvider(ycfg);
     throw new Error(
       `Flavrly PG was requested for restaurant ${restaurantId ?? '(none)'} but is not available ` +
-        `(feature not APPROVED, platform connection missing, or no receiving VPA); ` +
+        `(feature not APPROVED, or no verified receiving-account binding with matching credentials); ` +
         `refusing to fall back to another payment gateway.`
     );
   }
@@ -215,9 +227,9 @@ export async function paymentProvider(
   return mockProvider();
 }
 
-/** Whether to offer Flavrly PG at checkout: APPROVED + platform connection + restaurant VPA. */
+/** Whether to offer Flavrly PG at checkout: APPROVED + verified, enabled merchant binding. */
 export async function youpiEnabledForRestaurant(restaurantId?: string | null): Promise<boolean> {
-  return !!(await resolveYoupiConfig(restaurantId));
+  return youpiNewPaymentsEnabled() && !!(await resolveYoupiConfig(restaurantId, { forNew: true }));
 }
 
 /** True when a stored `Payment.providerName` denotes the PhonePe rail. */

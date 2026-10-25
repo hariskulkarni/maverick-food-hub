@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const db: any = vi.hoisted(() => ({
   order: { findUnique: vi.fn() },
   wallet: { upsert: vi.fn() },
-  walletTransaction: { create: vi.fn() },
+  walletTransaction: { create: vi.fn(), findFirst: vi.fn(async () => null) },
   payment: { update: vi.fn() },
   refund: { create: vi.fn(), aggregate: vi.fn() },
   $transaction: vi.fn()
@@ -85,7 +85,7 @@ describe('refundOrder — original payment', () => {
   });
 
   it('refunds to the captured payment and marks it REFUNDED on a full refund', async () => {
-    db.order.findUnique.mockResolvedValue(order({ payments: [{ id: 'pay1', status: 'CAPTURED', providerName: 'razorpay' }] }));
+    db.order.findUnique.mockResolvedValue(order({ payments: [{ id: 'pay1', status: 'CAPTURED', providerName: 'razorpay', amount: 500 }] }));
     const res = await refundOrder({ orderId: 'o1', amount: 500, destination: 'ORIGINAL_PAYMENT' });
     expect(res.destination).toBe('ORIGINAL_PAYMENT');
     expect(res.walletCredited).toBe(0);

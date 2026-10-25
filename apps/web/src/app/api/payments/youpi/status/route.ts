@@ -1,18 +1,18 @@
 /**
  * GET /api/payments/youpi/status?orderId=…
  *
- * Customer-driven status poll for the payment-status page. Mirrors the PhonePe
- * status route but delegates to reconcileYoupiPayment, the single writer that
- * may capture a Flavrly PG payment (status + UTR + exact amount verified). This
- * route never marks anything paid itself.
+ * Customer-facing status for the payment-status page. Read-only: it derives a
+ * customer-safe view from PgPaymentAttempt.state and never calls the gateway,
+ * never captures and never releases an order (D2/D3 — capture happens only in
+ * allocateBankCredit(); background jobs do the probing). It never tells a
+ * customer they were not charged.
  */
 import { NextRequest } from 'next/server';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { rateLimit } from '@/server/http/rate-limit';
-import { reconcileYoupiPayment } from '@/server/payments/youpi-reconcile';
 import { userCanAccessRestaurant } from '@/server/tenancy';
-import { PaymentStatus } from '@prisma/client';
+import { customerPaymentView } from '@/server/pg/customer-status';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -39,36 +39,35 @@ export async function GET(req: NextRequest) {
         where: { providerName: 'youpi' },
         orderBy: { createdAt: 'desc' },
         take: 1,
-        select: { id: true, status: true, errorMessage: true },
+        select: { status: true },
       },
     },
   });
   if (!order) return new Response('Not found', { status: 404 });
   if (session.user.role === 'CUSTOMER') {
-    if (order.customerId !== session.user.id) return new Response('Forbidden', { status: 403 });
+    if (order.customerId !== session.user.id) return new Response('Not found', { status: 404 }); // uniform: no order-existence oracle
   } else if (session.user.role !== 'SUPER_ADMIN') {
     const ok = await userCanAccessRestaurant(session.user.id, order.branch.restaurantId);
-    if (!ok) return new Response('Forbidden', { status: 403 });
+    if (!ok) return new Response('Not found', { status: 404 }); // uniform: no order-existence oracle
   }
 
-  const payment = order.payments[0];
-  if (!payment) {
-    return Response.json({ orderId: order.id, orderCode: order.code, state: 'NONE', orderStatus: order.status });
-  }
-
-  if (payment.status === PaymentStatus.CAPTURED || payment.status === PaymentStatus.REFUNDED) {
-    return Response.json({ orderId: order.id, orderCode: order.code, state: 'COMPLETED', paymentStatus: payment.status });
-  }
-
-  const outcome = await reconcileYoupiPayment(payment.id);
-  return Response.json({
-    orderId: order.id,
-    orderCode: order.code,
-    // Only a verified CAPTURED is COMPLETED; everything else stays PENDING/FAILED.
-    state:
-      outcome.status === PaymentStatus.CAPTURED ? 'COMPLETED' : outcome.status === PaymentStatus.FAILED ? 'FAILED' : 'PENDING',
-    paymentStatus: outcome.status,
-    indeterminate: Boolean(outcome.indeterminate),
-    error: payment.errorMessage ?? undefined,
+  const attempts = await prisma.pgPaymentAttempt.findMany({
+    where: { orderId: order.id },
+    orderBy: { createdAt: 'desc' },
+    select: { state: true, expiresAt: true, allocations: { where: { reversedAt: null }, select: { id: true }, take: 1 } },
   });
+
+  const releaseHeld =
+    order.status === 'PAYMENT_PENDING' &&
+    (await prisma.pgReconException.count({ where: { orderId: order.id, kind: 'RELEASE_HELD', status: { not: 'RESOLVED' } } })) > 0;
+  const view = customerPaymentView({
+    orderStatus: order.status,
+    attempts: attempts.map((a) => ({ state: a.state, expiresAt: a.expiresAt, allocated: (a.allocations?.length ?? 0) > 0 })),
+    legacyPaymentStatus: order.payments[0]?.status ?? null,
+    releaseHeld,
+  });
+  return Response.json(
+    { orderId: order.id, orderCode: order.code, orderStatus: order.status, ...view },
+    { headers: { 'Cache-Control': 'no-store' } },
+  );
 }

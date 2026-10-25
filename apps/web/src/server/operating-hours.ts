@@ -20,9 +20,11 @@
  *   which matches what the admin UI saves.
  *
  * Timezone
- *   We compute open/closed using the server's local time, NOT UTC. PM2 on the
- *   VPS runs in IST. If you ever deploy somewhere else, set TZ in pm2 env.
+ *   Hours are IST wall-clock. Open/closed is computed in IST explicitly
+ *   (src/lib/ist-time.ts), independent of the server or browser timezone.
  */
+
+import { istClock, istDayAt } from '@/lib/ist-time';
 
 export interface OperatingHoursRow {
   dayOfWeek: number;
@@ -69,15 +71,10 @@ function isOvernight(h: OperatingHoursRow): boolean {
 }
 
 /**
- * Build a Date for "day D of the current week at minute M", using the same
- * year/month/day base as `now` so DST quirks don't shift the time.
+ * The instant at IST minute M, `dayOffset` IST days after `now`'s IST date.
  */
 function makeDateForDayOffset(now: Date, dayOffset: number, minute: number): Date {
-  const d = new Date(now);
-  d.setDate(d.getDate() + dayOffset);
-  d.setHours(0, 0, 0, 0);
-  d.setMinutes(minute);
-  return d;
+  return istDayAt(now, dayOffset, minute);
 }
 
 /**
@@ -106,9 +103,8 @@ export function isBranchOpenAt(rows: OperatingHoursRow[], now: Date): BranchOpen
     return { isOpen: true, nextChangeAt: null, label: 'Open', reason: 'open' };
   }
 
-  const today = now.getDay();
+  const { dayOfWeek: today, minutes: curMin } = istClock(now);
   const yesterday = (today + 6) % 7;
-  const curMin = now.getHours() * 60 + now.getMinutes();
 
   const byDay = indexByDay(rows);
   const todayRow = byDay.get(today);

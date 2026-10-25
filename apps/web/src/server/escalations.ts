@@ -27,7 +27,9 @@ const T = {
   noRider:          envMin('ESC_NO_RIDER_MIN', 10),
   riderNotMoving:   envMin('ESC_RIDER_NOT_MOVING_MIN', 12),
   outForDelivLate:  envMin('ESC_OUT_FOR_DELIVERY_LATE_MIN', 20),
-  paymentWebhook:   envMin('ESC_PAYMENT_WEBHOOK_MIN', 10)
+  // Abandoned online checkouts are normal and are failed by the unpaid-order
+  // sweep at 30 min; only an order still PAYMENT_PENDING after that is stuck.
+  paymentWebhook:   envMin('ESC_PAYMENT_WEBHOOK_MIN', 35)
 };
 
 async function open(orderId: string, type: string, severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL', message: string) {
@@ -65,7 +67,16 @@ export async function runEscalationScan(): Promise<{ created: number; checked: n
   });
   checked += notAccepted.length;
   for (const o of notAccepted) {
-    const ageMin = Math.round((+now - +o.placedAt) / 60_000);
+    // The clock starts when the order reached RECEIVED (the kitchen saw it), not at placement: a
+    // Flavrly PG order is released only after its bank credit is matched, possibly hours later.
+    const received = await prisma.orderStatusEvent.findFirst({
+      where: { orderId: o.id, status: OrderStatus.RECEIVED },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true }
+    });
+    const since = received?.createdAt ?? o.placedAt;
+    if (+now - +since < T.notAccepted * 60_000) continue;
+    const ageMin = Math.round((+now - +since) / 60_000);
     const sev = ageMin > 15 ? 'CRITICAL' : ageMin > 10 ? 'HIGH' : 'MEDIUM';
     const r = await open(o.id, 'ORDER_NOT_ACCEPTED', sev as any, `${o.code} not accepted in ${ageMin}m`);
     if (r.createdAt.getTime() > now.getTime() - 5_000) created++;

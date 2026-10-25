@@ -25,6 +25,9 @@ import { isWithinRefundWindow, REFUND_WINDOW_DAYS } from './payments/phonepe-eve
 import { toMerchantId } from './payments/phonepe-api';
 import { OrderStatus, RefundDestination } from '@prisma/client';
 import { nanoid } from 'nanoid';
+import { requestPgRefund, PgRefundError, walletRefundAllowed } from './pg/refunds';
+import { decimalToPaise } from './pg/money';
+import { walletRestoredForOrder } from './order-benefits';
 
 export type RefundDest = 'WALLET' | 'ORIGINAL_PAYMENT';
 
@@ -44,6 +47,8 @@ export interface RefundResult {
   status: 'PENDING' | 'COMPLETED' | 'FAILED';
   amount: number;
   walletCredited: number;
+  /** Operator guidance when the refund still needs human action (Flavrly PG manual bank refund). */
+  note?: string;
 }
 
 export class RefundError extends Error {
@@ -92,6 +97,40 @@ const REFUNDABLE: OrderStatus[] = [
   OrderStatus.REFUND_INITIATED
 ];
 
+async function refundFlavrlyPgOrder(input: RefundInput, amount: number, orderId: string): Promise<RefundResult> {
+  if (input.destination === 'WALLET' && !walletRefundAllowed()) {
+    throw new RefundError(
+      "This order was paid by direct UPI (Flavrly PG) straight into the restaurant's bank account, so wallet credit is " +
+        'disabled. Choose the original payment method to start a manual bank refund.',
+      409
+    );
+  }
+  if (!input.actorId) throw new RefundError('A signed-in admin is required to request a Flavrly PG refund.', 401);
+  try {
+    const v = await requestPgRefund({
+      orderId,
+      amountPaise: decimalToPaise(amount.toFixed(2)),
+      reason: input.reason?.trim() || 'Refund requested by admin',
+      actor: { id: input.actorId, role: input.actorRole },
+      kind: 'ORDER',
+      method: input.destination === 'WALLET' ? 'WALLET' : 'MANUAL_BANK'
+    });
+    return {
+      refundId: v.refundId,
+      destination: input.destination,
+      status: 'PENDING',
+      amount,
+      walletCredited: 0,
+      note:
+        'Manual refund recorded as PENDING. Nothing has been sent yet: a second admin must approve it, the money must be ' +
+        "returned from the restaurant's bank account, and the bank refund reference must then be recorded."
+    };
+  } catch (e) {
+    if (e instanceof PgRefundError) throw new RefundError(e.message, e.status);
+    throw e;
+  }
+}
+
 export async function refundOrder(input: RefundInput): Promise<RefundResult> {
   const amount = Math.round(input.amount * 100) / 100;
   if (!(amount > 0)) throw new RefundError('Refund amount must be greater than zero.');
@@ -102,13 +141,29 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
   });
   if (!order) throw new RefundError('Order not found.', 404);
 
+  // Flavrly PG (direct-to-merchant UPI): the money is in the restaurant's own bank
+  // account and the gateway has no refund API. Never credit the wallet by default
+  // or record a gateway refund; hand off to the manual two-person bank refund flow.
+  // Its own pot check (bank-allocated money minus non-FAILED refunds) replaces the
+  // order-total cap below. Decided by the captured payment's rail; with nothing
+  // captured, any Flavrly PG attempt routes here too (and is refused unless the
+  // bank-confirmed money exists) so unverified money is never wallet-credited.
+  const captured = order.payments.find((p) => p.status === 'CAPTURED');
+  if (captured ? captured.providerName === 'youpi' : order.payments.some((p) => p.providerName === 'youpi')) {
+    return refundFlavrlyPgOrder(input, amount, order.id);
+  }
+
   if (!REFUNDABLE.includes(order.status)) {
     throw new RefundError(`Order in status ${order.status} cannot be refunded.`);
   }
 
-  // Cap so cumulative refunds never exceed the order total.
+  // P0-3: cap cumulative refunds at what the customer actually paid for this order — the charged
+  // total PLUS the wallet amount debited at checkout (order.total is net of it), unless the cancel
+  // give-back already returned that wallet amount.
+  const walletPart = (await walletRestoredForOrder(prisma, order.id)) ? 0 : Number(order.walletApplied ?? 0);
+  const refundBase = Number(order.total) + walletPart;
   const alreadyRefunded = order.refunds.reduce((s, r) => s + Number(r.amount), 0);
-  const remaining = Math.round((Number(order.total) - alreadyRefunded) * 100) / 100;
+  const remaining = Math.round((refundBase - alreadyRefunded) * 100) / 100;
   if (remaining <= 0) throw new RefundError('This order is already fully refunded.');
   if (amount > remaining) {
     throw new RefundError(`Refund exceeds the refundable balance (₹${remaining.toFixed(2)} left).`);
@@ -128,7 +183,7 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
       // total. Re-sum here (and the Serializable isolation below makes two
       // concurrent refunds conflict rather than both committing).
       const priorAgg = await tx.refund.aggregate({ where: { orderId: order.id }, _sum: { amount: true } });
-      const remainingNow = Math.round((Number(order.total) - Number(priorAgg._sum.amount ?? 0)) * 100) / 100;
+      const remainingNow = Math.round((refundBase - Number(priorAgg._sum.amount ?? 0)) * 100) / 100;
       if (amount > remainingNow) {
         throw new RefundError(`Refund exceeds the refundable balance (₹${remainingNow.toFixed(2)} left).`);
       }
@@ -164,6 +219,16 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
     // payment to refund against.
     if (!capturedPayment) {
       throw new RefundError('No captured online payment to refund — use the wallet instead.');
+    }
+    // The gateway can only reverse what it captured; the wallet share goes back to the wallet.
+    const origRefunded = order.refunds
+      .filter((r) => r.destination === RefundDestination.ORIGINAL_PAYMENT && r.status !== 'FAILED')
+      .reduce((s, r) => s + Number(r.amount), 0);
+    const capturedLeft = Math.round((Number(capturedPayment.amount) - origRefunded) * 100) / 100;
+    if (amount > capturedLeft) {
+      throw new RefundError(
+        `Only ₹${Math.max(0, capturedLeft).toFixed(2)} of the captured payment can be returned to the original method; refund the rest to the wallet.`
+      );
     }
     // Real gateway refund when this is a Razorpay payment with a stored gateway
     // payment id AND the restaurant has Razorpay credentials. The refund then
@@ -257,7 +322,7 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
     const refund = await prisma.$transaction(async (tx) => {
       // H7: re-check the cap inside the transaction (see WALLET path).
       const priorAgg = await tx.refund.aggregate({ where: { orderId: order.id }, _sum: { amount: true } });
-      const remainingNow = Math.round((Number(order.total) - Number(priorAgg._sum.amount ?? 0)) * 100) / 100;
+      const remainingNow = Math.round((refundBase - Number(priorAgg._sum.amount ?? 0)) * 100) / 100;
       if (amount > remainingNow) {
         throw new RefundError(`Refund exceeds the refundable balance (₹${remainingNow.toFixed(2)} left).`);
       }
@@ -278,7 +343,7 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
       });
       // Only mark the payment REFUNDED once actually settled (mock path). A real
       // gateway refund waits for the webhook to confirm before flipping status.
-      if (settledNow && amount >= remainingNow) {
+      if (settledNow && amount >= capturedLeft) {
         await tx.payment.update({ where: { id: capturedPayment.id }, data: { status: 'REFUNDED' } });
       }
       return r;

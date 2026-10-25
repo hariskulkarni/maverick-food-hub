@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
 import { PaymentStatus } from '@prisma/client';
 import { auth } from '@/server/auth';
+import { releaseOrderAfterCapture } from '@/server/payments/reconcile';
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // C2: this route flips a PENDING mock payment straight to CAPTURED. It must
@@ -18,7 +19,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (!order || order.customerId !== session.user.id) return new Response('Not found', { status: 404 });
   const payment = order.payments.find((p) => p.status === PaymentStatus.PENDING);
   if (payment && payment.providerName === 'mock') {
-    await prisma.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.CAPTURED } });
+    const r = await prisma.payment.updateMany({ where: { id: payment.id, status: PaymentStatus.PENDING }, data: { status: PaymentStatus.CAPTURED } });
+    // Online orders wait in PAYMENT_PENDING; the (dev-only) mock capture releases them like a real one.
+    if (r.count === 1) await releaseOrderAfterCapture(order.id, 'Payment captured (mock)');
   }
   return Response.json({ ok: true });
 }

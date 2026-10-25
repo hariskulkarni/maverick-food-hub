@@ -538,6 +538,7 @@ const Youpi: ProviderDef = {
     { key: 'baseUrl', label: 'Gateway base URL', type: 'text', required: true, placeholder: 'https://pg.example.com' },
     // Flavrly PG auth: public X-Merchant-Id (UUID) + X-Merchant-Key (= the webhook secret). No Bearer key.
     { key: 'merchantId', label: 'Merchant ID', type: 'text', required: true, placeholder: 'X-Merchant-Id (UUID)' },
+    { key: 'merchantKey', label: 'Merchant creation key', type: 'password', secret: true, required: false },
     { key: 'webhookSecret', label: 'Merchant key / webhook secret', type: 'password', required: true, secret: true },
     { key: 'receivingVpa', label: 'Receiving VPA', type: 'text', required: true, placeholder: 'shop@bank' },
     { key: 'dailyLimit', label: 'Daily limit (transactions)', type: 'number', required: false },

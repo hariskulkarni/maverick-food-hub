@@ -43,7 +43,7 @@ export interface PlatformSecurity {
 }
 
 /** Make sure the sentinel Restaurant row exists so the FK on IntegrationCredential holds. */
-async function ensurePlatformRestaurant(): Promise<void> {
+export async function ensurePlatformRestaurant(): Promise<void> {
   // Need a non-null ownerUserId. Find or fall back to first SUPER_ADMIN.
   const existing = await prisma.restaurant.findUnique({ where: { id: PLATFORM_RESTAURANT_ID } });
   if (existing) return;

@@ -12,13 +12,16 @@ vi.mock('@/server/db', () => ({
   prisma: {
     order: { findUnique: async () => order },
     payment: {
-      update: async ({ data }: any) => {
-        if (order) for (const p of order.payments) if (p.status === 'PENDING') p.status = data.status;
-        return {};
+      updateMany: async ({ data }: any) => {
+        let count = 0;
+        if (order) for (const p of order.payments) if (p.status === 'PENDING') { p.status = data.status; count++; }
+        return { count };
       }
     }
   }
 }));
+const release = vi.fn(async (..._a: any[]) => undefined);
+vi.mock('@/server/payments/reconcile', () => ({ releaseOrderAfterCapture: (...a: any[]) => release(...a) }));
 
 import { POST } from '@/app/api/orders/[id]/confirm-mock-payment/route';
 
@@ -26,7 +29,7 @@ const post = () => POST({} as any, { params: Promise.resolve({ id: 'o1' }) });
 
 beforeEach(() => {
   session = { user: { id: 'cust1' } };
-  order = { customerId: 'cust1', payments: [{ status: 'PENDING', providerName: 'mock' }] };
+  order = { id: 'o1', customerId: 'cust1', payments: [{ status: 'PENDING', providerName: 'mock' }] };
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -44,6 +47,8 @@ describe('C2: confirm-mock-payment route', () => {
     const res = await post();
     expect(res.status).toBe(200);
     expect(order.payments[0].status).toBe('CAPTURED');
+    // The PAYMENT_PENDING order is released to the kitchen like a real capture.
+    expect(release).toHaveBeenCalled();
   });
 
   it('works in production when DEMO_MODE=true', async () => {

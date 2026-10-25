@@ -8,6 +8,9 @@
  * /api/payments/verify) before confirming the reservation — so a deposit is
  * never marked collected without a real, verified payment.
  *
+ * PhonePe: no browser signature exists; the deposit is confirmed only when the Order Status API
+ * reports the deposit's merchantOrderId CAPTURED for the deposit amount (202 while pending).
+ *
  * Mock provider (dev / no Razorpay creds): the signature step is skipped and
  * the reservation is confirmed directly, matching the order flow's
  * confirm-mock-payment path. The bypass is keyed off the resolved provider's
@@ -43,6 +46,7 @@ export async function POST(
       status: true,
       depositPaid: true,
       depositProviderOrderId: true,
+      depositAmount: true,
       branch: { select: { restaurantId: true } },
     },
   });
@@ -87,12 +91,30 @@ export async function POST(
     return respond(200);
   }
 
-  // Real gateway: require + verify the payment signature.
-  const providerPaymentId = typeof body.providerPaymentId === 'string' ? body.providerPaymentId : '';
-  const signature = typeof body.signature === 'string' ? body.signature : '';
   if (!reservation.depositProviderOrderId) {
     return Response.json({ error: 'No pending deposit for this reservation' }, { status: 400 });
   }
+
+  // P1-11 PhonePe: nothing signable comes back to the browser. Ask PhonePe's Order Status API about
+  // the exact merchantOrderId we created; only a CAPTURED answer for the deposit amount confirms.
+  if (provider.name === 'phonepe') {
+    const v = await provider.verifyPayment({ merchantOrderId: reservation.depositProviderOrderId });
+    if (v.ok && v.status === 'CAPTURED') {
+      if (typeof v.amount === 'number' && Math.round(v.amount * 100) !== Math.round(Number(reservation.depositAmount) * 100)) {
+        return Response.json({ error: 'Deposit amount mismatch. Please contact the restaurant.' }, { status: 409 });
+      }
+      await confirmReservation(id, v.providerPaymentId ?? reservation.depositProviderOrderId, { paid: true });
+      return respond(200);
+    }
+    if (v.status === 'PENDING' || v.status === 'UNKNOWN' || !v.status) {
+      return Response.json({ pending: true, error: 'Your deposit payment is still being confirmed.' }, { status: 202 });
+    }
+    return Response.json({ error: v.error || 'Deposit payment failed' }, { status: 400 });
+  }
+
+  // Razorpay: require + verify the checkout handler signature.
+  const providerPaymentId = typeof body.providerPaymentId === 'string' ? body.providerPaymentId : '';
+  const signature = typeof body.signature === 'string' ? body.signature : '';
   if (!providerPaymentId || !signature) {
     return Response.json({ error: 'Missing payment confirmation details' }, { status: 400 });
   }

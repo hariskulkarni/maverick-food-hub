@@ -33,7 +33,7 @@ export function YoupiAdminClient({
   const [rows, setRows] = useState(initialRequests);
   const [busy, setBusy] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [f, setF] = useState({ baseUrl: DEFAULT_BASE_URL, merchantId: '', webhookSecret: '', dailyLimit: '', maxAmountPaise: '' });
+  const [f, setF] = useState({ baseUrl: DEFAULT_BASE_URL, merchantId: '', webhookSecret: '', merchantKey: '', dailyLimit: '', maxAmountPaise: '' });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
 
   async function save(e: React.FormEvent) {
@@ -41,6 +41,7 @@ export function YoupiAdminClient({
     setSaving(true);
     try {
       const body: Record<string, unknown> = { baseUrl: f.baseUrl, merchantId: f.merchantId, webhookSecret: f.webhookSecret };
+      if (f.merchantKey) body.merchantKey = f.merchantKey;
       if (f.dailyLimit) body.dailyLimit = Number(f.dailyLimit);
       if (f.maxAmountPaise) body.maxAmountPaise = Number(f.maxAmountPaise);
       const res = await fetch('/api/platform/youpi/config', {
@@ -48,12 +49,12 @@ export function YoupiAdminClient({
       });
       if (!res.ok) { toast.error((await res.json().catch(() => ({}))).error || 'Save failed.'); return; }
       toast.success('Flavrly PG connection saved.');
-      setF({ baseUrl: DEFAULT_BASE_URL, merchantId: '', webhookSecret: '', dailyLimit: '', maxAmountPaise: '' });
+      setF({ baseUrl: DEFAULT_BASE_URL, merchantId: '', webhookSecret: '', merchantKey: '', dailyLimit: '', maxAmountPaise: '' });
       router.refresh();
     } catch { toast.error('Network error.'); } finally { setSaving(false); }
   }
 
-  async function decide(r: Req, decision: 'APPROVE' | 'REJECT' | 'DISABLE') {
+  async function decide(r: Req, decision: 'APPROVE' | 'REJECT' | 'DISABLE' | 'RESET') {
     setBusy(r.id + decision);
     try {
       const res = await fetch(`/api/platform/youpi/${r.restaurantId}/decision`, {
@@ -118,6 +119,11 @@ export function YoupiAdminClient({
               <Input id="yp-wh" type="password" required autoComplete="off" value={f.webhookSecret} onChange={set('webhookSecret')} />
             </div>
             <div className="space-y-1">
+              <Label htmlFor="yp-merchant-key">Optional merchant API key</Label>
+              <Input id="yp-merchant-key" type="password" autoComplete="off" value={f.merchantKey} onChange={set('merchantKey')} />
+              <p className="text-xs text-muted-foreground">If the gateway uses a separate creation key. Otherwise its existing merchant secret is used.</p>
+            </div>
+            <div className="space-y-1">
               <Label htmlFor="yp-daily">Default daily limit (transactions)</Label>
               <Input id="yp-daily" type="number" min={1} value={f.dailyLimit} onChange={set('dailyLimit')} />
             </div>
@@ -159,6 +165,11 @@ export function YoupiAdminClient({
                     <Button size="sm" variant="outline" className="text-destructive" disabled={!!busy || r.status === 'DISABLED'} onClick={() => decide(r, 'DISABLE')}>
                       <Ban className="size-4 mr-1" />Disable
                     </Button>
+                    {(r.status === 'REJECTED' || r.status === 'DISABLED') && (
+                      <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => decide(r, 'RESET')} title="Allow the restaurant to request again">
+                        Reset
+                      </Button>
+                    )}
                   </div>
                 </li>
               ))}
