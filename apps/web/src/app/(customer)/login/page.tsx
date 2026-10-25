@@ -53,6 +53,7 @@ export default async function LoginPage({
       surface={surface}
       restaurantsLive={restaurantsLive}
       cuisinesCount={cuisinesCount}
+      googleEnabled={Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)}
     />
   );
 }
