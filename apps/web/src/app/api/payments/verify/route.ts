@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
   // helper guards over-collection and moves the PAYMENT_PENDING order into the kitchen queue.
   if (payment.providerName === 'razorpay') {
     await captureRazorpayPayment(payment.id, { gatewayPaymentId: data.providerPaymentId, source: 'checkout' });
-    const now = await prisma.payment.findUnique({ where: { id: payment.id }, select: { status: true } });
+    const now = await prisma.payment.findFirst({ where: { id: payment.id }, select: { status: true } });
     return Response.json({ ok: now?.status === PaymentStatus.CAPTURED });
   }
 

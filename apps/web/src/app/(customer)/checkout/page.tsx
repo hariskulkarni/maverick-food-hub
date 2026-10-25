@@ -28,7 +28,7 @@ export default async function CheckoutPage({
   }
 
   const branchInclude = {
-    restaurant: { select: { slug: true, scheduledOrdersEnabled: true, selfPickupEnabled: true, dineInEnabled: true, reservationDiscountPct: true } }
+    restaurant: { select: { slug: true, name: true, scheduledOrdersEnabled: true, selfPickupEnabled: true, dineInEnabled: true, reservationDiscountPct: true } }
   };
   // Prefer the branch the cart is actually ordering from (passed as ?branchId=).
   // This is what makes offers/coupons resolve to the right restaurant in the
@@ -64,8 +64,11 @@ export default async function CheckoutPage({
   // Which online gateway this restaurant is on. Resolved server-side because
   // the browser has no way to know, and it decides both the PaymentMethod the
   // form submits and the label the customer sees. Null (no gateway configured)
-  // still renders the online option — it routes to the mock provider in dev.
+  // hides the online option — except on dev/demo, where the mock provider completes it
+  // (paymentProvider() refuses the mock in production, so the option could never finish).
   const gateway = await resolveGatewayKey(branch.restaurantId);
+  const mockAllowed = process.env.NODE_ENV !== 'production' || process.env.DEMO_MODE === 'true';
+  const onlineAvailable = gateway !== null || mockAllowed;
   // Flavrly PG (experimental) is offered only to restaurants with an APPROVED request.
   const youpiEnabled = await youpiEnabledForRestaurant(branch.restaurantId);
 
@@ -80,6 +83,8 @@ export default async function CheckoutPage({
         fulfillment={fulfillment}
         gateway={gateway}
         youpiEnabled={youpiEnabled}
+        onlineAvailable={onlineAvailable}
+        merchantName={branch.restaurant.name}
       />
     </div>
   );

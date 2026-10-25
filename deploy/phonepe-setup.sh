@@ -91,7 +91,7 @@ if [[ "$MODE" == "apply" ]]; then
 
   added=0
   {
-    key_present PAYMENT_PROVIDER    || { printf '\n# ─── Payments (added by phonepe-setup.sh) ───\nPAYMENT_PROVIDER="razorpay"\n'; }
+    key_present PAYMENT_PROVIDER    || { printf '\n# ─── Payments (added by phonepe-setup.sh) ───\nPAYMENT_PROVIDER="phonepe"\n'; }
     key_present NEXT_PUBLIC_SITE_URL || { printf 'NEXT_PUBLIC_SITE_URL="%s"\n' "$SITE_URL"; }
     key_present INTERNAL_CRON_SECRET || { printf 'INTERNAL_CRON_SECRET="%s"\n' "$(openssl rand -hex 32)"; }
     if ! key_present PHONEPE_CLIENT_ID; then

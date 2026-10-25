@@ -15,6 +15,8 @@ vi.mock('@/server/log', () => ({ log: { error: vi.fn() } }));
 vi.mock('@/server/db', () => ({ prisma: { order: { findUnique: async () => order } } }));
 let staffRestaurant: any = null;
 vi.mock('@/server/tenancy', () => ({ currentRestaurant: async () => staffRestaurant }));
+const released = vi.fn(async (..._a: any[]) => null as string | null);
+vi.mock('@/server/pg/order-state', () => ({ releasedBenefit: (...a: any[]) => released(...a) }));
 vi.mock('@/server/payments/online', () => ({
   startOnlinePayment: (...a: any[]) => startOnlinePayment(...a),
   isOnlineMethod: () => true,
@@ -38,6 +40,15 @@ describe('H14: pay-now status guard', () => {
     order.status = 'CANCELLED_BY_ADMIN';
     const res = await post();
     expect(res.status).toBe(409);
+    expect(startOnlinePayment).not.toHaveBeenCalled();
+  });
+
+  it('409 for a PAYMENT_FAILED order whose benefits were already given back', async () => {
+    order.status = 'PAYMENT_FAILED';
+    released.mockResolvedValueOnce('signup bonus');
+    const res = await post();
+    expect(res.status).toBe(409);
+    expect((await res.json()).reason).toBe('benefit_released');
     expect(startOnlinePayment).not.toHaveBeenCalled();
   });
 

@@ -71,8 +71,8 @@ export function IntegrationsSection({ restaurantId }: { restaurantId?: string } 
             <ShieldCheck className="size-4 mt-0.5 shrink-0 text-success" />
             <div>
               Each integration is verified live against the provider before save. Credentials are encrypted with AES-256-GCM
-              and only the last 4 characters of any secret are ever shown back to you. When disconnected, the system silently
-              falls back to mock mode — orders still flow through, but messages and payments stay in-app.
+              and only the last 4 characters of any secret are ever shown back to you. When a payment gateway is disconnected,
+              online payments become unavailable at checkout (customers can still order cash on delivery).
             </div>
           </div>
         </CardContent>

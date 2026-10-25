@@ -11,6 +11,9 @@ import { brand } from '@/lib/brand';
 import DeliveryMap from './delivery-map';
 import { ReorderButton } from './reorder-button';
 import { FeedbackDialog, type FeedbackLite } from '../feedback-dialog';
+import { useRouter } from 'next/navigation';
+import { canPayNow, apiErrorMessage } from '@/lib/checkout-helpers';
+import { launchPayment } from '@/lib/launch-payment';
 
 // Equirectangular distance approximation in km between two lat/lng points.
 // Used for the saffron ETA pill ("arriving in ~N min · 0.8 km away").
@@ -162,6 +165,9 @@ export function OrderTrackerClient({
           </a>
         </div>
       </header>
+
+      {/* ───────────────────────── Unpaid online order ───────────────────────── */}
+      {canPayNow(order) && <PayNowCard order={order} />}
 
       {/* ───────────────────────── Progress stepper ───────────────────────── */}
       {!isTerminal && (
@@ -828,5 +834,60 @@ function Confetti() {
         />
       ))}
     </div>
+  );
+}
+
+/**
+ * Unpaid online order (PAYMENT_PENDING / PAYMENT_FAILED): the restaurant has not been sent the order
+ * yet. "Pay now" mints a fresh gateway session (POST /api/orders/[id]/pay) and opens it; the order
+ * moves to the kitchen only after the server verifies the capture.
+ */
+function PayNowCard({ order }: { order: any }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const failed = order.status === 'PAYMENT_FAILED';
+  async function payNow() {
+    if (busy) return;
+    setBusy(true);
+    let navigating = false;
+    try {
+      const r = await fetch(`/api/orders/${order.id}/pay`, { method: 'POST' });
+      if (!r.ok) {
+        toast.error(apiErrorMessage(await r.text().catch(() => ''), 'Could not start the payment. Please try again.'));
+        return;
+      }
+      const j = await r.json();
+      const next = await launchPayment(order.id, j.payment, { merchantName: order.branch?.name ?? brand.name });
+      if (next.kind === 'redirected') {
+        navigating = true;
+        return;
+      }
+      if (next.notice) toast[next.notice.tone === 'success' ? 'success' : next.notice.tone === 'error' ? 'error' : 'message'](next.notice.text);
+      if (next.href === `/orders/${order.id}`) router.refresh();
+      else router.push(next.href);
+    } catch {
+      toast.error('Could not start the payment. Please try again.');
+    } finally {
+      if (!navigating) setBusy(false);
+    }
+  }
+  return (
+    <Card className={`mb-6 ${failed ? 'border-destructive/30 bg-destructive/5' : 'border-warning/30 bg-warning/5'}`}>
+      <CardContent className="p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="font-semibold">{failed ? 'Payment not completed' : 'Waiting for your payment'}</div>
+          <p className="text-sm text-muted-foreground break-words">
+            {failed
+              ? 'Your payment did not go through, so the restaurant has not received this order yet. You can try again.'
+              : 'The restaurant receives this order as soon as your payment of '}
+            {!failed && <span className="font-medium text-foreground">{money(Number(order.total))}</span>}
+            {!failed && ' is confirmed. If you already paid, this updates automatically.'}
+          </p>
+        </div>
+        <Button className="w-full sm:w-auto h-11 sm:h-9" onClick={payNow} disabled={busy}>
+          {busy ? 'Opening payment…' : `Pay now · ${money(Number(order.total))}`}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

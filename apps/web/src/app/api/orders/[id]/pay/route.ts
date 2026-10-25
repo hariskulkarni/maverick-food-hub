@@ -16,6 +16,7 @@ import { rateLimit } from '@/server/http/rate-limit';
 import { startOnlinePayment, OnlinePaymentError, isOnlineMethod } from '@/server/payments/online';
 import { log } from '@/server/log';
 import { currentRestaurant } from '@/server/tenancy';
+import { releasedBenefit } from '@/server/pg/order-state';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -55,6 +56,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const PAYABLE = ['PAYMENT_PENDING', 'PAYMENT_FAILED'];
   if (!PAYABLE.includes(order.status)) {
     return Response.json({ error: 'This order can no longer be paid.', reason: 'not_payable' }, { status: 409 });
+  }
+
+  // An order failed before benefits were held across PAYMENT_FAILED may have had its signup bonus /
+  // freebie / wallet given back; charging its old (discounted) total again would double-count them.
+  if (order.status === 'PAYMENT_FAILED') {
+    const released = await releasedBenefit(prisma as never, order.id);
+    if (released) {
+      return Response.json(
+        { error: `The ${released} on this order was already given back. Please place a new order.`, reason: 'benefit_released' },
+        { status: 409 },
+      );
+    }
   }
 
   try {
