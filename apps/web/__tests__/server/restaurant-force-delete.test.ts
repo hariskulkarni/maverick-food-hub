@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 let orderCount = 5; let financial = 0; let deleted = false;
 
-vi.mock('@/server/tenancy', () => ({ requireSuperAdmin: async () => ({ user: { id: 'su', role: 'SUPER_ADMIN' } }) }));
+vi.mock('@/server/auth', () => ({ auth: async () => ({ user: { id: 'su', role: 'SUPER_ADMIN' } }) }));
 vi.mock('@/server/revalidate', () => ({ revalidateRestaurantSurfaces: vi.fn() }));
 vi.mock('@/server/db', () => ({
   prisma: {

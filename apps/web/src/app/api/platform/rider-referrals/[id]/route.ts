@@ -15,10 +15,11 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { RiderReferralStatus } from '@prisma/client';
+import { clientIp } from '@/server/http/client-ip';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,7 +33,8 @@ const Body = z.object({
 const ORDER: RiderReferralStatus[] = ['PENDING', 'SIGNED_UP', 'QUALIFIED', 'REWARDED'];
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const session = await auth();
   const { id } = await params;
   const body = Body.parse(await req.json());
@@ -51,7 +53,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const now = new Date();
   const bonus = body.bonusAmount ?? Number(ref.bonusAmount);
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  const ip = clientIp(req.headers);
 
   // When advancing to REWARDED, atomically pay the referrer once. The guard
   // `status: { not: 'REWARDED' }` ensures a concurrent/double request can't

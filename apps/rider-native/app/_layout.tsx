@@ -23,6 +23,7 @@ import { AuthProvider, useAuth } from '../lib/auth';
 // Registers the background delivery-location task at startup — required so the
 // task exists when the OS relaunches the app in the background to deliver GPS.
 import '../lib/background-location';
+import '../lib/crash-reporter'; // uncaught JS errors / crashes → observability beacon
 import { colors, spacing, radius, font } from '../lib/theme';
 import { useAppUpdate } from '../lib/app-update';
 import { UpdateBanner, UpdateRequiredScreen } from '../components/update-prompt';

@@ -611,9 +611,19 @@ function RestaurantDrawer({ id, onClose, onChanged }: { id: string; onClose: () 
 
       <DrawerSection title="Owner & team" action={<AddStaffDialog restaurantId={r.id} onAdded={() => { void load(); onChanged(); }} />}>
         <div className="p-4 space-y-2 text-sm">
-          <div className="flex items-center gap-2"><Users className="size-4 text-muted-foreground" /><strong>{r.owner.name}</strong> · <span className="text-muted-foreground">{r.owner.email}</span></div>
+          <div className="flex flex-wrap items-center gap-2"><Users className="size-4 text-muted-foreground" /><strong>{r.owner.name}</strong> · <span className="text-muted-foreground break-all">{r.owner.email}</span>
+            <a href={`/platform/users?open=${r.owner.id}`} className="inline-flex min-h-11 items-center text-xs text-primary underline">Manage sign-in</a>
+          </div>
           {r.members.length > 0 && (
-            <div className="text-xs text-muted-foreground">{r.members.length} member{r.members.length === 1 ? '' : 's'}: {r.members.map((m: any) => `${m.user.name ?? m.user.email} (${m.user.role})`).join(', ')}</div>
+            <ul className="text-xs text-muted-foreground divide-y">
+              {r.members.map((m: any) => (
+                <li key={m.user.id} className="flex flex-wrap items-center justify-between gap-2 py-1">
+                  <span className="break-all">{m.user.name ?? m.user.email} ({m.user.role})</span>
+                  {/* Super-admin recovery (password, authenticator, unlock, role…) lives on the user drawer. */}
+                  <a href={`/platform/users?open=${m.user.id}`} className="inline-flex min-h-11 items-center text-primary underline">Manage sign-in</a>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </DrawerSection>

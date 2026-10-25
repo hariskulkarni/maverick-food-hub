@@ -1,18 +1,20 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { slugifyName } from '@/server/brands';
 import { imageRef, optionalString } from '@/server/zod-helpers';
+import { clientIp } from '@/server/http/client-ip';
 
 // ─── GET ────────────────────────────────────────────────────────────────────
 // Returns every brand on the platform, with cuisine counts and a cheap
 // lifetime revenue rollup so the index list can show a stat per row without
 // N+1ing reports endpoints.
 export async function GET(_req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
 
   const brands = await (prisma as any).brand.findMany({
     orderBy: [{ status: 'asc' }, { name: 'asc' }],
@@ -90,7 +92,8 @@ const CreateBody = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const session = await auth();
   const body = CreateBody.parse(await req.json());
 
@@ -127,7 +130,7 @@ export async function POST(req: NextRequest) {
       id: created.id, slug: created.slug, name: created.name, status: created.status,
       ownerUserId: created.ownerUserId
     },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+    ipAddress: clientIp(req.headers),
     userAgent: req.headers.get('user-agent')
   });
 

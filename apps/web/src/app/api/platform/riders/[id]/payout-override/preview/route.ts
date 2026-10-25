@@ -17,7 +17,7 @@
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { prisma } from '@/server/db';
 import { computeFromRule, mergeRule } from '@/server/payouts';
 import { parseOrJsonError } from '@/server/zod-helpers';
@@ -50,7 +50,8 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { id } = await params;
   const parsed = parseOrJsonError(Body, await req.json());
   if (parsed instanceof Response) return parsed;

@@ -53,7 +53,7 @@ export async function sendDigest(restaurantId: string, opts: { channels?: { sms:
   const msg = formatDigest(rest?.name ?? 'Your restaurant', data);
   let sent = 0;
   for (const to of emails) {
-    const r = await notify.email({ to, subject: msg.subject, body: msg.html, template: 'reviews.weekly_digest', restaurantId, meta: { text: msg.text } }).catch(() => ({ ok: false }));
+    const r = await notify.email({ to, subject: msg.subject, body: msg.text, html: msg.html, template: 'reviews.weekly_digest', restaurantId }).catch(() => ({ ok: false }));
     if (r.ok) sent++;
   }
   if (opts.channels?.sms || opts.channels?.whatsapp) {

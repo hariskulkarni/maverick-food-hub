@@ -50,6 +50,14 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Google reviews weekly digest to restaurant owners — Mondays 09:00 IST.
 0 9 * * 1 deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 300 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/review-digest/run >> /var/log/restaurant-manager/jobs.log 2>&1
 
+# Stale rider heartbeats → offline, so the allocator never assigns a rider whose
+# app died (route docs: 1-minute cron).
+* * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 50 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/rider-heartbeat/sweep >> /var/log/restaurant-manager/jobs.log 2>&1
+
+# Stuck-order detector → live-ops escalations (route docs: 1-minute cron; the
+# dashboard "Scan now" button stays as a manual trigger).
+* * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 50 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/escalations/scan >> /var/log/restaurant-manager/jobs.log 2>&1
+
 # ── Dispatch telemetry (feat/dispatch-telemetry) ──────────────────────────────
 # JIT rider invitations — releases held orders into the normal dispatch flow. No-op while the JIT setting is OFF (default).
 * * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 50 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/dispatch-jit/run >> /var/log/restaurant-manager/jobs.log 2>&1
@@ -59,3 +67,8 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 */5 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 90 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/zone-snapshot/run >> /var/log/restaurant-manager/jobs.log 2>&1
 # Nightly prep-time percentiles per restaurant × hour (feeds predicted prep / JIT).
 10 3 * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 300 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/prep-stats/run >> /var/log/restaurant-manager/jobs.log 2>&1
+# Observability Center — alert evaluation every minute (also refreshes stale probes
+# and flushes metrics). Super-admin e-mail/SMS on new alerts, debounced.
+* * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 50 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/obs-alerts/run >> /var/log/restaurant-manager/jobs.log 2>&1
+# Observability retention — prune metrics (30d), errors (14d), job runs (90d); daily 03:30 IST.
+30 3 * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 300 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/obs-retention/run >> /var/log/restaurant-manager/jobs.log 2>&1

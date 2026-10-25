@@ -11,14 +11,16 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { audit } from '@/server/audit';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
+import { clientIp } from '@/server/http/client-ip';
 
 const Body = z.object({
   reason: z.string().min(2).max(500)
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const { id } = await params;
   const { reason } = Body.parse(await req.json());
 
@@ -52,7 +54,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     entityId: id,
     before: { revokedAt: null },
     after: { revokedAt: updated.revokedAt, revokedReason: reason, voidedAmount: remaining },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+    ipAddress: clientIp(req.headers) ?? null,
     userAgent: req.headers.get('user-agent') ?? null
   });
 

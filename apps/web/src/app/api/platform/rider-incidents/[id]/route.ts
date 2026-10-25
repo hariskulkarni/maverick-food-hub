@@ -5,10 +5,11 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { serializeIncident } from '../_serializers';
+import { clientIp } from '@/server/http/client-ip';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,7 +24,8 @@ const Body = z
   });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const session = await auth();
   const { id } = await params;
   const body = Body.parse(await req.json());
@@ -48,7 +50,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     entityId: id,
     before: { status: before.status, resolution: before.resolution },
     after: { status: after.status, resolution: after.resolution },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+    ipAddress: clientIp(req.headers) ?? null,
     userAgent: req.headers.get('user-agent') ?? null,
   });
 

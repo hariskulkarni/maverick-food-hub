@@ -3,7 +3,7 @@
  * Super-admin only. ACTIVE alerts surfaced first; filter by ?status.
  */
 import { NextRequest } from 'next/server';
-import { requireCapability } from '@/server/tenancy';
+import { requireCapabilityApi } from '@/server/api-auth';
 import { prisma } from '@/server/db';
 import { serializeSos } from './_serializers';
 
@@ -11,7 +11,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  await requireCapability('riders:read');
+  const gate = await requireCapabilityApi('riders:read');
+  if (gate instanceof Response) return gate;
   const status = req.nextUrl.searchParams.get('status') || undefined;
 
   const where: any = {};

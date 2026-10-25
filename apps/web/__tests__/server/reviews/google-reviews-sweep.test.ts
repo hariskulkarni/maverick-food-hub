@@ -4,8 +4,9 @@ const db: any = vi.hoisted(() => ({
   integrationCredential: { findMany: vi.fn() },
   reviewResponseSettings: { upsert: vi.fn() },
   googleReview: { count: vi.fn() },
-  $queryRaw: vi.fn(),
 }));
+const lease = vi.hoisted(() => ({ acquireJobLease: vi.fn(async (): Promise<string | null> => 'tok1'), releaseJobLease: vi.fn(async () => {}) }));
+vi.mock('@/server/jobs/lease', () => lease);
 // listReviews is the test-facing alias; the sweep calls fetchReviews (reviews + location totals).
 const g = vi.hoisted(() => {
   const listReviews = vi.fn();
@@ -44,7 +45,7 @@ import { runGoogleReviewsSweep, isDailyFullSyncSlot } from '@/server/jobs/google
 
 beforeEach(() => {
   vi.clearAllMocks();
-  db.$queryRaw.mockResolvedValue([{ locked: true }]);
+  lease.acquireJobLease.mockResolvedValue('tok1');
   db.integrationCredential.findMany.mockResolvedValue([{ restaurantId: 'rest1' }]);
   g.listReviews.mockResolvedValue([]);
   store.hasReply.mockResolvedValue(false);
@@ -63,11 +64,18 @@ beforeEach(() => {
 });
 
 describe('runGoogleReviewsSweep', () => {
-  it('skips when the advisory lock is not acquired', async () => {
-    db.$queryRaw.mockResolvedValueOnce([{ locked: false }]);
+  it('skips when the job lease is held by another run', async () => {
+    lease.acquireJobLease.mockResolvedValueOnce(null);
     const r = await runGoogleReviewsSweep();
     expect(db.integrationCredential.findMany).not.toHaveBeenCalled();
     expect(r.restaurantsScanned).toBe(0);
+    expect(lease.releaseJobLease).not.toHaveBeenCalled();
+  });
+
+  it('F9: takes and releases its own lease (no advisory lock)', async () => {
+    await runGoogleReviewsSweep();
+    expect(lease.acquireJobLease).toHaveBeenCalledWith('google-reviews-sweep', expect.any(Number));
+    expect(lease.releaseJobLease).toHaveBeenCalledWith('google-reviews-sweep', 'tok1');
   });
 
   it('auto-posts a reply to a new 5-star review', async () => {

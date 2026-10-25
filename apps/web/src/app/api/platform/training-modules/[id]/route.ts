@@ -13,6 +13,7 @@ import { audit } from '@/server/audit';
 import { parseOrJsonError } from '@/server/zod-helpers';
 import { applyModuleContent, loadModuleForEditor, ModuleContentSchema } from '@/server/training/authoring';
 import { serializeModule } from '../_serializers';
+import { clientIp } from '@/server/http/client-ip';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,7 +58,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     entityId: id,
     before: serializeModule(before),
     after: serializeModule(after),
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+    ipAddress: clientIp(req.headers) ?? null,
     userAgent: req.headers.get('user-agent') ?? null,
   });
 
@@ -81,7 +82,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     entityType: 'TrainingModule',
     entityId: id,
     before: serializeModule(before),
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+    ipAddress: clientIp(req.headers) ?? null,
     userAgent: req.headers.get('user-agent') ?? null,
   });
 

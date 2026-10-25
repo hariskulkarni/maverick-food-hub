@@ -8,10 +8,11 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { serializeTicket } from '../_serializers';
+import { clientIp } from '@/server/http/client-ip';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,7 +30,8 @@ async function loadTicket(id: string) {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { id } = await params;
   const ticket = await loadTicket(id);
   if (!ticket) return new Response('Ticket not found', { status: 404 });
@@ -42,7 +44,8 @@ const ReplyBody = z.object({
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const session = await auth();
   const { id } = await params;
   const data = ReplyBody.parse(await req.json());
@@ -74,7 +77,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     entityType: 'RiderSupportTicket',
     entityId: id,
     after: { reply: data.body.slice(0, 200), status: data.status ?? existing.status },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+    ipAddress: clientIp(req.headers) ?? null,
     userAgent: req.headers.get('user-agent') ?? null,
   });
 
@@ -85,7 +88,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 const PatchBody = z.object({ status: z.enum(TICKET_STATUSES) });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const session = await auth();
   const { id } = await params;
   const data = PatchBody.parse(await req.json());
@@ -102,7 +106,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     entityId: id,
     before: { status: before.status },
     after: { status: data.status },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+    ipAddress: clientIp(req.headers) ?? null,
     userAgent: req.headers.get('user-agent') ?? null,
   });
 

@@ -3,13 +3,14 @@
  * Filters: ?riderId, ?status, ?from, ?to
  */
 import { NextRequest } from 'next/server';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { prisma } from '@/server/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const url = new URL(req.url);
   const riderId = url.searchParams.get('riderId') || undefined;
   const status = url.searchParams.get('status') || undefined;

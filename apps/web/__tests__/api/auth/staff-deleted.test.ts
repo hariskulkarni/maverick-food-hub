@@ -9,6 +9,7 @@ const { db, verify, start, confirm } = vi.hoisted(() => ({
 vi.mock('@/server/db', () => ({ prisma: db }));
 vi.mock('argon2', () => ({ default: { verify } }));
 vi.mock('@/server/http/rate-limit', () => ({ rateLimit: async () => ({ ok: true, remaining: 1 }) }));
+vi.mock('@/server/2fa', () => ({ isLockedOut: () => false, lockoutRemainingMs: () => 0, recordLoginFailure: vi.fn(), getPlatformSecurity: async () => ({}) }));
 vi.mock('@/server/user-totp', () => ({
   isStaffTotpRole: () => true,
   isTotpEnrolled: () => false,
@@ -31,9 +32,9 @@ describe('staff gate rejects soft-deleted accounts', () => {
     const j = await (await precheck(mk({ email: 'a@x.com', password: 'p' }))).json();
     expect(j.status).toBe('enroll');
   });
-  it('precheck: deleted user -> ok:false, no enrollment', async () => {
+  it('precheck: deleted user -> ok:false (closed, after a correct password), no enrollment', async () => {
     db.user.findUnique.mockResolvedValue({ ...base, deletedAt: new Date() });
-    expect(await (await precheck(mk({ email: 'a@x.com', password: 'p' }))).json()).toEqual({ ok: false });
+    expect(await (await precheck(mk({ email: 'a@x.com', password: 'p' }))).json()).toMatchObject({ ok: false, closed: true });
     expect(start).not.toHaveBeenCalled();
   });
   it('enroll: deleted user -> ok:false, no confirmation', async () => {

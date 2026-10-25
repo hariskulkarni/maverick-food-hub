@@ -27,6 +27,7 @@ import {
 } from '@/server/restaurant-wizard';
 import { imageRef } from '@/server/zod-helpers';
 import { revalidateRestaurantSurfaces } from '@/server/revalidate';
+import { clientIp } from '@/server/http/client-ip';
 
 // ── Zod schema ──────────────────────────────────────────────────────────────
 
@@ -345,6 +346,7 @@ export async function POST(req: NextRequest) {
           email: adminHashed.email,
           name: adminHashed.name ?? null,
           passwordHash: adminHashed.hash,
+          mustChangePassword: true, // set by the super admin — owner picks their own at first login
           role: Role.ADMIN
         }
       });
@@ -428,6 +430,7 @@ export async function POST(req: NextRequest) {
             email: k.email,
             name: k.name ?? null,
             passwordHash: k.hash,
+            mustChangePassword: true,
             role: Role.KITCHEN
           }
         });
@@ -536,7 +539,7 @@ export async function POST(req: NextRequest) {
       dineInTableCount: body.dineIn.enabled ? body.dineIn.tables.length : 0,
       allowFreebies: body.allowFreebies
     },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+    ipAddress: clientIp(req.headers),
     userAgent: req.headers.get('user-agent')
   }).catch((err) => log.error({ err }, 'audit log restaurant.wizard.create failed'));
 

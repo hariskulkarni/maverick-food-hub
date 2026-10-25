@@ -7,7 +7,8 @@
  *
  * Body: { phone: string }
  * 200:  { ok: true, devCode?: string }   devCode present only when OTP_DEBUG_LOG=true
- * 404:  { error: 'not_a_rider' }          phone is not a rider account
+ *       A phone that is NOT a rider gets the same { ok: true } and no code is
+ *       sent (no enumeration of registered riders); verify-otp then fails.
  * 429:  { error, retryAfter }             rate limited (see src/server/otp.ts)
  */
 import { NextRequest } from 'next/server';
@@ -15,17 +16,13 @@ import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { sendOtp, OtpRateLimitedError } from '@/server/otp';
 import { rateLimit } from '@/server/http/rate-limit';
+import { clientIp } from '@/server/http/client-ip'; // C10: not the client-supplied first XFF hop
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const Body = z.object({ phone: z.string().min(8).max(20) });
 
-function clientIp(req: NextRequest): string | undefined {
-  const fwd = req.headers.get('x-forwarded-for');
-  if (fwd) return fwd.split(',')[0]?.trim();
-  return req.headers.get('x-real-ip') ?? undefined;
-}
 
 export async function POST(req: NextRequest) {
   const rl = await rateLimit(req, { name: 'rider-otp-send', limit: 10, windowMs: 60_000 });
@@ -40,11 +37,11 @@ export async function POST(req: NextRequest) {
       select: { role: true }
     });
     if (!user || user.role !== 'RIDER') {
-      // Vague on purpose — don't leak which phone numbers are registered riders.
-      return Response.json({ error: 'not_a_rider' }, { status: 404 });
+      // Same answer as a real send — a 404 here let anyone enumerate riders.
+      return Response.json({ ok: true });
     }
 
-    const r = await sendOtp({ phone, purpose: 'login', ipAddress: clientIp(req) });
+    const r = await sendOtp({ phone, purpose: 'login', ipAddress: clientIp(req.headers) ?? undefined });
     return Response.json(r);
   } catch (e) {
     if (e instanceof OtpRateLimitedError) {

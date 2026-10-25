@@ -10,7 +10,8 @@ const calls: any[] = [];
 const store: Record<string, any> = {};
 
 vi.mock('@/server/auth', () => ({ auth: async () => session }));
-vi.mock('@/server/audit', () => ({ audit: vi.fn(async () => {}) }));
+const auditFn = vi.hoisted(() => vi.fn(async (..._a: any[]) => {}));
+vi.mock('@/server/audit', () => ({ audit: auditFn }));
 vi.mock('@/server/revalidate', () => ({ revalidateRestaurantSurfaces: vi.fn() }));
 vi.mock('@/server/db', () => ({
   prisma: {
@@ -22,6 +23,13 @@ vi.mock('@/server/db', () => ({
       create: async ({ data }: any) => { const id = 'ar_' + Object.keys(store).length; store[id] = { id, ...data }; calls.push(['ar.create', data.status]); return store[id]; },
       findUnique: async ({ where }: any) => store[where.id] ?? null,
       update: async ({ where, data }: any) => { store[where.id] = { ...store[where.id], ...data }; return store[where.id]; },
+      updateMany: async ({ where, data }: any) => {
+        const r = store[where.id];
+        if (!r) return { count: 0 };
+        for (const [k, v] of Object.entries(where)) if (k !== 'id' && (r[k] ?? null) !== v) return { count: 0 };
+        store[where.id] = { ...r, ...data };
+        return { count: 1 };
+      },
     },
   },
 }));
@@ -108,5 +116,43 @@ describe('approve / reject', () => {
     const nf = await rejectRequest('missing', { id: 'su1' });
     expect(nf.ok).toBe(false);
     expect((nf as any).error).toBe('not_found');
+  });
+});
+
+describe('F13: approval claim + audit', () => {
+  it('two concurrent approvals execute the action exactly once', async () => {
+    session = { user: { id: 'aa1', role: 'ADMIN_ASSIST' } };
+    const body = await (await confidentialAction(req(), 'restaurant.suspend', { restaurantId: 'r8' })).json();
+    calls.length = 0;
+    const [a, b] = await Promise.all([
+      approveRequest(body.approvalId, { id: 'su1', role: 'SUPER_ADMIN' }),
+      approveRequest(body.approvalId, { id: 'su2', role: 'SUPER_ADMIN' }),
+    ]);
+    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    expect(calls.filter((c) => c[0] === 'restaurant.update' && c[1] === 'r8')).toHaveLength(1);
+  });
+
+  it('a failed execution returns the request to PENDING with the error', async () => {
+    session = { user: { id: 'aa1', role: 'ADMIN_ASSIST' } };
+    const body = await (await confidentialAction(req(), 'restaurant.suspend', { restaurantId: 'r9' })).json();
+    const orig = APPROVAL_ACTIONS['restaurant.suspend'].execute;
+    APPROVAL_ACTIONS['restaurant.suspend'].execute = async () => { throw new Error('boom'); };
+    try {
+      const out = await approveRequest(body.approvalId, { id: 'su1' });
+      expect(out.ok).toBe(false);
+      expect(store[body.approvalId].status).toBe('PENDING');
+      expect(store[body.approvalId].executionError).toBe('boom');
+    } finally {
+      APPROVAL_ACTIONS['restaurant.suspend'].execute = orig;
+    }
+  });
+
+  it('archive is audited as restaurant.archive, not restaurant.suspend', async () => {
+    session = { user: { id: 'su1', role: 'SUPER_ADMIN' } };
+    auditFn.mockClear();
+    await confidentialAction(req(), 'restaurant.archive', { restaurantId: 'r10' });
+    const actions = auditFn.mock.calls.map((c) => c[0]);
+    expect(actions).toContain('restaurant.archive');
+    expect(actions).not.toContain('restaurant.suspend');
   });
 });

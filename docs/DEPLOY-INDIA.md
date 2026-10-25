@@ -196,12 +196,6 @@ SMTP_SECURE="false"
 RAZORPAY_KEY_ID="rzp_live_..."
 RAZORPAY_KEY_SECRET="..."
 RAZORPAY_WEBHOOK_SECRET="..."
-
-# Feature flags (Phase 1 — keep most off)
-ENABLE_WALLET="false"
-ENABLE_LOYALTY="false"
-ENABLE_WHATSAPP="false"
-ENABLE_S3_STORAGE="false"
 ```
 
 Per-restaurant overrides live in the `IntegrationCredential` table — managed

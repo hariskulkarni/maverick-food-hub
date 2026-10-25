@@ -22,9 +22,10 @@
  * A per-review error is parked as FAILED and never aborts the sweep. A
  * per-restaurant error is logged and skips only that restaurant. A reply that
  * Google already accepted is never recorded as FAILED, so it cannot be
- * re-posted by hand. An advisory lock prevents overlapping sweeps.
+ * re-posted by hand. A job lease (server/jobs/lease.ts) prevents overlapping sweeps.
  */
 import { prisma } from '@/server/db';
+import { acquireJobLease, releaseJobLease } from '@/server/jobs/lease';
 import { log } from '@/server/log';
 import { fetchReviews, postReply, safeErrorMessage, type NormalizedReview } from '@/server/reviews/google-business';
 import { LlmNotConfiguredError } from '@/server/reviews/llm';
@@ -39,7 +40,9 @@ import { summarizeBrandVoice } from '@/server/reviews/voice';
 import { refreshInsights, invalidateAnalysis } from '@/server/reviews/insights';
 import { sendNegativeReviewAlerts, runSlaEscalations, ALERT_FRESH_HOURS, type AlertReview } from '@/server/reviews/review-alerts';
 
-const LOCK_KEY = 889_201_774; // arbitrary unique advisory-lock id for this sweep
+// F9: overlap guard is a job lease (row with expiry), not a session advisory lock.
+const SWEEP_LEASE = 'google-reviews-sweep';
+const SWEEP_LEASE_TTL_MS = 30 * 60_000; // above the worst-case multi-restaurant run
 const MATCH_LOOKBACK_MS = 14 * 86_400_000;
 const VOICE_REFRESH_MS = 24 * 3_600_000;
 const INCREMENTAL_HORIZON_MS = 14 * 86_400_000;
@@ -59,8 +62,8 @@ export async function runGoogleReviewsSweep(opts: { restaurantIds?: string[]; no
     repliesImported: 0, held: 0, skipped: 0, alerted: 0, escalated: 0,
   };
 
-  const lock = (await prisma.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${LOCK_KEY}) AS locked`)[0];
-  if (!lock?.locked) { log.warn({}, 'reviews.sweep.skipped_locked'); return result; }
+  const lease = await acquireJobLease(SWEEP_LEASE, SWEEP_LEASE_TTL_MS);
+  if (!lease) { log.warn({}, 'reviews.sweep.skipped_locked'); return result; }
 
   try {
     const connected = await prisma.integrationCredential.findMany({
@@ -221,7 +224,7 @@ export async function runGoogleReviewsSweep(opts: { restaurantIds?: string[]; no
     }
     if (!opts.restaurantIds) result.escalated = await runSlaEscalations(now);
   } finally {
-    await prisma.$queryRaw`SELECT pg_advisory_unlock(${LOCK_KEY})`;
+    await releaseJobLease(SWEEP_LEASE, lease);
   }
   log.info(result, 'reviews.sweep.done');
   return result;

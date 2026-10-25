@@ -8,7 +8,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { clientIp } from '@/server/http/client-ip';
@@ -23,12 +23,8 @@ const Body = z.object({
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    await requireSuperAdmin();
-  } catch (e) {
-    if (e instanceof Response) return e;
-    throw e;
-  }
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const session = await auth();
   const { id } = await params;
   const parsed = Body.safeParse(await req.json().catch(() => null));

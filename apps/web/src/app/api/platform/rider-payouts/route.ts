@@ -4,7 +4,7 @@
  */
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { Prisma, RiderPayoutStatus } from '@prisma/client';
 
 export const runtime = 'nodejs';
@@ -13,12 +13,8 @@ export const dynamic = 'force-dynamic';
 const STATUSES = Object.values(RiderPayoutStatus) as string[];
 
 export async function GET(req: NextRequest) {
-  try {
-    await requireSuperAdmin();
-  } catch (e) {
-    if (e instanceof Response) return e;
-    throw e;
-  }
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const status = new URL(req.url).searchParams.get('status') || undefined;
   // P1-6: an unknown ?status= used to reach Prisma and 500.
   if (status && !STATUSES.includes(status)) {
