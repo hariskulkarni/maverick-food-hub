@@ -13,7 +13,7 @@ language: en
 2. If the code works for your order, you will see "Discount applied — you saved ₹…" and the **Discount** line appears in the **Order summary**.
 3. If it doesn't, you will see that the code doesn't apply to this order.
 
-The discount is applied to your total before payment. Coupons belong to a restaurant and have their own terms — for example a minimum order value, a maximum discount, validity dates or a limit on how many times they can be used.
+The discount is applied to your total before payment. Coupons belong to a restaurant: a restaurant's code only works on orders from that restaurant. Each coupon also has its own terms — for example a minimum order value, a maximum discount, a start and end date, or a limit on how many times it can be used. A code that hasn't started yet or has ended won't apply.
 
 ## Wallet
 

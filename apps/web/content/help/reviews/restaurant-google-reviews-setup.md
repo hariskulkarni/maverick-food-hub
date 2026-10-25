@@ -4,7 +4,7 @@ summary: Link your Google Business Profile or use Quick connect, choose an AI mo
 audience: RESTAURANT_ADMIN
 appArea: admin.settings
 tags: google business profile, google places, auto-reply, ai model, reviews settings, auto-publish
-related: restaurant-google-reviews, restaurant-customer-feedback
+related: restaurant-review-requests, restaurant-review-reply-rules, restaurant-google-reviews, restaurant-customer-feedback
 language: en
 ---
 ## What it is
@@ -30,13 +30,15 @@ Under **AI reply model**, choose a **Provider** (Anthropic, OpenAI or NVIDIA), p
 
 Turn on **Auto-reply**, then set two star thresholds:
 
-- **Auto-post at or above** – these reviews get a reply posted automatically.
-- **Draft for approval at or below** – these get a draft waiting in your Draft inbox.
+- **Auto-post at or above** – these reviews get a reply posted automatically, unless the review mentions one of your hold keywords or the draft fails the safety filter. Then the draft waits for your approval instead. See [Reply rules, brand voice and templates](help:restaurant-review-reply-rules).
+- **Draft for approval at or below** – these get a draft waiting in your Draft inbox. Nothing at this rating is posted without your approval.
 
-The draft threshold must be lower than the auto-post threshold. Reviews rated in between get no automatic reply. Add optional **Tone instructions** (for example "Warm, brief, sign off with the owner's name") and tap **Save**.
+The draft threshold must be lower than the auto-post threshold. Reviews rated in between get no automatic reply; they show as **Skipped** with the reason, and you can reply manually. Add optional **Tone instructions** (for example "Warm, brief, sign off with the owner's name") and tap **Save**.
 
 ## Good to know
 
 - Auto-reply works only with a Google Business Profile connection, and only for reviews written after you turned auto-reply on.
 - An AI reply model must be saved for drafts and auto-replies to be generated.
 - See [Read and reply to Google reviews](help:restaurant-google-reviews) for the day-to-day workflow.
+- The same tab has more cards: **Review requests** ([Ask customers for Google reviews](help:restaurant-review-requests)), **Reply rules & brand voice** and **Reply templates** ([Reply rules](help:restaurant-review-reply-rules)), **Alerts & reply target** ([Negative-review alerts](help:restaurant-review-alerts)) and **Weekly digest** ([Insights and digest](help:restaurant-review-insights)).
+- With a Business Profile connection, Flavrly checks Google for new and edited reviews every 15 minutes, with a full check once a day. Replies you write directly on Google are imported as **Posted**.

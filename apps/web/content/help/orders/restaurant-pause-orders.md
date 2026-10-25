@@ -33,6 +33,7 @@ Tap **Resume**. You will see "Branch is taking orders again". Timed pauses also 
 - Pausing switches the branch's **Accepting orders** setting off. New orders at that branch are refused with "Branch is not accepting new orders right now" until you resume.
 - Only one pause is active at a time; starting a new pause replaces the old one.
 - Orders already placed are not affected – keep preparing and dispatching them as normal.
+- Your dashboard, menu, combos, reports, menu import and coupons keep working while the branch is paused. A paused branch never triggers the **No branch yet** notice – that notice only appears when the restaurant has no branch at all.
 
 ## Good to know
 

@@ -39,7 +39,7 @@ Your tier badge also appears here once it loads.
 - **SAFETY & WORK**: Safety Centre, My Shifts, Delivery Preferences.
 - **GROWTH & SUPPORT**: My Tier, Customer Feedback, Refer & Earn, Training & Certification, Help & Support.
 
-There's also a Training & Certification section with short learning modules.
+**Training & Certification** has short learning modules with quizzes and certificates – see [Rider training and certificates](help:rider-training). **Help & Support** opens the [help center](help:rider-help-center) and your support tickets.
 
 ## Good to know
 

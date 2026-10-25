@@ -29,4 +29,4 @@ Approved restaurants sign in from the restaurant login, reached via **Sign in he
 
 ## Good to know
 
-For partner and rider questions, see the [contact page](/contact) and pick **I run a restaurant** or **I want to ride**.
+For partner and rider questions, see the [contact page](/contact) and pick **I run a restaurant** or **I want to ride**, or send a message from the contact form with the topic **Restaurant partnership** or **Riding with us** – it opens a support ticket and the team replies by email.

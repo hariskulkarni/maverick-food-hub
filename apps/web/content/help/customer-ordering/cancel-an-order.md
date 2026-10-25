@@ -1,6 +1,6 @@
 ---
 title: Cancel or change an order
-summary: Orders can only be cancelled before the restaurant accepts them. Contact support quickly if you need to cancel.
+summary: There is no cancel button — contact support with your order number. Before the restaurant accepts, we can cancel it for you; after that it's case by case.
 audience: CUSTOMER
 appArea: customer.ordering
 tags: cancel, change, order, refund
@@ -9,20 +9,19 @@ language: en
 ---
 ## What it is
 
-Because food is prepared fresh to order, the window to cancel is tight. A customer cancellation is only possible while your order is still waiting for payment or has not yet been accepted by the restaurant (status **Order Received**).
+Because food is prepared fresh to order, the window to cancel is tight. There is no cancel button in the app or on the website – cancellations go through our support team.
 
 ## How to cancel
 
-There is no self-service cancel button on the order page today. To cancel:
-
-1. Open your order and use the **Support** (call) or **WhatsApp** button at the top of the page, or go to the [contact page](/contact).
+1. Open your order and use the **Support** (call) or **WhatsApp** button at the top of the page, or go to the [contact page](/contact). For a live order, calling or WhatsApp is fastest.
 2. Share your order code (for example **ORD-AB12CD**) and ask to cancel.
 
-Do this as early as possible — once the restaurant has accepted the order, it can no longer be cancelled as a customer cancellation.
+Do this as early as possible:
 
-## After the restaurant accepts
+- **Before the restaurant accepts** (status **Order Received**) — we can cancel the order for you.
+- **After the restaurant accepts** — whether it can still be cancelled is decided case by case, because the food may already be in preparation.
 
-Once the order is **Accepted** or **Preparing**, cancellation generally isn't possible because the food is being made specifically for you. The restaurant or our support team can still cancel an order in some situations — for example if an item is unavailable — and you will be refunded where you are entitled to it.
+The restaurant may also decline or cancel an order, for example if an item is unavailable. You will be notified when this happens.
 
 ## Changing an order
 
@@ -30,5 +29,5 @@ Orders cannot be edited after they are placed. If you need something different, 
 
 ## Good to know
 
-- If a cancelled order was paid, see [Refunds](help:customer-refunds) for how the money comes back.
+- Cancelling a paid order does not refund it automatically. Support reviews the refund, which normally goes to your wallet. See [Refunds](help:customer-refunds).
 - Full details are in our [Refund & Cancellation Policy](/refunds).

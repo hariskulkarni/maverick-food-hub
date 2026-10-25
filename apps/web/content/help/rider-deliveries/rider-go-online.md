@@ -41,3 +41,4 @@ A break does not switch you offline. New-order popups keep coming while the swit
 
 - Booking or starting a shift doesn't switch you online. Use the switch on Home as well. See [Book and manage your shifts](help:rider-book-shifts).
 - If you try to claim an order while offline, the app tells you to go online first.
+- If Flavrly requires safety training before going online and you haven't passed it yet, going online is refused with **Training required**. Tap **Open training** and finish the module first. See [Rider training and certificates](help:rider-training).

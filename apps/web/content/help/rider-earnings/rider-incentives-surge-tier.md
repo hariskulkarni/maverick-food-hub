@@ -41,4 +41,4 @@ Higher tiers keep more of the surge bonus: **5%** more at Silver, **12%** more a
 ## Good to know
 
 - Your rating comes from customer delivery ratings. See [See your customer ratings and feedback](help:rider-customer-ratings).
-- To withdraw bonuses, see [Withdraw your earnings](help:rider-withdraw-payouts).
+- To withdraw bonuses, see [Request a payout of your earnings](help:rider-withdraw-payouts).

@@ -448,7 +448,7 @@ For delivery orders, marking an order ready is what tells Flavrly to send it to 
 - Do not mark ready too early. A rider who arrives to find the food not packed is stuck waiting, and the food that is ready gets cold.
 - Do not mark ready too late. If the bag is packed and sitting on the counter but not marked ready, the rider is not called and the customer waits longer.
 
-For pickup orders, the card shows a pickup **Code**. The customer collects the order at your counter, so no rider is sent.
+For pickup orders, the card shows a pickup **Code**. The customer collects the order at your counter, so no rider is sent. When you hand it over, press **Mark collected** to complete the order. For dine-in orders, press **Mark served — complete** once the food is at the table.
 
 Keep ready orders in one clear handover spot so riders and staff can find them quickly.`
       },
@@ -555,7 +555,7 @@ Your Flavrly kitchen board shows every active order in four columns. Each column
 3. **Preparing** - the order is being cooked and packed.
 4. **Ready** - the order is packed and waiting to be handed over.
 
-Once an order moves past Ready, for example when a rider picks it up, it leaves the board.
+Once an order moves past Ready it leaves the board: a delivery order when the rider picks it up, a pickup order when you press **Mark collected**, and a dine-in order when you press **Mark served — complete**.
 
 ### What is on each card
 
@@ -580,6 +580,7 @@ Each card shows one button to move the order to the next column:
 1. In **New**, press **Accept order**. The order moves to Accepted.
 2. In **Accepted**, press **Start preparing** when cooking begins. The order moves to Preparing.
 3. In **Preparing**, press **Mark ready** when the order is fully packed. The order moves to Ready.
+4. In **Ready**, pickup and dine-in orders have one more button. Press **Mark collected** when the customer collects a pickup order, or **Mark served — complete** when a dine-in order is served. The order is then complete. Delivery orders have no button here; the rider completes them at handover.
 
 Orders can only move forward one step at a time. You cannot skip from New straight to Ready.
 

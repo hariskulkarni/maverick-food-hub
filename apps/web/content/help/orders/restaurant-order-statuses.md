@@ -37,11 +37,11 @@ Cash on delivery and wallet orders skip this step and arrive as Received.
 
 ## Cancellations and refunds
 
-- **Cancelled by Customer**, **Cancelled by Restaurant**, **Cancelled by Admin**, and the older plain **Cancelled**. On the Orders board, **Reject** on a Received order cancels it.
+- **Cancelled by Customer**, **Cancelled by Restaurant**, **Cancelled by Admin**, and the older plain **Cancelled**. On the Orders board, **Reject** on a Received order cancels it (it shows as plain **Cancelled**). The board's **Cancelled** filter shows all of these.
 - **Refund Pending**, **Refund Initiated** and **Refunded** track money going back to the customer.
 
 ## Good to know
 
-- Pickup and dine-in orders never need a rider; they go from Ready to Delivered.
+- Pickup and dine-in orders never need a rider; they go from Ready to Delivered when you tap **Mark collected** (pickup) or **Mark served — complete** (dine-in) on the Orders board or the kitchen board.
 - Customers get an SMS when the status changes, if they have a phone number on file.
 - When an order is Delivered, the customer earns loyalty points and is asked for feedback.

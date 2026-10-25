@@ -14,7 +14,7 @@ The kitchen board at [/kitchen](/kitchen) is a live screen for the cooking line.
 - **New** – orders waiting to be accepted (Received).
 - **Accepted** – confirmed, not yet started.
 - **Preparing** – being cooked.
-- **Ready** – packed and waiting for pickup.
+- **Ready** – packed and waiting for the rider, or for the customer to collect or be served.
 
 Orders appear and move by themselves; you don't need to reload.
 
@@ -23,6 +23,11 @@ Orders appear and move by themselves; you don't need to reload.
 1. In **New**, tap **Accept order**.
 2. In **Accepted**, tap **Start preparing**.
 3. In **Preparing**, tap **Mark ready**.
+4. For self-pickup and dine-in orders, finish the order from **Ready**:
+   - Pickup: tap **Mark collected** when the customer has collected it.
+   - Dine-in: tap **Mark served — complete** once the food is at the table.
+
+Delivery orders have no button in **Ready** – they are completed when the rider hands them over to the customer.
 
 Each card shows the items and quantities, the order code, the time since it started, and a pickup code for self-pickup orders. Combo items list what goes into the combo, so you know exactly what to plate. Tap **KOT** to print a kitchen ticket – see [KOT printing](help:kot-printing).
 

@@ -973,22 +973,22 @@ When you confirm a delivery, the app shows **Delivered!** and adds that trip's e
 
 ## Withdrawing money
 
-In the **Earnings** tab, tap **Instant Payout**.
+In the **Earnings** tab, tap **Payouts**. Payouts are not instant: you send a request, and the Flavrly team processes it and makes the transfer.
 
 - The screen shows your available balance, your lifetime earnings and how much has been paid out.
 - Your available balance is your earnings minus withdrawals already paid or still being processed.
 - Enter an amount (tap the max option to fill your full balance), then choose **UPI** or **Bank account**.
 - For UPI, type your UPI ID carefully. For Bank account, money goes to the bank account on file with Flavrly.
-- Tap the withdraw button and confirm.
+- Tap **Request withdrawal**, then **Request** to confirm.
 
 ### After you request
 
-- Your request appears in the history list at the bottom, with its status.
+- Your request appears under **PAYOUT HISTORY** with its status: **Requested**, then **Processing**, then **Paid** once the money is sent.
 - The amount is held from your balance straight away, so you cannot withdraw it twice.
-- The Flavrly team completes the transfer and the status changes to **Paid**. Check the status in the history; if a request **fails**, that amount returns to your available balance.
+- If a request shows **Failed**, that amount returns to your available balance and you can request it again.
 - If something looks wrong, raise a **Payment** ticket in Help & Support.
 
-*Remember:* COD cash is not your earnings. Your earnings come through Instant Payout. Cash you collect is deposited at your branch.`,
+*Remember:* COD cash is not your earnings. Your earnings come through Payouts. Cash you collect is deposited at your branch.`,
       },
       {
         kind: 'CHECKLIST',
@@ -1000,7 +1000,7 @@ In the **Earnings** tab, tap **Instant Payout**.
           'Keep COD cash separate from your personal money',
           'Deposit the cash at your branch as soon as you can',
           'Check for any Mismatch status and raise a Payment ticket if you see one',
-          'Check the status of any withdrawal you requested in Instant Payout',
+          'Check the status of any withdrawal you requested in Payouts',
         ],
       },
     ],
@@ -1201,8 +1201,8 @@ Open **Safety Centre** from **Profile**, or tap **Safety** on the Home screen.
 
 At the top of Safety Centre is the red **SOS — Emergency** button.
 
-1. Tap it. The app asks **Trigger SOS?** and explains that your location and your primary emergency contact will be alerted.
-2. Tap **Trigger SOS**. The app captures your location and sends the alert.
+1. Tap it. The app asks **Trigger SOS?** to confirm.
+2. Tap **Trigger SOS**. The app captures your location and sends the alert to Flavrly's safety team. Every emergency contact you have saved also gets a text message with your name, the time and a map link to your location (when SMS is set up).
 3. While the alert is live, you see **SOS ACTIVE**.
 4. When you are safe, tap **Mark safe / resolve** to close the alert.
 
@@ -1210,11 +1210,11 @@ At the top of Safety Centre is the red **SOS — Emergency** button.
 
 ### Emergency Contacts
 
-Tap **Emergency Contacts** to add the people Flavrly should alert when you use SOS. Add a name and phone number, and switch on **Set as primary contact** for the person who should be alerted first. Add at least one contact before you start riding.
+Tap **Emergency Contacts** to add the people who should be texted when you use SOS. Add a name and phone number. All your saved contacts get the SOS text, so keep the numbers up to date; **Set as primary contact** puts your main contact at the top of the list. Add at least one contact before you start riding.
 
 ### Share my live trip
 
-Tap **Share my live trip** to send family a live-location link that works for four hours. Useful on late-night shifts.`,
+Tap **Share my live trip** to send family a live-location link that works for four hours. Your phone's share sheet opens so you can send it on WhatsApp, SMS or any app. The link shows your first name, your status and your last known location on a map, never the customer's details. It stops working after four hours, or as soon as you share a new link. Useful on late-night shifts.`,
       },
       {
         kind: 'TEXT',
@@ -1225,8 +1225,9 @@ From **Safety Centre**, tap **Report an Incident** to tell Flavrly's safety team
 
 1. Pick a type: **Accident**, **Harassment**, **Vehicle breakdown**, **Theft**, **Unsafe location**, **Customer dispute** or **Something else**.
 2. Describe what happened in a sentence or two.
-3. Your location is attached automatically.
-4. Tap submit and confirm with **Submit report**.
+3. Optionally tap **Add a photo** to take or choose a picture.
+4. Your location is attached automatically.
+5. Tap submit and confirm with **Submit report**. If the photo cannot upload, choose **Submit without photo** to send the report anyway, or **Cancel** to try again later.
 
 Your past reports appear below with a status such as **Open**, **Under review** or **Resolved**. Report incidents when you are safe; in an emergency use SOS and call 112 first.
 
@@ -1626,7 +1627,7 @@ Trust your instincts. If a drop-off feels unsafe, contact support before going i
       {
         prompt: 'You are riding late at night. Which app feature lets your family follow your location?',
         options: [
-          'Instant Payout',
+          'Payouts',
           'Delivery Preferences',
           'Share my live trip in Safety Centre',
           'Refer & Earn',
