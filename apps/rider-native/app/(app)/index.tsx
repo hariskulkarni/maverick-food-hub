@@ -35,6 +35,8 @@ import { SurgeBanner } from '../../components/surge-banner';
 import { TrainingBanner } from '../../components/training-banner';
 import { BreakModeCard } from '../../components/break-mode-card';
 import { useRiderLocation } from '../../lib/use-rider-location';
+import { pickTrackedOrderId, syncDeliveryTracking } from '../../lib/delivery-tracking';
+import { stopDeliveryTracking } from '../../lib/background-location';
 
 /** A square quick-action tile on the dashboard. */
 function QuickAction({
@@ -182,7 +184,9 @@ export default function DashboardScreen() {
 
   // Stream GPS the whole time the rider is online — not just on an active
   // delivery — so the super-admin fleet map always has a live position.
-  useRiderLocation({ orderId: null, enabled: online });
+  // Pings are tagged with the active delivery (if any) so the customer tracker
+  // updates even before the rider opens the delivery screen.
+  useRiderLocation({ orderId: pickTrackedOrderId(assignments), enabled: online });
 
   const load = useCallback(async () => {
     setError(null);
@@ -192,6 +196,8 @@ export default function DashboardScreen() {
       setMe(meRes);
       setAssignments(list);
       setLastSyncedAt(Date.now());
+      // Start / retarget / stop background delivery tracking to match.
+      void syncDeliveryTracking(list, meRes.online);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not load your dashboard.');
     }
@@ -255,6 +261,8 @@ export default function DashboardScreen() {
     setOnline(next); // optimistic
     try {
       await api.setOnline(next);
+      // Going offline ends background delivery tracking.
+      if (!next) void stopDeliveryTracking();
     } catch (e) {
       setOnline(!next); // revert on failure
       if (e instanceof ApiError && e.status === 409 && (e.body as { code?: string } | null)?.code === 'training/required') {

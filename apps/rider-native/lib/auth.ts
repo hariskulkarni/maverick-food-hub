@@ -8,6 +8,7 @@
 import * as SecureStore from 'expo-secure-store';
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { setAuthToken, type Rider } from './api';
+import { saveBackgroundToken, stopDeliveryTracking } from './background-location';
 
 const TOKEN_KEY = 'flavrly_rider_token';
 const RIDER_KEY = 'flavrly_rider_profile';
@@ -40,6 +41,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (savedToken) {
           setToken(savedToken);
           setAuthToken(savedToken);
+          // Copy readable while the phone is locked, for the background
+          // delivery-tracking task (also migrates sessions from older builds).
+          saveBackgroundToken(savedToken).catch(() => {});
         }
         if (savedRider) {
           try {
@@ -59,13 +63,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       SecureStore.setItemAsync(TOKEN_KEY, newToken),
       SecureStore.setItemAsync(RIDER_KEY, JSON.stringify(newRider)),
     ]);
+    await saveBackgroundToken(newToken);
     setAuthToken(newToken);
     setToken(newToken);
     setRider(newRider);
   }, []);
 
   const signOut = useCallback(async () => {
+    // End any background delivery tracking and drop unsent points + the
+    // background token copy before the session goes away.
+    await stopDeliveryTracking({ clearQueue: true }).catch(() => {});
     await Promise.all([
+      saveBackgroundToken(null),
       SecureStore.deleteItemAsync(TOKEN_KEY),
       SecureStore.deleteItemAsync(RIDER_KEY),
     ]);
