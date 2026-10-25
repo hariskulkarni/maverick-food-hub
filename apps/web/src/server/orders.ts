@@ -35,7 +35,7 @@ import { groupOrderChannel } from './group-scope';
 import { resolveDeliveryTerms } from './delivery/placement';
 import { branchHasActiveZones } from './delivery/zones';
 import { isBranchOpenAt, isScheduledTimeInsideOpenWindow } from './operating-hours';
-import { isPgPrepayOrder } from './pg/order-state';
+import { isCancelStatus, isPgPrepayOrder, settlePgOrderOnCancel } from './pg/order-state';
 
 // State machine. Cancellation is allowed from any pre-delivery state into the
 // matching CANCELLED_BY_* terminal. Legacy CANCELLED is kept for back-compat.
@@ -871,6 +871,8 @@ export async function transitionOrder(
       throw new OrderTransitionError('Order was changed concurrently; please retry.');
     }
     await tx.orderStatusEvent.create({ data: { orderId, status: next, actorId: opts.actorId, note: opts.note } });
+    // Flavrly PG (P1-7 / P1-10): close payable attempts; give back wallet/points of a never-paid PG order.
+    if (isCancelStatus(next)) await settlePgOrderOnCancel(tx, orderId, order.status);
     if (next === OrderStatus.DELIVERED) {
       // Earn loyalty: 5pt per ₹100 of subtotal
       const account = await tx.loyaltyAccount.upsert({ where: { userId: order.customerId }, update: {}, create: { userId: order.customerId } });

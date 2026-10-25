@@ -78,4 +78,22 @@ describe('customerPaymentView', () => {
     expect(view([], 'PAYMENT_PENDING', 'PENDING')).toMatchObject({ phase: 'AWAITING_PAYMENT', canRetry: false });
     expect(view([], 'PAYMENT_PENDING', null)).toMatchObject({ phase: 'NONE', state: 'NONE', canRetry: false });
   });
+
+  // Round-2 P1-7 / P1-6.
+  it('a cancelled order never asks for payment: ORDER_CANCELLED, no retry, even with an open session', () => {
+    for (const st of ['CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_ADMIN', 'CANCELLED_BY_RESTAURANT', 'CANCELLED']) {
+      const v = view([{ state: 'AWAITING_PAYMENT', expiresAt: future }], st);
+      expect(v).toMatchObject({ phase: 'ORDER_CANCELLED', state: 'FAILED', canRetry: false });
+      expect(v.message).toMatch(/cancelled/i);
+    }
+    expect(view([], 'CANCELLED_BY_CUSTOMER', 'PENDING').phase).toBe('ORDER_CANCELLED');
+  });
+  it('money that arrived for a cancelled order is still reported as received (refund path)', () => {
+    const v = customerPaymentView({ orderStatus: 'CANCELLED_BY_CUSTOMER' as any, attempts: [{ state: 'CANCELLED' as any, expiresAt: null, allocated: true }], now });
+    expect(v.phase).toBe('LATE_RECEIVED');
+  });
+  it('captured but held for the restaurant -> RESTAURANT_CONFIRMING (pending), not "confirmed"', () => {
+    const v = customerPaymentView({ orderStatus: 'PAYMENT_PENDING' as any, attempts: [{ state: 'CAPTURED' as any, expiresAt: null }], releaseHeld: true, now });
+    expect(v).toMatchObject({ phase: 'RESTAURANT_CONFIRMING', state: 'PENDING', canRetry: false });
+  });
 });
