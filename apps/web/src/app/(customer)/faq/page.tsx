@@ -28,7 +28,7 @@ const GROUPS: Group[] = [
       },
       {
         q: 'How do I change or cancel an order?',
-        a: 'You can cancel from your order screen before the restaurant starts preparing it. Once cooking has begun, cancellation may not be possible — see our Refund & Cancellation Policy for details.'
+        a: 'There is no cancel button in the app. Contact support as soon as possible with your order number: we can cancel an order the restaurant has not accepted yet; after that it is decided case by case. See our Refund & Cancellation Policy for details.'
       }
     ]
   },
@@ -82,7 +82,7 @@ const GROUPS: Group[] = [
       },
       {
         q: 'How long do refunds take?',
-        a: 'Approved refunds are returned to your original payment method, typically within 5–7 business days, depending on your bank or payment provider.'
+        a: 'Refunds are reviewed and issued by our support team. Approved refunds are normally credited to your wallet, where they are available straight away for your next order. If we refund to your original payment method instead, the time it takes depends on your bank or payment provider.'
       }
     ]
   },
