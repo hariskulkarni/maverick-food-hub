@@ -41,7 +41,15 @@ export function Aggregate({ data }: { data: PublicReviewsPage['aggregate'] }) {
       <span className="display text-3xl font-semibold">{data.average.toFixed(1)}</span>
       <div>
         <Stars value={data.average} />
-        <p className="text-xs text-muted-foreground">{data.count} review{data.count === 1 ? '' : 's'}</p>
+        <p className="text-xs text-muted-foreground">
+          Average of all {data.count} review{data.count === 1 ? '' : 's'}
+          {data.inAppCount > 0 && data.googleCount > 0 ? ` (${data.inAppCount} in-app, ${data.googleCount} from Google)` : ''}
+        </p>
+        {data.google?.average != null && data.google.count != null && (
+          <p className="text-xs text-muted-foreground">
+            Google rating {data.google.average.toFixed(1)} from {data.google.count} review{data.google.count === 1 ? '' : 's'} on Google
+          </p>
+        )}
       </div>
     </div>
   );
