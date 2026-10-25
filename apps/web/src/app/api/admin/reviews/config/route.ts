@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireManagedRestaurant } from '@/server/tenancy';
 import { listForRestaurant } from '@/server/integrations';
 import { prisma } from '@/server/db';
+import { auditReview } from '@/server/reviews/review-audit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -62,6 +63,11 @@ export async function POST(req: NextRequest) {
     create: { restaurantId: restaurant.id, ...data },
     update: data,
   });
+  await auditReview('reviews.config.update', restaurant.id, {
+    entityType: 'ReviewAutoReplyConfig',
+    before: current ? { enabled: current.enabled, autoPostMinRating: current.autoPostMinRating, draftMaxRating: current.draftMaxRating, tonePrompt: current.tonePrompt } : null,
+    after: { enabled, autoPostMinRating, draftMaxRating, tonePrompt: data.tonePrompt },
+  });
   return Response.json({ ok: true });
 }
 
@@ -71,5 +77,6 @@ export async function PATCH(req: NextRequest) {
   const b = await req.json().catch(() => ({}));
   if (typeof b.autoPublishReviews !== 'boolean') return new Response('Bad body', { status: 400 });
   await prisma.restaurant.update({ where: { id: restaurant.id }, data: { autoPublishReviews: b.autoPublishReviews } });
+  await auditReview('reviews.publish.update', restaurant.id, { entityType: 'Restaurant', entityId: restaurant.id, after: { autoPublishReviews: b.autoPublishReviews } });
   return Response.json({ ok: true });
 }

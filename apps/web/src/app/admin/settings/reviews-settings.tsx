@@ -9,6 +9,7 @@ import { brand } from '@/lib/brand';
 import { cn } from '@/lib/utils';
 import { GoogleGLogo, AnthropicLogo, OpenAILogo, NvidiaLogo } from './provider-logos';
 import { ReviewAcquisitionCard } from './review-acquisition-card';
+import { ReviewResponseSettings } from './review-response-settings';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
@@ -61,6 +62,7 @@ export function ReviewsSettings({ restaurantId }: { restaurantId?: string } = {}
       <LlmCard part={cfg.llm} qs={qs} onSaved={load} />
       <AutoReplyCard initial={cfg.autoReply} qs={qs} />
       <ReviewAcquisitionCard restaurantId={restaurantId} />
+      <ReviewResponseSettings qs={qs} />
     </div>
   );
 }

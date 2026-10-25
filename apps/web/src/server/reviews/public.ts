@@ -23,7 +23,11 @@ export interface PublicReview {
 }
 
 export interface PublicReviewsPage {
-  aggregate: { average: number | null; count: number; inAppCount: number; googleCount: number };
+  aggregate: {
+    average: number | null; count: number; inAppCount: number; googleCount: number;
+    /** Location totals as reported by Google (all Google reviews, not just the synced ones). */
+    google: { average: number | null; count: number | null } | null;
+  };
   reviews: PublicReview[];
   page: number;
   pageSize: number;
@@ -55,6 +59,12 @@ export function toPublicInApp(row: any): PublicReview | null {
   };
 }
 
+/** Google reviews are public under the author's Google display name; credit it in full. */
+export function googleAuthor(name: string | null | undefined): string {
+  const n = (name ?? '').trim().replace(/\s+/g, ' ');
+  return n ? n.slice(0, 60) : 'Google user';
+}
+
 export function toPublicGoogle(row: any): PublicReview {
   const posted = row.reply && row.reply.state === 'POSTED';
   return {
@@ -62,7 +72,7 @@ export function toPublicGoogle(row: any): PublicReview {
     source: 'google',
     rating: row.rating,
     comment: row.comment || null,
-    author: firstName(row.reviewerName, 'Google user'),
+    author: googleAuthor(row.reviewerName),
     date: iso(row.reviewCreatedAt)!,
     reply: posted ? { text: row.reply.text, at: iso(row.reply.postedAt) } : null,
   };
@@ -81,7 +91,7 @@ export async function loadPublicReviews(
     overallRating: { not: null },
     order: { branch: { restaurantId } },
   };
-  const [appRows, googleRows, appAgg, googleAgg] = await Promise.all([
+  const [appRows, googleRows, appAgg, googleAgg, gStats] = await Promise.all([
     (prisma as any).orderFeedback.findMany({
       where: appWhere,
       select: {
@@ -101,6 +111,9 @@ export async function loadPublicReviews(
     }),
     (prisma as any).orderFeedback.aggregate({ where: appWhere, _avg: { overallRating: true }, _count: { _all: true } }),
     prisma.googleReview.aggregate({ where: { restaurantId }, _avg: { rating: true }, _count: { _all: true } }),
+    prisma.reviewResponseSettings.findUnique({
+      where: { restaurantId }, select: { googleAverageRating: true, googleTotalReviewCount: true },
+    }),
   ]);
 
   const merged: PublicReview[] = [
@@ -114,7 +127,12 @@ export async function loadPublicReviews(
   const total = inAppCount + googleCount;
   const sum = (appAgg._avg.overallRating ?? 0) * inAppCount + (googleAgg._avg.rating ?? 0) * googleCount;
   return {
-    aggregate: { average: total ? Math.round((sum / total) * 10) / 10 : null, count: total, inAppCount, googleCount },
+    aggregate: {
+      average: total ? Math.round((sum / total) * 10) / 10 : null, count: total, inAppCount, googleCount,
+      google: gStats && (gStats.googleTotalReviewCount != null || gStats.googleAverageRating != null)
+        ? { average: gStats.googleAverageRating, count: gStats.googleTotalReviewCount }
+        : null,
+    },
     reviews: merged.slice(start, start + pageSize),
     page,
     pageSize,

@@ -7,9 +7,11 @@ const h = vi.hoisted(() => ({
   upsert: vi.fn(),
   findUnique: vi.fn(),
   restaurantUpdate: vi.fn(),
+  auditReview: vi.fn(),
 }));
 vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: h.requireManagedRestaurant }));
 vi.mock('@/server/integrations', () => ({ listForRestaurant: h.listForRestaurant }));
+vi.mock('@/server/reviews/review-audit', () => ({ auditReview: h.auditReview }));
 vi.mock('@/server/db', () => ({
   prisma: { reviewAutoReplyConfig: { upsert: h.upsert, findUnique: h.findUnique }, restaurant: { update: h.restaurantUpdate } },
 }));
@@ -108,5 +110,18 @@ describe('reviews config route', () => {
     }));
     expect(res.status).toBe(400);
     expect(h.restaurantUpdate).not.toHaveBeenCalled();
+  });
+
+  it('POST audits the config change with before/after', async () => {
+    h.findUnique.mockResolvedValue({ enabled: false, autoPostMinRating: 4, draftMaxRating: 3, tonePrompt: null, enabledAt: null });
+    await POST(post({ enabled: true, autoPostMinRating: 5, draftMaxRating: 2 }));
+    expect(h.auditReview).toHaveBeenCalledWith('reviews.config.update', 'rest1', expect.objectContaining({
+      before: expect.objectContaining({ enabled: false }), after: expect.objectContaining({ enabled: true, autoPostMinRating: 5 }),
+    }));
+  });
+
+  it('PATCH audits the publish toggle', async () => {
+    await PATCH(new NextRequest('http://x', { method: 'PATCH', body: JSON.stringify({ autoPublishReviews: false }) }));
+    expect(h.auditReview).toHaveBeenCalledWith('reviews.publish.update', 'rest1', expect.objectContaining({ after: { autoPublishReviews: false } }));
   });
 });

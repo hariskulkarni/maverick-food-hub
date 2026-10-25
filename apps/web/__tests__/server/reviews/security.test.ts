@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
 vi.mock('@/server/integrations', () => ({ getConfig: h.getConfig, listForRestaurant: h.listForRestaurant }));
 vi.mock('@/server/log', () => ({ log: { info: h.info, warn: h.warn, error: h.error } }));
 vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: h.requireManagedRestaurant }));
+vi.mock('@/server/reviews/review-audit', () => ({ auditReview: vi.fn() }));
 vi.mock('@/server/db', () => ({
   prisma: { reviewAutoReplyConfig: { upsert: h.upsert, findUnique: h.findUnique } },
 }));

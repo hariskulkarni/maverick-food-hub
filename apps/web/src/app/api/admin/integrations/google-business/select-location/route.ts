@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireManagedRestaurant } from '@/server/tenancy';
 import { getConfig, saveConfig } from '@/server/integrations';
+import { auditReview } from '@/server/reviews/review-audit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,5 +29,8 @@ export async function POST(req: NextRequest) {
     { ...existing, locationId },
     { status: 'CONNECTED' },
   );
+  await auditReview('reviews.location.select', restaurant.id, {
+    entityType: 'IntegrationCredential', before: { locationId: existing.locationId ?? null }, after: { locationId },
+  });
   return NextResponse.json({ ok: true });
 }
