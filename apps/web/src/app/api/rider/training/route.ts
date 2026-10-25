@@ -1,69 +1,20 @@
 /**
- * GET /api/rider/training
+ * GET /api/rider/training?lang=en|hi
  *
- * The training & certification catalogue for the native app — every active
- * TrainingModule (ordered) merged with this rider's completion progress, plus
- * roll-up counts the progress header needs.
+ * The rider's training library: every active RIDER module merged with this
+ * rider's progress/certification, plus roll-up counts. Backward compatible —
+ * pre-v2 app builds read `modules[].{completed,quizScore,isRequired}`,
+ * `completedCount`, `totalCount`, `requiredRemaining`.
  */
-import { auth } from '@/server/rider-auth';
-import { prisma } from '@/server/db';
+import { NextRequest } from 'next/server';
+import { riderLearner } from '@/server/training/learner-auth';
+import { listLearnerModules } from '@/server/training/service';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const session = await auth();
-  if (session?.user.role !== 'RIDER') return new Response('Forbidden', { status: 403 });
-
-  const profile = await prisma.riderProfile.findUnique({
-    where: { userId: session.user.id },
-    select: { id: true },
-  });
-  if (!profile) return new Response('No rider profile', { status: 404 });
-
-  const modules = await prisma.trainingModule.findMany({
-    where: { isActive: true },
-    orderBy: { order: 'asc' },
-    select: {
-      id: true,
-      title: true,
-      summary: true,
-      category: true,
-      durationMin: true,
-      order: true,
-      isRequired: true,
-      progress: {
-        where: { riderId: profile.id },
-        select: { completed: true, completedAt: true, quizScore: true },
-      },
-    },
-  });
-
-  const merged = modules.map((m) => {
-    const p = m.progress[0] ?? null;
-    return {
-      id: m.id,
-      title: m.title,
-      summary: m.summary,
-      category: m.category,
-      durationMin: m.durationMin,
-      order: m.order,
-      isRequired: m.isRequired,
-      completed: p?.completed ?? false,
-      completedAt: p?.completedAt?.toISOString() ?? null,
-      quizScore: p?.quizScore ?? null,
-    };
-  });
-
-  const completedCount = merged.filter((m) => m.completed).length;
-  const requiredRemaining = merged.filter(
-    (m) => m.isRequired && !m.completed
-  ).length;
-
-  return Response.json({
-    modules: merged,
-    completedCount,
-    totalCount: merged.length,
-    requiredRemaining,
-  });
+export async function GET(req: NextRequest) {
+  const who = await riderLearner(req.nextUrl.searchParams.get('lang'));
+  if (who instanceof Response) return who;
+  return Response.json({ ...(await listLearnerModules(who.learner, who.lang)), lang: who.lang });
 }

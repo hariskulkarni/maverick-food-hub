@@ -31,6 +31,7 @@ import { useAuth } from '../../lib/auth';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 import { OnboardingTour, useTourSeen } from '../../components/onboarding-tour';
 import { SurgeBanner } from '../../components/surge-banner';
+import { TrainingBanner } from '../../components/training-banner';
 import { BreakModeCard } from '../../components/break-mode-card';
 import { useRiderLocation } from '../../lib/use-rider-location';
 
@@ -249,10 +250,18 @@ export default function DashboardScreen() {
       await api.setOnline(next);
     } catch (e) {
       setOnline(!next); // revert on failure
-      Alert.alert(
-        'Could not update status',
-        e instanceof ApiError ? e.message : 'Please try again.'
-      );
+      if (e instanceof ApiError && e.status === 409 && (e.body as { code?: string } | null)?.code === 'training/required') {
+        // Platform training gate: required safety modules must be passed first.
+        Alert.alert('Training required', e.message, [
+          { text: 'Later', style: 'cancel' },
+          { text: 'Open training', onPress: () => router.push('/training') },
+        ]);
+      } else {
+        Alert.alert(
+          'Could not update status',
+          e instanceof ApiError ? e.message : 'Please try again.'
+        );
+      }
     } finally {
       setToggling(false);
     }
@@ -313,6 +322,9 @@ export default function DashboardScreen() {
         <View style={styles.surgeSlot}>
           <SurgeBanner />
         </View>
+
+        {/* Required training — renders nothing when all required modules are certified */}
+        <TrainingBanner />
 
         {/* Online toggle */}
         <View

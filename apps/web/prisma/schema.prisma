@@ -298,6 +298,10 @@ model User {
   approvalsRequested    ApprovalRequest[]    @relation("ApprovalRequester")
   approvalsReviewed     ApprovalRequest[]    @relation("ApprovalReviewer")
   webPushSubscriptions  WebPushSubscription[]
+  // Training library v2
+  trainingLessonCompletions TrainingLessonCompletion[]
+  trainingQuizAttempts      TrainingQuizAttempt[]
+  trainingCertificates      TrainingCertificate[]
 
   @@index([role])
   @@index([phone])
@@ -3193,6 +3197,10 @@ enum TrainingCategory {
   CUSTOMER_SERVICE
   EARNINGS
   APP_GUIDE
+  // ── Training library v2: restaurant-staff categories ──
+  HYGIENE
+  KITCHEN_OPS
+  RESTAURANT_OPS
 }
 
 /// A bite-sized training/certification module. `contentBody` is markdown shown
@@ -3226,7 +3234,152 @@ model TrainingModule {
 
   progress RiderTrainingProgress[]
 
+  // ── Training library v2 (feat/training-library) ──────────────────────────
+  // Ordered lessons + MCQ quiz, audience, versioning and certification. The
+  // legacy fields above stay populated (contentBlocks is regenerated from the
+  // lessons on save) so rider-native builds that predate v2 keep working.
+  /// Stable key used by the idempotent seed script.
+  slug               String?          @unique
+  audience           TrainingAudience @default(RIDER)
+  /// Content version. Bumping it invalidates older certificates (re-certification).
+  version            Int              @default(1)
+  versionPublishedAt DateTime         @default(now())
+  /// Base language of the content; other languages live in `translations`.
+  language           String           @default("en")
+  /// `{ hi: { title, summary } }`
+  translations       Json?
+  passMarkPct        Int              @default(80)
+  /// null = unlimited quiz attempts per version.
+  maxAttempts        Int?
+  retakeCooldownMin  Int              @default(0)
+  /// Days to finish a required module before it shows as overdue.
+  dueDays            Int              @default(7)
+  /// Safety-critical: blocks going online until passed (platform gate, default off).
+  blocksShift        Boolean          @default(false)
+
+  lessons           TrainingLesson[]
+  questions         TrainingQuestion[]
+  lessonCompletions TrainingLessonCompletion[]
+  quizAttempts      TrainingQuizAttempt[]
+  certificates      TrainingCertificate[]
+
   @@index([isActive, order])
+  @@index([audience, isActive, order])
+}
+
+enum TrainingAudience {
+  RIDER
+  KITCHEN
+  RESTAURANT_ADMIN
+}
+
+enum TrainingLessonKind {
+  TEXT
+  IMAGE
+  VIDEO
+  CHECKLIST
+}
+
+/// One ordered lesson in a TrainingModule. `body` is markdown.
+model TrainingLesson {
+  id             String             @id @default(cuid())
+  moduleId       String
+  order          Int                @default(0)
+  kind           TrainingLessonKind @default(TEXT)
+  title          String
+  body           String             @default("")
+  /// Image URL (IMAGE) or video URL (VIDEO).
+  mediaUrl       String?
+  /// string[] for CHECKLIST lessons.
+  checklistItems Json?
+  /// `{ hi: { title, body, checklistItems } }`
+  translations   Json?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  module      TrainingModule             @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  completions TrainingLessonCompletion[]
+
+  @@index([moduleId, order])
+}
+
+/// Single-answer multiple-choice question in a module's quiz.
+model TrainingQuestion {
+  id           String   @id @default(cuid())
+  moduleId     String
+  order        Int      @default(0)
+  prompt       String
+  /// string[]
+  options      Json
+  correctIndex Int
+  explanation  String?
+  /// `{ hi: { prompt, options, explanation } }`
+  translations Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  module TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@index([moduleId, order])
+}
+
+/// A learner (any role) finished a lesson at a given module version.
+model TrainingLessonCompletion {
+  id            String   @id @default(cuid())
+  userId        String
+  moduleId      String
+  lessonId      String
+  moduleVersion Int
+  completedAt   DateTime @default(now())
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  lesson TrainingLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@index([userId, moduleId])
+}
+
+/// One graded quiz submission (server-graded; `source = legacy` means the
+/// score was reported by a pre-v2 rider app build).
+model TrainingQuizAttempt {
+  id            String   @id @default(cuid())
+  userId        String
+  moduleId      String
+  moduleVersion Int
+  scorePct      Int
+  correctCount  Int
+  totalCount    Int
+  passed        Boolean
+  /// { [questionId]: chosenIndex }
+  answers       Json?
+  source        String   @default("app")
+  createdAt     DateTime @default(now())
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@index([userId, moduleId, moduleVersion])
+  @@index([moduleId, createdAt])
+}
+
+/// Issued when a learner completes a module version (lessons + passing quiz).
+model TrainingCertificate {
+  id            String   @id @default(cuid())
+  userId        String
+  moduleId      String
+  moduleVersion Int
+  scorePct      Int?
+  /// Human-readable verification code, e.g. FLV-7K2M9QX4.
+  code          String   @unique
+  issuedAt      DateTime @default(now())
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleId, moduleVersion])
+  @@index([userId])
+  @@index([moduleId, moduleVersion])
 }
 
 model RiderTrainingProgress {

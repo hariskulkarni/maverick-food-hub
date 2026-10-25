@@ -27,3 +27,14 @@ export async function setDiscoveryRadiusKm(km: number): Promise<number> {
   await setPlatformSecurity({ discoveryRadiusKm: clamped });
   return clamped;
 }
+
+/** Training gate: when on, riders can't go online until shift-blocking safety modules are passed. Default off. */
+export async function getTrainingShiftGate(): Promise<boolean> {
+  const cfg = await getPlatformSecurity().catch(() => ({} as Awaited<ReturnType<typeof getPlatformSecurity>>));
+  return cfg.trainingShiftGate === true;
+}
+
+export async function setTrainingShiftGate(on: boolean): Promise<boolean> {
+  await setPlatformSecurity({ trainingShiftGate: on });
+  return on;
+}

@@ -23,6 +23,7 @@
     "db:group-restaurants": "tsx prisma/group-restaurants.ts",
     "db:reparent": "tsx prisma/reparent-group.ts",
     "db:upgrade-training": "tsx prisma/upgrade-training-modules.ts",
+    "db:seed:training": "tsx prisma/seed-training-library.ts",
     "db:studio": "prisma studio",
     "test": "vitest run",
     "pretest": "prisma generate",

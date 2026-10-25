@@ -5,6 +5,7 @@ import { RidersExplorer } from './explorer';
 import { PlatformRiderActions } from './row-actions';
 import { Bike, Wifi, WifiOff, Wallet, Trophy } from 'lucide-react';
 import { money } from '@/lib/utils';
+import { requiredGapsForUsers } from '@/server/training/service';
 
 export const metadata = { title: 'Platform · Riders' };
 export const dynamic = 'force-dynamic';
@@ -26,6 +27,16 @@ export default async function PlatformRidersPage() {
       include: { user: { select: { name: true, phone: true } } }
     })
   ]);
+
+  // Flag riders missing required training (no current certificate).
+  const gaps = await requiredGapsForUsers(
+    riders.map((r) => ({ id: r.user.id, since: r.user.createdAt })),
+    'RIDER',
+  );
+  const ridersWithTraining = riders.map((r) => {
+    const g = gaps.get(r.user.id) ?? [];
+    return { ...r, training: { missing: g.length, overdue: g.filter((x) => x.overdue).length, titles: g.map((x) => x.title) } };
+  });
 
   const online = riders.filter((r) => r.isOnline).length;
   const offline = riders.length - online;
@@ -55,7 +66,7 @@ export default async function PlatformRidersPage() {
         </TabsList>
 
         <TabsContent value="active">
-          <RidersExplorer initial={JSON.parse(JSON.stringify(riders))} />
+          <RidersExplorer initial={JSON.parse(JSON.stringify(ridersWithTraining))} />
         </TabsContent>
 
         <TabsContent value="pending">

@@ -16,7 +16,8 @@ export default async function KitchenLayout({ children }: { children: React.Reac
       <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-card px-4">
         <Link href="/kitchen" className="display text-lg font-bold text-primary">{brand.name}</Link>
         <span className="text-xs text-muted-foreground">Kitchen</span>
-        <Link href="/kitchen/help" className="ml-auto text-sm text-muted-foreground hover:text-foreground">Help</Link>
+        <Link href="/kitchen/training" className="ml-auto text-sm font-medium text-muted-foreground hover:text-foreground">Training</Link>
+        <Link href="/kitchen/help" className="text-sm text-muted-foreground hover:text-foreground">Help</Link>
         <span className="text-sm truncate">{session.user.name}</span>
         <LogoutButton />
       </header>
