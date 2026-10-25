@@ -16,7 +16,11 @@ type Tx = Prisma.TransactionClient;
 
 export const PG_PAYABLE_ORDER: readonly OrderStatus[] = [OrderStatus.PAYMENT_PENDING, OrderStatus.PAYMENT_FAILED];
 
-/** True when placeOrder created this order in PAYMENT_PENDING (Flavrly PG prepay). Never throws. */
+/**
+ * True when placeOrder created this order in PAYMENT_PENDING — every prepaid online order (Flavrly PG,
+ * PhonePe, Razorpay). Such an order holds its benefits on PAYMENT_FAILED (retry possible) and releases
+ * them on a terminal cancel. Never throws.
+ */
 export async function isPgPrepayOrder(orderId: string, db: Tx | typeof prisma = prisma): Promise<boolean> {
   try {
     const ev = await db.orderStatusEvent.findFirst({ where: { orderId, status: OrderStatus.PAYMENT_PENDING }, select: { id: true } });
@@ -84,12 +88,11 @@ export const isCancelStatus = (s: OrderStatus) => CANCEL.includes(s);
  * still lands on a CANCELLED attempt and a later credit is allocated as LATE_PAYMENT (refund).
  * OBSERVED / REVIEW_REQUIRED / CAPTURED attempts are left for reconciliation.
  *
- * P1-10: a PG prepay order cancelled before any money was captured gets its wallet amount and loyalty
- * points back (once; idempotent by the REFUND / positive ADJUSTMENT row of this order). Other rails and
- * orders with captured or allocated money are untouched (their refund flow owns the money).
+ * Wallet / loyalty / coupon / offer give-back on cancel now applies to every rail and lives in
+ * order-benefits.ts (releaseOrderBenefitsOnCancel), called by transitionOrder next to this.
  */
-export async function settlePgOrderOnCancel(tx: Tx, orderId: string, prev: OrderStatus): Promise<{ attemptsCancelled: number; walletRestored: number; pointsRestored: number }> {
-  const out = { attemptsCancelled: 0, walletRestored: 0, pointsRestored: 0 };
+export async function settlePgOrderOnCancel(tx: Tx, orderId: string, prev: OrderStatus): Promise<{ attemptsCancelled: number }> {
+  const out = { attemptsCancelled: 0 };
   const open = await tx.pgPaymentAttempt.findMany({
     where: { orderId, state: { in: ['CREATED', 'CREATE_UNKNOWN', 'AWAITING_PAYMENT'] } },
     select: { id: true, paymentId: true, state: true, restaurantId: true },
@@ -115,30 +118,6 @@ export async function settlePgOrderOnCancel(tx: Tx, orderId: string, prev: Order
     }
   }
 
-  if (!PG_PAYABLE_ORDER.includes(prev) || !(await isPgPrepayOrder(orderId, tx))) return out;
-  const money = await tx.payment.count({ where: { orderId, status: { in: ['CAPTURED', 'REFUNDED'] } } });
-  const allocated = await tx.pgAllocation.count({ where: { orderId, reversedAt: null } });
-  if (money > 0 || allocated > 0) return out;
-  const o = await tx.order.findUnique({ where: { id: orderId }, select: { customerId: true, walletApplied: true, loyaltyApplied: true } });
-  if (!o) return out;
-
-  const wallet = Number(o.walletApplied);
-  if (wallet > 0 && !(await tx.walletTransaction.findFirst({ where: { orderId, type: 'REFUND' }, select: { id: true } }))) {
-    const amount = new Prisma.Decimal(o.walletApplied);
-    const w = await tx.wallet.upsert({
-      where: { userId: o.customerId },
-      update: { balance: { increment: amount } },
-      create: { userId: o.customerId, balance: amount },
-    });
-    await tx.walletTransaction.create({ data: { walletId: w.id, orderId, type: 'REFUND', amount, note: 'Wallet restored: unpaid order cancelled' } });
-    out.walletRestored = wallet;
-  }
-  const points = Math.round(Number(o.loyaltyApplied));
-  if (points > 0 && !(await tx.loyaltyTransaction.findFirst({ where: { orderId, type: 'ADJUSTMENT', points: { gt: 0 } }, select: { id: true } }))) {
-    const acc = await tx.loyaltyAccount.upsert({ where: { userId: o.customerId }, update: {}, create: { userId: o.customerId } });
-    await tx.loyaltyAccount.update({ where: { id: acc.id }, data: { pointsBalance: { increment: points }, lifetimeRedeem: { decrement: points } } });
-    await tx.loyaltyTransaction.create({ data: { accountId: acc.id, orderId, type: 'ADJUSTMENT', points, note: 'Points restored: unpaid order cancelled' } });
-    out.pointsRestored = points;
-  }
+  void prev;
   return out;
 }

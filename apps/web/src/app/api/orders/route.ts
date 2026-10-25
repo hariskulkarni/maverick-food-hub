@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
-import { placeOrder, PgUnavailableError } from '@/server/orders';
+import { placeOrder, PgUnavailableError, CheckoutRejectedError } from '@/server/orders';
+import { BenefitUnavailableError } from '@/server/order-benefits';
 import { PaymentMethod, FulfillmentType } from '@prisma/client';
 import { log } from '@/server/log';
 import { parseOrJsonError } from '@/server/zod-helpers';
@@ -12,17 +13,18 @@ const Body = z.object({
   items: z.array(z.object({
     menuItemId: z.string().optional(),
     comboId: z.string().optional(),
-    quantity: z.number().int().positive(),
-    notes: z.string().optional(),
+    // P2-16: bounded so a huge quantity / note is a 400, not a Decimal overflow 500.
+    quantity: z.number().int().positive().max(50),
+    notes: z.string().max(300).optional(),
     // Variant (size) + modifier (add-on) selections. Server re-prices from
     // these — client-sent prices are never trusted.
     selectedVariantId: z.string().optional().nullable(),
-    selectedModifierOptionIds: z.array(z.string()).optional()
-  })).min(1),
+    selectedModifierOptionIds: z.array(z.string()).max(50).optional()
+  })).min(1).max(100),
   couponCode: z.string().optional(),
   paymentMethod: z.nativeEnum(PaymentMethod),
   paymentRail: z.literal('youpi').optional(),
-  customerNotes: z.string().optional(),
+  customerNotes: z.string().max(500).optional(),
   walletApply: z.number().nonnegative().optional(),
   loyaltyApply: z.number().nonnegative().optional(),
   // New fulfillment fields. All optional — when absent placeOrder defaults to
@@ -80,6 +82,9 @@ export async function POST(req: NextRequest) {
     // Ids only: the request body carries customer address/phone (PII).
     log.error({ err: message, branchId: (body as { branchId?: unknown } | null)?.branchId ?? null, stack: (err as Error).stack }, 'placeOrder failed');
     if (err instanceof PgUnavailableError) return Response.json({ error: message }, { status: 409 });
+    if (err instanceof CheckoutRejectedError || err instanceof BenefitUnavailableError) {
+      return Response.json({ error: message }, { status: 400 });
+    }
     return Response.json({ error: 'Failed to place order', detail: message }, { status: 500 });
   }
 }

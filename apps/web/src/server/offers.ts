@@ -555,7 +555,7 @@ export async function loadAndApplyOffers(
     customerOrderCount = await prisma.order.count({
       where: {
         customerId: ctx.customerId,
-        status: { notIn: ['CANCELLED', 'PAYMENT_FAILED'] }
+        status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] }
       }
     });
   }
@@ -662,6 +662,21 @@ export async function recordRedemption(
   breakdown: Record<string, unknown> | null,
   channel: 'ONLINE' | 'DINE_IN'
 ) {
+  // P1-9: the eligibility read (per-customer count, first-order count) happened outside this
+  // transaction, so concurrent checkouts by one customer could all pass it. Serialise on the Offer
+  // row, then recount with everything committed before the lock was granted.
+  const locked = await tx.$queryRaw<{ type: string; perUserLimit: number }[]>`
+    SELECT "type"::text AS "type", "perUserLimit" FROM "Offer" WHERE "id" = ${offerId} FOR UPDATE`;
+  const row = locked[0];
+  if (!row) throw new Error('This offer is no longer available.');
+  const prior = await tx.offerRedemption.count({ where: { offerId, userId } });
+  if (prior >= row.perUserLimit) throw new Error('You have already used this offer the maximum number of times.');
+  if (row.type === 'FIRST_ORDER') {
+    const others = await tx.order.count({
+      where: { customerId: userId, id: { not: orderId }, status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] } }
+    });
+    if (others > 0) throw new Error('This first-order offer is only for your first order.');
+  }
   await tx.offerRedemption.create({
     data: { offerId, orderId, userId, amountOff: amountOff as any, breakdown: breakdown ?? undefined, channel }
   });

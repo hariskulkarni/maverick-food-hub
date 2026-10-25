@@ -351,11 +351,14 @@ export async function reconcilePhonePeRefund(
 export async function markOrderPaymentFailed(orderId: string, note: string): Promise<boolean> {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { status: true, payments: { select: { status: true } } },
+    select: { status: true, paymentMethod: true, payments: { select: { status: true } } },
   });
   if (!order) return false;
   if (order.payments.some((p) => p.status === PaymentStatus.CAPTURED)) return false;
-  if (order.status !== OrderStatus.RECEIVED && order.status !== OrderStatus.PAYMENT_PENDING) return false;
+  // Online orders now wait in PAYMENT_PENDING. RECEIVED is accepted only for an online order placed
+  // before that change (still unpaid); a COD/wallet order or anything the kitchen took is never failed.
+  const legacyUnpaidOnline = order.status === OrderStatus.RECEIVED && (order.paymentMethod === 'RAZORPAY' || order.paymentMethod === 'PHONEPE');
+  if (order.status !== OrderStatus.PAYMENT_PENDING && !legacyUnpaidOnline) return false;
   try {
     await transitionOrder(orderId, OrderStatus.PAYMENT_FAILED, { note });
     return true;
@@ -363,4 +366,79 @@ export async function markOrderPaymentFailed(orderId: string, note: string): Pro
     log.error({ err: (e as Error).message, orderId }, 'phonepe: order → PAYMENT_FAILED failed');
     return false;
   }
+}
+
+
+/**
+ * After a server-verified capture (Razorpay webhook / signature-verified checkout handler): move the
+ * order out of PAYMENT_PENDING / PAYMENT_FAILED into the kitchen queue, then apply the restaurant's
+ * auto-accept policy. Idempotent: a second call finds the order already RECEIVED (or beyond).
+ */
+export async function releaseOrderAfterCapture(orderId: string, note: string): Promise<void> {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true, branch: { select: { restaurantId: true } } } });
+  if (!order) return;
+  if (order.status === OrderStatus.PAYMENT_PENDING || order.status === OrderStatus.PAYMENT_FAILED) {
+    try {
+      await transitionOrder(orderId, OrderStatus.RECEIVED, { note });
+    } catch (e) {
+      log.error({ err: (e as Error).message, orderId }, 'capture: order -> RECEIVED failed');
+      return;
+    }
+  }
+  await maybeAutoAccept(orderId, order.branch.restaurantId).catch((e) =>
+    log.error({ err: (e as Error).message, orderId }, 'capture: auto-accept failed'),
+  );
+}
+
+/**
+ * Capture one Razorpay Payment row after the caller authenticated the evidence (webhook HMAC or the
+ * checkout handler's order|payment signature). Never captures twice per order (C7 over-collection
+ * guard), never captures a mismatched amount, never rewrites a CAPTURED/REFUNDED row.
+ * Returns true when this call captured the payment.
+ */
+export async function captureRazorpayPayment(
+  paymentId: string,
+  evidence: { gatewayPaymentId: string | null; amountPaise?: number | null; source: string },
+): Promise<boolean> {
+  const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
+  if (!payment || payment.providerName === 'youpi') return false;
+  if (payment.status === PaymentStatus.CAPTURED || payment.status === PaymentStatus.REFUNDED) return false;
+  const expectedPaise = Math.round(Number(payment.amount) * 100);
+  if (evidence.amountPaise != null && evidence.amountPaise !== expectedPaise) {
+    log.error({ paymentId, orderId: payment.orderId, expectedPaise, got: evidence.amountPaise }, 'razorpay capture: amount mismatch — NOT capturing');
+    await prisma.payment.updateMany({
+      where: { id: paymentId, status: { in: [PaymentStatus.PENDING, PaymentStatus.AUTHORIZED] } },
+      data: { errorMessage: `Amount mismatch: gateway reported ${evidence.amountPaise} paise, expected ${expectedPaise}.` },
+    });
+    return false;
+  }
+  const other = await prisma.payment.findFirst({
+    where: { orderId: payment.orderId, id: { not: payment.id }, status: PaymentStatus.CAPTURED },
+    select: { id: true },
+  });
+  if (other) {
+    log.error({ paymentId, orderId: payment.orderId, otherPaymentId: other.id }, 'razorpay capture: order already paid — over-collection, refund required');
+    await prisma.payment.updateMany({
+      where: { id: paymentId, status: { in: [PaymentStatus.PENDING, PaymentStatus.AUTHORIZED, PaymentStatus.FAILED] } },
+      data: { errorMessage: 'Over-collection: the order was already paid by another payment; this capture needs a refund.' },
+    });
+    return false;
+  }
+  const r = await prisma.payment.updateMany({
+    where: { id: paymentId, status: { in: [PaymentStatus.PENDING, PaymentStatus.AUTHORIZED, PaymentStatus.FAILED] } },
+    data: {
+      status: PaymentStatus.CAPTURED,
+      errorMessage: null,
+      ...(evidence.gatewayPaymentId ? { providerRef: evidence.gatewayPaymentId } : {}),
+      providerData: {
+        ...(typeof payment.providerData === 'object' && payment.providerData ? (payment.providerData as object) : {}),
+        _capturedAt: new Date().toISOString(),
+        _captureSource: evidence.source,
+        _razorpayOrderId: payment.providerRef,
+      } as any,
+    },
+  });
+  if (r.count !== 1) return false;
+  await releaseOrderAfterCapture(payment.orderId, `Payment captured (Razorpay, ${evidence.source})`);
+  return true;
 }

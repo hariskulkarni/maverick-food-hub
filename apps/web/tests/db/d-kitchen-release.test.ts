@@ -95,11 +95,19 @@ beforeEach(() => {
 });
 
 describe('order placement status per rail (regression)', () => {
-  it.each(['COD', 'PHONEPE', 'RAZORPAY'])('%s orders still start RECEIVED and reach the kitchen queue', async (m) => {
-    const { order } = await place(m);
+  it('COD orders still start RECEIVED and reach the kitchen queue', async () => {
+    const { order } = await place('COD');
     const row = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
     expect(row.status).toBe('RECEIVED');
     expect(await kitchenIds()).toContain(order.id);
+  });
+
+  // Customer audit P0-4 (round 3): unpaid PhonePe/Razorpay orders no longer reach the kitchen.
+  it.each(['PHONEPE', 'RAZORPAY'])('%s orders start PAYMENT_PENDING and stay out of the kitchen queue until captured', async (m) => {
+    const { order } = await place(m);
+    const row = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(row.status).toBe('PAYMENT_PENDING');
+    expect(await kitchenIds()).not.toContain(order.id);
   });
 
   it('Flavrly PG order starts PAYMENT_PENDING and is NOT in the kitchen queue', async () => {

@@ -27,6 +27,7 @@ import { OrderStatus, RefundDestination } from '@prisma/client';
 import { nanoid } from 'nanoid';
 import { requestPgRefund, PgRefundError, walletRefundAllowed } from './pg/refunds';
 import { decimalToPaise } from './pg/money';
+import { walletRestoredForOrder } from './order-benefits';
 
 export type RefundDest = 'WALLET' | 'ORIGINAL_PAYMENT';
 
@@ -156,9 +157,13 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
     throw new RefundError(`Order in status ${order.status} cannot be refunded.`);
   }
 
-  // Cap so cumulative refunds never exceed the order total.
+  // P0-3: cap cumulative refunds at what the customer actually paid for this order — the charged
+  // total PLUS the wallet amount debited at checkout (order.total is net of it), unless the cancel
+  // give-back already returned that wallet amount.
+  const walletPart = (await walletRestoredForOrder(prisma, order.id)) ? 0 : Number(order.walletApplied ?? 0);
+  const refundBase = Number(order.total) + walletPart;
   const alreadyRefunded = order.refunds.reduce((s, r) => s + Number(r.amount), 0);
-  const remaining = Math.round((Number(order.total) - alreadyRefunded) * 100) / 100;
+  const remaining = Math.round((refundBase - alreadyRefunded) * 100) / 100;
   if (remaining <= 0) throw new RefundError('This order is already fully refunded.');
   if (amount > remaining) {
     throw new RefundError(`Refund exceeds the refundable balance (₹${remaining.toFixed(2)} left).`);
@@ -178,7 +183,7 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
       // total. Re-sum here (and the Serializable isolation below makes two
       // concurrent refunds conflict rather than both committing).
       const priorAgg = await tx.refund.aggregate({ where: { orderId: order.id }, _sum: { amount: true } });
-      const remainingNow = Math.round((Number(order.total) - Number(priorAgg._sum.amount ?? 0)) * 100) / 100;
+      const remainingNow = Math.round((refundBase - Number(priorAgg._sum.amount ?? 0)) * 100) / 100;
       if (amount > remainingNow) {
         throw new RefundError(`Refund exceeds the refundable balance (₹${remainingNow.toFixed(2)} left).`);
       }
@@ -214,6 +219,16 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
     // payment to refund against.
     if (!capturedPayment) {
       throw new RefundError('No captured online payment to refund — use the wallet instead.');
+    }
+    // The gateway can only reverse what it captured; the wallet share goes back to the wallet.
+    const origRefunded = order.refunds
+      .filter((r) => r.destination === RefundDestination.ORIGINAL_PAYMENT && r.status !== 'FAILED')
+      .reduce((s, r) => s + Number(r.amount), 0);
+    const capturedLeft = Math.round((Number(capturedPayment.amount) - origRefunded) * 100) / 100;
+    if (amount > capturedLeft) {
+      throw new RefundError(
+        `Only ₹${Math.max(0, capturedLeft).toFixed(2)} of the captured payment can be returned to the original method; refund the rest to the wallet.`
+      );
     }
     // Real gateway refund when this is a Razorpay payment with a stored gateway
     // payment id AND the restaurant has Razorpay credentials. The refund then
@@ -307,7 +322,7 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
     const refund = await prisma.$transaction(async (tx) => {
       // H7: re-check the cap inside the transaction (see WALLET path).
       const priorAgg = await tx.refund.aggregate({ where: { orderId: order.id }, _sum: { amount: true } });
-      const remainingNow = Math.round((Number(order.total) - Number(priorAgg._sum.amount ?? 0)) * 100) / 100;
+      const remainingNow = Math.round((refundBase - Number(priorAgg._sum.amount ?? 0)) * 100) / 100;
       if (amount > remainingNow) {
         throw new RefundError(`Refund exceeds the refundable balance (₹${remainingNow.toFixed(2)} left).`);
       }
@@ -328,7 +343,7 @@ export async function refundOrder(input: RefundInput): Promise<RefundResult> {
       });
       // Only mark the payment REFUNDED once actually settled (mock path). A real
       // gateway refund waits for the webhook to confirm before flipping status.
-      if (settledNow && amount >= remainingNow) {
+      if (settledNow && amount >= capturedLeft) {
         await tx.payment.update({ where: { id: capturedPayment.id }, data: { status: 'REFUNDED' } });
       }
       return r;

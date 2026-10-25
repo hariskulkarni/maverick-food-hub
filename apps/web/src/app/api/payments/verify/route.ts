@@ -5,6 +5,7 @@ import { paymentProvider, isPhonePePayment } from '@/server/payments';
 import { PaymentStatus } from '@prisma/client';
 import { rateLimit } from '@/server/http/rate-limit';
 import { auth } from '@/server/auth';
+import { captureRazorpayPayment, releaseOrderAfterCapture } from '@/server/payments/reconcile';
 
 const Body = z.object({
   orderId: z.string(),
@@ -66,7 +67,15 @@ export async function POST(req: NextRequest) {
   // re-capture or clobber a refunded/failed row. For PhonePe, do NOT overwrite
   // providerRef: refunds are addressed by the original merchantOrderId and
   // losing it here would strand the refund path (mirrors reconcile.ts).
-  await prisma.payment.updateMany({
+  // Razorpay checkout handler: the order|payment HMAC above authenticates the capture. The shared
+  // helper guards over-collection and moves the PAYMENT_PENDING order into the kitchen queue.
+  if (payment.providerName === 'razorpay') {
+    await captureRazorpayPayment(payment.id, { gatewayPaymentId: data.providerPaymentId, source: 'checkout' });
+    const now = await prisma.payment.findUnique({ where: { id: payment.id }, select: { status: true } });
+    return Response.json({ ok: now?.status === PaymentStatus.CAPTURED });
+  }
+
+  const captured = await prisma.payment.updateMany({
     where: { id: payment.id, status: { in: [PaymentStatus.PENDING, PaymentStatus.AUTHORIZED] } },
     data: {
       status: PaymentStatus.CAPTURED,
@@ -75,5 +84,6 @@ export async function POST(req: NextRequest) {
       providerData: { ...((payment.providerData as object | null) ?? {}), captured: true } as any
     }
   });
+  if (captured.count === 1) await releaseOrderAfterCapture(payment.orderId, `Payment captured (${payment.providerName ?? 'gateway'})`);
   return Response.json({ ok: true });
 }

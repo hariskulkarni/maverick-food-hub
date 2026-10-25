@@ -9,7 +9,7 @@ const db: any = vi.hoisted(() => ({
   order: { findUnique: vi.fn() },
   branch: { findUnique: vi.fn() },
   wallet: { upsert: vi.fn() },
-  walletTransaction: { create: vi.fn() },
+  walletTransaction: { create: vi.fn(), findFirst: vi.fn(async () => null) },
   payment: { update: vi.fn() },
   refund: { create: vi.fn() },
   $transaction: vi.fn()
@@ -36,7 +36,7 @@ const orderWith = (providerName: string) => ({
   branchId: 'b1',
   status: 'DELIVERED',
   total: 500,
-  payments: [{ id: 'pay1', status: 'CAPTURED', providerName, providerRef: 'ref_123', createdAt: new Date(), updatedAt: new Date() }],
+  payments: [{ id: 'pay1', status: 'CAPTURED', amount: 500, providerName, providerRef: 'ref_123', createdAt: new Date(), updatedAt: new Date() }],
   refunds: []
 });
 

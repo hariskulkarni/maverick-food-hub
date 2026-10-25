@@ -275,14 +275,25 @@ describe('reconcilePhonePePayment — indeterminate', () => {
 });
 
 describe('markOrderPaymentFailed', () => {
-  it('advances a RECEIVED unpaid order', async () => {
-    db.order.findUnique.mockResolvedValue({ status: 'RECEIVED', payments: [{ status: 'PENDING' }] });
+  it('advances a legacy RECEIVED unpaid online order', async () => {
+    db.order.findUnique.mockResolvedValue({ status: 'RECEIVED', paymentMethod: 'PHONEPE', payments: [{ status: 'PENDING' }] });
     expect(await markOrderPaymentFailed('ord_1', 'expired')).toBe(true);
     expect(orders.transitionOrder).toHaveBeenCalledWith('ord_1', 'PAYMENT_FAILED', { note: 'expired' });
   });
 
   it('refuses to fail an order that has a captured payment', async () => {
     db.order.findUnique.mockResolvedValue({ status: 'RECEIVED', payments: [{ status: 'CAPTURED' }] });
+    expect(await markOrderPaymentFailed('ord_1', 'expired')).toBe(false);
+    expect(orders.transitionOrder).not.toHaveBeenCalled();
+  });
+
+  it('advances a PAYMENT_PENDING order', async () => {
+    db.order.findUnique.mockResolvedValue({ status: 'PAYMENT_PENDING', paymentMethod: 'RAZORPAY', payments: [] });
+    expect(await markOrderPaymentFailed('ord_1', 'expired')).toBe(true);
+  });
+
+  it('never fails a RECEIVED COD order', async () => {
+    db.order.findUnique.mockResolvedValue({ status: 'RECEIVED', paymentMethod: 'COD', payments: [{ status: 'PENDING' }] });
     expect(await markOrderPaymentFailed('ord_1', 'expired')).toBe(false);
     expect(orders.transitionOrder).not.toHaveBeenCalled();
   });
