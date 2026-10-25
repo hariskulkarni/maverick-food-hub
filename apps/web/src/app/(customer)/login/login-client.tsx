@@ -7,10 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { msg91Enabled, loadMsg91Widget, sendWidgetOtp, verifyWidgetOtp, toMsg91Identifier } from '@/lib/msg91-otp';
-import { User, ChefHat, ShieldCheck, Sparkles } from 'lucide-react';
+import { User, ChefHat, ShieldCheck } from 'lucide-react';
 import { RoleTile } from '@/components/auth/role-tile';
 import { MarketingPanel } from '@/components/auth/marketing-panel';
 import { PortalMarketingPanel } from '@/components/auth/portal-marketing-panel';
+import { CustomerAuthShell } from '@/components/auth/customer/customer-auth-shell';
+import { CustomerPhoneFlow, CustomerAuthLegal } from '@/components/auth/customer/customer-phone-flow';
 
 export type LoginRole = 'customer' | 'staff' | 'super';
 
@@ -52,13 +54,16 @@ export function LoginClient({
   initialRole = 'customer',
   surface = 'all',
   restaurantsLive,
-  cuisinesCount
+  cuisinesCount,
+  googleEnabled = false
 }: {
   next?: string;
   initialRole?: LoginRole;
   surface?: 'customer' | 'portal' | 'all';
   restaurantsLive: number;
   cuisinesCount: number;
+  /** Show "Continue with Google" for customers (provider configured on the server). */
+  googleEnabled?: boolean;
 }) {
   // Roles this surface is allowed to show. flavrly.in = customer only;
   // portal.flavrly.in = staff + super; localhost/all = everything.
@@ -77,6 +82,8 @@ export function LoginClient({
   // True when this code came from the built-in OTP (pre-launch test account),
   // even though the MSG91 widget handles everyone else.
   const [builtinOtp, setBuiltinOtp] = useState(false);
+  // Inline (and screen-reader announced) error for the customer phone flow.
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   // OTP resend cooldown (server enforces 45s + hourly/daily caps; mirror it so
   // the user sees when they can ask again instead of a dead end).
   const [resendAt, setResendAt] = useState(0);
@@ -133,6 +140,7 @@ export function LoginClient({
     setOtpSent(false);
     setDevCode(null);
     setBuiltinOtp(false);
+    setPhoneError(null);
     setCode('');
     setStaffPhase('creds');
     setEnroll(null);
@@ -140,7 +148,8 @@ export function LoginClient({
   }
 
   async function sendOtp() {
-    if (!/^\+?\d{10,15}$/.test(phone)) return toast.error('Enter a valid phone number with country code (e.g. +9198…)');
+    if (!/^\+?\d{10,15}$/.test(phone)) return setPhoneError('Enter your 10-digit mobile number.');
+    setPhoneError(null);
     setBusy(true);
     try {
       if (msg91Enabled) {
@@ -188,7 +197,7 @@ export function LoginClient({
         toast.success('OTP sent');
       }
     } catch (e) {
-      toast.error((e as Error).message);
+      setPhoneError((e as Error).message);
     } finally { setBusy(false); }
   }
 
@@ -234,18 +243,18 @@ export function LoginClient({
         // Verify the code in the widget, then hand the signed token to the server.
         const accessToken = await verifyWidgetOtp(code);
         const r = await signIn('msg91-widget', { accessToken, phone, redirect: false });
-        if (r?.error) { toast.error('Sign-in failed. Please try again.'); return; }
+        if (r?.error) { setPhoneError('Sign-in failed. Please try again.'); return; }
         await routeByRole('/restaurants');
         return;
       }
       const r = await signIn('phone-otp', { phone, code, purpose: 'login', redirect: false });
-      if (r?.error) { toast.error('Invalid or expired code'); return; }
+      if (r?.error) { setPhoneError('That code is wrong or has expired. Check it, or tap Resend code.'); return; }
       // Customers land on the restaurant picker (/restaurants) so they immediately
       // choose a restaurant, then see its menu. routeByRole returns /restaurants
       // for the CUSTOMER role; this fallback covers the rare case /api/me is slow.
       await routeByRole('/restaurants');
     } catch (e) {
-      toast.error((e as Error).message);
+      setPhoneError((e as Error).message);
     } finally { setBusy(false); }
   }
 
@@ -354,6 +363,50 @@ export function LoginClient({
     } finally { setBusy(false); }
   }
 
+  const customerPhoneFlow = (
+    <CustomerPhoneFlow
+      step={otpSent ? 'otp' : 'phone'}
+      phone={phone}
+      onPhoneChange={(v) => { setPhone(v); setPhoneError(null); }}
+      code={code}
+      onCodeChange={(v) => { setCode(v); setPhoneError(null); }}
+      busy={busy}
+      error={phoneError}
+      devCode={devCode}
+      resendIn={resendIn}
+      onSendOtp={() => { void sendOtp(); }}
+      onVerify={() => { void verifyOtp(); }}
+      onResend={() => { setCode(''); void sendOtp(); }}
+      onChangeNumber={() => { setOtpSent(false); setCode(''); setDevCode(null); setPhoneError(null); }}
+      googleEnabled={googleEnabled}
+      onGoogle={() => { void signIn('google', { callbackUrl: next || '/restaurants' }); }}
+    />
+  );
+
+  // flavrly.in: customers only — the dedicated, mobile-first customer screen.
+  if (surface === 'customer') {
+    return (
+      <CustomerAuthShell stats={{ restaurantsLive, cuisinesCount }}>
+        <div className="space-y-6">
+          {!otpSent && (
+            <div>
+              <h2 className="font-display text-2xl font-extrabold tracking-tight">Sign in or sign up</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Order from every kitchen in town, track it live.</p>
+            </div>
+          )}
+          {customerPhoneFlow}
+          <CustomerAuthLegal />
+          <div className="border-t border-border pt-5 text-center text-sm text-muted-foreground">
+            Own a restaurant?{' '}
+            <Link href="/signup/restaurant" className="inline-flex min-h-11 items-center font-semibold text-primary hover:underline">
+              Open your kitchen on Flavrly
+            </Link>
+          </div>
+        </div>
+      </CustomerAuthShell>
+    );
+  }
+
   return (
     <div className="container py-8 md:py-12">
       <div className="grid gap-6 md:grid-cols-[45fr_55fr] md:gap-10">
@@ -438,67 +491,7 @@ export function LoginClient({
                   </div>
                 </div>
               ) : activeSpec.auth === 'phone' ? (
-                !otpSent ? (
-                  <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); sendOtp(); }}>
-                    <div>
-                      <Label htmlFor="phone">Mobile number</Label>
-                      <Input
-                        id="phone"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="+919876500001"
-                        autoComplete="tel"
-                        required
-                      />
-                    </div>
-                    <Button className="w-full gap-2" size="lg" disabled={busy} type="submit">
-                      <Sparkles className="size-4" />
-                      {busy ? 'Sending…' : 'Send OTP'}
-                    </Button>
-                    <p className="text-xs text-muted-foreground">
-                      We&apos;ll text a 6-digit code. Standard SMS rates may apply.
-                    </p>
-                  </form>
-                ) : (
-                  <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); verifyOtp(); }}>
-                    <div className="text-sm text-muted-foreground">
-                      {devCode
-                        ? <>Test account — your code is <span className="font-mono font-semibold text-foreground">{devCode}</span> (shown here, not sent by SMS).</>
-                        : <>We sent a code to {phone}.</>}
-                    </div>
-                    <div>
-                      <Label htmlFor="otp">6-digit code</Label>
-                      <Input
-                        id="otp"
-                        value={code}
-                        onChange={(e) => setCode(e.target.value)}
-                        inputMode="numeric"
-                        pattern="[0-9]{6}"
-                        maxLength={6}
-                        required
-                      />
-                    </div>
-                    <Button className="w-full gap-2" size="lg" disabled={busy} type="submit">
-                      <Sparkles className="size-4" />
-                      {busy ? 'Verifying…' : 'Verify & sign in'}
-                    </Button>
-                    <button
-                      type="button"
-                      className="w-full min-h-11 text-sm text-primary disabled:text-muted-foreground"
-                      disabled={busy || resendIn > 0}
-                      onClick={() => { void sendOtp(); }}
-                    >
-                      {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
-                    </button>
-                    <button
-                      type="button"
-                      className="w-full text-sm text-muted-foreground hover:text-foreground"
-                      onClick={() => setOtpSent(false)}
-                    >
-                      ← change number
-                    </button>
-                  </form>
-                )
+                customerPhoneFlow
               ) : (
                 <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (staffPhase === 'creds') staffContinue(); else if (staffPhase === 'newpw') changeTempPassword(); else staffSignIn(); }}>
                   {staffPhase === 'newpw' ? (
