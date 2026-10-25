@@ -10,6 +10,7 @@ import { Printer, X, Check, Bike, RefreshCw, Wifi, WifiOff, Gift } from 'lucide-
 import { toast } from 'sonner';
 import { reportApiError } from '@/lib/api-error';
 import { completionAction, isCancelledStatus, needsRider } from '@/lib/order-actions';
+import { itemLabel } from '@/lib/kot';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { SoundToggle } from '@/components/sound-toggle';
 // AssignRiderDialog removed — riders self-claim from the platform pool now.
@@ -393,7 +394,7 @@ export function OrdersBoard({
                   <span className="text-xs text-muted-foreground">{fmtDate(o.placedAt)}</span>
                 </div>
                 <div className="text-sm">{o.customer.name ?? o.customer.phone} · {o.address ? `${o.address.line1}, ${o.address.city}` : (o.fulfillmentType === 'PICKUP' ? 'Self-pickup' : o.fulfillmentType === 'DINE_IN' ? 'Dine-in' : 'No address')}</div>
-                <div className="text-sm text-muted-foreground">{o.items.map((i: any) => `${i.quantity}× ${i.name}`).join(', ')}</div>
+                <div className="text-sm text-muted-foreground">{o.items.map((i: any) => `${i.quantity}× ${itemLabel(i)}${i.notes ? ` — “${i.notes}”` : ''}`).join(', ')}</div>
                 <div className="text-sm">
                   Total <span className="font-semibold">{money(o.total)}</span> · {o.paymentMethod}
                   {o.assignment?.rider && <> · Rider: {o.assignment.rider.user.name}</>}

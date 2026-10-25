@@ -3,6 +3,7 @@ import PDFDocument from 'pdfkit';
 import { prisma } from './db';
 import { money } from '@/lib/utils';
 import { formatIst } from '@/lib/ist';
+import { itemLabel } from '@/lib/kot';
 import { csvLine } from './reports/csv';
 
 /** Rows fetched per round-trip when exporting orders (keeps memory flat). */
@@ -85,14 +86,14 @@ export async function ordersToXlsx(branchIds: string[], range: ExportRange): Pro
     { header: 'Payment', key: 'payment', width: 12 }
   ];
   ws.getRow(1).font = { bold: true };
-  for await (const batch of orderBatches(branchIds, range, { ...EXPORT_SELECT, items: { select: { quantity: true, name: true } } })) {
+  for await (const batch of orderBatches(branchIds, range, { ...EXPORT_SELECT, items: { select: { quantity: true, name: true, selectedVariantName: true, modifiersSummary: true } } })) {
     for (const o of batch) {
       ws.addRow({
         code: o.code,
         placed: formatIst(o.placedAt, IST_STAMP),
         status: o.status,
         customer: o.customer.name ?? o.customer.phone ?? '',
-        items: o.items.map((i: { quantity: number; name: string }) => `${i.quantity}× ${i.name}`).join(', '),
+        items: o.items.map((i: { quantity: number; name: string }) => `${i.quantity}× ${itemLabel(i)}`).join(', '),
         total: Number(o.total),
         payment: o.paymentMethod
       });
@@ -129,7 +130,7 @@ export async function invoicePdf(orderId: string): Promise<Buffer> {
   doc.text('Amount', { width: 80, align: 'right' });
   doc.font('Helvetica');
   for (const i of o.items) {
-    doc.text(i.name, 50, doc.y, { continued: true, width: 280 });
+    doc.text(itemLabel(i) + (i.isFreebie ? ' (free gift)' : ''), 50, doc.y, { continued: true, width: 280 });
     doc.text(String(i.quantity), { continued: true, width: 60, align: 'right' });
     doc.text(money(i.unitPrice as any), { continued: true, width: 80, align: 'right' });
     doc.text(money(Number(i.unitPrice) * i.quantity), { width: 80, align: 'right' });

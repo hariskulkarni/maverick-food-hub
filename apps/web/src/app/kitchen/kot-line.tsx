@@ -15,6 +15,7 @@
  * fetch combo definitions client-side.
  */
 import { Package } from 'lucide-react';
+import { itemOptions } from '@/lib/kot';
 
 export interface ComboBreakdownEntry {
   name: string;
@@ -25,9 +26,24 @@ export interface KotLineProps {
   name: string;
   quantity: number;
   comboBreakdown?: ComboBreakdownEntry[] | null;
+  selectedVariantName?: string | null;
+  modifiersSummary?: string | null;
+  notes?: string | null;
 }
 
-export function KotLine({ name, quantity, comboBreakdown }: KotLineProps) {
+/** Variant/modifiers + line note under the item name (P1-10). */
+function LineDetails({ options, notes }: { options: string | null; notes?: string | null }) {
+  if (!options && !notes) return null;
+  return (
+    <>
+      {options && <span className="block text-xs font-medium text-foreground">{options}</span>}
+      {notes && <span className="block text-xs italic text-warning">Note: {notes}</span>}
+    </>
+  );
+}
+
+export function KotLine({ name, quantity, comboBreakdown, selectedVariantName, modifiersSummary, notes }: KotLineProps) {
+  const options = itemOptions({ name, selectedVariantName, modifiersSummary });
   if (comboBreakdown && comboBreakdown.length > 0) {
     return (
       <li className="flex flex-col gap-0.5">
@@ -35,6 +51,7 @@ export function KotLine({ name, quantity, comboBreakdown }: KotLineProps) {
           <Package className="size-3.5 text-primary" aria-hidden />
           <span className="mr-1">{quantity}×</span>{name}
         </span>
+        <span className="ml-5"><LineDetails options={options} notes={notes} /></span>
         <ul className="ml-5 mt-0.5 text-xs text-muted-foreground space-y-0.5">
           {comboBreakdown.map((e, i) => (
             <li key={`${e.name}-${i}`} className="flex items-center gap-1">
@@ -48,7 +65,10 @@ export function KotLine({ name, quantity, comboBreakdown }: KotLineProps) {
   }
   return (
     <li className="flex justify-between gap-2">
-      <span><span className="font-semibold mr-1">{quantity}×</span>{name}</span>
+      <span>
+        <span className="font-semibold mr-1">{quantity}×</span>{name}
+        <LineDetails options={options} notes={notes} />
+      </span>
     </li>
   );
 }

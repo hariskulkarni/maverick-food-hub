@@ -372,6 +372,9 @@ export function KitchenBoard({
                         {o.scheduledFor && (
                           <Badge variant="muted">🕒 {fmtSlot(o.scheduledFor)}</Badge>
                         )}
+                        {o.fulfillmentType === 'DINE_IN' && o.reservation?.table?.name && (
+                          <Badge variant="muted">Table {o.reservation.table.name}</Badge>
+                        )}
                         {o.fulfillmentType === 'PICKUP' && o.pickupCode && (
                           <Badge variant="muted" className="font-mono">Code {o.pickupCode}</Badge>
                         )}
@@ -391,6 +394,9 @@ export function KitchenBoard({
                             name={i.name}
                             quantity={i.quantity}
                             comboBreakdown={i.comboBreakdown}
+                            selectedVariantName={i.selectedVariantName}
+                            modifiersSummary={i.modifiersSummary}
+                            notes={i.notes}
                           />
                         ))}
                       </ul>
