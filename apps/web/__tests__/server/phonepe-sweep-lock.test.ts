@@ -10,7 +10,7 @@ const db: any = vi.hoisted(() => ({
   payment: { findMany: vi.fn(), count: vi.fn() },
   refund: { findMany: vi.fn() },
 }));
-const lease = vi.hoisted(() => ({ acquireJobLease: vi.fn(async () => 'tok1'), releaseJobLease: vi.fn(async () => {}) }));
+const lease = vi.hoisted(() => ({ acquireJobLease: vi.fn(async (): Promise<string | null> => 'tok1'), releaseJobLease: vi.fn(async () => {}) }));
 vi.mock('@/server/jobs/lease', () => lease);
 const warn = vi.hoisted(() => vi.fn());
 

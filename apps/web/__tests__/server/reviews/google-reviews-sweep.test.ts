@@ -5,7 +5,7 @@ const db: any = vi.hoisted(() => ({
   reviewResponseSettings: { upsert: vi.fn() },
   googleReview: { count: vi.fn() },
 }));
-const lease = vi.hoisted(() => ({ acquireJobLease: vi.fn(async () => 'tok1'), releaseJobLease: vi.fn(async () => {}) }));
+const lease = vi.hoisted(() => ({ acquireJobLease: vi.fn(async (): Promise<string | null> => 'tok1'), releaseJobLease: vi.fn(async () => {}) }));
 vi.mock('@/server/jobs/lease', () => lease);
 // listReviews is the test-facing alias; the sweep calls fetchReviews (reviews + location totals).
 const g = vi.hoisted(() => {

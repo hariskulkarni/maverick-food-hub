@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 
@@ -14,7 +14,8 @@ const Body = z.object({
 // re-parent: if any incoming restaurant already has a different brandId, the
 // caller must pass `force: true` to confirm the move.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const session = await auth();
   const { id: brandId } = await params;
 

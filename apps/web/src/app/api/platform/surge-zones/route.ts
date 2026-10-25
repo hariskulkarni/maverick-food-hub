@@ -6,7 +6,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireCapability } from '@/server/tenancy';
+import { requireCapabilityApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 
@@ -30,7 +30,8 @@ function serialize(z: any) {
 }
 
 export async function GET() {
-  await requireCapability('ops:read');
+  const gate = await requireCapabilityApi('ops:read');
+  if (gate instanceof Response) return gate;
   const zones = await prisma.surgeZone.findMany({ orderBy: { createdAt: 'desc' } });
   return Response.json({ zones: zones.map(serialize) });
 }
@@ -48,7 +49,8 @@ const CreateBody = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  await requireCapability('ops:write');
+  const gate = await requireCapabilityApi('ops:write');
+  if (gate instanceof Response) return gate;
   const session = await auth();
   const data = CreateBody.parse(await req.json());
 

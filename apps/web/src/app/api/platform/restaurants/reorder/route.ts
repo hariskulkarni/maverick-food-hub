@@ -19,7 +19,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { revalidateRestaurantSurfaces } from '@/server/revalidate';
 
@@ -28,7 +28,8 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const { ids } = Body.parse(await req.json());
 
   // Defensively de-dupe while preserving order — a buggy client should not be

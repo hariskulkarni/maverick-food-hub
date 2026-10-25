@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
 import { validateParentAssignment } from './_helpers';
@@ -14,7 +14,8 @@ const Body = z.object({
 
 /** Set or clear a restaurant's parent (group membership). Super-admin only. */
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const { id } = await params;
   const { parentId } = Body.parse(await req.json());
 

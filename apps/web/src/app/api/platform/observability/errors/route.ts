@@ -5,7 +5,7 @@
  */
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { Prisma } from '@prisma/client';
 import { OBS_AREAS, areaForPath } from '@/server/observability/registry';
 
@@ -13,7 +13,8 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const url = new URL(req.url);
   const level = url.searchParams.get('level') || undefined;
   const resolvedParam = url.searchParams.get('resolved');

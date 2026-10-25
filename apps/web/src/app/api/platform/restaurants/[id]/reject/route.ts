@@ -1,13 +1,14 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { revalidateRestaurantSurfaces } from '@/server/revalidate';
 
 const Body = z.object({ reason: z.string().optional() }).optional();
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { id } = await params;
   const body = Body.parse(await req.json().catch(() => undefined));
   const r = await prisma.restaurant.update({

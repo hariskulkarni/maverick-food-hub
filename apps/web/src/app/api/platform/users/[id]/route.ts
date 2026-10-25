@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
 import { optionalString } from '@/server/zod-helpers';
@@ -12,7 +12,8 @@ import { optionalString } from '@/server/zod-helpers';
  */
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { id } = await params;
   const [u, orders, payments, wallet, loyalty, addresses, notifications, riderProfile] = await Promise.all([
     prisma.user.findUnique({ where: { id } }),
@@ -59,7 +60,8 @@ const PatchBody = z.object({
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const session = await auth();
   const { id } = await params;
   const data = PatchBody.parse(await req.json());

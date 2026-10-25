@@ -4,7 +4,7 @@
  * per-area error attribution, system snapshot, and a computed overall status.
  */
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { OBS_AREAS, areaForPath } from '@/server/observability/registry';
 import { startObservabilityRunner } from '@/server/observability/runner';
 
@@ -15,7 +15,8 @@ type Status = 'UP' | 'DEGRADED' | 'DOWN' | 'UNKNOWN';
 const CRITICAL = new Set(['db', 'app', 'system']);
 
 export async function GET() {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   // Ensure the background probe runner is going (idempotent — only starts once
   // per process). Started lazily here instead of from instrumentation.ts, which
   // can't be Edge-bundled when it reaches Node-only probe code.

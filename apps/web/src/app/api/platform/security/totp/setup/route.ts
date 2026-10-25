@@ -4,7 +4,7 @@
  * the caller must POST `/totp/verify` with a valid code to activate it.
  */
 
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import {
   buildOtpAuthUrl,
   generateTotpSecret,
@@ -14,7 +14,8 @@ import {
 import { audit } from '@/server/audit';
 
 export async function POST() {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const secret = generateTotpSecret();
   const account = session.user.email ?? session.user.id;
   const otpauthUrl = buildOtpAuthUrl(secret, account);

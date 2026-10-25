@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
 import { revalidateRestaurantSurfaces } from '@/server/revalidate';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const session = await auth();
   const { id } = await params;
   const before = await prisma.restaurant.findUnique({ where: { id }, select: { status: true, approvedAt: true } });

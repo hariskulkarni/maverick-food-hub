@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 
 // DELETE — unassign one Restaurant from this brand (sets brandId=null).
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string; restaurantId: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const session = await auth();
   const { id: brandId, restaurantId } = await params;
 

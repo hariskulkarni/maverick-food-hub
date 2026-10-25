@@ -6,7 +6,7 @@
  *      SUPER_ADMIN conversation for that rider and append a SUPER_ADMIN message.
  */
 import { NextRequest } from 'next/server';
-import { requireCapability } from '@/server/tenancy';
+import { requireCapabilityApi } from '@/server/api-auth';
 import { prisma } from '@/server/db';
 import {
   findOrCreateConversation,
@@ -18,7 +18,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  await requireCapability('ops:read');
+  const gate = await requireCapabilityApi('ops:read');
+  if (gate instanceof Response) return gate;
 
   const [conversations, riders] = await Promise.all([
     prisma.riderConversation.findMany({
@@ -49,7 +50,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireCapability('ops:write');
+  const session = await requireCapabilityApi('ops:write');
+  if (session instanceof Response) return session;
 
   let body: { riderId?: unknown; body?: unknown };
   try {
