@@ -61,7 +61,7 @@ const WELCOME: TrainingDefault = {
       'ACCEPT — You confirm; we route you to the restaurant',
       'PICKUP — Show the pickup code, collect the food',
       'DELIVER — Navigate to the customer, confirm the delivery OTP',
-      'PAID — Earnings land in your in-app wallet instantly',
+      'PAID — Earnings are credited to your Flavrly earnings; withdrawals are payout requests processed by Flavrly (Requested → Processing → Paid)',
     ] },
 
     { id: id('w-h3'), type: 'heading', text: 'Going online — and when not to' },
@@ -90,7 +90,7 @@ const WELCOME: TrainingDefault = {
     { id: id('w-p6'), type: 'paragraph', text: 'Every completed delivery credits your in-app wallet immediately. Your wallet balance is real money — you can request a payout to your bank account anytime from the Earnings tab. Payouts process daily on bank business days (T+1 for most banks). Tips, surge bonuses, and tier rewards land in the same wallet.' },
 
     { id: id('w-h7'), type: 'heading', text: 'When something goes wrong' },
-    { id: id('w-p7'), type: 'paragraph', text: 'Stuff happens — a customer\'s phone is off, a restaurant is closed, you have a flat tyre. The Help button at the top of the home screen connects you instantly to Flavrly support (in-app chat + phone). For genuine safety emergencies, use the SOS button on the active-order screen — it pings our ops team AND notifies the emergency contact you set up in Profile.' },
+    { id: id('w-p7'), type: 'paragraph', text: 'Stuff happens — a customer\'s phone is off, a restaurant is closed, you have a flat tyre. The Help button at the top of the home screen connects you to Flavrly support. For genuine safety emergencies, use the SOS button — it alerts the Flavrly safety team and texts the emergency contacts you set up in Profile.' },
     { id: id('w-cta3'), type: 'callout', tone: 'info', title: 'Save the support number',
       body: 'Rider support: +91 92139 95005 (24×7). Save it as "Flavrly Support" in your phone so it\'s one tap away even if the app is acting up.' },
 
@@ -103,7 +103,7 @@ const WELCOME: TrainingDefault = {
         'Eat the food yourself',
       ],
       correct: 2,
-      explanation: 'Use the in-app "Customer unreachable" flow. We try a backup contact + WhatsApp, and support steps in within minutes. Never abandon an order or take it home without the official flow — both can affect your rating and earnings.' },
+      explanation: 'Call the customer from the order screen, then contact Flavrly support from the Help screen and follow their instructions. Never abandon an order or take it home without support\'s go-ahead.' },
   ],
 };
 
@@ -227,7 +227,7 @@ const SAFETY: TrainingDefault = {
       body: 'You\'ve been in an accident · Someone is threatening you · You feel followed · You\'re lost in an unsafe area · You\'re injured and can\'t continue. Never feel embarrassed about pressing SOS — false alarms have zero penalty.' },
 
     { id: id('s-h7'), type: 'heading', text: 'Share My Trip' },
-    { id: id('s-p6'), type: 'paragraph', text: 'In Profile → Safety, turn on "Share my trip with…" and add a friend or family member. They\'ll get a WhatsApp link with your live map view whenever you\'re online. It\'s a great low-effort safety net — they can spot if you\'ve been stationary too long and call to check in.' },
+    { id: id('s-p6'), type: 'paragraph', text: 'From the Safety screen, tap "Share my live trip" and send the link to a friend or family member with any app. The link shows your live trip for up to 4 hours and stops working when the trip ends. It\'s a great low-effort safety net — they can spot if you\'ve been stationary too long and call to check in.' },
 
     { id: id('s-d2'), type: 'divider' },
     { id: id('s-h8'), type: 'heading', text: 'If you\'re in an accident' },
