@@ -1,5 +1,6 @@
 import { prisma } from '@/server/db';
 import { RiderSignupForm } from './form';
+import { brand } from '@/lib/brand';
 
 export const metadata = { title: 'Become a rider' };
 
@@ -12,9 +13,9 @@ export default async function RiderSignupPage() {
   return (
     <div className="container py-12 max-w-xl">
       <div className="text-xs font-semibold uppercase tracking-wider text-primary">For riders</div>
-      <h1 className="display text-3xl font-semibold mb-2">Earn on FoodHub</h1>
+      <h1 className="display text-3xl font-semibold mb-2">Earn on {brand.name}</h1>
       <p className="text-sm text-muted-foreground mb-6">
-        Once approved by the FoodHub team, you'll see every restaurant's READY orders in a single pool —
+        Once approved by the {brand.name} team, you'll see every restaurant's READY orders in a single pool —
         pick whichever fits your route. Tips, peak-hour bonuses, and rain-day bonuses are paid on top.
       </p>
       <RiderSignupForm restaurants={JSON.parse(JSON.stringify(restaurants))} />

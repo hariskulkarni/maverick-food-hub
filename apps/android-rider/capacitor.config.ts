@@ -8,7 +8,7 @@ const FOODHUB_URL = process.env.FOODHUB_URL ?? 'http://10.0.2.2:3000';
 
 const config: CapacitorConfig = {
   appId: 'app.foodhub.rider',
-  appName: 'FoodHub Rider',
+  appName: 'Flavrly Rider',
   webDir: 'public',
   server: {
     url: `${FOODHUB_URL}/rider`,
