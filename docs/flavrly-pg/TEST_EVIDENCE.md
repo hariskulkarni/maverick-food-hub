@@ -149,4 +149,4 @@ pg/ops-r2 + pg/deps-r2 + pg/money-r2 merged. Fresh DBs `ci_gate_r2` / `ci_gate_r
 | typecheck / lint / check:responsive | 0 / 0 / 0 | clean (lint warnings pre-existing) |
 | test:ci | 0 | **1566 passed** |
 | test:db | 0 | **202 passed** |
-| build | — | deferred until the acceptance window closes |
+| build | 0 | GitHub CI run 40149598277 (Web job: migrate, drift, typecheck, lint, responsive, test:ci, test:db, build) green at `a927c8e`; CodeQL green |

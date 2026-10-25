@@ -1,6 +1,6 @@
 # Flavrly PG — Final GO / NO-GO
 
-Date: 2026-10-24. Code: `pg/lead` (round-2 gate green at `b3d489c`: 1566 unit, 202 real-Postgres; build pending the Novaryq acceptance window). Author: lead (Claude Code), for owner decision.
+Date: 2026-10-24. Code: `pg/lead` (round-2 gate green at `b3d489c`: 1566 unit, 202 real-Postgres; GitHub CI incl. build green). Author: lead (Claude Code), for owner decision.
 
 ## Recommendation
 
