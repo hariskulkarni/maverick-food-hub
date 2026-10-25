@@ -64,8 +64,8 @@ export default async function ContactPage() {
             <h3 className="font-semibold flex items-center gap-2">
               <Mail className="size-4" /> Email
             </h3>
-            <a href="mailto:support@oakandsizzler.in" className="mt-2 block text-lg hover:text-primary">
-              support@oakandsizzler.in
+            <a href={`mailto:${brand.supportEmail}`} className="mt-2 block text-lg hover:text-primary">
+              {brand.supportEmail}
             </a>
             <p className="mt-1 text-xs text-muted-foreground">
               For refunds, billing and anything non-urgent.

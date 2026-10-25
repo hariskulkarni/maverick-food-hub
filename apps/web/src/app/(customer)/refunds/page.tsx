@@ -172,8 +172,8 @@ export default function RefundsPage() {
           <h2 className="display text-xl font-semibold">8. Need help?</h2>
           <p className="mt-3 text-sm text-muted-foreground">
             For any refund or cancellation question, contact{' '}
-            <a href="mailto:support@oakandsizzler.in" className="text-primary underline">
-              support@oakandsizzler.in
+            <a href={`mailto:${brand.supportEmail}`} className="text-primary underline">
+              {brand.supportEmail}
             </a>{' '}
             or call {brand.supportPhone}. Or{' '}
             <a href="/help" className="text-primary underline">

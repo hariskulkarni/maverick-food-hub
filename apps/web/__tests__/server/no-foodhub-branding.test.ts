@@ -23,4 +23,10 @@ describe('branding', () => {
     );
     expect(hits.map((h) => `${h.f}:${h.i}`)).toEqual([]);
   });
+
+  it('has no other-brand email domain (oakandsizzler) in apps/web/src', () => {
+    const src = path.resolve(__dirname, '../../src');
+    const hits = walk(src).filter((f) => /oakandsizzler/i.test(readFileSync(f, 'utf8')));
+    expect(hits.map((f) => path.relative(src, f))).toEqual([]);
+  });
 });

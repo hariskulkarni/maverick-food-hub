@@ -242,8 +242,8 @@ export default function PrivacyPage() {
           <p className="mt-3 text-sm text-muted-foreground">
             For any privacy question or to exercise your rights, contact our Grievance Officer
             at{' '}
-            <a href="mailto:privacy@oakandsizzler.in" className="text-primary underline">
-              privacy@oakandsizzler.in
+            <a href={`mailto:${brand.privacyEmail}`} className="text-primary underline">
+              {brand.privacyEmail}
             </a>{' '}
             or call {brand.supportPhone}. {brand.name} is operated from Andhra Pradesh, India.
           </p>

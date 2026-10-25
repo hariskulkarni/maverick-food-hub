@@ -209,8 +209,8 @@ export default function TermsPage() {
           <h2 className="display text-xl font-semibold">13. Contact</h2>
           <p className="mt-3 text-sm text-muted-foreground">
             Questions about these Terms? Email{' '}
-            <a href="mailto:support@oakandsizzler.in" className="text-primary underline">
-              support@oakandsizzler.in
+            <a href={`mailto:${brand.supportEmail}`} className="text-primary underline">
+              {brand.supportEmail}
             </a>{' '}
             or call {brand.supportPhone}.
           </p>
