@@ -4,7 +4,7 @@ const h = vi.hoisted(() => ({
   requireManagedRestaurant: vi.fn(), auth: vi.fn(), audit: vi.fn(),
   searchBusiness: vi.fn(), fetchPlaceReviews: vi.fn(),
   upsertReview: vi.fn(), setPlacesLink: vi.fn(), getPlacesLink: vi.fn(), clearPlacesLink: vi.fn(),
-  generateReviewReply: vi.fn(), getReviewScoped: vi.fn(), getAutoReplyConfig: vi.fn(),
+  generateReviewReply: vi.fn(), getReviewScoped: vi.fn(), getAutoReplyConfig: vi.fn(), getResponseSettings: vi.fn(),
 }));
 vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: h.requireManagedRestaurant }));
 vi.mock('@/server/auth', () => ({ auth: h.auth }));
@@ -16,6 +16,7 @@ vi.mock('@/server/reviews/places', async (orig) => ({
 vi.mock('@/server/reviews/store', () => ({
   upsertReview: h.upsertReview, setPlacesLink: h.setPlacesLink, getPlacesLink: h.getPlacesLink,
   clearPlacesLink: h.clearPlacesLink, getReviewScoped: h.getReviewScoped, getAutoReplyConfig: h.getAutoReplyConfig,
+  getResponseSettings: h.getResponseSettings,
 }));
 vi.mock('@/server/reviews/llm', async (orig) => ({
   ...(await orig<typeof import('@/server/reviews/llm')>()), generateReviewReply: h.generateReviewReply,
@@ -141,9 +142,10 @@ describe('AI draft (read-only, nothing persisted)', () => {
   it('returns generated text', async () => {
     h.getReviewScoped.mockResolvedValue({ id: 'g1', rating: 4, comment: 'nice' });
     h.getAutoReplyConfig.mockResolvedValue({ tonePrompt: 'warm' });
+    h.getResponseSettings.mockResolvedValue({ brandVoiceSummary: null });
     h.generateReviewReply.mockResolvedValue({ text: 'Thanks!', provider: 'openai', model: 'm' });
     const res = await draft(req(), ctx);
-    expect(await res.json()).toEqual({ ok: true, text: 'Thanks!' });
-    expect(h.generateReviewReply).toHaveBeenCalledWith({ restaurantId: 'rest1', rating: 4, comment: 'nice', tone: 'warm' });
+    expect(await res.json()).toEqual({ ok: true, text: 'Thanks!', issues: [] });
+    expect(h.generateReviewReply).toHaveBeenCalledWith(expect.objectContaining({ restaurantId: 'rest1', rating: 4, comment: 'nice', tone: 'warm' }));
   });
 });

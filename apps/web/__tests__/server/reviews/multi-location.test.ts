@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { reqRestMock, getConfigMock, saveMock } = vi.hoisted(() => ({
-  reqRestMock: vi.fn(), getConfigMock: vi.fn(), saveMock: vi.fn(),
+const { reqRestMock, getConfigMock, saveMock, auditMock } = vi.hoisted(() => ({
+  reqRestMock: vi.fn(), getConfigMock: vi.fn(), saveMock: vi.fn(), auditMock: vi.fn(),
 }));
+vi.mock('@/server/reviews/review-audit', () => ({ auditReview: auditMock }));
 vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: reqRestMock }));
 vi.mock('@/server/integrations', () => ({ getConfig: getConfigMock, saveConfig: saveMock }));
 vi.mock('@/server/log', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
@@ -54,6 +55,9 @@ describe('select-location route', () => {
     expect(saveMock).toHaveBeenCalledWith('rest1', 'GOOGLE_BUSINESS',
       { refreshToken: 'rt', accountId: 'accounts/9', locationId: 'locations/2', locations: JSON.stringify(locs) },
       { status: 'CONNECTED' });
+    expect(auditMock).toHaveBeenCalledWith('reviews.location.select', 'rest1', expect.objectContaining({
+      before: { locationId: '' }, after: { locationId: 'locations/2' },
+    }));
   });
 
   it('400s for a location not in the list', async () => {
@@ -61,6 +65,7 @@ describe('select-location route', () => {
     const res = await POST(post({ locationId: 'locations/evil' }));
     expect(res.status).toBe(400);
     expect(saveMock).not.toHaveBeenCalled();
+    expect(auditMock).not.toHaveBeenCalled();
   });
 
   it('409s when not connected', async () => {

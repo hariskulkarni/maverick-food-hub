@@ -39,16 +39,16 @@ export async function GET(req: NextRequest) {
         comment: r.comment,
         source: r.source,
         reviewCreatedAt: r.reviewCreatedAt,
-        reviewUpdatedAt: r.reviewUpdatedAt,
+        reviewUpdatedAt: r.reviewUpdatedAt ?? null,
         media: Array.isArray(r.media) ? r.media : [],
         hasOrderMatch: !!r.matchedOrderId,
         overdue: r.source === 'gbp' && r.reply?.state !== 'POSTED' && new Date(r.reviewCreatedAt).getTime() < overdueBefore,
         reply: r.reply
           ? {
               state: r.reply.state, text: r.reply.text, source: r.reply.source, postedAt: r.reply.postedAt,
-              error: r.reply.state === 'FAILED' ? r.reply.error : null,
-              holdReason: r.reply.holdReason, moderationState: r.reply.moderationState,
-              policyViolation: r.reply.policyViolation, reviewReplyUrl: r.reply.reviewReplyUrl,
+              error: r.reply.state === 'FAILED' ? r.reply.error ?? null : null,
+              holdReason: r.reply.holdReason ?? null, moderationState: r.reply.moderationState ?? null,
+              policyViolation: r.reply.policyViolation ?? null, reviewReplyUrl: r.reply.reviewReplyUrl ?? null,
             }
           : null,
       })),
