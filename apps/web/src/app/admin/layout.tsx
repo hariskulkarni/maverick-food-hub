@@ -5,7 +5,7 @@ import { currentRestaurant, accessibleRestaurants } from '@/server/tenancy';
 import {
   LayoutDashboard, ScrollText, CalendarClock, Armchair, Radio, Building2,
   Bike, ShieldAlert, MessagesSquare, BarChart3, History, MessageSquare,
-  Settings, Paintbrush, Star, MapPinned,
+  Settings, Paintbrush, Star, MapPinned, LifeBuoy,
 } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { RestaurantSwitcher } from './restaurant-switcher';
@@ -44,6 +44,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/admin/storefront',     icon: <Paintbrush className={ICON} />,      label: 'Storefront CMS' },
       { href: '/admin/settings',       icon: <Settings className={ICON} />,        label: 'Settings' },
+      { href: '/admin/help',           icon: <LifeBuoy className={ICON} />,        label: 'Help center' },
     ],
   },
 ];

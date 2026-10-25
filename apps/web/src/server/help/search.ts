@@ -66,7 +66,7 @@ const TITLE_HL_OPTS = `StartSel=${HL_START}, StopSel=${HL_END}, HighlightAll=tru
 type Row = Omit<SearchHit, 'rank'> & { rank: number | string };
 
 function toHits(rows: Row[]): SearchHit[] {
-  return rows.map((r) => ({ ...r, rank: Number(r.rank) }));
+  return rows.map((r) => ({ ...r, snippet: r.snippet.replace(/\s+/g, ' ').trim(), rank: Number(r.rank) }));
 }
 
 async function ftsSearch(q: string, o: Required<SearchOpts>): Promise<SearchHit[]> {
@@ -152,6 +152,9 @@ export async function searchArticles(rawQuery: string | null | undefined, opts: 
 
   const fts = await ftsSearch(query, o);
   if (fts.length) return { query, mode: 'fts', hits: fts };
+  // Trigram matching on very short queries ("the", "ok") matches nearly
+  // everything — only fall back for queries long enough to carry a typo.
+  if (query.replace(/\s/g, '').length < 4) return { query, mode: 'fts', hits: [] };
   try {
     return { query, mode: 'fuzzy', hits: await fuzzySearch(query, o) };
   } catch (e) {
