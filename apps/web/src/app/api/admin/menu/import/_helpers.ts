@@ -23,6 +23,7 @@
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { currentRestaurant } from '@/server/tenancy';
+import { STAFF_BRANCH_ORDER } from '@/server/branch-pause';
 
 export type ScopeError = {
   status: number;
@@ -81,12 +82,12 @@ export async function resolveBranchScope(): Promise<BranchScope> {
     };
   }
 
-  // 4) Branch. Menus live on a Branch, so we need at least one ACTIVE branch
-  //    of the selected restaurant. A common gotcha is that the admin paused
-  //    every branch — point them straight at /admin/branches to fix it.
+  // 4) Branch. Menus live on a Branch, so we need at least one branch of the
+  //    selected restaurant. A paused branch (isActive=false) still counts —
+  //    pausing orders must not lock the admin out of their menu.
   const branch = await prisma.branch.findFirst({
-    where: { restaurantId: restaurant.id, isActive: true },
-    orderBy: { createdAt: 'asc' },
+    where: { restaurantId: restaurant.id },
+    orderBy: STAFF_BRANCH_ORDER,
     select: { id: true },
   });
   if (!branch) {
@@ -94,7 +95,7 @@ export async function resolveBranchScope(): Promise<BranchScope> {
       error: jsonError({
         status: 404,
         reason: 'no_active_branch',
-        error: `${restaurant.name} has no active branch. Open Branches and activate one, then retry.`,
+        error: `${restaurant.name} has no branch yet. Add one in Settings → Branches, then retry.`,
       }),
     };
   }

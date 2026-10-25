@@ -9,6 +9,7 @@ import { money, fmtDate } from '@/lib/utils';
 import { Printer, X, Check, Bike, RefreshCw, Wifi, WifiOff, Gift } from 'lucide-react';
 import { toast } from 'sonner';
 import { reportApiError } from '@/lib/api-error';
+import { completionAction, isCancelledStatus, needsRider } from '@/lib/order-actions';
 import { useNotificationSound } from '@/hooks/use-notification-sound';
 import { SoundToggle } from '@/components/sound-toggle';
 // AssignRiderDialog removed — riders self-claim from the platform pool now.
@@ -22,7 +23,7 @@ const FILTERS = [
   { key: 'PREPARING', label: 'Preparing', match: (o: any) => ['ACCEPTED', 'PREPARING', 'READY'].includes(o.status) },
   { key: 'OUT', label: 'Out for delivery', match: (o: any) => o.status === 'OUT_FOR_DELIVERY' },
   { key: 'COMPLETED', label: 'Completed', match: (o: any) => o.status === 'DELIVERED' },
-  { key: 'CANCELLED', label: 'Cancelled', match: (o: any) => o.status === 'CANCELLED' },
+  { key: 'CANCELLED', label: 'Cancelled', match: (o: any) => isCancelledStatus(o.status) },
   { key: 'COD', label: 'COD', match: (o: any) => o.paymentMethod === 'COD' },
   { key: 'ONLINE', label: 'Online paid', match: (o: any) => o.paymentMethod === 'RAZORPAY' }
 ] as const;
@@ -409,13 +410,22 @@ export function OrdersBoard({
                     <Gift className="size-4" /> Remove gift
                   </Button>
                 )}
-                {o.status === 'PREPARING' && <Button size="sm" disabled={busy[o.id]} onClick={() => transition(o.id, 'READY')}>Mark ready — release to rider pool</Button>}
-                {o.status === 'READY' && !o.assignment && (
+                {o.status === 'PREPARING' && (
+                  <Button size="sm" disabled={busy[o.id]} onClick={() => transition(o.id, 'READY')}>
+                    {needsRider(o) ? 'Mark ready — release to rider pool' : 'Mark ready'}
+                  </Button>
+                )}
+                {completionAction(o) && (
+                  <Button size="sm" disabled={busy[o.id]} onClick={() => transition(o.id, completionAction(o)!.next)}>
+                    <Check className="size-4" /> {completionAction(o)!.label}
+                  </Button>
+                )}
+                {o.status === 'READY' && needsRider(o) && !o.assignment && (
                   <span className="inline-flex items-center gap-2 rounded-md bg-warning/10 px-3 py-1.5 text-xs text-warning font-medium">
                     <Bike className="size-3.5" /> Waiting for a rider to pick this up
                   </span>
                 )}
-                {o.status === 'READY' && o.assignment && (
+                {o.status === 'READY' && needsRider(o) && o.assignment && (
                   <span className="inline-flex items-center gap-2 rounded-md bg-success/10 px-3 py-1.5 text-xs text-success font-medium">
                     <Bike className="size-3.5" /> {o.assignment.rider?.user?.name ?? 'Rider'} picked it up
                   </span>

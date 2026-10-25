@@ -93,8 +93,17 @@ export async function POST(req: NextRequest) {
   if (!riderId) return Response.json({ error: 'riderId is required' }, { status: 400 });
   if (!text) return Response.json({ error: 'Message cannot be empty' }, { status: 400 });
 
-  const rider = await prisma.riderProfile.findUnique({
-    where: { id: riderId },
+  // Tenancy: only riders on this restaurant's roster (dedicated to it, or who
+  // have delivered for it) — the same set GET lists. Any other id is a 404 so a
+  // restaurant can't open a thread with (and read the profile of) arbitrary riders.
+  const rider = await prisma.riderProfile.findFirst({
+    where: {
+      id: riderId,
+      OR: [
+        { dedicatedRestaurantId: restaurant.id },
+        { assignments: { some: { order: { branch: { restaurantId: restaurant.id } } } } },
+      ],
+    },
     select: { id: true },
   });
   if (!rider) return Response.json({ error: 'Rider not found' }, { status: 404 });

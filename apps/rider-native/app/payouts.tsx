@@ -1,10 +1,11 @@
 /**
- * Instant Payout screen — withdraw your available balance to UPI or bank, and
- * review past withdrawals.
+ * Payouts screen — request a withdrawal of your available balance to UPI or
+ * bank, and track past requests.
  *
- * Wired to GET/POST /api/rider/payouts. The demo backend settles a withdrawal
- * instantly (status PAID), so a successful request shows a celebratory Alert
- * and refreshes the balance + history in place.
+ * Wired to GET/POST /api/rider/payouts. A request is recorded as REQUESTED; the
+ * Flavrly team makes the transfer and marks it PAID (or FAILED, which returns
+ * the amount to the balance). Nothing is paid out automatically, so the copy
+ * says "requested", never "instant", and each row shows its current status.
  */
 import { useState, useCallback } from 'react';
 import {
@@ -44,6 +45,14 @@ function fmtWhen(iso: string | null): string {
   const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
   return `${date} · ${time}`;
 }
+
+/** Rider-facing wording for each payout status. */
+const PAYOUT_STATUS_LABEL: Record<Payout['status'], string> = {
+  REQUESTED: 'Requested',
+  PROCESSING: 'Processing',
+  PAID: 'Paid',
+  FAILED: 'Failed',
+};
 
 function statusStyle(status: Payout['status']): { bg: string; fg: string } {
   if (status === 'PAID') return { bg: colors.successSoft, fg: colors.success };
@@ -110,11 +119,11 @@ export default function PayoutsScreen() {
     const dest = method === 'UPI' ? upiId.trim() : 'your bank account';
     Alert.alert(
       'Confirm withdrawal',
-      `Withdraw ${rupees(amt)} to ${dest}? The money settles instantly.`,
+      `Request ${rupees(amt)} to ${dest}? The Flavrly team processes withdrawal requests and transfers the money; you can track the status below.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Withdraw',
+          text: 'Request',
           style: 'default',
           onPress: async () => {
             setSubmitting(true);
@@ -128,12 +137,12 @@ export default function PayoutsScreen() {
               setUpiId('');
               await load();
               Alert.alert(
-                'Paid! 🎉',
-                `${rupees(res.payout.amount)} is on its way.\nReference: ${res.payout.reference ?? '—'}`
+                'Withdrawal requested',
+                `Your request for ${rupees(res.payout.amount)} is recorded (status: ${PAYOUT_STATUS_LABEL[res.payout.status] ?? res.payout.status}). The Flavrly team will process it and the status will change to Paid once the money is sent.`
               );
             } catch (e) {
               Alert.alert(
-                'Withdrawal failed',
+                'Request failed',
                 e instanceof ApiError ? e.message : 'Please try again in a moment.'
               );
             } finally {
@@ -147,7 +156,7 @@ export default function PayoutsScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <ScreenHeader title="Instant Payout" />
+      <ScreenHeader title="Payouts" />
 
       {loading ? (
         <View style={styles.center}>
@@ -189,7 +198,7 @@ export default function PayoutsScreen() {
             </View>
 
             {/* Withdraw form */}
-            <Text style={styles.sectionLabel}>WITHDRAW NOW</Text>
+            <Text style={styles.sectionLabel}>REQUEST A WITHDRAWAL</Text>
             <View style={styles.formCard}>
               <Text style={styles.fieldLabel}>Amount</Text>
               <View style={styles.amountRow}>
@@ -270,7 +279,7 @@ export default function PayoutsScreen() {
                   <ActivityIndicator color={colors.white} />
                 ) : (
                   <Text style={styles.submitBtnText}>
-                    {available <= 0 ? 'Nothing to withdraw yet' : 'Withdraw instantly'}
+                    {available <= 0 ? 'Nothing to withdraw yet' : 'Request withdrawal'}
                   </Text>
                 )}
               </Pressable>
@@ -282,7 +291,7 @@ export default function PayoutsScreen() {
               <View style={styles.emptyCard}>
                 <Ionicons name="receipt-outline" size={28} color={colors.textMuted} />
                 <Text style={styles.emptyText}>
-                  No withdrawals yet. Your payouts will appear here once you withdraw.
+                  No withdrawal requests yet. Requests you make appear here with their status.
                 </Text>
               </View>
             ) : (
@@ -303,7 +312,7 @@ export default function PayoutsScreen() {
                       </View>
                       <View style={[styles.statusChip, { backgroundColor: sc.bg }]}>
                         <Text style={[styles.statusChipText, { color: sc.fg }]}>
-                          {p.status}
+                          {PAYOUT_STATUS_LABEL[p.status] ?? p.status}
                         </Text>
                       </View>
                     </View>

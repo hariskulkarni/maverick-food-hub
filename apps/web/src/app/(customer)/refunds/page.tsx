@@ -5,7 +5,7 @@ export const metadata = {
   description: `How cancellations and refunds work on ${brand.name}.`
 };
 
-const UPDATED = '22 October 2026';
+const UPDATED = '24 October 2026';
 
 export default function RefundsPage() {
   return (
@@ -22,8 +22,7 @@ export default function RefundsPage() {
         <a href="/terms" className="text-primary underline">
           Terms of Service
         </a>
-        . Because food is prepared fresh to order, the windows below are necessarily tight —
-        please read them before placing an order.
+        . Because food is prepared fresh to order, please read it before placing an order.
       </p>
 
       <div className="mt-10 space-y-10 text-[15px] leading-relaxed text-foreground/90">
@@ -31,23 +30,23 @@ export default function RefundsPage() {
           <h2 className="display text-xl font-semibold">1. Cancelling an order</h2>
           <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
             <li>
-              <span className="font-medium text-foreground">Before the kitchen accepts</span> —
-              you can cancel free of charge for a full refund.
+              There is no cancel button in the app or on the website. To cancel, contact support
+              as soon as possible with your order number.
             </li>
             <li>
-              <span className="font-medium text-foreground">After acceptance, before cooking
-              starts</span> — cancellation is usually still possible; a small charge may apply if
-              the kitchen has begun preparation.
+              <span className="font-medium text-foreground">Before the restaurant accepts</span> —
+              we can cancel the order for you.
             </li>
             <li>
-              <span className="font-medium text-foreground">Once cooking has started</span> —
-              the order generally cannot be cancelled, as the food has been made specifically for
-              you.
+              <span className="font-medium text-foreground">After the restaurant accepts</span> —
+              whether the order can still be cancelled is decided case by case, because the food
+              may already be in preparation.
+            </li>
+            <li>
+              The restaurant may also decline or cancel an order (for example, if an item is
+              unavailable). You will be notified when this happens.
             </li>
           </ul>
-          <p className="mt-3 text-sm text-muted-foreground">
-            You can cancel from your order screen, or contact support if you need help.
-          </p>
         </section>
 
         <section>
@@ -103,8 +102,7 @@ export default function RefundsPage() {
               things faster.
             </li>
             <li>
-              We review the request with the restaurant where needed and confirm the outcome,
-              usually within 1–2 business days.
+              We review the request with the restaurant where needed and tell you the outcome.
             </li>
           </ol>
         </section>
@@ -113,23 +111,24 @@ export default function RefundsPage() {
           <h2 className="display text-xl font-semibold">5. How refunds are paid</h2>
           <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
             <li>
-              <span className="font-medium text-foreground">UPI payments</span> — refunded to the
-              UPI ID or bank account you paid from, typically within 5–7 business days, depending
-              on your bank.
+              Refunds are not automatic, including when an order is cancelled. The {brand.name}{' '}
+              support team reviews each case and issues the refund.
             </li>
             <li>
-              <span className="font-medium text-foreground">Other online payments</span> (through
-              Razorpay, where enabled) — refunded to your original payment method, typically
-              within 5–7 business days, depending on your bank or payment provider.
+              <span className="font-medium text-foreground">{brand.name} wallet (default)</span> —
+              approved refunds are normally credited to your {brand.name} wallet. The credit is
+              available as soon as it is issued and can be used on your next orders.
             </li>
             <li>
-              <span className="font-medium text-foreground">Cash on delivery</span> — refunded as
-              platform credit or to a bank account / UPI ID you provide.
+              <span className="font-medium text-foreground">Original payment method</span> — in
+              some cases we refund an online payment back to the method you paid with instead. How
+              long it takes to reach you then depends on your bank or payment provider.
             </li>
             <li>
-              <span className="font-medium text-foreground">Platform credit</span> — applied to
-              your account immediately and used automatically on your next order.
+              <span className="font-medium text-foreground">Cash on delivery</span> — refunds are
+              credited to your {brand.name} wallet.
             </li>
+            <li>A refund is never more than the amount you paid for the order.</li>
           </ul>
         </section>
 
@@ -141,7 +140,7 @@ export default function RefundsPage() {
             <li>
               If you pay a different amount from the one shown, or pay after the payment window
               has expired, the payment is still recorded and reconciled. Any amount due back to
-              you is refunded to the UPI ID you paid from, as described above.
+              you is reviewed and refunded by our support team (see section 5).
             </li>
             <li>
               Payments flagged by our risk checks may be held for review. Screenshots are not
@@ -164,8 +163,8 @@ export default function RefundsPage() {
           <h2 className="display text-xl font-semibold">7. Coupons &amp; credits</h2>
           <p className="mt-3 text-sm text-muted-foreground">
             Where a discount or coupon was applied, refunds are calculated on the amount you
-            actually paid. Promotional credits used on a cancelled order are returned as
-            credit, not cash.
+            actually paid. Sign-up bonus credit used on a cancelled order is restored to your
+            account automatically; it is returned as credit, not cash.
           </p>
         </section>
 

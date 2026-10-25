@@ -17,6 +17,7 @@ import { prisma } from '@/server/db';
 import { auth } from '@/server/auth';
 import { requireRestaurant } from '@/server/tenancy';
 import { audit } from '@/server/audit';
+import { STAFF_BRANCH_ORDER } from '@/server/branch-pause';
 
 const Body = z.object({
   code: z.string().min(2).max(40),
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
     const owned = await prisma.branch.findFirst({ where: { id: branchId, restaurantId: r.id }, select: { id: true } });
     if (!owned) return new Response('Branch not in this restaurant', { status: 403 });
   } else {
-    const b = await prisma.branch.findFirst({ where: { restaurantId: r.id, isActive: true }, orderBy: { createdAt: 'asc' }, select: { id: true } });
+    const b = await prisma.branch.findFirst({ where: { restaurantId: r.id }, orderBy: STAFF_BRANCH_ORDER, select: { id: true } });
     branchId = b?.id ?? null;
   }
 

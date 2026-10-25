@@ -101,7 +101,13 @@ export default async function CustomerMePage({ params }: { params: Promise<{ slu
     prisma.coupon.findMany({
       where: {
         isActive: true,
-        OR: [{ validTo: null }, { validTo: { gt: now } }]
+        validFrom: { lte: now },
+        // Only coupons this restaurant created (any of its branches) plus
+        // platform-wide ones (no branch) — mirrors isLegacyCouponUsable().
+        AND: [
+          { OR: [{ validTo: null }, { validTo: { gt: now } }] },
+          { OR: [{ branchId: null }, { branchId: { in: branchIds } }] }
+        ]
       },
       orderBy: { createdAt: 'desc' },
       take: 6

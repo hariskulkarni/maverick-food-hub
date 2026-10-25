@@ -29,6 +29,7 @@ import { sendDeliveryOtpSms } from './notify-templates';
 import { pushOrderMilestone } from './push/milestones';
 import { requestFeedbackOnDelivered } from './reviews/feedback-request';
 import { resolveLineSelections } from './menu-selections';
+import { isLegacyCouponUsable } from './coupons';
 import { groupOrderChannel } from './group-scope';
 import { resolveDeliveryTerms } from './delivery/placement';
 import { branchHasActiveZones } from './delivery/zones';
@@ -314,8 +315,12 @@ export async function placeOrder(input: PlaceOrderInput) {
 
   let coupon: { id: string; flatOff?: number | null; percentOff?: number | null; minOrderAmount?: number | null; maxDiscount?: number | null; perUserLimit: number } | null = null;
   if (input.couponCode) {
-    const found = await prisma.coupon.findUnique({ where: { code: input.couponCode } });
-    if (found && found.isActive && (!found.validTo || found.validTo > new Date()) && (!found.usageLimit || found.usedCount < found.usageLimit)) {
+    const found = await prisma.coupon.findUnique({
+      where: { code: input.couponCode },
+      include: { branch: { select: { restaurantId: true } } }
+    });
+    // Restaurant scope + start/end date + usage limit (see server/coupons.ts).
+    if (found && isLegacyCouponUsable(found, { restaurantId: branch.restaurantId })) {
       coupon = {
         id: found.id,
         flatOff: found.flatOff ? Number(found.flatOff) : null,

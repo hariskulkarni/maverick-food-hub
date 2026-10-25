@@ -4,11 +4,13 @@
  * POST — trigger an SOS panic alert. Captures the rider's location (if sent)
  *        and creates an ACTIVE SosAlert. Idempotent: if the rider already has
  *        an ACTIVE alert, the existing one is returned instead of a duplicate.
+ *        A new alert also SMSes the rider's emergency contacts.
  * GET  — the rider's currently ACTIVE alert, or `{ active: null }`.
  */
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { toFiniteNumber, toTrimmedString } from '@/server/rider-safety';
+import { sendSosToEmergencyContacts } from '@/server/notify-templates';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -93,5 +95,9 @@ export async function POST(req: Request) {
     },
   });
 
-  return Response.json({ alert: serialize(alert), alreadyActive: false }, { status: 201 });
+  // Text the rider's emergency contacts (name, time, map link). Never throws;
+  // the SosAlert above is the ops-side alert and is already persisted.
+  const { sent } = await sendSosToEmergencyContacts(alert.id);
+
+  return Response.json({ alert: serialize(alert), alreadyActive: false, contactsNotified: sent }, { status: 201 });
 }

@@ -223,13 +223,13 @@ export default function EarningsScreen() {
           </Text>
         </View>
 
-        {/* Payments — instant payout, cash in hand, incentives */}
+        {/* Payments — payout requests, cash in hand, incentives */}
         <Text style={styles.sectionLabel}>PAYMENTS</Text>
         <View style={styles.payRow}>
           <PayTile
             icon="flash-outline"
-            label="Instant Payout"
-            hint="Withdraw to UPI"
+            label="Payouts"
+            hint="Request a withdrawal"
             route="/payouts"
           />
           <PayTile
