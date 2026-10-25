@@ -15,13 +15,15 @@
  */
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { Prisma } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  // Non-throwing gate: a thrown Response from a route handler becomes a 500.
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const url = new URL(req.url);
   const actorId = url.searchParams.get('actorId') || undefined;
   const action = url.searchParams.get('action') || undefined;
@@ -35,17 +37,35 @@ export async function GET(req: NextRequest) {
   if (actorId) where.actorId = actorId;
   if (action) where.action = action;
   if (entityType) where.entityType = entityType;
-  if (from || to) {
+  const fromDate = from ? new Date(from) : null;
+  const toDate = to ? new Date(to) : null;
+  if ((fromDate && isNaN(fromDate.getTime())) || (toDate && isNaN(toDate.getTime()))) {
+    return Response.json({ error: 'from / to must be valid ISO dates.' }, { status: 400 });
+  }
+  if (fromDate || toDate) {
     where.createdAt = {};
-    if (from) (where.createdAt as any).gte = new Date(from);
-    if (to)   (where.createdAt as any).lte = new Date(to);
+    if (fromDate) (where.createdAt as any).gte = fromDate;
+    if (toDate)   (where.createdAt as any).lte = toDate;
   }
   if (q) {
+    // AuditLog has no actor relation, so resolve matching actors first.
+    const matchingActors = await prisma.user.findMany({
+      where: {
+        OR: [
+          { email: { contains: q, mode: 'insensitive' } },
+          { name: { contains: q, mode: 'insensitive' } },
+          { phone: { contains: q } },
+        ],
+      },
+      select: { id: true },
+      take: 200,
+    });
     where.OR = [
       { entityId: { contains: q, mode: 'insensitive' } },
       { action: { contains: q, mode: 'insensitive' } },
       { ipAddress: { contains: q } },
-      { actorId: q }
+      { actorId: q },
+      ...(matchingActors.length ? [{ actorId: { in: matchingActors.map((u) => u.id) } }] : []),
     ];
   }
 
