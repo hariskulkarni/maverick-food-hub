@@ -16,11 +16,11 @@ import {
 } from '@/server/happy-hours';
 
 // Wed 18:00 — inside a typical 17:00–20:00 happy-hour window.
-const WED_6PM = new Date('2026-05-13T18:00:00');
+const WED_6PM = new Date('2026-05-13T18:00:00+05:30');
 // Wed 14:00 — outside that window.
-const WED_2PM = new Date('2026-05-13T14:00:00');
+const WED_2PM = new Date('2026-05-13T14:00:00+05:30');
 // Sat 12:00 — for weekend-only rules.
-const SAT_NOON = new Date('2026-05-16T12:00:00');
+const SAT_NOON = new Date('2026-05-16T12:00:00+05:30');
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -268,7 +268,7 @@ describe('minutesUntilHappyHourEnds', () => {
     const ending6pm = rule({ schedules: [{ dayOfWeek: 3, startMin: 17 * 60, endMin: 18 * 60 }] });
     const ending8pm = rule({ schedules: [{ dayOfWeek: 3, startMin: 17 * 60, endMin: 20 * 60 }] });
     // Wed 17:30 — ending6pm wraps in 30min, ending8pm in 150min
-    const wed_5_30 = new Date('2026-05-13T17:30:00');
+    const wed_5_30 = new Date('2026-05-13T17:30:00+05:30');
     const r = minutesUntilHappyHourEnds([ending6pm, ending8pm], wed_5_30);
     expect(r?.endsInMin).toBe(30);
     expect(r?.endsAt).toBe('18:00');

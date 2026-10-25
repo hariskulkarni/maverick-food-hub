@@ -45,6 +45,7 @@
 import { clampTwo } from '@/lib/utils';
 import { prisma } from './db';
 import type { HappyHourScope, HappyHourDiscountType } from '@prisma/client';
+import { istClock } from '@/lib/ist-time';
 
 // ── Public types ──────────────────────────────────────────────────────────
 
@@ -111,8 +112,7 @@ export function isRuleInWindowNow(rule: HappyHourRuleLite, now: Date = new Date(
   if (rule.validTo && now > new Date(rule.validTo)) return false;
   // No schedule rows ⇒ always in window during the validity range.
   if (!rule.schedules || rule.schedules.length === 0) return true;
-  const day = now.getDay();
-  const mins = now.getHours() * 60 + now.getMinutes();
+  const { dayOfWeek: day, minutes: mins } = istClock(now); // P1-14: IST wall-clock
   for (const s of rule.schedules) {
     if (s.dayOfWeek === day && mins >= s.startMin && mins < s.endMin) return true;
   }
@@ -264,8 +264,7 @@ export function priceForCombo(combo: ComboLite, candidateRules: HappyHourRuleLit
  * is active. Used by the customer-side banner ("Happy Hour ends at 18:00").
  */
 export function minutesUntilHappyHourEnds(rules: HappyHourRuleLite[], now: Date = new Date()): { endsInMin: number; endsAt: string } | null {
-  const day = now.getDay();
-  const mins = now.getHours() * 60 + now.getMinutes();
+  const { dayOfWeek: day, minutes: mins } = istClock(now); // P1-14: IST wall-clock
   let best: number | null = null;
   for (const r of rules) {
     if (!isRuleInWindowNow(r, now)) continue;

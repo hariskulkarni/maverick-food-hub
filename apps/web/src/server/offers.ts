@@ -42,6 +42,7 @@
 import type { OfferType, ChannelScope } from '@prisma/client';
 import { clampTwo } from '@/lib/utils';
 import { prisma } from './db';
+import { istClock } from '@/lib/ist-time';
 
 /**
  * Resolve the authoritative branch for an offer evaluation from the cart's menu
@@ -368,8 +369,7 @@ function checkGates(offer: OfferRow, ctx: OfferContext): OfferEvalFailure | null
   // "now" must fall inside one of the windows for the matching weekday.
   const schedules = offer.schedules ?? [];
   if (schedules.length > 0) {
-    const dow = now.getDay(); // 0..6 Sun..Sat
-    const mins = now.getHours() * 60 + now.getMinutes();
+    const { dayOfWeek: dow, minutes: mins } = istClock(now); // P1-14: IST wall-clock, 0..6 Sun..Sat
     const inWindow = schedules.some(
       (s) => s.dayOfWeek === dow && mins >= s.startMin && mins < s.endMin
     );
