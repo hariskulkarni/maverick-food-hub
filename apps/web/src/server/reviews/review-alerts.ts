@@ -99,7 +99,7 @@ export async function sendNegativeReviewAlerts(
     const msg = formatNegativeAlert(rest?.name ?? 'Your restaurant', claimed);
     const emails = await restaurantEmailRecipients(restaurantId);
     for (const to of emails) {
-      await notify.email({ to, subject: msg.subject, body: msg.html, template: 'reviews.negative_alert', restaurantId, meta: { text: msg.text, reviewIds: claimed.map((r) => r.id) } })
+      await notify.email({ to, subject: msg.subject, body: msg.text, html: msg.html, template: 'reviews.negative_alert', restaurantId, meta: { reviewIds: claimed.map((r) => r.id) } })
         .catch((e) => log.error({ err: (e as Error).message }, 'reviews.alert.email_failed'));
     }
     if (settings?.alertSms || settings?.alertWhatsapp) {
@@ -144,7 +144,7 @@ export async function runSlaEscalations(now = new Date()): Promise<number> {
         const lines = claimed.map((r) => `${r.rating}★ ${r.reviewerName ?? 'Google user'}: ${reviewLink(r.id)}`).join('\n');
         const body = `${claimed.length} Google review${claimed.length > 1 ? 's have' : ' has'} had no reply for over ${s.slaHours}h at ${name}.\n\n${lines}`;
         if (s.escalationEmail) {
-          await notify.email({ to: s.escalationEmail, subject: `[${name}] Google review reply overdue`, body: `<pre style="font-family:sans-serif;white-space:pre-wrap">${esc(body)}</pre>`, template: 'reviews.sla_escalation', restaurantId: s.restaurantId, meta: { text: body } })
+          await notify.email({ to: s.escalationEmail, subject: `[${name}] Google review reply overdue`, body, html: `<pre style="font-family:sans-serif;white-space:pre-wrap">${esc(body)}</pre>`, template: 'reviews.sla_escalation', restaurantId: s.restaurantId })
             .catch(() => undefined);
         }
         if (s.escalationPhone) {
