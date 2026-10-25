@@ -559,6 +559,8 @@ model Restaurant {
   couponCampaigns   CouponCampaign[]
   youpiDailyUsage     YoupiDailyUsage[]
   youpiFeatureRequest YoupiFeatureRequest?
+  // Guided "Get your restaurant live" onboarding (feat/onboarding-v2).
+  onboardingProgress  OnboardingProgress?
 
   @@index([status])
   @@index([brandId])
@@ -3463,4 +3465,30 @@ model YoupiFeatureRequest {
   note          String?
   updatedAt     DateTime           @updatedAt
   restaurant    Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Guided restaurant onboarding (feat/onboarding-v2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Per-restaurant progress through the /admin/onboarding "Get your restaurant
+/// live" wizard, so an owner can leave and resume. Pure bookkeeping — the real
+/// configuration (menu, branches, zones, staff…) lives in its own tables and is
+/// written through the existing APIs; readiness is always re-computed live.
+model OnboardingProgress {
+  id           String    @id @default(cuid())
+  restaurantId String    @unique
+  /// { [stepKey]: "todo" | "done" | "skipped" }
+  steps        Json      @default("{}")
+  /// { [stepKey]: <unsaved form draft> } — capped server-side.
+  drafts       Json      @default("{}")
+  currentStep  String?
+  /// "Go live" pressed while every required readiness check passed.
+  completedAt  DateTime?
+  /// Dashboard checklist hidden by the owner (only allowed once completed).
+  dismissedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 }
