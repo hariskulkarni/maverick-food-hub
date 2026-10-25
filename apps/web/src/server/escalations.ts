@@ -27,7 +27,9 @@ const T = {
   noRider:          envMin('ESC_NO_RIDER_MIN', 10),
   riderNotMoving:   envMin('ESC_RIDER_NOT_MOVING_MIN', 12),
   outForDelivLate:  envMin('ESC_OUT_FOR_DELIVERY_LATE_MIN', 20),
-  paymentWebhook:   envMin('ESC_PAYMENT_WEBHOOK_MIN', 10)
+  // Abandoned online checkouts are normal and are failed by the unpaid-order
+  // sweep at 30 min; only an order still PAYMENT_PENDING after that is stuck.
+  paymentWebhook:   envMin('ESC_PAYMENT_WEBHOOK_MIN', 35)
 };
 
 async function open(orderId: string, type: string, severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL', message: string) {
