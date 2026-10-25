@@ -45,8 +45,11 @@ preflight() {
 
 backup() {
   confirm "Back up the production database now?"
-  remote 'set -a; . ./.env; set +a; mkdir -p ~/predeploy-backups;
-          pg_dump -Fc "$DATABASE_URL" > ~/predeploy-backups/flavrly-'"$TS"'.dump;
+  # Read ONLY DATABASE_URL from .env (sourcing the whole file breaks on any malformed line), and drop
+  # Prisma's ?schema=public query — pg_dump rejects it ("invalid URI query parameter").
+  remote 'DATABASE_URL=$(grep -E "^DATABASE_URL=" .env | tail -1 | cut -d= -f2- | tr -d "\"\047");
+          [ -n "$DATABASE_URL" ] || { echo "DATABASE_URL not found in .env"; exit 4; }; mkdir -p ~/predeploy-backups;
+          pg_dump -Fc "${DATABASE_URL%%\?*}" > ~/predeploy-backups/flavrly-'"$TS"'.dump;
           ls -lh ~/predeploy-backups/flavrly-'"$TS"'.dump; pg_restore -l ~/predeploy-backups/flavrly-'"$TS"'.dump | head -3'
   mkdir -p "$HOME/flavrly-backups"
   scp -i "$KEY" -o IdentitiesOnly=yes "$HOST:predeploy-backups/flavrly-$TS.dump" "$HOME/flavrly-backups/" && echo "copied to ~/flavrly-backups/flavrly-$TS.dump"
