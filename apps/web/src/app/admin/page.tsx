@@ -52,18 +52,19 @@ export default async function AdminDashboardPage() {
   }
 
   // Group scope: when this restaurant is a parent with rollup enabled, headline
-  // metrics span every branch in the group; otherwise scope to the single branch.
-  const report = await resolveGroupReport(restaurant.id, branch.id);
+  // metrics span every branch in the group; otherwise every branch of this
+  // restaurant (multi-branch tenants used to see only the primary — P1-9).
+  const report = await resolveGroupReport(restaurant.id);
   const scopedBranchIds = report.branchIds;
 
   const [kpi, sales, sellers, peak, mix, ci, latest, recentActivity, breakdown] = await Promise.all([
-    report.rollup ? groupKpis(scopedBranchIds) : dashboardKpis(branch.id),
-    report.rollup ? groupSalesSeries(scopedBranchIds, 14) : salesSeries(branch.id, 14),
-    bestSellers(branch.id, 6),
-    peakHours(branch.id),
-    report.rollup ? groupPaymentMixToday(scopedBranchIds) : paymentMixToday(branch.id),
-    customerInsights(branch.id),
-    prisma.order.findMany({ where: { branchId: { in: scopedBranchIds } }, orderBy: { placedAt: 'desc' }, take: 6, include: { customer: true } }),
+    report.rollup ? groupKpis(scopedBranchIds) : dashboardKpis(scopedBranchIds),
+    report.rollup ? groupSalesSeries(scopedBranchIds, 14) : salesSeries(scopedBranchIds, 14),
+    bestSellers(scopedBranchIds, 6),
+    peakHours(scopedBranchIds),
+    report.rollup ? groupPaymentMixToday(scopedBranchIds) : paymentMixToday(scopedBranchIds),
+    customerInsights(scopedBranchIds),
+    prisma.order.findMany({ where: { branchId: { in: scopedBranchIds } }, orderBy: { placedAt: 'desc' }, take: 6, include: { customer: { select: { name: true, phone: true } } } }),
     prisma.auditLog.findMany({
       where: {
         restaurantId: { in: report.rollup ? report.ctx.restaurantIds : [restaurant.id] },

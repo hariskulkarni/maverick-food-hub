@@ -1,25 +1,30 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
+import { CANCELLED_STATUSES } from '@/server/reports/revenue';
 import { requireAdminReportScope } from '@/server/reports/admin-branch';
-import { parseRange, deliverReport } from '@/server/reports/range';
+import { parseRange, deliverReport, reportRoute } from '@/server/reports/range';
 
-const CANCELLED_STATUSES = ['CANCELLED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] as const;
+export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
+export const GET = reportRoute(async (req: NextRequest) => {
   const { branchIds } = await requireAdminReportScope();
   const { from, to, format } = parseRange(new URL(req.url));
 
   const orders = await prisma.order.findMany({
     where: {
       branchId: { in: branchIds },
-      status: { in: CANCELLED_STATUSES as any },
+      // P1-7: a cancellation that was later refunded has moved on to REFUND_*,
+      // so match on the cancellation stamp (set by every CANCELLED_* transition)
+      // rather than the current status; legacy rows without the stamp still
+      // match on status + placedAt.
       OR: [
         { cancelledAt: { gte: from, lte: to } },
-        { placedAt: { gte: from, lte: to } }
+        { cancelledAt: null, status: { in: CANCELLED_STATUSES }, placedAt: { gte: from, lte: to } }
       ]
     },
     select: {
       code: true,
+      status: true,
       cancelReason: true,
       cancellationReason: true,
       customer: { select: { name: true, phone: true } },
@@ -31,13 +36,13 @@ export async function GET(req: NextRequest) {
   const rows = orders.map((o) => {
     const refunded = o.refunds.reduce((s, r) => s + Number(r.amount), 0);
     const reason = o.cancellationReason ?? o.cancelReason ?? '';
-    return [o.code, o.customer.name ?? o.customer.phone ?? '', reason, refunded.toFixed(2)];
+    return [o.code, o.status, o.customer.name ?? o.customer.phone ?? '', reason, refunded.toFixed(2)];
   });
 
   return deliverReport({
     format,
-    headers: ['code', 'customer', 'reason', 'refundedAmount'],
+    headers: ['code', 'status', 'customer', 'reason', 'refundedAmount'],
     rows,
     basename: 'cancelled-orders'
   });
-}
+});

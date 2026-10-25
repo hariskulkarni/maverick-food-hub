@@ -13,10 +13,14 @@ import { prisma } from '@/server/db';
 import { resolveGroupContext, type GroupContext } from '@/server/group-scope';
 import { OrderStatus } from '@prisma/client';
 
-const startOfDay = (d = new Date()) => { const n = new Date(d); n.setHours(0, 0, 0, 0); return n; };
-const endOfDay = (d = new Date()) => { const n = new Date(d); n.setHours(23, 59, 59, 999); return n; };
+import { REVENUE_STATUS_FILTER } from '@/server/reports/revenue';
+import { istStartOfDay, istEndOfDay, istDayKey, lastIstDayKeys } from '@/lib/ist';
 
-const PAID = { notIn: [OrderStatus.CANCELLED, OrderStatus.PAYMENT_FAILED] };
+// IST day boundaries (P1-8) and the shared revenue include-list (P1-6).
+const startOfDay = (d = new Date()) => istStartOfDay(d);
+const endOfDay = (d = new Date()) => istEndOfDay(d);
+
+const PAID = REVENUE_STATUS_FILTER;
 
 export interface GroupReport {
   /** True when we should render the group rollup UI (real group + sharing on). */
@@ -26,16 +30,16 @@ export interface GroupReport {
   /** True when rollup is *available* but switched off via groupShareReports. */
   rollupAvailableButOff: boolean;
   ctx: GroupContext;
-  /** Branch ids the headline metrics should span (group branches or just one). */
+  /** Branch ids the headline metrics should span (group branches, or ALL of this restaurant's branches). */
   branchIds: string[];
 }
 
 /**
- * Decide the reporting scope for the active restaurant. `singleBranchId` is the
- * branch the page would have used pre-group (kept for solo behaviour); when we
- * roll up we span every group branch instead.
+ * Decide the reporting scope for the active restaurant. Without a rollup the
+ * scope is EVERY branch of this restaurant (not just its primary — P1-9); when
+ * we roll up we span every group branch instead.
  */
-export async function resolveGroupReport(restaurantId: string, singleBranchId: string): Promise<GroupReport> {
+export async function resolveGroupReport(restaurantId: string): Promise<GroupReport> {
   const ctx = await resolveGroupContext(restaurantId);
   let shareReports = false;
   if (ctx.isGroup) {
@@ -46,12 +50,15 @@ export async function resolveGroupReport(restaurantId: string, singleBranchId: s
     shareReports = !!root?.groupShareReports;
   }
   const rollup = ctx.isGroup && shareReports;
+  const ownBranchIds = rollup
+    ? []
+    : (await prisma.branch.findMany({ where: { restaurantId }, select: { id: true } })).map((b) => b.id);
   return {
     rollup,
     isGroup: ctx.isGroup,
     rollupAvailableButOff: ctx.isGroup && !shareReports,
     ctx,
-    branchIds: rollup ? ctx.branchIds : [singleBranchId],
+    branchIds: rollup ? ctx.branchIds : ownBranchIds,
   };
 }
 
@@ -109,7 +116,7 @@ export async function groupKpis(branchIds: string[]): Promise<GroupKpis> {
   const todayEnd = endOfDay();
   const where = { branchId: { in: branchIds } };
   const [todayOrders, todayPaid, pending, activeDeliveries] = await Promise.all([
-    prisma.order.count({ where: { ...where, placedAt: { gte: today, lte: todayEnd } } }),
+    prisma.order.count({ where: { ...where, placedAt: { gte: today, lte: todayEnd }, status: PAID } }),
     prisma.order.aggregate({
       _sum: { total: true },
       where: { ...where, placedAt: { gte: today, lte: todayEnd }, status: PAID },
@@ -160,18 +167,14 @@ export async function childBreakdownRange(ctx: GroupContext, days = 30): Promise
 
 /** Sales series (daily revenue) aggregated across many branches — group rollup. */
 export async function groupSalesSeries(branchIds: string[], days = 14) {
-  const since = new Date(); since.setDate(since.getDate() - days);
+  const keys = lastIstDayKeys(days);
   const rows = await prisma.order.findMany({
-    where: { branchId: { in: branchIds }, placedAt: { gte: since }, status: PAID },
+    where: { branchId: { in: branchIds }, placedAt: { gte: istStartOfDay(keys[0]) }, status: PAID },
     select: { placedAt: true, total: true },
   });
-  const buckets = new Map<string, number>();
-  for (let i = 0; i < days; i++) {
-    const d = new Date(); d.setDate(d.getDate() - (days - 1 - i)); d.setHours(0, 0, 0, 0);
-    buckets.set(d.toISOString().slice(0, 10), 0);
-  }
+  const buckets = new Map<string, number>(keys.map((k) => [k, 0]));
   for (const r of rows) {
-    const k = r.placedAt.toISOString().slice(0, 10);
+    const k = istDayKey(r.placedAt);
     if (buckets.has(k)) buckets.set(k, (buckets.get(k) ?? 0) + Number(r.total));
   }
   return Array.from(buckets.entries()).map(([day, revenue]) => ({ day, revenue }));
@@ -184,7 +187,7 @@ export async function groupPaymentMixToday(branchIds: string[]) {
     by: ['paymentMethod'],
     _sum: { total: true },
     _count: { _all: true },
-    where: { branchId: { in: branchIds }, placedAt: { gte: today } },
+    where: { branchId: { in: branchIds }, placedAt: { gte: today }, status: PAID },
   });
   return rows.map((r) => ({ method: r.paymentMethod, count: r._count._all, revenue: Number(r._sum.total ?? 0) }));
 }
