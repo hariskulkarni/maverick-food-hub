@@ -2,14 +2,15 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { Role } from '@prisma/client';
-import { requireRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { notify } from '@/server/notifications';
 import { brand } from '@/lib/brand';
 
 const Body = z.object({ branchId: z.string() });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const restaurant = await requireRestaurant();
+  const restaurant = await tenantAdminOrError();
+  if (restaurant instanceof Response) return restaurant;
   const { id } = await params;
   const { branchId } = Body.parse(await req.json());
 

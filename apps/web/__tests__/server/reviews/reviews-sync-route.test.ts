@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({
   auditReview: vi.fn(),
 }));
 
-vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: h.requireManagedRestaurant }));
+vi.mock('@/server/tenancy', async () => ({ requireManagedRestaurant: h.requireManagedRestaurant, ...(await import('../../helpers/tenant-admin-mock')).tenantAdminMocks((rid) => (h.requireManagedRestaurant)(rid)) }));
 // listReviews is the test-facing alias for the reviews fetchReviews returns.
 vi.mock('@/server/reviews/google-business', () => ({
   fetchReviews: async (id: string) => ({ reviews: await h.listReviews(id), averageRating: 4.5, totalReviewCount: 10 }),

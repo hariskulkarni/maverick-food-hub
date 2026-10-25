@@ -1,4 +1,4 @@
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { requireTenantAdmin } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 
@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   let restaurant;
   try {
-    restaurant = await requireManagedRestaurant(body?.restaurantId ?? null);
+    restaurant = await requireTenantAdmin(body?.restaurantId ?? null);
   } catch (e) {
     if (e instanceof Response) return e;
     throw e;

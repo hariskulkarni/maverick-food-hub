@@ -1,14 +1,75 @@
 /**
- * India Standard Time helpers (UTC+5:30, no DST).
+ * India Standard Time helpers (UTC+05:30, no DST).
  *
- * Rider pay rules (lunch/dinner peak, late night, weekend), "today" / "this
- * week" earnings and incentive periods are all defined in IST. The server can
- * run in any TZ (the VPS is UTC), so never use Date#getHours/getDay/setHours
- * for these — use the helpers below, which are TZ-independent.
+ * Restaurants operate on IST, but the server may run in UTC (or anything else).
+ * `Date#setHours` / `toISOString().slice(0, 10)` / `toLocaleString()` without a
+ * timeZone all use the SERVER's zone or UTC, which shifts day buckets by 5h30
+ * (an order at 00:30 IST lands on the previous day). Use these instead for
+ * every restaurant-facing day boundary, day key, hour bucket and timestamp.
+ *
+ * Self-contained and dependency-free so both server and client code can use it.
  */
-export const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
-/** Wall-clock parts of `d` in IST. */
+export const IST_TIME_ZONE = 'Asia/Kolkata';
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const KEY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** The IST calendar day of `d` as `YYYY-MM-DD`. */
+export function istDayKey(d: Date = new Date()): string {
+  return new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** Today's IST day key. */
+export function istTodayKey(now: Date = new Date()): string {
+  return istDayKey(now);
+}
+
+/** Shift a `YYYY-MM-DD` key by `days` (negative = earlier). */
+export function addDaysToKey(key: string, days: number): string {
+  const m = KEY_RE.exec(key);
+  if (!m) throw new Error(`Invalid day key: ${key}`);
+  const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) + days * DAY_MS;
+  return new Date(t).toISOString().slice(0, 10);
+}
+
+/** The instant of 00:00:00.000 IST on the given day (a key, or the IST day containing a Date). */
+export function istStartOfDay(day: string | Date = new Date()): Date {
+  const key = typeof day === 'string' ? day : istDayKey(day);
+  const m = KEY_RE.exec(key);
+  if (!m) throw new Error(`Invalid day key: ${key}`);
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - IST_OFFSET_MS);
+}
+
+/** The instant of 23:59:59.999 IST on the given day. */
+export function istEndOfDay(day: string | Date = new Date()): Date {
+  return new Date(istStartOfDay(day).getTime() + DAY_MS - 1);
+}
+
+/** The IST hour-of-day (0–23) of `d`. */
+export function istHour(d: Date): number {
+  return new Date(d.getTime() + IST_OFFSET_MS).getUTCHours();
+}
+
+/** The last `days` IST day keys, oldest first, ending today. */
+export function lastIstDayKeys(days: number, now: Date = new Date()): string[] {
+  const today = istDayKey(now);
+  return Array.from({ length: days }, (_, i) => addDaysToKey(today, -(days - 1 - i)));
+}
+
+/** True for a strict `YYYY-MM-DD` key. */
+export function isDayKey(s: string): boolean {
+  return KEY_RE.test(s);
+}
+
+/** Human timestamp in IST, e.g. "25 Oct 2026, 9:05 pm". */
+export function formatIst(d: Date, opts: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short' }): string {
+  return new Intl.DateTimeFormat('en-IN', { ...opts, timeZone: IST_TIME_ZONE }).format(d);
+}
+
+// ── Rider pay / earnings helpers (rider audit r3, P1-16) ─────────────────────
+
+/** Wall-clock parts of `d` in IST (dayOfWeek: 0 = Sunday). */
 export function istParts(d: Date): { year: number; month: number; day: number; minutesOfDay: number; dayOfWeek: number } {
   const s = new Date(d.getTime() + IST_OFFSET_MS);
   return {
@@ -16,26 +77,13 @@ export function istParts(d: Date): { year: number; month: number; day: number; m
     month: s.getUTCMonth() + 1,
     day: s.getUTCDate(),
     minutesOfDay: s.getUTCHours() * 60 + s.getUTCMinutes(),
-    dayOfWeek: s.getUTCDay(), // 0 = Sunday
+    dayOfWeek: s.getUTCDay(),
   };
-}
-
-/** The instant of IST midnight that starts the IST calendar day containing `d`. */
-export function istStartOfDay(d: Date): Date {
-  const s = new Date(d.getTime() + IST_OFFSET_MS);
-  s.setUTCHours(0, 0, 0, 0);
-  return new Date(s.getTime() - IST_OFFSET_MS);
 }
 
 /** The instant of Monday 00:00 IST that starts the ISO week containing `d`. */
 export function istStartOfWeek(d: Date): Date {
   const start = istStartOfDay(d);
   const dow = istParts(d).dayOfWeek || 7; // Sun → 7
-  return new Date(start.getTime() - (dow - 1) * 24 * 60 * 60 * 1000);
-}
-
-/** IST calendar-day key, e.g. "2026-05-14". */
-export function istDayKey(d: Date): string {
-  const p = istParts(d);
-  return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+  return new Date(start.getTime() - (dow - 1) * DAY_MS);
 }

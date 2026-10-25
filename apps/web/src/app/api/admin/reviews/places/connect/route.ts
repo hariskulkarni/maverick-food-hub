@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { setPlacesLink } from '@/server/reviews/store';
@@ -11,7 +11,8 @@ export const dynamic = 'force-dynamic';
 /** Persist the placeId on this restaurant, then run an initial (fail-safe) sync. */
 export async function POST(req: NextRequest) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     const b = await req.json().catch(() => ({}));
     const placeId = typeof b?.placeId === 'string' ? b.placeId.trim() : '';
     const name = typeof b?.name === 'string' ? b.name.trim().slice(0, 200) : '';

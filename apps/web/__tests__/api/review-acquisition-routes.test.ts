@@ -15,7 +15,7 @@ const h = vi.hoisted(() => ({
     reviewAutoReplyConfig: { findUnique: vi.fn() },
   },
 }));
-vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: h.requireManagedRestaurant }));
+vi.mock('@/server/tenancy', async () => ({ requireManagedRestaurant: h.requireManagedRestaurant, ...(await import('../helpers/tenant-admin-mock')).tenantAdminMocks((rid) => (h.requireManagedRestaurant)(rid)) }));
 vi.mock('@/server/auth', () => ({ auth: h.auth }));
 vi.mock('@/server/audit', () => ({ audit: h.audit }));
 vi.mock('@/server/db', () => ({ prisma: h.prisma }));

@@ -8,7 +8,7 @@ import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
 import { prisma } from '@/server/db';
 import { log } from '@/server/log';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { fetchGbpPlace } from '@/server/reviews/review-link';
 
 export const runtime = 'nodejs';
@@ -16,7 +16,8 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+    const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+    if (restaurant instanceof Response) return restaurant;
     let place: { placeId: string | null; reviewUrl: string | null };
     try {
       place = await fetchGbpPlace(restaurant.id);
