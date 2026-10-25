@@ -41,3 +41,14 @@ order, so these paths cannot deadlock each other.
 - Limit reservation release on FAILED attempts (Agent A, `limits.ts`) is not done by
   `youpi-reconcile.ts`.
 - Refund completion dual control (Agent E).
+
+## Customer checkout (round 3, all rails)
+
+| # | Invariant | Enforced | Proven by |
+|---|---|---|---|
+| C1 | Every online order (PG, PhonePe, Razorpay) starts PAYMENT_PENDING and reaches the kitchen only after a server-verified capture (PG: allocateBankCredit + ORDER_RELEASE; PhonePe: status-API reconcile; Razorpay: HMAC webhook or signature-verified handler, amount-checked, one capture per order) | `orders.ts` placeOrder, `payments/reconcile.ts` captureRazorpayPayment / releaseOrderAfterCapture | `tests/db/checkout-r3.test.ts` (P0-4), `tests/db/d-kitchen-release.test.ts` |
+| C2 | Wallet / points / signup bonus / per-customer offer use cannot be overspent by concurrent checkouts | conditional updates (`order-benefits.ts`), `FOR UPDATE` on SignupBonusGrant and Offer with in-tx recount | `tests/db/checkout-r3.test.ts` (P0-2, P1-9) |
+| C3 | WALLET settles only a fully covered order; its CAPTURED row equals the wallet debit | placeOrder | `tests/db/checkout-r3.test.ts` (P0-1) |
+| C4 | A cancelled order gives back coupon/offer usage always, and wallet/points when no money was captured (exactly once); PAYMENT_FAILED keeps them held (retry) and the unpaid sweep cancels after 24 h | `order-benefits.ts` releaseOrderBenefitsOnCancel, `jobs/unpaid-online-orders-sweep.ts` | `tests/db/checkout-r3.test.ts` (P0-3, P1-10), `tests/db/r2-ops.test.ts` |
+| C5 | Refunds are capped at total + walletApplied (minus any wallet already given back); original-payment refunds at the captured amount | `refunds.ts` | `tests/db/checkout-r3.test.ts` |
+
