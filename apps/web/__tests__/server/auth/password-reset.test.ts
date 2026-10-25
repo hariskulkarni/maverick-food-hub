@@ -97,7 +97,7 @@ describe('requestPasswordReset', () => {
     db.user.findUnique.mockResolvedValue({ id: 'u1', email: 'a@x.com', passwordHash: 'h', role: 'ADMIN' });
     vi.stubEnv('NEXT_PUBLIC_SITE_URL', '');
     vi.stubEnv('NEXTAUTH_URL', 'https://staging.example.test/');
-    await requestPasswordReset('a@x.com', null);
+    await requestPasswordReset('a@x.com');
     expect((emailSend.mock.calls[0] as any)[0].body).toContain('https://staging.example.test/reset-password?token=');
     vi.unstubAllEnvs();
   });
