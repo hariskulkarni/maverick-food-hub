@@ -57,7 +57,12 @@ backup() {
 
 migrate() {
   confirm "Pull origin/main on the VPS and apply database migrations?"
-  remote 'git -C '"$APP_DIR"' rev-parse HEAD > ~/predeploy-backups/sha-before-'"$TS"'; git -C '"$APP_DIR"' pull --ff-only origin main;
+  # npm install on the VPS rewrites package-lock.json; that drift must not block the pull (the CI deploy does
+  # `git reset --hard origin/main` for the same reason). Keep a copy, discard it, show anything else changed.
+  remote 'git -C '"$APP_DIR"' rev-parse HEAD > ~/predeploy-backups/sha-before-'"$TS"';
+          cp package-lock.json ~/predeploy-backups/package-lock-'"$TS"'.json; git -C '"$APP_DIR"' checkout -- apps/web/package-lock.json;
+          echo "--- other local changes on the VPS (pull stops if any conflict):"; git -C '"$APP_DIR"' status --short --untracked-files=no;
+          git -C '"$APP_DIR"' pull --ff-only origin main;
           npm install --no-audit --no-fund; npx prisma generate >/dev/null'
   echo "== migrate status on the new code"
   if remote 'npx prisma migrate status' ; then echo "status ok"; else echo "(status reported pending/failed — inspecting)"; fi
