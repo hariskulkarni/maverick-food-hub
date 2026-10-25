@@ -111,6 +111,22 @@ export type TrainingCategory =
   | 'EARNINGS'
   | 'APP_GUIDE';
 
+export type TrainingLang = 'en' | 'hi';
+
+export type TrainingState = 'NOT_STARTED' | 'IN_PROGRESS' | 'QUIZ_READY' | 'CERTIFIED' | 'RECERT_REQUIRED';
+
+/** v2 per-learner status. Optional so the app still renders against an older server. */
+export interface TrainingStatus {
+  state: TrainingState;
+  progressPct: number;
+  lessonsDone: number;
+  lessonsTotal: number;
+  needsRecert: boolean;
+  overdue: boolean;
+  dueAt: string | null;
+  certificateCode: string | null;
+}
+
 export interface TrainingModuleSummary {
   id: string;
   title: string;
@@ -122,6 +138,12 @@ export interface TrainingModuleSummary {
   completed: boolean;
   completedAt: string | null;
   quizScore: number | null;
+  version?: number;
+  languages?: string[];
+  lessonsCount?: number;
+  questionCount?: number;
+  blocksShift?: boolean;
+  status?: TrainingStatus;
 }
 
 export interface TrainingResponse {
@@ -129,6 +151,68 @@ export interface TrainingResponse {
   completedCount: number;
   totalCount: number;
   requiredRemaining: number;
+  requiredOverdue?: number;
+  recertRequired?: number;
+  lang?: TrainingLang;
+}
+
+export type TrainingLessonKind = 'TEXT' | 'IMAGE' | 'VIDEO' | 'CHECKLIST';
+
+export interface TrainingLesson {
+  id: string;
+  order: number;
+  kind: TrainingLessonKind;
+  title: string;
+  /** Markdown subset: ##/### headings, - bullets, 1. steps, **bold**, *italic*, [links](https://). */
+  body: string;
+  mediaUrl: string | null;
+  checklistItems: string[];
+}
+
+export interface TrainingQuizEligibility {
+  allowed: boolean;
+  reason: 'already_passed' | 'max_attempts' | 'cooldown' | 'lessons_incomplete' | null;
+  attemptsUsed: number;
+  attemptsLeft: number | null;
+  retryAt: string | null;
+}
+
+export interface TrainingQuiz {
+  /** Never includes the correct answers — grading happens on the server. */
+  questions: { id: string; order: number; prompt: string; options: string[] }[];
+  passMarkPct: number;
+  maxAttempts: number | null;
+  retakeCooldownMin: number;
+  eligibility: TrainingQuizEligibility;
+  lastAttempt: { scorePct: number; passed: boolean; createdAt: string } | null;
+}
+
+export interface QuizResult {
+  scorePct: number;
+  correctCount: number;
+  totalCount: number;
+  passed: boolean;
+  passMarkPct: number;
+  questions: {
+    questionId: string;
+    chosenIndex: number | null;
+    correct: boolean;
+    /** Revealed only after a pass. */
+    correctIndex: number | null;
+    explanation: string | null;
+  }[];
+}
+
+export interface TrainingCertificate {
+  id: string;
+  code: string;
+  moduleId: string;
+  moduleTitle: string;
+  moduleVersion: number;
+  currentVersion: number;
+  isCurrent: boolean;
+  scorePct: number | null;
+  issuedAt: string;
 }
 
 export interface QuizQuestion {
@@ -163,6 +247,13 @@ export interface TrainingModuleDetail {
   quizQuestions: QuizQuestion[] | null;
   durationMin: number;
   isRequired: boolean;
+  version?: number;
+  languages?: string[];
+  status?: TrainingStatus;
+  /** v2: ordered lessons + server-graded quiz. Absent on pre-v2 servers. */
+  lessons?: TrainingLesson[];
+  completedLessonIds?: string[];
+  quiz?: TrainingQuiz | null;
   progress: {
     completed: boolean;
     completedAt: string | null;
@@ -234,11 +325,32 @@ export const growth = {
     }),
 
   /** The training catalogue merged with the rider's progress. */
-  training: () => apiRequest<TrainingResponse>('/api/rider/training'),
+  training: (lang?: TrainingLang) =>
+    apiRequest<TrainingResponse>(`/api/rider/training${lang ? `?lang=${lang}` : ''}`),
 
   /** One training module with full content + the rider's progress. */
-  trainingModule: (id: string) =>
-    apiRequest<TrainingModuleDetail>(`/api/rider/training/${id}`),
+  trainingModule: (id: string, lang?: TrainingLang) =>
+    apiRequest<TrainingModuleDetail>(`/api/rider/training/${id}${lang ? `?lang=${lang}` : ''}`),
+
+  /** Mark one lesson done; returns the refreshed module. */
+  completeLesson: (id: string, lessonId: string, lang?: TrainingLang) =>
+    apiRequest<{ module: TrainingModuleDetail }>(
+      `/api/rider/training/${id}/lessons/${lessonId}${lang ? `?lang=${lang}` : ''}`,
+      { method: 'POST' }
+    ),
+
+  /** Submit quiz answers ({ questionId: optionIndex }); graded on the server. */
+  submitQuiz: (id: string, answers: Record<string, number>, lang?: TrainingLang) =>
+    apiRequest<{ result: QuizResult; module: TrainingModuleDetail }>(
+      `/api/rider/training/${id}/quiz${lang ? `?lang=${lang}` : ''}`,
+      { method: 'POST', body: { answers } }
+    ),
+
+  /** The rider's certificates, newest first. */
+  certificates: (lang?: TrainingLang) =>
+    apiRequest<{ certificates: TrainingCertificate[] }>(
+      `/api/rider/training/certificates${lang ? `?lang=${lang}` : ''}`
+    ),
 
   /** Mark a module complete, optionally with a quiz score. */
   completeModule: (id: string, quizScore?: number) =>
