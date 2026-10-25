@@ -21,10 +21,11 @@ vi.mock('@/server/rider-auth', () => ({ auth: async () => m.riderSession }));
 vi.mock('@/server/auth', () => ({ auth: async () => m.webSession }));
 vi.mock('@/server/tenancy', () => ({ currentRestaurant: async () => m.restaurant }));
 vi.mock('@/server/audit', () => ({ audit: () => Promise.resolve() }));
+vi.mock('@/server/rider-kyc-gate', () => ({ riderKycGate: async () => ({ enforced: true, canGoOnline: true, blockingTypes: [], message: null }) }));
 vi.mock('@/server/db', () => ({
   prisma: {
     user: { findUnique: m.userFind },
-    riderProfile: { update: m.profileUpdate },
+    riderProfile: { update: m.profileUpdate, findUnique: async () => ({ id: 'rp1' }) },
     trainingModule: { findUnique: m.moduleFind, findUniqueOrThrow: m.moduleFind },
     $transaction: async (fn: any) => fn({}),
   },
