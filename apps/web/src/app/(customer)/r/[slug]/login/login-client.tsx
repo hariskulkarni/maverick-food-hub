@@ -38,7 +38,7 @@ export function CustomerLoginClient({ slug, googleEnabled = false }: { slug: str
       setOtpSent(true);
       if (data.devCode) {
         setDevCode(data.devCode);
-        toast.success(`OTP sent (dev: ${data.devCode})`);
+        toast.success(`Test code: ${data.devCode}`);
       } else {
         toast.success('OTP sent');
       }
@@ -121,7 +121,9 @@ export function CustomerLoginClient({ slug, googleEnabled = false }: { slug: str
           }}
         >
           <div className="text-sm text-muted-foreground">
-            We sent a code to {phone}.{devCode && <> Dev code: <span className="font-mono">{devCode}</span></>}
+            {devCode
+              ? <>Test account — your code is <span className="font-mono font-semibold text-foreground">{devCode}</span> (shown here, not sent by SMS).</>
+              : <>We sent a code to {phone}.</>}
           </div>
           <div>
             <Label htmlFor="otp">6-digit code</Label>

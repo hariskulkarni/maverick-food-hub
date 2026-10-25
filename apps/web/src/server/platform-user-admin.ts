@@ -77,7 +77,7 @@ async function isLastActiveSuperAdmin(targetId: string): Promise<boolean> {
  *    and no newer session row they would survive a forced sign-out. The marker
  *    is that newer session. The next real login replaces it.
  */
-async function revokeAllSessions(tx: Pick<typeof prisma, 'userSession' | 'user'>, userId: string, reason: string) {
+export async function revokeAllSessions(tx: Pick<typeof prisma, 'userSession' | 'user'>, userId: string, reason: string) {
   const now = new Date();
   await tx.userSession.updateMany({
     where: { userId, revokedAt: null },
