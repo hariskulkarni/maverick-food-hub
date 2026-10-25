@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const db: any = vi.hoisted(() => ({
   integrationCredential: { findMany: vi.fn() },
   reviewResponseSettings: { upsert: vi.fn() },
+  googleReview: { count: vi.fn() },
   $queryRaw: vi.fn(),
 }));
 // listReviews is the test-facing alias; the sweep calls fetchReviews (reviews + location totals).
@@ -10,7 +11,8 @@ const g = vi.hoisted(() => {
   const listReviews = vi.fn();
   return {
     listReviews,
-    fetchReviews: vi.fn(async (id: string) => ({ reviews: await listReviews(id), averageRating: null, totalReviewCount: null })),
+    fetchReviews: vi.fn(async (id: string): Promise<{ reviews: any[]; averageRating: number | null; totalReviewCount: number | null }> =>
+      ({ reviews: await listReviews(id), averageRating: null, totalReviewCount: null })),
     postReply: vi.fn(),
     safeErrorMessage: vi.fn(() => 'Google is unavailable right now. Try again later.'),
   };
@@ -25,7 +27,7 @@ const store = vi.hoisted(() => ({
   upsertReview: vi.fn(), getAutoReplyConfig: vi.fn(), saveReply: vi.fn(), hasReply: vi.fn(),
   syncGoogleReply: vi.fn(), getResponseSettings: vi.fn(), saveGoogleStats: vi.fn(), recentPostedReplies: vi.fn(),
 }));
-const match = vi.hoisted(() => ({ matchAndStore: vi.fn(), getOrderContext: vi.fn(), privateContextText: vi.fn(() => null) }));
+const match = vi.hoisted(() => ({ matchAndStore: vi.fn(), getOrderContext: vi.fn(), privateContextText: vi.fn((): string | null => null) }));
 const insights = vi.hoisted(() => ({ refreshInsights: vi.fn(), invalidateAnalysis: vi.fn() }));
 const alerts = vi.hoisted(() => ({ sendNegativeReviewAlerts: vi.fn(), runSlaEscalations: vi.fn(), ALERT_FRESH_HOURS: 48 }));
 
@@ -38,7 +40,7 @@ vi.mock('@/server/reviews/order-match', () => match);
 vi.mock('@/server/reviews/insights', () => insights);
 vi.mock('@/server/reviews/review-alerts', () => alerts);
 
-import { runGoogleReviewsSweep } from '@/server/jobs/google-reviews-sweep';
+import { runGoogleReviewsSweep, isDailyFullSyncSlot } from '@/server/jobs/google-reviews-sweep';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -51,6 +53,7 @@ beforeEach(() => {
   store.syncGoogleReply.mockResolvedValue(true);
   store.getResponseSettings.mockResolvedValue({ skipKeywords: ['refund', 'food poisoning'], alertMaxRating: 2, brandVoiceSummary: 'we; casual', brandVoiceUpdatedAt: new Date() });
   db.reviewResponseSettings.upsert.mockResolvedValue({});
+  db.googleReview.count.mockResolvedValue(5);
   match.matchAndStore.mockResolvedValue(null);
   insights.refreshInsights.mockResolvedValue({});
   insights.invalidateAnalysis.mockResolvedValue(undefined);
@@ -338,5 +341,22 @@ describe('runGoogleReviewsSweep', () => {
     expect(db.reviewResponseSettings.upsert).toHaveBeenCalledWith(expect.objectContaining({
       update: expect.objectContaining({ brandVoiceSummary: expect.stringContaining('Team Spice') }),
     }));
+  });
+
+  it('first import is a full sync; later runs are incremental (14-day horizon)', async () => {
+    const now = new Date('2026-10-24T10:00:00Z'); // 15:30 IST: not the daily full slot
+    db.googleReview.count.mockResolvedValueOnce(0);
+    await runGoogleReviewsSweep({ now });
+    expect(g.fetchReviews).toHaveBeenLastCalledWith('rest1', {});
+    await runGoogleReviewsSweep({ now });
+    expect(g.fetchReviews).toHaveBeenLastCalledWith('rest1', { stopBefore: new Date(now.getTime() - 14 * 86_400_000) });
+  });
+
+  it('the 03:00 IST run is a full sync', async () => {
+    const now = new Date('2026-10-23T21:35:00Z'); // 03:05 IST
+    expect(isDailyFullSyncSlot(now)).toBe(true);
+    expect(isDailyFullSyncSlot(new Date('2026-10-23T21:50:00Z'))).toBe(false);
+    await runGoogleReviewsSweep({ now });
+    expect(g.fetchReviews).toHaveBeenLastCalledWith('rest1', {});
   });
 });

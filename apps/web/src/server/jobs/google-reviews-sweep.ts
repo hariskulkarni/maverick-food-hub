@@ -5,7 +5,8 @@
  * one restaurant.
  *
  * For each restaurant with a CONNECTED GOOGLE_BUSINESS integration:
- *  1. pull ALL reviews (paginated) + Google's location totals; upsert, refreshing
+ *  1. pull reviews (paginated; incremental 14-day horizon, full on first import
+ *     and in the daily 03:00 IST run) + Google's location totals; upsert, refreshing
  *     edited reviews; mirror replies that already exist on Google as
  *     POSTED/MANUAL (no LLM call) and refresh their moderation state;
  *  2. learn the brand voice from the last ~20 posted replies;
@@ -41,6 +42,13 @@ import { sendNegativeReviewAlerts, runSlaEscalations, ALERT_FRESH_HOURS, type Al
 const LOCK_KEY = 889_201_774; // arbitrary unique advisory-lock id for this sweep
 const MATCH_LOOKBACK_MS = 14 * 86_400_000;
 const VOICE_REFRESH_MS = 24 * 3_600_000;
+const INCREMENTAL_HORIZON_MS = 14 * 86_400_000;
+
+/** True for the sweep run in the 03:00–03:14 IST slot (IST = UTC+5:30). */
+export function isDailyFullSyncSlot(now: Date): boolean {
+  const ist = new Date(now.getTime() + 330 * 60_000);
+  return ist.getUTCHours() === 3 && ist.getUTCMinutes() < 15;
+}
 
 type Pending = { id: string; r: NormalizedReview; matchedOrderId: string | null; matchConfidence: number | null; handled: boolean };
 
@@ -67,7 +75,11 @@ export async function runGoogleReviewsSweep(opts: { restaurantIds?: string[]; no
       try {
         let fetched;
         try {
-          fetched = await fetchReviews(restaurantId);
+          // Incremental by default (14-day update horizon) to spare API quota; full
+          // sync on first import and once a day (the 03:00 IST run).
+          const hasAny = (await prisma.googleReview.count({ where: { restaurantId, source: 'gbp' } })) > 0;
+          const full = !hasAny || isDailyFullSyncSlot(now);
+          fetched = await fetchReviews(restaurantId, full ? {} : { stopBefore: new Date(now.getTime() - INCREMENTAL_HORIZON_MS) });
         } catch (e: any) {
           log.error({ restaurantId, error: String(e?.message || e) }, 'reviews.sweep.list_failed');
           continue;

@@ -149,3 +149,23 @@ describe('postReply result + errors', () => {
     expect(err.safeMessage).toMatch(/rate limit/);
   });
 });
+
+describe('fetchReviews incremental', () => {
+  it('stops paging once a page ends before stopBefore', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(tok())
+      .mockResolvedValueOnce(page({ reviews: [{ name: 'r/1', starRating: 'FIVE', createTime: '2026-01-01T00:00:00Z', updateTime: '2026-01-02T00:00:00Z' }], nextPageToken: 'p2' }));
+    const out = await fetchReviews('r1', { stopBefore: new Date('2026-06-01T00:00:00Z') });
+    expect(out.reviews).toHaveLength(1);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+  it('keeps paging while reviews are newer than stopBefore', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(tok())
+      .mockResolvedValueOnce(page({ reviews: [{ name: 'r/1', starRating: 'FIVE', createTime: '2026-10-20T00:00:00Z' }], nextPageToken: 'p2' }))
+      .mockResolvedValueOnce(page({ reviews: [{ name: 'r/2', starRating: 'FIVE', createTime: '2026-10-19T00:00:00Z' }] }));
+    const out = await fetchReviews('r1', { stopBefore: new Date('2026-10-01T00:00:00Z') });
+    expect(out.reviews).toHaveLength(2);
+    expect(spy).toHaveBeenCalledTimes(3);
+  });
+});

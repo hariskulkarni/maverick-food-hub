@@ -188,8 +188,13 @@ export type ReviewFetch = {
   reviews: NormalizedReview[]; averageRating: number | null; totalReviewCount: number | null;
 };
 
-/** All reviews for the connected location, following nextPageToken, plus Google's location totals. */
-export async function fetchReviews(restaurantId: string): Promise<ReviewFetch> {
+/**
+ * Reviews for the connected location (newest update first), following
+ * nextPageToken, plus Google's location totals. With `stopBefore`, paging stops
+ * after the first page whose oldest review was last updated before that time
+ * (incremental sync); without it, every page is read (full sync).
+ */
+export async function fetchReviews(restaurantId: string, opts: { stopBefore?: Date } = {}): Promise<ReviewFetch> {
   const cfg = await cfgOrThrow(restaurantId, { requireAccount: true });
   const token = await accessToken(cfg.refreshToken);
   const out: NormalizedReview[] = [];
@@ -211,9 +216,12 @@ export async function fetchReviews(restaurantId: string): Promise<ReviewFetch> {
       totalReviewCount = typeof data?.totalReviewCount === 'number' ? data.totalReviewCount : null;
     }
     const reviews = Array.isArray(data?.reviews) ? data.reviews : [];
-    out.push(...reviews.map(normalizeGbpReview));
+    const normalized: NormalizedReview[] = reviews.map(normalizeGbpReview);
+    out.push(...normalized);
     pageToken = typeof data?.nextPageToken === 'string' ? data.nextPageToken : '';
     if (!pageToken) break;
+    const last = normalized[normalized.length - 1];
+    if (opts.stopBefore && last && (last.reviewUpdatedAt ?? last.reviewCreatedAt) < opts.stopBefore) break;
   }
   return { reviews: out, averageRating, totalReviewCount };
 }

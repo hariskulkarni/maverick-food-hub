@@ -11,6 +11,7 @@
  *  3. refreshInsights(): analyse + compute + cache in ReviewInsightsSnapshot.
  *     Called by the Google reviews sweep; the insights page reads the cache.
  */
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/server/db';
 import { log } from '@/server/log';
 import { analyzeReviewsBatch, LlmNotConfiguredError } from './llm';
@@ -265,8 +266,8 @@ export async function refreshInsights(restaurantId: string): Promise<InsightsDat
   const data = await computeInsights(restaurantId);
   await prisma.reviewInsightsSnapshot.upsert({
     where: { restaurantId },
-    create: { restaurantId, data: data as any, computedAt: new Date() },
-    update: { data: data as any, computedAt: new Date() },
+    create: { restaurantId, data: data as unknown as Prisma.InputJsonValue, computedAt: new Date() },
+    update: { data: data as unknown as Prisma.InputJsonValue, computedAt: new Date() },
   });
   return data;
 }
