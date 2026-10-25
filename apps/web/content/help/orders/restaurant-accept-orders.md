@@ -19,14 +19,15 @@ When a new order arrives you get a short chime, a browser notification (if you a
 
 1. **Received** orders show **Accept** and **Reject**. Reject cancels the order.
 2. On an Accepted order, tap **Start preparing**.
-3. On a Preparing order, tap **Mark ready — release to rider pool**.
-4. For delivery orders, the card then shows "Waiting for a rider to pick this up" until a rider claims it, and then the rider's name.
+3. On a Preparing order, tap **Mark ready — release to rider pool** (delivery orders) or **Mark ready** (pickup and dine-in orders).
+4. For delivery orders, the card then shows "Waiting for a rider to pick this up" until a rider claims it, and then the rider's name. The rider completes the order at hand-over.
+5. For pickup orders, tap **Mark collected** when the customer collects the food. For dine-in orders, tap **Mark served — complete** once it is served. The order then moves to Delivered (completed).
 
 Every card also has **KOT** and **Invoice** buttons. Tap an order code to open its detail page with items, totals, customer, rider, status timeline and any customer feedback.
 
 ## Filters
 
-Use the filter chips: **Active**, **All**, **Pending**, **Preparing**, **Out for delivery**, **Completed**, **Cancelled**, **COD** and **Online paid**. If you manage several restaurants, a **Restaurant** filter appears and each card is labelled with its restaurant.
+Use the filter chips: **Active**, **All**, **Pending**, **Preparing**, **Out for delivery**, **Completed**, **Cancelled**, **COD** and **Online paid**. **Cancelled** includes every kind of cancellation – rejected orders and orders cancelled by the customer, the restaurant or an admin. If you manage several restaurants, a **Restaurant** filter appears and each card is labelled with its restaurant.
 
 ## Free gifts
 

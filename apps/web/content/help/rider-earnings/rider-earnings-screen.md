@@ -14,7 +14,7 @@ The **Earnings** tab shows what you've made on completed deliveries. Each delive
 ## Sections
 
 - **TODAY**: earnings and the number of deliveries completed today.
-- **PAYMENTS**: shortcuts to **Instant Payout** (withdraw your balance), **Cash in Hand** (COD cash to deposit) and **Incentives** (bonus targets).
+- **PAYMENTS**: shortcuts to **Payouts** (request a withdrawal of your balance), **Cash in Hand** (COD cash to deposit) and **Incentives** (bonus targets).
 - **YOUR GOALS**: two rings, a **Daily goal** of ₹1,500 and a **Weekly goal** of ₹9,000 over the last 7 days. These targets are set by the app for motivation. They aren't bonuses. Paid bonus targets live under Incentives.
 - **Streak**: consecutive days with at least one delivery, counting back from today. *Avg per delivery* is your lifetime earnings divided by your total deliveries.
 - **THIS WEEK**: a bar for each of the last 7 days, with the total underneath.
@@ -32,4 +32,4 @@ Tap **Export** at the top right. The app creates a CSV statement of your deliver
 - Today, This week and the streak are worked out from your 20 most recent deliveries. On a very busy week, older days may show less than you actually earned. Lifetime totals always include everything.
 - **Lifetime earnings** also includes incentive bonuses you've earned.
 - Cash you collect on COD orders isn't your earnings. It shows separately under **Cash in Hand**. See [Collect cash on delivery](help:rider-cash-on-delivery).
-- To move money out, see [Withdraw your earnings](help:rider-withdraw-payouts).
+- To move money out, see [Request a payout of your earnings](help:rider-withdraw-payouts).

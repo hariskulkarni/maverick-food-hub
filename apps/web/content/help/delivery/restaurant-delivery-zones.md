@@ -38,7 +38,9 @@ Zone types:
 
 ## Good to know
 
-- **Always add at least one fee bracket starting at ₹0.** A zone with no matching bracket refuses delivery, so a zone with no brackets accepts no delivery orders.
+- **New zones always get a starting bracket.** If you create a zone without adding any fee brackets, Flavrly adds one for you: from ₹0, charging the branch's base delivery fee. You can edit it afterwards.
+- **A zone must keep at least one bracket.** When you edit a zone, removing every bracket is refused with "Add at least one fee bracket. A zone without fee brackets refuses every delivery." and the save button stays disabled until you add one.
+- Keep a bracket that starts at ₹0. A subtotal below your lowest "from" amount has no matching bracket, so delivery is refused for that order.
 - If zones exist and an address is outside all of them with no default zone, customers see that the address is outside your delivery area.
 - Addresses without map coordinates can only match a pincode zone or the default zone.
 - The delivery fee shown at checkout is the same one charged on the order.

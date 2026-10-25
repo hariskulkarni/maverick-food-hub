@@ -1,6 +1,6 @@
 ---
 title: Refunds
-summary: When refunds apply and where the money goes — usually your wallet instantly, or your original payment method.
+summary: When refunds apply, how to ask for one, and where the money goes — your wallet by default, or sometimes your original payment method. Refunds are never automatic.
 audience: CUSTOMER
 appArea: customer.payments
 tags: refund, wallet, cancellation, money back
@@ -17,14 +17,17 @@ Refunds can be issued for orders that were delivered with a problem, could not b
 - The food arrived spilled, spoiled or clearly unsafe.
 - You were charged incorrectly.
 
-Refunds can be full or partial. To ask for one, [report a problem with your order](help:customer-report-a-problem).
+Refunds can be full or partial. To ask for one, [report a problem with your order](help:customer-report-a-problem) or contact support with your order number.
+
+## Refunds are not automatic
+
+No refund is issued automatically – not even when an order is cancelled. Our support team reviews each case, with the restaurant where needed, and issues the refund if you are entitled to one. If a paid order was cancelled and you haven't heard from us, contact support with your order number.
 
 ## Where the money goes
 
-Approved refunds are sent to one of two places:
-
-- **Your wallet** — this is the usual option. The amount is credited to your wallet straight away, appears on your **Profile**, and can be used at checkout on your next order. Cash-on-delivery orders have no online payment to reverse, so they are refunded this way.
-- **Your original payment method** — support can instead reverse the payment through the payment partner you paid with. The time it takes to reach your account depends on your bank or payment provider.
+- **Your wallet (default)** — approved refunds are normally credited to your wallet. The credit is available as soon as it is issued, appears on your **Profile**, and can be used at checkout on your next orders.
+- **Your original payment method** — in some cases support refunds an online payment back to the method you paid with instead. How long it takes to reach you then depends on your bank or payment provider.
+- **Cash on delivery** — there is no online payment to reverse, so refunds are credited to your wallet.
 
 ## Good to know
 

@@ -1,6 +1,6 @@
 ---
 title: Manage your emergency contacts
-summary: Add, edit, remove and choose a primary emergency contact in the Safety Centre.
+summary: Add, edit, remove and choose a primary emergency contact in the Safety Centre. Your contacts get a text message when you trigger SOS.
 audience: RIDER
 appArea: rider.safety
 tags: emergency contacts, primary contact, family, safety
@@ -31,5 +31,6 @@ Only one contact can be primary. If you make a new contact primary, the old prim
 
 ## Good to know
 
-- The screen says your primary contact is alerted during an SOS, but the current app doesn't send them a message or call itself. An SOS goes to Flavrly's safety and support team. If you need your contact, call them yourself. See [Use SOS in an emergency](help:rider-sos-emergency).
-- Keep the numbers up to date so the support team can reach the right person if they need to.
+- When you trigger SOS, every saved contact (not just the primary one) gets a text message with your name, the time and a map link to your location – up to 5 numbers, primary first. The alert also goes to Flavrly's safety team. See [Use SOS in an emergency](help:rider-sos-emergency).
+- Texts need SMS to be set up on Flavrly's side. If they can't be sent, the safety team still gets your alert, so call your contact yourself if you can.
+- Keep the numbers up to date – a wrong number means your contact won't hear about an SOS.

@@ -19,7 +19,17 @@ If something went wrong with your order, tell us straight away with your order n
 4. Add your **Order ID** if it isn't already filled in.
 5. Tap **Submit report**. Our support team will follow up.
 
-For urgent help with a live order, use the **Support** or **WhatsApp** buttons on your order page, or the phone, WhatsApp and email details on the [contact page](/contact).
+For urgent help with a live order, use the **Support** or **WhatsApp** buttons on your order page, or the phone and WhatsApp details on the [contact page](/contact).
+
+## Use the contact form
+
+You can also write to us from the form on the [contact page](/contact) – no sign-in needed:
+
+1. Enter **Your name** and **Email**.
+2. Pick a **Topic**: Help with an order, Refund or payment, My account, Restaurant partnership, Riding with us, or Something else.
+3. Write your **Message** (include your order code if it's about an order) and tap **Send message**.
+
+Your message opens a support ticket with our team, and you'll see "Message sent. Our support team will reply by email." Replies come to the email address you entered.
 
 ## Tips for a faster resolution
 

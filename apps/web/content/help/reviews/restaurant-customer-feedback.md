@@ -41,3 +41,4 @@ In **Settings > Reviews**, **Auto-publish customer reviews** decides whether new
 - You can also see an order's feedback on its order detail page (open the order from **Admin > Orders**).
 - Moderation actions and replies are recorded in your audit log.
 - Google reviews are managed separately in **Admin > Reviews**. See [Google reviews](help:restaurant-google-reviews).
+- Low ratings (at or below the threshold you set under **Review requests**, 3 stars by default) open a ticket in **Service recovery** so you can follow up. See [Follow up on low ratings](help:restaurant-service-recovery).

@@ -24,7 +24,7 @@ If your restaurant heads a group and group report sharing is on, the headline nu
 
 ## Finding your way around
 
-The sidebar holds the day-to-day pages: **Dashboard**, **Orders**, **Reservations**, **Tables**, **Live tracking**, **Branches**, **Delivery Zones**, **Dedicated Riders**, **Rider Safety**, **Messages**, **Reports**, **Activity**, **Feedback** and **Reviews**.
+The sidebar holds the day-to-day pages: **Dashboard**, **Setup guide**, **Orders**, **Reservations**, **Tables**, **Live tracking**, **Branches**, **Delivery Zones**, **Dedicated Riders**, **Rider Safety**, **Messages**, **Reports**, **Activity**, **Feedback**, **Reviews**, **Service recovery** and **Training**. **Help center** is further down the sidebar.
 
 Under the **Storefront** heading you will find:
 
@@ -35,5 +35,7 @@ If your account manages more than one restaurant, the restaurant name at the top
 
 ## Good to know
 
-- Most dashboard cards use your first active branch. If you have no active branch, you will see a notice with links to Branches and Settings instead.
+- Most dashboard cards use your primary branch – the oldest active branch, or your oldest branch if all are paused. Pausing orders doesn't hide a branch. Only a restaurant with no branch at all sees the **No branch yet** notice, with links to **Manage branches** and **Open settings**.
+- While your restaurant is new, a **Get your restaurant live** card links to the [setup guide](help:restaurant-setup-guide).
+- For guides on any page, open the [help center](help:restaurant-help-center).
 - See [Accept and manage orders](help:restaurant-accept-orders) to start working with orders.

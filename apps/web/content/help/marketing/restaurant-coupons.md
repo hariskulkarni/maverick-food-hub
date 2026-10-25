@@ -30,7 +30,9 @@ To edit, click the coupon's row. To stop a coupon, turn off its **Active** switc
 
 When a customer enters a coupon code, it is applied only if:
 
-- the coupon is active and its **Valid until** date has not passed,
+- the coupon is active,
+- its **Valid from** date has arrived and its **Valid until** date has not passed,
+- the order is from your restaurant – a coupon belongs to the restaurant of the branch it was created for, so it works at any of your branches but not at other restaurants on Flavrly,
 - the total usage limit has not been reached,
 - the customer has not already used it up to the per-user limit, and
 - the cart subtotal meets the minimum order.
@@ -40,5 +42,6 @@ The discount is capped so it never exceeds the cart subtotal.
 ## Good to know
 
 - Coupons marked **Expired** in the list are past their end date.
+- A coupon with a future **Valid from** date is refused at checkout until that date – you can create it ahead of a promotion.
 - For automatic discounts, first-order deals, buy-one-get-one and scheduled promotions, use [Offers](help:restaurant-offers) instead – offers have their own eligibility rules and can apply without a code.
 - To print codes on receipts or posters and track redemptions, use [Coupon campaigns](help:restaurant-coupon-campaigns).

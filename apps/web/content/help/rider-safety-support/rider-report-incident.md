@@ -1,9 +1,9 @@
 ---
 title: Report an incident
-summary: File a safety report about an accident, breakdown, harassment, theft or a dispute, and follow its status.
+summary: File a safety report about an accident, breakdown, harassment, theft or a dispute, attach a photo, and follow its status.
 audience: RIDER
 appArea: rider.safety
-tags: incident, accident, breakdown, harassment, theft, report, safety
+tags: incident, accident, breakdown, harassment, theft, report, safety, photo
 related: rider-sos-emergency, rider-emergency-contacts, rider-support-tickets
 language: en
 ---
@@ -21,9 +21,16 @@ Open **Safety Centre > Report an Incident**. To get to the Safety Centre, go to 
 
 You'll see **Report submitted**. Your current location is attached automatically if you've allowed location access.
 
-## About photos
+## Add a photo
 
-The form has a **PHOTO (OPTIONAL)** section. In the current version of the app, the photo isn't sent with your report. Put all the important details in the description. If the support team needs pictures, they'll ask.
+Under **PHOTO (OPTIONAL)**, tap **Add a photo**, then **Take photo** or **Choose from library**. Tap the photo again to **Change or remove** it.
+
+When you submit, the photo is uploaded first and attached to your report so the safety team can see it. If the upload fails, you'll see **Photo upload failed** with two choices:
+
+- **Submit without photo** – sends the report straight away, without the picture.
+- **Cancel** – keeps the form open so you can try again when your connection is better.
+
+If you haven't allowed camera or photo access, the app tells you how to enable it in Settings. You can still submit without a photo.
 
 ## Follow your reports
 
