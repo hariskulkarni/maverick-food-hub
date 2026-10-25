@@ -269,6 +269,9 @@ model User {
   // Set when a SUPER_ADMIN resets the password (temp or chosen); the next
   // password login must set a new one before any session is granted.
   mustChangePassword Boolean  @default(false)
+  // Pre-launch test customer: its login OTP is shown on screen instead of being
+  // sent by SMS (server/test-accounts.ts). Cleared on delete; remove at launch.
+  isTestAccount     Boolean   @default(false)
   avatarUrl        String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

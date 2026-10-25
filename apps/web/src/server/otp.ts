@@ -32,6 +32,7 @@ import { prisma } from './db';
 import { notify } from './notifications';
 import { log } from './log';
 import { getPlatformSecurity, setPlatformSecurity } from './2fa';
+import { findActiveTestAccount } from './test-accounts';
 /** Parse a positive integer env var with a default. Tolerant of empty/NaN. */
 function envInt(name: string, dflt: number): number {
   const raw = process.env[name];
@@ -376,6 +377,14 @@ export async function sendOtp(args: { phone: string; purpose?: string; ipAddress
       }
     })
   ]);
+  // Pre-launch test customer (server/test-accounts.ts): never deliver to the
+  // dummy number; the code is returned for the login screen instead. Deleting
+  // the test account turns this off at once.
+  const testAccount = await findActiveTestAccount(args.phone);
+  if (testAccount) {
+    log.info({ userId: testAccount.id, purpose }, 'OTP issued for test account (shown on screen, not sent)');
+    return { ok: true, devCode: code };
+  }
   const delivery = await deliverOtp(args.phone, code, demo);
   // H25: never report a false "sent". With a real provider in production, a
   // failed delivery is a hard error rather than the mock-success fallback.

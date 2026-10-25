@@ -74,6 +74,9 @@ export function LoginClient({
   const [code, setCode] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [devCode, setDevCode] = useState<string | null>(null);
+  // True when this code came from the built-in OTP (pre-launch test account),
+  // even though the MSG91 widget handles everyone else.
+  const [builtinOtp, setBuiltinOtp] = useState(false);
   // OTP resend cooldown (server enforces 45s + hourly/daily caps; mirror it so
   // the user sees when they can ask again instead of a dead end).
   const [resendAt, setResendAt] = useState(0);
@@ -129,6 +132,7 @@ export function LoginClient({
     // Reset transient form state when switching, but keep typed identifiers.
     setOtpSent(false);
     setDevCode(null);
+    setBuiltinOtp(false);
     setCode('');
     setStaffPhase('creds');
     setEnroll(null);
@@ -140,7 +144,27 @@ export function LoginClient({
     setBusy(true);
     try {
       if (msg91Enabled) {
+        // Pre-launch test accounts get a built-in code shown on screen; the
+        // probe issues nothing for any other number.
+        const probe = await fetch('/api/auth/otp/test-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) })
+          .then(async (res) => ({ status: res.status, ok: res.ok, data: await res.json() }))
+          .catch(() => null);
+        if (probe?.data?.testAccount) {
+          if (probe.status === 429 && Number(probe.data.retryAfter) > 0) {
+            setResendAt(Date.now() + Number(probe.data.retryAfter) * 1000);
+            setNow(Date.now());
+          }
+          if (!probe.ok) throw new Error(probe.data.error || 'Could not issue the code. Please try again.');
+          setBuiltinOtp(true);
+          setResendAt(Date.now() + 45_000);
+          setNow(Date.now());
+          setOtpSent(true);
+          setDevCode(probe.data.devCode ?? null);
+          toast.success(probe.data.devCode ? `Test code: ${probe.data.devCode}` : 'OTP sent');
+          return;
+        }
         // MSG91 widget owns send + verify (multi-channel).
+        setBuiltinOtp(false);
         await loadMsg91Widget();
         await sendWidgetOtp(toMsg91Identifier(phone));
         setOtpSent(true);
@@ -159,7 +183,7 @@ export function LoginClient({
       setOtpSent(true);
       if (data.devCode) {
         setDevCode(data.devCode);
-        toast.success(`OTP sent (dev: ${data.devCode})`);
+        toast.success(`Test code: ${data.devCode}`);
       } else {
         toast.success('OTP sent');
       }
@@ -206,7 +230,7 @@ export function LoginClient({
   async function verifyOtp() {
     setBusy(true);
     try {
-      if (msg91Enabled) {
+      if (msg91Enabled && !builtinOtp) {
         // Verify the code in the widget, then hand the signed token to the server.
         const accessToken = await verifyWidgetOtp(code);
         const r = await signIn('msg91-widget', { accessToken, phone, redirect: false });
@@ -438,7 +462,9 @@ export function LoginClient({
                 ) : (
                   <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); verifyOtp(); }}>
                     <div className="text-sm text-muted-foreground">
-                      We sent a code to {phone}.{devCode && <> Dev code: <span className="font-mono">{devCode}</span></>}
+                      {devCode
+                        ? <>Test account — your code is <span className="font-mono font-semibold text-foreground">{devCode}</span> (shown here, not sent by SMS).</>
+                        : <>We sent a code to {phone}.</>}
                     </div>
                     <div>
                       <Label htmlFor="otp">6-digit code</Label>

@@ -9,6 +9,7 @@ const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     otpAttempt: { upsert: vi.fn(), findUnique: vi.fn(), update: vi.fn(), aggregate: vi.fn() },
     otpToken: { findFirst: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    user: { findFirst: vi.fn().mockResolvedValue(null) }, // no pre-launch test accounts
     $transaction: vi.fn()
   } as any
 }));

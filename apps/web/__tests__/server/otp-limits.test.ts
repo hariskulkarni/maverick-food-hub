@@ -18,6 +18,8 @@ const { prismaMock, argon2Mock } = vi.hoisted(() => {
         update: vi.fn(),
         updateMany: vi.fn()
       },
+      // sendOtp looks up pre-launch test accounts; none by default.
+      user: { findFirst: vi.fn().mockResolvedValue(null) },
       $transaction: vi.fn(async (ops: any[]) => Promise.all(ops))
     },
     argon2Mock: {
