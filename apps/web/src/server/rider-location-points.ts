@@ -24,6 +24,12 @@ export const LIVE_MAX_AGE_MS = 2 * 60_000;
 /** Older than this → dropped entirely (the offline queue holds ~2 h at most). */
 export const MAX_AGE_MS = 6 * 60 * 60_000;
 export const FUTURE_SKEW_MS = 60_000;
+/**
+ * Phone-clock correction only kicks in beyond this drift. Below it the gap is
+ * just network latency, and shifting by it would make a re-sent duplicate look
+ * newer than the copy already accepted.
+ */
+export const CLOCK_CORRECTION_MIN_MS = 30_000;
 /** Min spacing between persisted trail points per rider. */
 export const PERSIST_SPACING_MS = 3_000;
 
@@ -69,7 +75,8 @@ export function classifyPoints(
   lastAcceptedAt: number | undefined,
   sentAt?: number
 ): ClassifiedPoints {
-  const offset = sentAt !== undefined ? now - sentAt : 0;
+  const drift = sentAt !== undefined ? now - sentAt : 0;
+  const offset = Math.abs(drift) > CLOCK_CORRECTION_MIN_MS ? drift : 0;
   const timed = points
     .map((p) => ({ ...p, t: p.recordedAt !== undefined ? p.recordedAt + offset : now }))
     .sort((a, b) => a.t - b.t);
