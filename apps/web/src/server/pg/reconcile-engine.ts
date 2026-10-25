@@ -220,8 +220,17 @@ export interface AllocateInput {
   attemptId: string;
   bankTransactionId: string;
   /** Manual (dual-control) allocation: operator evidence replaces the UTR/time-window match. */
-  manual?: { createdById: string; approvedById: string; reason: string };
+  manual?: { createdById: string; approvedById: string; reason: string; proposalId?: string };
+  /**
+   * P1-2 accepted late payment: the credit is already allocated to this attempt as LATE_PAYMENT.
+   * Two ops users (request + approve) and a restaurant admin (confirm) turn it into the order's
+   * payment: the allocation is reclassified ORDER_PAYMENT (still one allocation per credit), the
+   * attempt + Payment become CAPTURED and ORDER_RELEASE is enqueued with the restaurant's confirmation.
+   */
+  acceptLate?: { requestedById: string; approvedById: string; restaurantConfirmedById: string; proposalId: string; heldExceptionId?: string };
 }
+
+export class AcceptLateError extends Error {}
 
 function inWindow(valueAt: Date, createdAt: Date): boolean {
   const t = valueAt.getTime();
@@ -245,6 +254,15 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
     }
   }
 
+  const acceptLate = input.acceptLate;
+  if (acceptLate) {
+    const { requestedById, approvedById, restaurantConfirmedById } = acceptLate;
+    if (!requestedById?.trim() || !approvedById?.trim() || !restaurantConfirmedById?.trim() || !acceptLate.proposalId) {
+      throw new AcceptLateError('accepting a late payment needs a requester, a second approver and the restaurant confirmation');
+    }
+    if (requestedById === approvedById) throw new AcceptLateError('accepting a late payment needs a second approver different from the requester');
+  }
+
   return prisma.$transaction(async (tx) => {
     const a = await lockAttempt(tx, input.attemptId);
     if (!a) throw new Error(`allocateBankCredit: attempt ${input.attemptId} not found`);
@@ -253,6 +271,8 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
     if (!t) throw new Error(`allocateBankCredit: bank transaction ${input.bankTransactionId} not found`);
     await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${a.orderId} FOR UPDATE`;
     const order = await tx.order.findUnique({ where: { id: a.orderId }, select: { id: true, status: true } });
+
+    if (acceptLate) return captureAcceptedLate(tx, a, t, order, acceptLate);
 
     if (t.status === PgBankTxnStatus.ALLOCATED) {
       const existing = await tx.pgAllocation.findUnique({ where: { bankTransactionId: t.id }, select: { id: true } });
@@ -285,11 +305,24 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
     if (t.receivingAccountId !== a.receivingAccountId) return reject(PgExceptionKind.WRONG_ACCOUNT, 'different receiving account');
     if (t.direction !== PgTxnDirection.CREDIT) return reject(PgExceptionKind.AMBIGUOUS_MATCH, 'not a credit');
     if (t.currency !== 'INR' || a.currency !== 'INR') return reject(PgExceptionKind.AMOUNT_MISMATCH, 'currency is not INR');
+    // P0-3: the payable amount (order + fork paise offset) normally comes from the signed webhook.
+    // If that webhook was lost, a dual-control MANUAL allocation may accept a credit within the
+    // documented offset band (expected < credit <= expected + 99) and records it as the payable.
+    let recordPayable: number | null = null;
     if (t.amountPaise !== (a.payableAmountPaise ?? a.expectedAmountPaise)) {
-      return reject(PgExceptionKind.AMOUNT_MISMATCH, 'amount differs from expected', {
-        expectedPaise: a.expectedAmountPaise,
-        creditPaise: t.amountPaise,
-      });
+      const offsetOk =
+        !!manual &&
+        a.payableAmountPaise == null &&
+        t.amountPaise > a.expectedAmountPaise &&
+        t.amountPaise <= a.expectedAmountPaise + MAX_GATEWAY_PAISE_OFFSET;
+      if (!offsetOk) {
+        return reject(PgExceptionKind.AMOUNT_MISMATCH, 'amount differs from expected', {
+          expectedPaise: a.expectedAmountPaise,
+          payablePaise: a.payableAmountPaise,
+          creditPaise: t.amountPaise,
+        });
+      }
+      recordPayable = t.amountPaise;
     }
     if (!manual) {
       if (!a.observedUtr) return reject(PgExceptionKind.MISSING_UTR, 'attempt has no observed UTR');
@@ -326,6 +359,9 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
       });
     }
 
+    if (recordPayable != null) {
+      await tx.pgPaymentAttempt.update({ where: { id: a.id }, data: { payableAmountPaise: recordPayable } });
+    }
     const alloc = await tx.pgAllocation.create({
       data: {
         bankTransactionId: t.id,
@@ -338,6 +374,26 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
       },
       select: { id: true },
     });
+    if (manual?.proposalId) {
+      // One decision per proposal: a rejection already recorded makes this insert a no-op -> roll back.
+      const { count } = await tx.pgFinancialEvent.createMany({
+        data: [
+          {
+            kind: 'MANUAL_ALLOCATION_APPROVED',
+            restaurantId: a.restaurantId,
+            attemptId: a.id,
+            orderId: a.orderId,
+            bankTransactionId: t.id,
+            allocationId: alloc.id,
+            actorId: manual.approvedById,
+            dedupeKey: `MANUAL_ALLOCATION_DECIDED:${manual.proposalId}`,
+            data: { proposalId: manual.proposalId },
+          },
+        ],
+        skipDuplicates: true,
+      });
+      if (count === 0) throw new Error('This manual allocation proposal was already decided (approved or rejected).');
+    }
     await tx.pgBankTransaction.update({ where: { id: t.id }, data: { status: PgBankTxnStatus.ALLOCATED } });
     // H-03: the credit is no longer unmatched.
     await tx.pgReconException.updateMany({
@@ -363,6 +419,7 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
         bankReference: t.bankReference,
         source: t.source,
         manual: manual ? { createdById: manual.createdById, reason: manual.reason } : null,
+        ...(recordPayable != null ? { payableRecordedPaise: recordPayable } : {}),
       },
     });
 
@@ -409,6 +466,107 @@ export async function allocateBankCredit(input: AllocateInput): Promise<Allocati
     });
     return { outcome: 'CAPTURED', allocationId: alloc.id };
   }, TX_OPTS);
+}
+
+type LockedAttempt = NonNullable<Awaited<ReturnType<typeof lockAttempt>>>;
+type BankTxnRow = NonNullable<Awaited<ReturnType<typeof prisma.pgBankTransaction.findUnique>>>;
+
+/** P1-2 capture of an accepted late payment (runs inside allocateBankCredit's locked transaction). */
+async function captureAcceptedLate(
+  tx: Tx,
+  a: LockedAttempt,
+  t: BankTxnRow,
+  order: { id: string; status: OrderStatus } | null,
+  acc: NonNullable<AllocateInput['acceptLate']>,
+): Promise<AllocationResult> {
+  const alloc = await tx.pgAllocation.findUnique({ where: { bankTransactionId: t.id } });
+  if (!alloc || alloc.attemptId !== a.id || alloc.reversedAt || alloc.kind !== PgAllocationKind.LATE_PAYMENT || t.status !== PgBankTxnStatus.ALLOCATED) {
+    throw new AcceptLateError('This credit is not a live late payment of this attempt any more.');
+  }
+  if (!order || (order.status !== OrderStatus.PAYMENT_PENDING && order.status !== OrderStatus.PAYMENT_FAILED)) {
+    throw new AcceptLateError(`The order is ${order?.status ?? 'missing'}; only an unpaid, not-cancelled order can take a late payment. Refund instead.`);
+  }
+  const live = await tx.pgAllocation.findFirst({
+    where: { orderId: a.orderId, kind: PgAllocationKind.ORDER_PAYMENT, reversedAt: null },
+    select: { id: true },
+  });
+  const captured = await tx.payment.findFirst({ where: { orderId: a.orderId, status: PaymentStatus.CAPTURED }, select: { id: true } });
+  if (live || captured) throw new AcceptLateError('The order already has a confirmed payment. Refund this credit instead.');
+  const refunds = await tx.pgRefundRecord.findMany({
+    where: { attemptId: a.id, allocationKind: PgAllocationKind.LATE_PAYMENT },
+    include: { refund: { select: { status: true } } },
+  });
+  if (refunds.some((r) => r.refund.status !== 'FAILED')) throw new AcceptLateError('A refund of this late payment is already in progress.');
+  if (a.payment.status === PaymentStatus.REFUNDED) throw new AcceptLateError('The payment row is REFUNDED.');
+
+  if (order.status === OrderStatus.PAYMENT_FAILED) {
+    const { revivePaymentFailedOrder, OrderReviveError } = await import('./order-state');
+    try {
+      await revivePaymentFailedOrder(tx, a.orderId, 'Late payment accepted (Flavrly PG)', acc.restaurantConfirmedById);
+    } catch (e) {
+      if (e instanceof OrderReviveError) throw new AcceptLateError(`${e.message} Refund the late payment instead.`);
+      throw e;
+    }
+  }
+
+  await tx.pgAllocation.update({
+    where: { id: alloc.id },
+    data: { kind: PgAllocationKind.ORDER_PAYMENT, createdById: acc.requestedById, approvedById: acc.approvedById },
+  });
+  await tx.pgPaymentAttempt.update({ where: { id: a.id }, data: { state: PgAttemptState.CAPTURED } });
+  await tx.payment.update({ where: { id: a.paymentId }, data: { status: PaymentStatus.CAPTURED, errorMessage: null } });
+  await consumeLimit(tx, a.id);
+  const now = new Date();
+  await tx.pgReconException.updateMany({
+    where: {
+      OR: [{ dedupeKey: `LATE_PAYMENT:${alloc.id}` }, { dedupeKey: `LATE_PAYMENT:${a.id}` }, ...(acc.heldExceptionId ? [{ id: acc.heldExceptionId }] : [])],
+      status: { not: PgExceptionStatus.RESOLVED },
+    },
+    data: {
+      status: PgExceptionStatus.RESOLVED,
+      resolution: 'Late payment accepted (two ops approvers + restaurant confirmation); order released',
+      resolvedById: acc.restaurantConfirmedById,
+      resolvedAt: now,
+    },
+  });
+  await appendFinancialEvent(tx, {
+    kind: 'ALLOCATION_RECLASSIFIED',
+    restaurantId: a.restaurantId,
+    attemptId: a.id,
+    orderId: a.orderId,
+    bankTransactionId: t.id,
+    allocationId: alloc.id,
+    amountPaise: alloc.amountPaise,
+    actorId: acc.restaurantConfirmedById,
+    dedupeKey: `ALLOCATION_RECLASSIFIED:${alloc.id}`,
+    data: {
+      from: PgAllocationKind.LATE_PAYMENT,
+      to: PgAllocationKind.ORDER_PAYMENT,
+      proposalId: acc.proposalId,
+      requestedById: acc.requestedById,
+      approvedById: acc.approvedById,
+      restaurantConfirmedById: acc.restaurantConfirmedById,
+    },
+  });
+  await appendFinancialEvent(tx, {
+    kind: 'PAYMENT_CAPTURED',
+    restaurantId: a.restaurantId,
+    attemptId: a.id,
+    orderId: a.orderId,
+    bankTransactionId: t.id,
+    allocationId: alloc.id,
+    amountPaise: alloc.amountPaise,
+    actorId: acc.approvedById,
+    dedupeKey: `PAYMENT_CAPTURED:${a.paymentId}`,
+    data: { paymentId: a.paymentId, acceptedLate: true },
+  });
+  await enqueueOutbox(tx, {
+    topic: 'ORDER_RELEASE',
+    aggregateId: a.orderId,
+    dedupeKey: `ORDER_RELEASE:${a.orderId}`,
+    payload: { orderId: a.orderId, attemptId: a.id, paymentId: a.paymentId, restaurantConfirmedById: acc.restaurantConfirmedById },
+  });
+  return { outcome: 'CAPTURED', allocationId: alloc.id };
 }
 
 /** Allocate the (single) bank credit whose reference equals the attempt's observed UTR. */
@@ -496,7 +654,11 @@ export async function retryUnmatchedCredits(limit = 200): Promise<{ tried: numbe
     WHERE t.status = 'UNMATCHED' AND t.direction = 'CREDIT'
       AND EXISTS (SELECT 1 FROM "PgPaymentAttempt" a
                   WHERE a."receivingAccountId" = t."receivingAccountId" AND a."observedUtr" = t."bankReference")
-    ORDER BY t."createdAt" ASC
+      -- P2: a credit the engine already refused (open invariant exception) waits for an operator;
+      -- retrying it every tick only starves the others. Resolving the exception makes it eligible again.
+      AND NOT EXISTS (SELECT 1 FROM "PgReconException" x
+                      WHERE x."bankTransactionId" = t.id AND x.status <> 'RESOLVED' AND x.kind <> 'UNMATCHED_CREDIT')
+    ORDER BY t."updatedAt" ASC
     LIMIT ${limit}`;
   let captured = 0;
   let failed = 0;
@@ -507,6 +669,8 @@ export async function retryUnmatchedCredits(limit = 200): Promise<{ tried: numbe
       failed++;
       log.warn({ bankTransactionId: id, err: (e as Error).message }, 'pg.retry_unmatched.allocate_failed');
     }
+    // Rotate: a credit that is still UNMATCHED goes to the back of the queue (ORDER BY updatedAt).
+    await prisma.pgBankTransaction.updateMany({ where: { id, status: PgBankTxnStatus.UNMATCHED }, data: { updatedAt: new Date() } }).catch(() => undefined);
   }
   return { tried: rows.length, captured, failed };
 }
@@ -547,23 +711,58 @@ export async function approveManualAllocation(input: { proposalId: string; appro
     throw new Error('approveManualAllocation: proposal not found');
   }
   const reason = String((p.data as { reason?: unknown } | null)?.reason ?? '');
+  const rejected = await prisma.pgFinancialEvent.findUnique({ where: { dedupeKey: `MANUAL_ALLOCATION_DECIDED:${p.id}` }, select: { kind: true } });
+  if (rejected?.kind === 'MANUAL_ALLOCATION_REJECTED') throw new Error('This manual allocation proposal was rejected.');
   return allocateBankCredit({
     attemptId: p.attemptId,
     bankTransactionId: p.bankTransactionId,
-    manual: { createdById: p.actorId, approvedById: input.approverId, reason },
+    manual: { createdById: p.actorId, approvedById: input.approverId, reason, proposalId: p.id },
   });
+}
+
+/** P2: any super admin (including the proposer, as a withdrawal) may reject an undecided proposal. */
+export async function rejectManualAllocation(input: { proposalId: string; actorId: string; reason: string }): Promise<{ rejected: true }> {
+  if (!input.actorId?.trim() || !input.reason?.trim()) throw new Error('actorId and reason are required');
+  const p = await prisma.pgFinancialEvent.findUnique({ where: { id: input.proposalId } });
+  if (!p || p.kind !== 'MANUAL_ALLOCATION_PROPOSED') throw new Error('rejectManualAllocation: proposal not found');
+  const { count } = await prisma.pgFinancialEvent.createMany({
+    data: [
+      {
+        kind: 'MANUAL_ALLOCATION_REJECTED',
+        restaurantId: p.restaurantId,
+        attemptId: p.attemptId,
+        orderId: p.orderId,
+        bankTransactionId: p.bankTransactionId,
+        actorId: input.actorId,
+        dedupeKey: `MANUAL_ALLOCATION_DECIDED:${p.id}`,
+        data: { proposalId: p.id, reason: input.reason.trim() },
+      },
+    ],
+    skipDuplicates: true,
+  });
+  if (count === 0) throw new Error('This manual allocation proposal was already decided.');
+  return { rejected: true };
 }
 
 // ───────────────────────────── reversal ─────────────────────────────
 
 /** Bank reversed a credit: mark allocation reversed + txn REVERSED, open REVERSAL exception. Order untouched. */
-export async function recordReversal(input: {
-  bankTransactionId: string;
-  reason: string;
-  actorId: string;
-}): Promise<{ reversed: boolean; exceptionId?: string }> {
+export async function recordReversal(
+  input: {
+    bankTransactionId: string;
+    reason: string;
+    /** The approver who books it. */
+    actorId: string;
+    /** Dual control (P1-4): the operator who requested it; must differ from actorId. */
+    requestedById?: string;
+  },
+  outerTx?: Tx,
+): Promise<{ reversed: boolean; exceptionId?: string }> {
   if (!input.actorId?.trim() || !input.reason?.trim()) throw new Error('recordReversal: actorId and reason are required');
-  return prisma.$transaction(async (tx) => {
+  if (input.requestedById !== undefined && (!input.requestedById.trim() || input.requestedById === input.actorId)) {
+    throw new Error('recordReversal: a reversal needs a second approver different from the requester');
+  }
+  const run = async (tx: Tx) => {
     await tx.$queryRaw`SELECT id FROM "PgBankTransaction" WHERE id = ${input.bankTransactionId} FOR UPDATE`;
     const t = await tx.pgBankTransaction.findUnique({
       where: { id: input.bankTransactionId },
@@ -589,7 +788,7 @@ export async function recordReversal(input: {
       amountPaise: t.amountPaise,
       actorId: input.actorId,
       dedupeKey: `BANK_TXN_REVERSED:${t.id}`,
-      data: { reason: input.reason, allocationKind: t.allocation?.kind ?? null },
+      data: { reason: input.reason, allocationKind: t.allocation?.kind ?? null, requestedById: input.requestedById ?? null },
     });
     const ex = await openException(tx, {
       kind: PgExceptionKind.REVERSAL,
@@ -603,5 +802,6 @@ export async function recordReversal(input: {
       detail: { reason: input.reason, allocationKind: t.allocation?.kind ?? null, orderUntouched: true },
     });
     return { reversed: true, exceptionId: ex.id };
-  }, TX_OPTS);
+  };
+  return outerTx ? run(outerTx) : prisma.$transaction(run, TX_OPTS);
 }

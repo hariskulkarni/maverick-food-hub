@@ -2,17 +2,18 @@ import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import { prisma } from './db';
 import { money } from '@/lib/utils';
+import { PG_PAYMENT_MODE, PG_PAYMENT_MODE_LABEL, paymentModeOf } from './payment-mode-label';
 
 export async function ordersToCsv(branchId: string | string[], opts: { from?: Date; to?: Date } = {}): Promise<string> {
   const branchWhere = Array.isArray(branchId) ? { in: branchId } : branchId;
   const orders = await prisma.order.findMany({
     where: { branchId: branchWhere, placedAt: { gte: opts.from, lte: opts.to } },
-    include: { customer: true },
+    include: { customer: true, payments: { select: { providerName: true } } },
     orderBy: { placedAt: 'desc' }
   });
   const lines = ['code,placed_at,status,customer,total,payment_method'];
   for (const o of orders) {
-    lines.push([o.code, o.placedAt.toISOString(), o.status, o.customer.name ?? o.customer.phone ?? '', Number(o.total), o.paymentMethod].join(','));
+    lines.push([o.code, o.placedAt.toISOString(), o.status, o.customer.name ?? o.customer.phone ?? '', Number(o.total), paymentModeOf(o)].join(','));
   }
   return lines.join('\n');
 }
@@ -21,7 +22,7 @@ export async function ordersToXlsx(branchId: string | string[], opts: { from?: D
   const branchWhere = Array.isArray(branchId) ? { in: branchId } : branchId;
   const orders = await prisma.order.findMany({
     where: { branchId: branchWhere, placedAt: { gte: opts.from, lte: opts.to } },
-    include: { customer: true, items: true },
+    include: { customer: true, items: true, payments: { select: { providerName: true } } },
     orderBy: { placedAt: 'desc' }
   });
   const wb = new ExcelJS.Workbook();
@@ -45,7 +46,7 @@ export async function ordersToXlsx(branchId: string | string[], opts: { from?: D
       customer: o.customer.name ?? o.customer.phone ?? '',
       items: o.items.map((i) => `${i.quantity}× ${i.name}`).join(', '),
       total: Number(o.total),
-      payment: o.paymentMethod
+      payment: paymentModeOf(o)
     });
   }
   return Buffer.from(await wb.xlsx.writeBuffer());
@@ -97,7 +98,8 @@ export async function invoicePdf(orderId: string): Promise<Buffer> {
   right('Total', money(o.total as any));
   doc.font('Helvetica');
   doc.moveDown();
-  doc.fontSize(10).fillColor('#666').text(`Payment: ${o.paymentMethod}`);
+  const mode = paymentModeOf(o);
+  doc.fontSize(10).fillColor('#666').text(`Payment: ${mode === PG_PAYMENT_MODE ? PG_PAYMENT_MODE_LABEL : mode}`);
 
   doc.end();
   return done;

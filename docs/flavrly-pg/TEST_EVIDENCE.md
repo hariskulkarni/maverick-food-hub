@@ -100,3 +100,39 @@ see STAGING_UAT_REPORT.md for process-level drills).
 webhooks, SIGKILL of gateway and app, real wall-clock expiry, backup/restore drill, flag-off). Report: STAGING_UAT_REPORT.md.
 No real money, no production host. Its three findings were fixed in `9236900` with tests (see that report's lead section);
 one test assumption in the new DB test was corrected in `2036bf5` (the shared test DB may already hold the sentinel row).
+
+## Round 2 — money audit fixes (`pg/money-r2`, base `pg/lead` @ `fc76238`)
+
+Findings: `~/flavrly-pg-evidence/2026-10-24/round2/PG_AUDIT_FINDINGS.md`. Code at `b24a67e` (docs commit follows).
+Machine shared with another release's acceptance run: commands under `nice -n 19`, vitest `--maxWorkers=2`.
+Logs: `~/flavrly-pg-evidence/2026-10-24/round2/money-r2/`.
+
+| Step (from `apps/web`) | Exit | Result |
+|---|---|---|
+| `prisma migrate deploy` into empty `money_r2` | 0 | 18 migrations (new: `20261024000300_flavrly_pg_money_r2`) |
+| `prisma migrate diff --from-migrations … --to-schema-datamodel … --shadow-database-url …money_r2_shadow --exit-code` | 0 | no drift |
+| `npm run typecheck` | 0 | clean |
+| `npm run lint` | 0 | warnings only, none in round-2 files |
+| `npm run check:responsive` | 0 | no forbidden patterns |
+| `npx vitest run --reporter=dot --maxWorkers=2` (= `test:ci`) | 0 | 151 files, **1552 passed** (baseline 1545; +12 new, −5 for the deleted dead `youpi-caps` module and its test) |
+| `DATABASE_URL=…/ci_money_r2 npm run test:db` | 0 | 21 files, **202 passed** (baseline 172; +9 `r2-money`, +21 `r2-ops`) |
+| `npm run build` | not run | per brief (lead runs builds) |
+
+Note: `test:db`'s safety guard requires a database name starting with `ci`, so the DB tests ran on
+`ci_money_r2`; `money_r2` / `money_r2_shadow` were used for the from-empty deploy and the drift check.
+
+### New / changed tests and what they prove
+
+| Test | Proves | Red on previous code |
+|---|---|---|
+| `tests/db/r2-money.test.ts` P0-1 (3) | retry after expiry revives the order and the new credit is CAPTURED + released (not LATE); revive refused when a freebie was already given back; no session for a cancelled order | yes (fc76238 source, `red-p0.txt`) |
+| `r2-money` P0-2 (3) | precheck refuses ₹0 / over-cap / daily cap / non-INR read-only; `placeOrder` with wallet covering the total refuses before commit (no order, wallet untouched); the sweep fails a quiet PAYMENT_PENDING PG order but not a fresh or live one | yes |
+| `r2-money` P0-3 (2) | manual allocation accepts expected < credit ≤ expected+99 and records the payable; refuses outside the band or a different amount once the payable is known | first yes; second is a guard that already held |
+| `r2-money` P0-4 (1) | gateway FAILED -> attempt FAILED, limit released, order PAYMENT_FAILED | yes |
+| `tests/db/r2-ops.test.ts` (21) | P1-1 refund route (role, pot cap, second approver); P1-2 late acceptance end to end (self-approval refused, approval moves no money, restaurant confirm captures once, one allocation reclassified, released without auto-accept, decided once; cancelled order refused; decline cancels; other tenant 404); P1-3 void (success path + refusals with evidence, evidence after proposal); P1-4 reversal dual control + reject; P1-5 requeue outbox/webhook, redacted refused; P1-6 stale hold → confirm (no auto-accept, no escalation) / decline → refundable; P1-7 cancel closes attempts, later credit LATE; P1-10 wallet/points restored once on cancel only; P2 manual reject, UTR zeros, retry skip/rotate, refund↔DEBIT link, export label | P2 block yes (`red-p2.txt`); the rest import routes/functions that did not exist (file fails to load) |
+| `__tests__/server/pg/attempts.test.ts` (+4, 2 changed) | P1-8 URL kept / regenerated and reused, 90 s re-probe without stale flag; P1-9 bounded live extension; P2 limit release on gateway-dead resolve. Changed by design: "gateway still INITIATED -> EXPIRED" now expires only after the 2 h extension; "remote EXPIRED" now releases the limit when nothing was observed | yes (`red-p1-8-9.txt`) |
+| `__tests__/server/pg/fulfillment.test.ts` (+3), `customer-status.test.ts` (+3), `bank-source.test.ts` (+2), `youpi-reconcile.test.ts` (P0-4 asserts) | stale hold and confirmed release; cancelled-order and held views; UTR zeros, txn-date preference; P0-4 calls | written with the code (not separately run red) |
+| `tests/db/h-adversarial.test.ts` (1 expectation changed) | gateway FAILED then late credit: order is now PAYMENT_FAILED (was the P0-4 stuck PAYMENT_PENDING) and still never released | n/a |
+| `tests/db/reconcile-engine.test.ts` (date fix) | CSV rows use the IST date; the UTC date made the test fail daily 18:30–24:00 UTC. Engine window unchanged | not reproducible at the time of the run (00:51 UTC); fix verified by arithmetic |
+
+Not covered: browser rendering of the new ops/merchant dialogs (no Playwright run); real gateway/bank.

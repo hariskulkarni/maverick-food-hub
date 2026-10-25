@@ -81,4 +81,19 @@ describe('bank-source CSV parser', () => {
     expect(r.rows).toEqual([]);
     expect(r.rejected[0].reason).toMatch(/header row/);
   });
+
+  // Round-2 P2.
+  it('an all-digit UTR/RRN loses leading zeros; alphanumeric references keep them', () => {
+    expect(normalizeBankReference('001234567890')).toBe('1234567890');
+    expect(normalizeBankReference(' 0012 3456 7890 ')).toBe('1234567890');
+    expect(normalizeBankReference('1234567890')).toBe('1234567890');
+    expect(normalizeBankReference('0')).toBe('0');
+    expect(normalizeBankReference('00AB12')).toBe('00AB12');
+  });
+
+  it('prefers the transaction date over a later value date', () => {
+    const csv = ['Txn Date,Value Date,Description,Ref No,Debit,Credit', '24/10/2026,27/10/2026,UPI credit,UTR9,,250.00'].join('\n');
+    const out = parseStatementCsv(csv, mapping);
+    expect(out.rows[0].valueAt.toISOString()).toBe('2026-10-24T18:29:59.999Z');
+  });
 });

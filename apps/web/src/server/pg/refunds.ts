@@ -37,6 +37,8 @@ import { audit } from '../audit';
 import { log } from '../log';
 import { transitionOrder } from '../orders';
 import { paiseToInrString } from './money';
+import { normalizeBankReference } from './bank-source';
+import { linkRefundToDebit } from './refund-debit';
 
 type Tx = Prisma.TransactionClient;
 
@@ -428,11 +430,12 @@ export async function completePgRefund(input: CompletePgRefundInput): Promise<Pg
       if (reused) throw new PgRefundError('That bank reference is already recorded on another refund.', 409);
       // H-09: a refund is a DEBIT. A credit reference on this account (e.g. the customer's original
       // payment UTR) is not proof that money went back.
+      const asBankRef = normalizeBankReference(bankReference);
       const credit = await tx.pgBankTransaction.findFirst({
-        where: { receivingAccountId: a.receivingAccountId, direction: 'CREDIT', bankReference },
+        where: { receivingAccountId: a.receivingAccountId, direction: 'CREDIT', bankReference: asBankRef },
         select: { id: true },
       });
-      if (credit || a.observedUtr?.trim().toUpperCase() === bankReference) {
+      if (credit || (a.observedUtr && normalizeBankReference(a.observedUtr) === asBankRef)) {
         throw new PgRefundError(
           'That reference belongs to an incoming payment (the customer\'s original UTR), not to the refund. Enter the reference of the refund transfer.',
           409,
@@ -499,6 +502,7 @@ export async function completePgRefund(input: CompletePgRefundInput): Promise<Pg
         });
       }
     }
+    if (bankReference) await linkRefundToDebit(tx, rec.id, actorId); // P2: statement DEBIT already imported?
     await appendEvent(tx, {
       kind: 'REFUND_COMPLETED',
       restaurantId: a.restaurantId,

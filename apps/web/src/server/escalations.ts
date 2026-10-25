@@ -65,7 +65,16 @@ export async function runEscalationScan(): Promise<{ created: number; checked: n
   });
   checked += notAccepted.length;
   for (const o of notAccepted) {
-    const ageMin = Math.round((+now - +o.placedAt) / 60_000);
+    // The clock starts when the order reached RECEIVED (the kitchen saw it), not at placement: a
+    // Flavrly PG order is released only after its bank credit is matched, possibly hours later.
+    const received = await prisma.orderStatusEvent.findFirst({
+      where: { orderId: o.id, status: OrderStatus.RECEIVED },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true }
+    });
+    const since = received?.createdAt ?? o.placedAt;
+    if (+now - +since < T.notAccepted * 60_000) continue;
+    const ageMin = Math.round((+now - +since) / 60_000);
     const sev = ageMin > 15 ? 'CRITICAL' : ageMin > 10 ? 'HIGH' : 'MEDIUM';
     const r = await open(o.id, 'ORDER_NOT_ACCEPTED', sev as any, `${o.code} not accepted in ${ageMin}m`);
     if (r.createdAt.getTime() > now.getTime() - 5_000) created++;

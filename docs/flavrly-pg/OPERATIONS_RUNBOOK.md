@@ -47,6 +47,7 @@ Times are IST on the VPS. Escalation: on-call engineer → owner (human). Money-
 | 15 | Refund failures | `E.kind='REFUND_FAILED'`, and `PgRefundRecord` without `completedAt` after 48 h | any |
 | 16 | Cron/worker failures | no `pg.worker.metrics` line for 5 min; `pg.worker.stage_failed` lines; `PgJobLease` past expiry | 5 min silence, or ≥ 3 stage failures in 15 min |
 | 17 | DB locks | `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock'`; `pg_locks` not granted > 30 s | > 0 waiting > 30 s |
+| 18a | Held paid orders | `E.kind='RELEASE_HELD' AND status='OPEN'` older than 15 min | any → nudge the restaurant (§3.13) |
 | 18 | Financial report mismatch | daily: Σ `PgAllocation.amountPaise` (not reversed) per account per day vs Σ CREDIT `B.amountPaise` ALLOCATED, and vs `Payment` CAPTURED for providerName='youpi' | any non-zero difference |
 
 ## 3. Runbooks
@@ -80,25 +81,30 @@ Every runbook ends the same way:
 
 ### 3.4 Duplicate payment / overcollection
 1. `E.kind IN ('OVERCOLLECTION','DUPLICATE_CREDIT')`. Confirm two distinct bank credits exist, with distinct `bankReference` values. One allocation fulfils the order; the second stays as an exception.
-2. Contact the customer and start a refund via `PgRefundRecord`, method MANUAL_BANK, with the bank reference as evidence and a second approver.
-3. Never delete the second credit. Close the exception with a resolution that references the refund record.
+2. Contact the customer. On the platform PG ops page (`/platform/youpi/ops`), exception row → **Start refund…** (amount defaults to the credit; it cannot exceed the bank-confirmed money). This creates a PENDING MANUAL_BANK refund (`POST /api/platform/youpi/refunds`).
+3. A **different person** (a restaurant admin) approves it on the merchant PG page (`/admin/flavrly-pg`, Refunds), the restaurant sends the money from its bank account, and the bank's refund reference (UTR/RRN) is entered to complete it. When the statement with that DEBIT is imported, the refund is linked to it automatically (BANK_RECONCILIATION_SPEC §6a).
+4. Never delete the second credit. Close the exception with a resolution that references the refund id.
 
 ### 3.5 Customer says "paid" but the order is pending
 1. Look up the order and attempt: `A.state`, `observedUtr`, evidence rows.
 2. If OBSERVED, wait for bank evidence. Ask the restaurant to import today's statement, or find the credit by UTR in its bank app. The restaurant enters it as a manual credit, which a second user must approve.
 3. If AWAITING_PAYMENT, ask for the UTR. A customer-supplied UTR or screenshot is **never** proof by itself (master prompt §1.5). Match it against bank evidence only.
-4. If the credit exists but the order was cancelled: the LATE_PAYMENT exception leads to a refund or a re-placed order, at the owner's choice.
+4. If the credit arrived after the attempt expired/failed (LATE_PAYMENT exception):
+   - **Order still unpaid and not cancelled** (PAYMENT_PENDING / PAYMENT_FAILED) and the customer still wants the food: exception row → **Accept late payment…** (super admin A proposes). A **different** super admin approves in "Dual-control actions awaiting a second super admin". Approval moves no money: the order appears on the merchant PG page under "Paid orders waiting for your confirmation". The **restaurant** confirms (payment captured, order sent to the kitchen, never auto-accepted) or declines (order cancelled → refund).
+   - **Order cancelled, or the restaurant declined, or a refund is preferred**: exception row → **Start refund…** (kind LATE_PAYMENT), then §3.4 steps 3-4.
+   - Accepting is refused automatically for a cancelled or already-paid order, while a refund of that credit is in progress, or when a coupon/wallet/bonus/free gift of the order was already given back.
 5. Reply to the customer within the support SLA. Never promise an automatic reversal.
 
 ### 3.6 UTR missing
 1. Gateway status has no UTR (known upstream behaviour). The UTR comes from the signed webhook body (D5).
-2. If the webhook was lost (#86), the attempt stays OBSERVED. Get the UTR from the bank statement row and allocate through the manual dual-control flow.
+2. If the webhook was lost (#86), the attempt stays OBSERVED. Get the UTR from the bank statement row and allocate through the manual dual-control flow (ops page, "Manual allocation"). If the credit is up to 99 paise above the order amount (fork paise offset; the signed payable amount came only in the lost webhook), the manual allocation accepts it and records that amount as the payable. Anything outside `expected < credit <= expected + 99` is refused.
 3. `E.kind='MISSING_UTR'` is closed only by an allocation or by an explicit write-off decision from the owner.
 
 ### 3.7 Refund dispute
 1. Open a `PgRefundRecord`, or find the existing one. Gather order, allocation, bank credit and refund evidence (bank reference of the outgoing transfer).
 2. If the customer raised an NPCI/UDIR complaint through their bank, the restaurant's bank handles it. Provide evidence on request. Never fabricate a reference.
-3. If the refund failed (#15), retry through the bank. Book a reversal only once; the append-only ledger enforces this.
+3. If the refund failed (#15), retry through the bank.
+4. If the **bank reversed a customer credit** (chargeback): ops page → **Propose bank reversal…** with the bank transaction id and the bank's evidence; a different super admin approves. The credit becomes REVERSED, its allocation is released, a REVERSAL exception opens; the order and payment are not changed automatically (owner decides recovery/refund). A reversal is booked once (ledger dedupe).
 
 ### 3.8 Database rollback
 1. Prefer a **code** rollback (DEPLOYMENT_AND_ROLLBACK.md §4). The schema is additive.
@@ -127,6 +133,27 @@ Every runbook ends the same way:
 2. Keep reconciliation running. Do not stop cron or the gateway unless it is compromised.
 3. Open an incident file and notify the owner.
 4. Re-enable only through the DEPLOYMENT_AND_ROLLBACK.md §7 conditions.
+
+### 3.12 Stuck payment attempt (REVIEW_REQUIRED / CREATE_UNKNOWN that will not resolve)
+1. The worker re-probes CREATED/CREATE_UNKNOWN attempts every 90 s and recovers the checkout URL of a session the gateway did create, so most resolve within minutes. STALE_PENDING is raised after 30 min.
+2. Check the gateway for the attemptKey. If there is **no** payment evidence at all, exception row → **Void attempt…** (super admin A); a different super admin approves. The server refuses the void if any observation, UTR, signed payable amount, bank credit allocation or gateway success exists, and re-checks at approval. The attempt becomes CANCELLED, its exceptions are resolved, and the order goes PAYMENT_FAILED so the customer can pay again.
+3. If evidence exists, do not void: reconcile it (§3.5/§3.6).
+
+### 3.13 Paid orders held for restaurant confirmation (RELEASE_HELD)
+1. A capture more than `FLAVRLY_PG_STALE_RELEASE_MINUTES` (default 90) after the order was placed is **not** sent to the kitchen: it stays PAYMENT_PENDING with a RELEASE_HELD exception, and the customer sees "Payment confirmed. The restaurant is confirming your order". Accepted late payments (§3.5) land in the same list.
+2. The restaurant admin decides on `/admin/flavrly-pg` → "Paid orders waiting for your confirmation": **Confirm** (order RECEIVED, never auto-accepted) or **Decline** (order cancelled; the exception stays ACKNOWLEDGED in the ops queue with "refund the customer").
+3. Ops follow-up for a declined order: exception row → **Start refund…** (kind ORDER for a stale release, LATE_PAYMENT for a declined late payment), then §3.4.
+4. Escalations: "order not accepted" counts from the moment the order reached RECEIVED, not from placement.
+
+### 3.14 Dead letters
+1. Ops page → "Dead letters" lists dead outbox rows and dead-lettered gateway webhooks with their last error.
+2. Fix the cause first, then **Requeue…** (single super admin, audited as `pg.dead_letter.requeue`, ledger `OUTBOX_REQUEUED` / `WEBHOOK_REQUEUED`, exception resolved). Requeue moves no money: ORDER_RELEASE still requires CAPTURED money, a webhook only records an observation. A webhook body already redacted by retention cannot be replayed.
+
+### 3.15 Unpaid orders (automatic)
+- A PG order PAYMENT_PENDING with no attempt that can still become money for 30 min (`FLAVRLY_PG_ORPHAN_ORDER_MINUTES`) goes PAYMENT_FAILED (pg-worker stage `orders`); the customer can retry, which moves it back to PAYMENT_PENDING with the new attempt.
+- A gateway FAILED/EXPIRED status fails the order at once when no other attempt is live.
+- A PAYMENT_FAILED PG order untouched for 24 h (`FLAVRLY_PG_UNPAID_CANCEL_HOURS`) is cancelled (CANCELLED_BY_ADMIN, "Unpaid Flavrly PG order closed automatically"); coupon, wallet amount, loyalty points, signup bonus and free gift come back once. A credit after that is a LATE_PAYMENT → refund.
+- While the gateway still reports a session live, expiry waits up to 2 h past the session window.
 
 ## 4. Daily checks (until a metrics stack exists)
 - Open exceptions by kind (`E`).

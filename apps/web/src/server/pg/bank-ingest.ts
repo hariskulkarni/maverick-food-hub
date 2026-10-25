@@ -10,6 +10,7 @@
  * - Every insert/approval appends a PgFinancialEvent.
  * - Newly UNMATCHED credits are offered to the reconcile engine (tryAllocateBankTxn).
  */
+import { linkDebitToRefund } from './refund-debit';
 import { createHash } from 'node:crypto';
 import { PgBankSource, PgBankTxnStatus, PgExceptionKind, PgTxnDirection, Prisma } from '@prisma/client';
 import { prisma } from '../db';
@@ -102,6 +103,7 @@ export async function ingestBankTransactions(
           dedupeKey: `BANK_TXN_INGESTED:${row.id}`,
           data: { source, direction: row.direction, status: row.status, importId: opts.importId ?? null },
         });
+        if (row.direction === 'DEBIT' && row.status === PgBankTxnStatus.UNMATCHED) await linkDebitToRefund(tx, row.id, actor);
         return;
       }
       if (row.amountPaise === r.amountPaise && row.valueAt.getTime() === r.valueAt.getTime()) {
@@ -328,6 +330,7 @@ export async function approveManualBankTransaction(
       dedupeKey: `BANK_TXN_APPROVED:${t.id}`,
       data: { enteredById: t.enteredById },
     });
+    if (u.direction === 'DEBIT') await linkDebitToRefund(tx, u.id, approverId);
     return { id: u.id, status: u.status, changed: true };
   });
   if (out.changed) await tryAllocateBankTxn(out.id);

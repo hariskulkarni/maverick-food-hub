@@ -27,6 +27,10 @@ afterAll(async () => {
 
 const outboxFor = (orderId: string) => prisma.pgOutbox.findMany({ where: { aggregateId: orderId, topic: 'ORDER_RELEASE' } });
 
+/** Today's calendar date in IST (YYYY-MM-DD). The UTC date is a day behind after 18:30 UTC, which put the
+ *  statement row (23:59:59 IST of that date) before the attempt and outside the match window. */
+const istToday = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+
 describe('allocateBankCredit (real DB)', () => {
   it('20 concurrent allocations of one credit -> exactly 1 allocation, 1 capture, 1 release', async () => {
     const acc = await makeAccount();
@@ -247,7 +251,7 @@ describe('bank ingest (real DB)', () => {
   it('duplicate CSV import is idempotent (file sha + row identity) and auto-allocates once', async () => {
     const acc = await makeAccount();
     const { attempt, orderId } = await makeAttempt(acc);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = istToday(); // statement dates are IST days pinned to 23:59:59 IST, never before the attempt
     const csv = `Date,Narration,Reference,Debit,Credit\n${today},UPI from 9876543210,${attempt.observedUtr},,250.00\n${today},other,REF${uid()},,99.00\n`;
     const first = await importStatementCsv({ receivingAccountId: acc.account.id, fileName: 's.csv', content: csv, mapping, uploadedById: 'fin-1' });
     expect(first).toMatchObject({ duplicateFile: false, insertedCount: 2, rejected: [] });
@@ -267,7 +271,7 @@ describe('bank ingest (real DB)', () => {
   it('same reference with different amount -> not overwritten, DUPLICATE_CREDIT exception', async () => {
     const acc = await makeAccount();
     const ref = `REF${uid().toUpperCase()}`;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = istToday(); // statement dates are IST days pinned to 23:59:59 IST, never before the attempt
     await importStatementCsv({ receivingAccountId: acc.account.id, fileName: 'a.csv', content: `Date,Narration,Reference,Debit,Credit\n${today},x,${ref},,10.00\n`, mapping, uploadedById: 'fin-1' });
     const r = await importStatementCsv({ receivingAccountId: acc.account.id, fileName: 'b.csv', content: `Date,Narration,Reference,Debit,Credit\n${today},x,${ref},,11.00\n`, mapping, uploadedById: 'fin-1' });
     expect(r.conflictCount).toBe(1);

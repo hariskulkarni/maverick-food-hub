@@ -367,7 +367,9 @@ describe('H money path: gateway claims are never bank proof', () => {
     const snap = await snapshot(s.order.id);
     expect(snap.allocations.map((a) => a.kind)).toEqual(['LATE_PAYMENT']);
     expect(snap.payments[0].status).toBe('FAILED');
-    expect(snap.order.status).toBe('PAYMENT_PENDING');
+    // Round-2 P0-4: gateway FAILED with no other live attempt fails the order (was stuck PAYMENT_PENDING).
+    // The late credit still never releases it.
+    expect(snap.order.status).toBe('PAYMENT_FAILED');
   });
 
   it('a DEBIT row carrying the observed UTR is never allocated', async () => {

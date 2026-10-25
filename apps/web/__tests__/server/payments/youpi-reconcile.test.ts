@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const h = vi.hoisted(() => {
   const db: any = {
     payment: { findUnique: vi.fn(), updateMany: vi.fn() },
-    pgPaymentAttempt: { update: vi.fn(), findUniqueOrThrow: vi.fn() },
+    pgPaymentAttempt: { update: vi.fn(), findUniqueOrThrow: vi.fn(), count: vi.fn(async () => 0) },
     pgAllocation: { count: vi.fn() },
     $queryRaw: vi.fn(),
   };
@@ -17,6 +17,8 @@ const h = vi.hoisted(() => {
     allocate: vi.fn(),
     openException: vi.fn(),
     appendEvent: vi.fn(),
+    releaseLimit: vi.fn(async () => true),
+    markFailed: vi.fn(async () => true),
   };
 });
 
@@ -27,6 +29,8 @@ vi.mock('@/server/payments/youpi', () => ({ resolveYoupiConfig: h.cfg, YOUPI_PRO
 vi.mock('@/server/pg/reconcile-engine', () => ({ recordObservation: h.observe, tryAllocateForAttempt: h.allocate }));
 vi.mock('@/server/pg/exceptions', () => ({ openException: h.openException }));
 vi.mock('@/server/pg/ledger', () => ({ appendFinancialEvent: h.appendEvent }));
+vi.mock('@/server/pg/limits', () => ({ releaseLimit: h.releaseLimit }));
+vi.mock('@/server/payments/reconcile', () => ({ markOrderPaymentFailed: h.markFailed }));
 
 import { reconcileYoupiPayment } from '@/server/payments/youpi-reconcile';
 
@@ -139,6 +143,9 @@ describe('reconcileYoupiPayment (FAILED)', () => {
     expect(arg.data.status).toBe('FAILED');
     expect(h.db.pgPaymentAttempt.update).toHaveBeenCalledWith({ where: { id: 'a1' }, data: { state: 'FAILED' } });
     expect(h.appendEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'ATTEMPT_FAILED' }));
+    // P0-4: gateway-confirmed dead session frees the limit and, with no other live attempt, fails the order.
+    expect(h.releaseLimit).toHaveBeenCalledWith(expect.anything(), 'a1');
+    expect(h.markFailed).toHaveBeenCalledWith('o1', expect.stringContaining('failed'));
   });
 
   it('FAILED after the attempt was OBSERVED -> stays PENDING, exception for an operator', async () => {

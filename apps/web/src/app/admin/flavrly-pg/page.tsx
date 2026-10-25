@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { StatementUpload } from './statement-upload';
 import { RefundsPanel } from './refunds-panel';
+import { HeldOrders } from './held-orders';
 
 export const metadata = { title: 'Admin · Flavrly PG payments' };
 export const dynamic = 'force-dynamic';
@@ -70,6 +71,8 @@ export default async function FlavrlyPgPaymentsPage({ searchParams }: { searchPa
           {fr?.status ? <> · feature {fr.status.toLowerCase()}</> : <> · feature not requested</>}
         </p>
       </header>
+
+      <HeldOrders rows={d.heldOrders.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }))} />
 
       <Card>
         <CardContent className="p-4 sm:p-6 space-y-3">

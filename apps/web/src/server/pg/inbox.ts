@@ -311,3 +311,36 @@ export async function redactOldWebhookPayloads(now: Date = new Date()): Promise<
       AND NOT jsonb_exists("rawPayload", 'redacted')`;
   return { redacted };
 }
+
+/**
+ * P1-5: an operator puts a dead-lettered webhook back in the inbox (attempts reset, due now). Processing
+ * only records an observation and re-reads the gateway; it never captures. A payload already redacted
+ * by retention cannot be replayed. Audited by the route + WEBHOOK_REQUEUED ledger event.
+ */
+export async function requeueDeadWebhook(input: { id: string; actorId: string }): Promise<{ requeued: boolean }> {
+  if (!input.actorId?.trim()) throw new Error('A signed-in operator is required.');
+  return prisma.$transaction(async (tx) => {
+    const ev = await tx.paymentWebhookEvent.findUnique({ where: { id: input.id } });
+    if (!ev || ev.provider !== 'youpi') throw new Error('Webhook event not found.');
+    if (!ev.deadLetteredAt || ev.processed) throw new Error('Only a dead-lettered, unprocessed webhook can be requeued.');
+    const raw = ev.rawPayload as Record<string, unknown> | null;
+    if (raw && raw.redacted === true) throw new Error('This webhook body was already redacted by retention and cannot be replayed.');
+    const r = await tx.paymentWebhookEvent.updateMany({
+      where: { id: ev.id, processed: false, deadLetteredAt: { not: null } },
+      data: { deadLetteredAt: null, attempts: 0, nextAttemptAt: new Date(), leaseOwner: null, leaseExpiresAt: null },
+    });
+    if (r.count !== 1) return { requeued: false };
+    const { appendFinancialEvent } = await import('./ledger');
+    await appendFinancialEvent(tx, {
+      kind: 'WEBHOOK_REQUEUED',
+      restaurantId: ev.restaurantId,
+      actorId: input.actorId,
+      data: { webhookEventId: ev.id, providerEventId: ev.providerEventId, previousAttempts: ev.attempts, lastError: ev.error },
+    });
+    await tx.pgReconException.updateMany({
+      where: { dedupeKey: `WEBHOOK_DEAD_LETTER:${ev.id}`, status: { not: 'RESOLVED' } },
+      data: { status: 'RESOLVED', resolution: 'Requeued by operator', resolvedById: input.actorId, resolvedAt: new Date() },
+    });
+    return { requeued: true };
+  });
+}

@@ -11,7 +11,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@/server/auth', () => ({ auth: h.auth }));
 vi.mock('@/server/db', () => ({
-  prisma: { order: { findUnique: h.findUnique }, pgPaymentAttempt: { findMany: h.attempts } },
+  prisma: { order: { findUnique: h.findUnique }, pgPaymentAttempt: { findMany: h.attempts }, pgReconException: { count: async () => 0 } },
 }));
 vi.mock('@/server/http/rate-limit', () => ({ rateLimit: h.rateLimit }));
 vi.mock('@/server/tenancy', () => ({ userCanAccessRestaurant: h.canAccess }));

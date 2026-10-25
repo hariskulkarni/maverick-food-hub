@@ -57,10 +57,14 @@ export async function GET(req: NextRequest) {
     select: { state: true, expiresAt: true, allocations: { where: { reversedAt: null }, select: { id: true }, take: 1 } },
   });
 
+  const releaseHeld =
+    order.status === 'PAYMENT_PENDING' &&
+    (await prisma.pgReconException.count({ where: { orderId: order.id, kind: 'RELEASE_HELD', status: { not: 'RESOLVED' } } })) > 0;
   const view = customerPaymentView({
     orderStatus: order.status,
     attempts: attempts.map((a) => ({ state: a.state, expiresAt: a.expiresAt, allocated: (a.allocations?.length ?? 0) > 0 })),
     legacyPaymentStatus: order.payments[0]?.status ?? null,
+    releaseHeld,
   });
   return Response.json(
     { orderId: order.id, orderCode: order.code, orderStatus: order.status, ...view },

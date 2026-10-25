@@ -62,8 +62,14 @@ const NARRATION_MAX = 64;
 const IST_OFFSET_MIN = 330;
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
+/**
+ * Whitespace removed, upper-cased; an all-digit reference (UPI UTR/RRN) loses leading zeros, because
+ * banks and gateways print the same 12-digit UTR with and without them (P2). Used for observed UTRs
+ * and statement references alike, so both sides compare equal.
+ */
 export function normalizeBankReference(raw: string): string {
-  return raw.replace(/\s+/g, '').toUpperCase();
+  const s = raw.replace(/\s+/g, '').toUpperCase();
+  return /^\d+$/.test(s) ? s.replace(/^0+(?=\d)/, '') : s;
 }
 
 /** Mask digit runs (account/phone numbers) and VPA local parts; then truncate. */
@@ -205,7 +211,9 @@ export function parseStatementCsv(text: string, mapping: StatementColumnMapping)
       const hasDr = dr !== null && dr > 0;
       if (hasCr && hasDr) throw new Error('both credit and debit are set');
       if (!hasCr && !hasDr) throw new Error('no non-zero credit or debit amount');
-      const rawDate = get(iValue) || get(iDate);
+      // P2: the transaction (posting) date is when the money arrived; a value date can be a later
+      // settlement date and would push a same-day credit out of the match window. Value date is a fallback.
+      const rawDate = get(iDate) || get(iValue);
       if (!rawDate) throw new Error('missing date');
       const valueAt = parseStatementDate(rawDate, mapping.dateFormat);
       const canonical = JSON.stringify(header.map((h, i) => [h, (cells[i] ?? '').trim()]));
