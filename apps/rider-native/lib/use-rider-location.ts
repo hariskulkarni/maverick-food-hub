@@ -77,11 +77,13 @@ export function useRiderLocation(opts: { orderId: string | null; enabled: boolea
           accuracy: onDelivery
             ? Location.Accuracy.BestForNavigation
             : Location.Accuracy.High,
-          // Tight cadence so the super-admin map (and customer tracker) stay
-          // genuinely live: a fix at least every ~8s, or whenever the rider
-          // moves ~15m — whichever comes first.
-          timeInterval: 8000,
-          distanceInterval: 15,
+          // On a delivery: a fix every ~8 s / 10 m so the customer tracker is
+          // genuinely live. While merely online: every ~15 s with NO distance
+          // filter — on Android a distance filter suppresses updates entirely
+          // while the rider stands still, so a rider waiting outside a
+          // restaurant never sent a fresh fix and the fleet map aged them out.
+          timeInterval: onDelivery ? 8000 : 15000,
+          distanceInterval: onDelivery ? 10 : 0,
         },
         (loc) => {
           if (cancelled) return;

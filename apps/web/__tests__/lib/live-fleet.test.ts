@@ -6,6 +6,7 @@ import {
   mergeSse,
   isStale,
   formatAgo,
+  withWaitingRiders,
   RIDER_SIGNAL_STALE_MS,
   type RiderInput,
   type FleetRider,
@@ -183,3 +184,35 @@ describe('isStale / formatAgo', () => {
     expect(formatAgo(ago(3 * 3_600_000).toISOString(), NOW)).toBe('3h ago');
   });
 });
+
+describe('test riders and riders waiting for GPS', () => {
+  it('carries the test flag through and never counts a test rider', () => {
+    const real = deriveRiderLive(rider({ id: 'real' }), NOW)!;
+    const test = deriveRiderLive(rider({ id: 'test', isTest: true }), NOW)!;
+    expect(test.isTest).toBe(true);
+    expect(real.isTest).toBeUndefined();
+    expect(computeFleetStats([real, test], NOW)).toEqual(computeFleetStats([real], NOW));
+  });
+
+  it('keeps the test flag across SSE and poll merges', () => {
+    const test = deriveRiderLive(rider({ id: 'test', isTest: true }), NOW)!;
+    const sse = mergeSse(test, { riderId: 'test', lat: 16.4, lng: 80.5, at: new Date(NOW).toISOString() })!;
+    expect(sse.isTest).toBe(true);
+    expect(mergePolled(sse, test).isTest).toBe(true);
+  });
+
+  it('counts online riders without a GPS fix (fresh as online + idle, silent as signal lost), never test ones', () => {
+    const base = computeFleetStats([], NOW);
+    const stats = withWaitingRiders(
+      base,
+      [
+        { riderId: 'a', seenAt: ago(20_000).toISOString(), stale: false },
+        { riderId: 'b', seenAt: ago(RIDER_SIGNAL_STALE_MS + 60_000).toISOString(), stale: true },
+        { riderId: 't', seenAt: ago(5_000).toISOString(), stale: false, isTest: true },
+      ],
+      NOW
+    );
+    expect(stats).toMatchObject({ online: 1, idle: 1, signalLost: 1 });
+  });
+});
+
