@@ -1,7 +1,9 @@
 /**
  * Novaryq integration config (CONTRACT §4): the platform feature flag plus the
  * per-restaurant credential blob stored encrypted in IntegrationCredential(NOVARYQ):
- *   { baseUrl, clientId, secret, webhookSecret, enabled, pushOn: "RECEIVED" }
+ *   { baseUrl, clientId, secret, webhookSecret, enabled, pushOn: "RECEIVED", menuMaster, allowPriceOverride }
+ * menuMaster = "POS: Novaryq" (ADR-FNI-001 §4.2): Novaryq owns name/price/availability of linked items;
+ * allowPriceOverride = opt-in channel-only price on Flavrly for those items.
  * The webhook subscription itself is created by the owner in the Novaryq developer
  * console (CONTRACT-CHANGES NQ-1); its whsec_ secret is pasted into webhookSecret.
  * Values are strings (the integration store is Record<string, string>).
@@ -20,6 +22,8 @@ export interface NovaryqConfig {
   webhookSecret: string;
   enabled: boolean;
   pushOn: 'RECEIVED';
+  menuMaster: boolean;
+  allowPriceOverride: boolean;
 }
 
 export function parseNovaryqConfig(raw: Record<string, string> | null | undefined): NovaryqConfig | null {
@@ -31,6 +35,8 @@ export function parseNovaryqConfig(raw: Record<string, string> | null | undefine
     webhookSecret: raw.webhookSecret ?? '',
     enabled: raw.enabled === 'true',
     pushOn: 'RECEIVED',
+    menuMaster: raw.menuMaster === 'true',
+    allowPriceOverride: raw.allowPriceOverride === 'true',
   };
 }
 
@@ -42,6 +48,8 @@ export function serializeNovaryqConfig(c: NovaryqConfig): Record<string, string>
     webhookSecret: c.webhookSecret,
     enabled: c.enabled ? 'true' : 'false',
     pushOn: c.pushOn,
+    menuMaster: c.menuMaster ? 'true' : 'false',
+    allowPriceOverride: c.allowPriceOverride ? 'true' : 'false',
   };
 }
 

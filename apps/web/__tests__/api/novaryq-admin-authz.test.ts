@@ -70,11 +70,12 @@ const ROUTES: [string, () => Promise<Response>][] = [
   ['POST import', async () => (await import(`${base}/import/route`)).POST(req('POST', { branchId: 'bA' }))],
   ['GET syncs', async () => (await import(`${base}/syncs/route`)).GET(req('GET', undefined, 'http://x/api/admin/integrations/novaryq/syncs'))],
   ['POST replay', async () => (await import(`${base}/syncs/[id]/replay/route`)).POST(req('POST'), ctx({ id: 'sA' }))],
+  ['PUT menu-master', async () => (await import(`${base}/menu-master/route`)).PUT(req('PUT', { on: true, allowPriceOverride: false }))],
 ];
 
 // Load every route module once up front so a cold import never eats a test's 5 s budget.
 beforeAll(async () => {
-  for (const m of ['route', 'test/route', 'locations/route', 'items/route', 'items/auto-match/route', 'import/route', 'syncs/route', 'syncs/[id]/replay/route']) {
+  for (const m of ['route', 'test/route', 'locations/route', 'items/route', 'items/auto-match/route', 'import/route', 'syncs/route', 'syncs/[id]/replay/route', 'menu-master/route']) {
     await import(`${base}/${m}`);
   }
 }, 120_000);

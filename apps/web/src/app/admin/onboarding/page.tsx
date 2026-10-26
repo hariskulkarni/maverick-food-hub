@@ -14,6 +14,7 @@ import { listForRestaurant } from '@/server/integrations';
 import { getOnboardingState } from '@/server/onboarding';
 import { isStepKey } from '@/lib/onboarding/steps';
 import { OnboardingWizard } from './wizard-client';
+import { novaryqFlagOn } from '@/server/novaryq/config';
 import type { OnboardingData } from './types';
 
 export const dynamic = 'force-dynamic';
@@ -96,6 +97,12 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl">
+      {novaryqFlagOn() && (
+        <a href="/admin/integrations" className="mb-4 block rounded-xl border bg-card p-4 text-sm transition-colors hover:bg-accent">
+          <b>Already on Novaryq India?</b> Connect your POS instead of typing your menu: Flavrly orders go to your Novaryq kitchen,
+          and your Novaryq menu, prices and sold-out items stay in sync. <span className="text-primary">Set up POS integration →</span>
+        </a>
+      )}
       <OnboardingWizard data={JSON.parse(JSON.stringify(data))} initialStep={isStepKey(step) ? step : data.progress.currentStep} />
     </div>
   );

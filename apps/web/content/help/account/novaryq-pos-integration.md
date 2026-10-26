@@ -19,7 +19,7 @@ Flavrly orders never wait for the POS. If Novaryq is down, orders still come in 
 
 ## Before you start
 
-You need a restaurant admin login on Flavrly and access to **Developer** in your Novaryq back office. Your Novaryq location must sell in Indian rupees (INR).
+You need a restaurant admin login on Flavrly and access to **Developer** in your Novaryq back office. Flavrly connects only to **Novaryq India** accounts: your Novaryq account and locations must sell in Indian rupees (INR). A North America account (USD or CAD) is refused.
 
 ## Set it up
 
@@ -29,6 +29,16 @@ You need a restaurant admin login on Flavrly and access to **Developer** in your
 4. Copy the signing secret Novaryq shows (it starts with whsec_) into **Webhook signing secret** on Flavrly and save again. Press **Send test** in Novaryq; the time appears under "Last webhook received".
 5. Under **Branches → Novaryq locations**, enter the Novaryq location id for each branch and tap **Save**.
 6. Link your menu: tap **Import Novaryq menu** to copy the Novaryq menu into the branch, or use **Auto-match by name** and pick the Novaryq item for anything left over.
+
+## Make Novaryq your menu master ("POS: Novaryq")
+
+Once your branches and menu are linked, turn on **POS: Novaryq** under **Admin > POS integration**:
+
+- The names, prices and availability of linked items come from Novaryq and are read-only on Flavrly. Change them in Novaryq; Flavrly follows automatically (sold-out within seconds, everything else at the next sync or import).
+- You can still add photos, descriptions, sizes and add-ons on Flavrly, and keep Flavrly-only items.
+- Spreadsheet and template menu imports are switched off; use **Import Novaryq menu** instead.
+- **Flavrly-only prices** are off by default. Tick "Allow Flavrly-only prices" if you want a different online price for linked items; you then manage those prices on Flavrly.
+- Copy **Your Flavrly restaurant page** from the same screen and paste it into Novaryq's consumer-channel (Flavrly) setting, so your Novaryq storefront sends online customers to Flavrly.
 
 ## Good to know
 

@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Copy, RefreshCw, RotateCcw, Wand2, Download, Link2, Unlink } from 'lucide-react';
+import { Copy, RefreshCw, RotateCcw, Wand2, Download, Link2, Unlink, CheckCircle2, Circle, ExternalLink } from 'lucide-react';
 
 type Health = 'off' | 'not_connected' | 'healthy' | 'degraded' | 'failing';
 interface Overview {
@@ -24,6 +24,11 @@ interface Overview {
   branches: Array<{ id: string; name: string; isActive: boolean; location: { novaryqLocationId: string; currency: string } | null }>;
   counts: Record<string, number>;
   retrying: number;
+  restaurantUrl: string | null;
+  menuMaster: boolean;
+  allowPriceOverride: boolean;
+  linkedItems: number;
+  manageUrl: string | null;
 }
 interface SyncRow {
   id: string; orderId: string; state: string; attempts: number; lastError: string | null; lastStatus: string | null;
@@ -84,12 +89,84 @@ export function NovaryqPanel() {
           The Novaryq integration is not switched on for Flavrly yet. You can look around; changes are disabled until the platform team enables it.
         </p>
       )}
+      <IndiaSetup ov={ov} onSaved={load} />
       <Credentials ov={ov} onSaved={load} />
       <Webhook ov={ov} />
       <Locations ov={ov} onSaved={load} />
       <ItemMapping branches={ov.branches.filter((b) => b.location)} />
       <SyncLog onChange={load} />
     </div>
+  );
+}
+
+const copyText = (t: string) => navigator.clipboard?.writeText(t).then(() => toast.success('Copied'), () => toast.error('Copy failed'));
+
+/** "Already on Novaryq India?" — the onboarding path (ADR-FNI-001 §4.2) as a checklist over the sections below. */
+function IndiaSetup({ ov, onSaved }: { ov: Overview; onSaved: () => void }) {
+  const [allowPrice, setAllowPrice] = useState(ov.allowPriceOverride);
+  const [busy, setBusy] = useState(false);
+  const steps = [
+    { done: ov.status === 'CONNECTED', label: 'Connect your Novaryq India account (API key, INR only)' },
+    { done: ov.branches.some((b) => b.location), label: 'Link your branches to Novaryq locations' },
+    { done: ov.linkedItems > 0, label: `Import or link your Novaryq menu (${ov.linkedItems} items linked)` },
+    { done: !!ov.lastWebhook, label: 'Add the Flavrly webhook in Novaryq and send a test' },
+    { done: ov.menuMaster, label: 'Make Novaryq your menu master ("POS: Novaryq")' },
+  ];
+  const setMaster = async (on: boolean, allowPriceOverride = allowPrice) => {
+    setBusy(true);
+    const r = await call(`${API}/menu-master`, { method: 'PUT', body: JSON.stringify({ on, allowPriceOverride }) });
+    setBusy(false);
+    if (r.ok) { toast.success(on ? 'Novaryq is now your menu master' : 'Menu editing is back on Flavrly'); onSaved(); }
+    else toast.error(r.data.error ?? 'Failed');
+  };
+  return (
+    <Card>
+      <CardContent className="p-4 sm:p-6 space-y-4">
+        <div>
+          <h2 className="font-semibold">Already on Novaryq India?</h2>
+          <p className="text-xs text-muted-foreground">
+            Keep Novaryq for your counter, kitchen and menu; Flavrly takes your online orders and delivers them. Only Novaryq India (INR) accounts can be connected.
+          </p>
+        </div>
+        <ol className="space-y-1.5 text-sm">
+          {steps.map((st, i) => (
+            <li key={i} className="flex items-start gap-2">
+              {st.done ? <CheckCircle2 className="size-4 mt-0.5 shrink-0 text-success" /> : <Circle className="size-4 mt-0.5 shrink-0 text-muted-foreground" />}
+              <span className={st.done ? 'text-muted-foreground' : ''}>{st.label}</span>
+            </li>
+          ))}
+        </ol>
+        {ov.restaurantUrl && (
+          <div className="space-y-1">
+            <Label>Your Flavrly restaurant page</Label>
+            <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-2">
+              <code className="text-xs break-all flex-1 min-w-0">{ov.restaurantUrl}</code>
+              <Button variant="outline" size="sm" onClick={() => copyText(ov.restaurantUrl!)} aria-label="Copy Flavrly restaurant URL"><Copy className="size-4" /></Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Paste it into Novaryq&apos;s consumer-channel (Flavrly) setting so your Novaryq storefront and online-ordering links send customers here.
+            </p>
+          </div>
+        )}
+        <div className="rounded-md border p-3 space-y-2">
+          <label className="flex items-center gap-3 text-sm">
+            <Switch checked={ov.menuMaster} disabled={busy || !ov.flagEnabled} onCheckedChange={(v) => setMaster(!!v)} aria-label="POS: Novaryq" />
+            <span><b>POS: Novaryq</b> — names, prices and availability of linked items come from Novaryq and are read-only on Flavrly.</span>
+          </label>
+          {ov.menuMaster && (
+            <label className="flex items-center gap-3 text-xs text-muted-foreground">
+              <input type="checkbox" className="size-4" checked={allowPrice} disabled={busy} onChange={(e) => { setAllowPrice(e.target.checked); setMaster(true, e.target.checked); }} />
+              Allow Flavrly-only prices for linked items (channel price override). Off by default.
+            </label>
+          )}
+          {ov.manageUrl && (
+            <a href={ov.manageUrl} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+              Manage menu in Novaryq <ExternalLink className="size-3" />
+            </a>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -161,7 +238,7 @@ function Field({ id, label, value, onChange, type = 'text', placeholder }: { id:
 }
 
 function Webhook({ ov }: { ov: Overview }) {
-  const copy = () => navigator.clipboard?.writeText(ov.webhookUrl).then(() => toast.success('Copied'), () => toast.error('Copy failed'));
+  const copy = () => copyText(ov.webhookUrl);
   return (
     <Card>
       <CardContent className="p-4 sm:p-6 space-y-3">

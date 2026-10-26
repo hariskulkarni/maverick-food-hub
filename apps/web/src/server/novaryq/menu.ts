@@ -49,10 +49,19 @@ function apiError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** Integration test(): a signed GET /menu (novaryqRequest applies the base-URL guard). */
+/**
+ * Integration test(): a signed GET /menu (novaryqRequest applies the base-URL guard).
+ * Flavrly connects only to Novaryq India tenants (ADR-FNI-001 §1.4): any non-INR currency
+ * in the tenant-wide menu refuses the connection (a mixed tenant answers currency null, so
+ * item currencies are checked too; every linked location is checked again on linking).
+ */
 export async function testNovaryqConnection(creds: NovaryqCredentials): Promise<{ ok: boolean; detail?: string; error?: string }> {
   try {
     const menu = await fetchNovaryqMenu(creds);
+    const foreign = [...new Set([menu.currency, ...menu.items.map((i) => i.currency)].filter((c): c is string => !!c && c.toUpperCase() !== 'INR'))];
+    if (foreign.length) {
+      return { ok: false, error: `This Novaryq account sells in ${foreign.join(', ')}. Flavrly connects only to Novaryq India (INR) accounts — use your novaryq.in account's API key.` };
+    }
     return { ok: true, detail: `Connected to Novaryq. ${menu.items.length} menu items visible to this API key.` };
   } catch (e) {
     return { ok: false, error: apiError(e) };

@@ -46,7 +46,7 @@ vi.mock('@/server/menu-io', () => ({
 }));
 vi.mock('@/server/novaryq/config', async (orig) => ({ ...(await orig<any>()), loadNovaryqConfig: vi.fn(async () => h.cfg) }));
 
-import { checkLocationCurrency, fetchNovaryqMenu, importNovaryqMenu, linkItem, reconcileRestaurant, suggestMatches } from '@/server/novaryq/menu';
+import { testNovaryqConnection, checkLocationCurrency, fetchNovaryqMenu, importNovaryqMenu, linkItem, reconcileRestaurant, suggestMatches } from '@/server/novaryq/menu';
 
 const creds = { baseUrl: 'https://pos.example.com', clientId: 'c', secret: 's' };
 
@@ -76,6 +76,22 @@ describe('fetchNovaryqMenu', () => {
     expect(items[0]).toEqual({ itemCode: 'SKU-1', name: 'Paneer Tikka', price: 249, currency: 'INR', available: true, categoryName: 'Starters' });
     expect(items[1]).toMatchObject({ categoryName: 'Drinks', price: 99, available: false });
     expect((fetch as any).mock.calls[0][0]).toBe('https://pos.example.com/api/v1/menu?locationId=loc_1');
+  });
+});
+
+describe('testNovaryqConnection — Novaryq India tenants only (ADR-FNI-001 §1.4)', () => {
+  it('an INR tenant connects', async () => {
+    expect(await testNovaryqConnection(creds)).toMatchObject({ ok: true });
+  });
+  it('a North America tenant (USD/CAD) is refused with a clear message', async () => {
+    h.menu[1].currency = 'CAD';
+    const r = await testNovaryqConnection(creds);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/Novaryq India/);
+    expect(r.error).toMatch(/CAD/);
+    h.menu = [];
+    h.topCurrency = 'USD';
+    expect((await testNovaryqConnection(creds)).ok).toBe(false);
   });
 });
 

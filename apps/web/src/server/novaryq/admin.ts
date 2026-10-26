@@ -13,7 +13,7 @@ import { audit } from '../audit';
 import { brand } from '@/lib/brand';
 import { decryptJSON } from '../crypto';
 import { tenantAdminOrError } from '../tenancy';
-import { disconnect, testAndSave } from '../integrations';
+import { disconnect, saveConfig, testAndSave } from '../integrations';
 import { NovaryqApiError, checkBaseUrl, normalizeBaseUrl } from './client';
 import { novaryqFlagOn, novaryqWebhookUrl, parseNovaryqConfig, serializeNovaryqConfig, type NovaryqConfig } from './config';
 import { checkLocationCurrency, testNovaryqConnection } from './menu';
@@ -54,8 +54,17 @@ async function storedConfig(restaurantId: string): Promise<NovaryqConfig | null>
 
 export type Health = 'off' | 'not_connected' | 'healthy' | 'degraded' | 'failing';
 
+/** One health rule for the admin badge and the platform list. */
+export function computeHealth(i: { hasCred: boolean; connected: boolean; enabled: boolean; dead: number; failed: number; retrying: number }): Health {
+  if (!novaryqFlagOn() || (i.hasCred && !i.enabled)) return 'off';
+  if (!i.hasCred) return 'not_connected';
+  if (!i.connected || i.dead > 0) return 'failing';
+  if (i.failed > 0 || i.retrying > 0) return 'degraded';
+  return 'healthy';
+}
+
 export async function novaryqOverview(restaurantId: string) {
-  const [cred, branches, counts, retrying, lastWebhook] = await Promise.all([
+  const [cred, branches, counts, retrying, lastWebhook, restaurant, linkedItems] = await Promise.all([
     prisma.integrationCredential.findUnique({
       where: { restaurantId_provider: { restaurantId, provider: 'NOVARYQ' } },
       select: { status: true, summary: true, lastTestedAt: true, lastError: true },
@@ -68,16 +77,16 @@ export async function novaryqOverview(restaurantId: string) {
     prisma.novaryqOrderSync.groupBy({ by: ['state'], where: { restaurantId }, _count: { _all: true } }),
     prisma.novaryqOrderSync.count({ where: { restaurantId, state: { in: ['PENDING', 'CANCEL_PENDING'] }, attempts: { gt: 1 } } }),
     prisma.novaryqWebhookEvent.findFirst({ where: { restaurantId }, orderBy: { receivedAt: 'desc' }, select: { receivedAt: true, event: true } }),
+    prisma.restaurant.findUnique({ where: { id: restaurantId }, select: { slug: true } }),
+    prisma.novaryqItemLink.count({ where: { restaurantId } }),
   ]);
   const byState = Object.fromEntries(counts.map((c) => [c.state, c._count._all])) as Record<string, number>;
-  const summary = (cred?.summary ?? null) as { enabled?: boolean } | null;
+  const summary = (cred?.summary ?? null) as { enabled?: boolean; baseUrl?: string; menuMaster?: boolean; allowPriceOverride?: boolean } | null;
   const enabled = !!summary?.enabled;
-  let health: Health;
-  if (!novaryqFlagOn() || (cred && !enabled)) health = 'off';
-  else if (!cred) health = 'not_connected';
-  else if (cred.status !== 'CONNECTED' || (byState.DEAD ?? 0) > 0) health = 'failing';
-  else if ((byState.FAILED ?? 0) > 0 || retrying > 0) health = 'degraded';
-  else health = 'healthy';
+  const health = computeHealth({
+    hasCred: !!cred, connected: cred?.status === 'CONNECTED', enabled,
+    dead: byState.DEAD ?? 0, failed: byState.FAILED ?? 0, retrying,
+  });
   return {
     flagEnabled: novaryqFlagOn(),
     status: cred?.status ?? 'DISCONNECTED',
@@ -92,6 +101,12 @@ export async function novaryqOverview(restaurantId: string) {
     branches: branches.map((b) => ({ id: b.id, name: b.name, isActive: b.isActive, location: b.novaryqLink })),
     counts: byState,
     retrying,
+    // ADR-FNI-001 §3.1: the URL the owner pastes into Novaryq's consumer-channel setting.
+    restaurantUrl: restaurant ? `${brand.url}/r/${restaurant.slug}` : null,
+    menuMaster: !!summary?.menuMaster,
+    allowPriceOverride: !!summary?.allowPriceOverride,
+    linkedItems,
+    manageUrl: summary?.baseUrl ?? null,
   };
 }
 
@@ -117,6 +132,9 @@ export async function saveNovaryqCredentials(ctx: AdminContext, input: Credentia
     webhookSecret: input.webhookSecret?.trim() || prev?.webhookSecret || '',
     enabled: input.enabled,
     pushOn: 'RECEIVED',
+    // A different URL / API key may be a different tenant: "POS: Novaryq" must be switched on again.
+    menuMaster: prev?.menuMaster ?? false,
+    allowPriceOverride: prev?.allowPriceOverride ?? false,
   };
   if (!cfg.baseUrl || !cfg.clientId || !cfg.secret) return { ok: false as const, error: 'Novaryq URL, API key and API secret are required.' };
   const bad = await checkBaseUrl(cfg.baseUrl);
@@ -190,4 +208,35 @@ export async function syncLog(restaurantId: string, state?: string | null) {
     }),
   ]);
   return { syncs: syncs.map((s) => ({ ...s, order: s.order ? { ...s.order, total: Number(s.order.total) } : null })), events };
+}
+
+/**
+ * "POS: Novaryq" (ADR-FNI-001 §4.2): Novaryq becomes the menu master for linked items.
+ * Switching on needs a connected + enabled integration, a linked (INR-verified) branch
+ * and at least one linked item. Switching off is always allowed.
+ */
+export async function setMenuMaster(ctx: AdminContext, input: { on: boolean; allowPriceOverride: boolean }) {
+  const row = await prisma.integrationCredential.findUnique({
+    where: { restaurantId_provider: { restaurantId: ctx.restaurantId, provider: 'NOVARYQ' } },
+    select: { status: true },
+  });
+  const cfg = await storedConfig(ctx.restaurantId);
+  if (!cfg || !row) return { ok: false as const, error: 'Connect Novaryq first.' };
+  if (input.on) {
+    if (row.status !== 'CONNECTED' || !cfg.enabled) return { ok: false as const, error: 'Connect Novaryq and turn on sending orders first.' };
+    const [locations, items] = await Promise.all([
+      prisma.novaryqLocationLink.count({ where: { restaurantId: ctx.restaurantId } }),
+      prisma.novaryqItemLink.count({ where: { restaurantId: ctx.restaurantId } }),
+    ]);
+    if (!locations) return { ok: false as const, error: 'Link at least one branch to a Novaryq location first.' };
+    if (!items) return { ok: false as const, error: 'Import or link your Novaryq menu first.' };
+  }
+  const next = { ...cfg, menuMaster: input.on, allowPriceOverride: input.on && input.allowPriceOverride };
+  await saveConfig(ctx.restaurantId, 'NOVARYQ', serializeNovaryqConfig(next), { status: row.status as 'CONNECTED', userId: ctx.userId });
+  await audit('integration.novaryq.menu_master', {
+    actorId: ctx.userId, restaurantId: ctx.restaurantId, entityType: 'IntegrationCredential', entityId: 'NOVARYQ',
+    before: { menuMaster: cfg.menuMaster, allowPriceOverride: cfg.allowPriceOverride },
+    after: { menuMaster: next.menuMaster, allowPriceOverride: next.allowPriceOverride },
+  });
+  return { ok: true as const };
 }

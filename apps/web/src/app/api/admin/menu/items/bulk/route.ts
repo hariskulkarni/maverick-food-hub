@@ -7,6 +7,7 @@ import { audit } from '@/server/audit';
 import { sendMenuToggleAlert } from '@/server/alerts';
 import { log } from '@/server/log';
 import { parseOrJsonError } from '@/server/zod-helpers';
+import { novaryqItemLock } from '@/server/novaryq/menu-master';
 
 const Body = z.object({
   ids: z.array(z.string().min(1)).min(1),
@@ -36,6 +37,12 @@ export async function POST(req: NextRequest) {
       { error: 'Some items do not belong to this restaurant.', code: 'auth/forbidden', reason: 'cross_tenant' },
       { status: 403 }
     );
+  }
+
+  // "POS: Novaryq": availability of linked items is owned by Novaryq.
+  if (patch.isAvailable !== undefined) {
+    const lock = await novaryqItemLock(restaurant.id, ids, { isAvailable: patch.isAvailable });
+    if (lock) return lock;
   }
 
   // Snapshot the before-state of isAvailable so we can determine how many rows

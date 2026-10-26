@@ -586,6 +586,8 @@ const Novaryq: ProviderDef = {
     webhookSecret: c.webhookSecret ? maskSecret(c.webhookSecret) : '(not set)',
     enabled: c.enabled === 'true',
     pushOn: 'RECEIVED',
+    menuMaster: c.menuMaster === 'true',
+    allowPriceOverride: c.allowPriceOverride === 'true',
   }),
   async test(c) {
     const { testNovaryqConnection } = await import('../novaryq/menu');

@@ -16,6 +16,7 @@ import { resolveBranchScope } from '@/app/api/admin/menu/import/_helpers';
 import { auth } from '@/server/auth';
 import { auditMeta } from '@/server/onboarding-auth';
 import { templateToMenuRows, TemplateError } from '@/lib/onboarding/menu-templates';
+import { novaryqBulkImportLock } from '@/server/novaryq/menu-master';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,6 +44,8 @@ export async function POST(req: NextRequest) {
     throw e;
   }
   if ('error' in scope) return scope.error;
+  const lock = await novaryqBulkImportLock(scope.restaurantId);
+  if (lock) return lock;
 
   const parsed = parseOrJsonError(Body, await req.json().catch(() => null));
   if (parsed instanceof Response) return parsed;
