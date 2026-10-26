@@ -142,7 +142,7 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     expect(await statusOf(order.id)).toBe('READY');
   });
 
-  it('NQ-2: legacy alias deliveries (order.updated / order.sent / order.closed) are stored and ignored', async () => {
+  it('NQ-2: legacy alias deliveries (order.updated / order.sent / order.closed) are acknowledged and ignored', async () => {
     const { order, nq } = await pushed();
     await sim.flush();
     await fl.runWorker();
@@ -153,7 +153,9 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     await fl.runWorker();
     expect(d!.attempts[0]!.status).toBe(200);
     expect(await statusOf(order.id)).toBe('ACCEPTED');
-    expect((await eventByDelivery(d!.id, d!.body)).processedAt).not.toBeNull();
+    // Storing it is optional (QA-F5: FL drops ignored events); if stored it must not stay pending.
+    const row = await eventByDelivery(d!.id, d!.body);
+    if (row) expect(row.processedAt).not.toBeNull();
   });
 
   it('webhooks for non-Flavrly POS orders (source ≠ flavrly) are accepted and ignored', async () => {
@@ -164,7 +166,7 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     await fl.runWorker();
     expect(await prisma.order.count()).toBe(before);
     const row = await eventByDelivery(d[0]!.id, d[0]!.body);
-    expect(row?.processedAt ?? null).not.toBeNull();
+    if (row) expect(row.processedAt).not.toBeNull();
   });
 
   it("console 'Send test' (webhook.test, envelope without data) is accepted and stored", async () => {
