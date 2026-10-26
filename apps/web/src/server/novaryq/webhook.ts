@@ -16,6 +16,7 @@ import { applyOrderStatusEvent } from './status';
 import { applyAvailabilityEvent } from './menu';
 import { pushBackoffMs } from './push';
 import { sendNovaryqAlert } from './alerts';
+import { loadNovaryqConfig, novaryqFlagOn } from './config';
 
 export const WEBHOOK_MAX_SKEW_SEC = 300;
 export const WEBHOOK_MAX_ATTEMPTS = 8;
@@ -91,6 +92,9 @@ export async function pruneNovaryqWebhookEvents(): Promise<{ deleted: number }> 
 export async function routeNovaryqEvent(ev: ClaimedEvent): Promise<string> {
   // Novaryq console "Send test": proves the webhook leg; shown as "last webhook received".
   if (ev.event === 'webhook.test') return 'test_received';
+  // Only while enabled: an event stored before the platform flag or this restaurant's integration
+  // was switched off must not change Flavrly orders or menu (Flavrly and Novaryq run independently).
+  if (!novaryqFlagOn() || !(await loadNovaryqConfig(ev.restaurantId))?.enabled) return 'ignored:disabled';
   const p = eventData(ev.payload);
   const occurredAt = str(p.occurredAt) ?? ev.receivedAt.toISOString();
 

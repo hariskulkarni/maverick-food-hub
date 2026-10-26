@@ -41,6 +41,8 @@ vi.mock('@/server/novaryq/status', () => ({
     return h.statusResult;
   }),
 }));
+// Processing applies only while the integration is enabled (see independence.test.ts).
+vi.mock('@/server/novaryq/config', async (orig) => ({ ...(await orig<any>()), loadNovaryqConfig: vi.fn(async () => ({ enabled: true })) }));
 vi.mock('@/server/novaryq/alerts', () => ({ sendNovaryqAlert: vi.fn(async (a: any) => { h.alerts.push(a); }) }));
 
 import { handleClaimedEvent, routeNovaryqEvent, pruneNovaryqWebhookEvents } from '@/server/novaryq/webhook';
@@ -52,6 +54,7 @@ const ev = (event: string, payload: any, attempts = 1) => ({
 });
 
 beforeEach(() => {
+  vi.stubEnv('NOVARYQ_INTEGRATION_ENABLED', 'true');
   h.links = [{ id: 'l1', menuItemId: 'm1', menuItem: { branchId: 'b1', isAvailable: true } }];
   h.locs = [{ branchId: 'b1', novaryqLocationId: 'loc_1' }, { branchId: 'b2', novaryqLocationId: 'loc_2' }];
   h.linkGuard = 1;

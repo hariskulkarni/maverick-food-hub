@@ -5,7 +5,7 @@
  * transitionOrder with the stale-event guard. Only the network (fetch to Novaryq)
  * and notification side effects are stubbed.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
 import { createHmac } from 'node:crypto';
 
 vi.hoisted(() => {
@@ -161,6 +161,48 @@ describe('order push outbox', () => {
     expect((await runNovaryqPushWorker()).cancelled).toBe(1);
     expect(sim.cancels).toEqual([sim.ids.get(o.id)]);
     expect((await prisma.novaryqOrderSync.findUniqueOrThrow({ where: { orderId: o.id } })).state).toBe('CANCELLED');
+  });
+});
+
+describe('independence when not enabled (real order flow)', () => {
+  afterEach(() => { process.env.NOVARYQ_INTEGRATION_ENABLED = 'true'; });
+
+  it('flag off: a Flavrly order is received, accepted and cancelled normally with no Novaryq row and no call', async () => {
+    process.env.NOVARYQ_INTEGRATION_ENABLED = 'false';
+    const o = await makeOrder(OrderStatus.PAYMENT_PENDING);
+    await transitionOrder(o.id, OrderStatus.RECEIVED);
+    await transitionOrder(o.id, OrderStatus.ACCEPTED);
+    await transitionOrder(o.id, OrderStatus.CANCELLED_BY_RESTAURANT);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: o.id } })).status).toBe(OrderStatus.CANCELLED_BY_RESTAURANT);
+    expect(await prisma.novaryqOrderSync.count({ where: { orderId: o.id } })).toBe(0);
+    expect(await runNovaryqPushWorker()).toMatchObject({ claimed: 0 });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('flag off: cancelling an order pushed earlier leaves the Novaryq side untouched', async () => {
+    const o = await makeOrder();
+    await enqueue(o.id);
+    await runNovaryqPushWorker();
+    const calls = (fetch as any).mock.calls.length;
+    process.env.NOVARYQ_INTEGRATION_ENABLED = 'false';
+    await transitionOrder(o.id, OrderStatus.CANCELLED_BY_CUSTOMER);
+    expect((await prisma.novaryqOrderSync.findUniqueOrThrow({ where: { orderId: o.id } })).state).toBe('SENT');
+    expect((fetch as any).mock.calls.length).toBe(calls);
+  });
+
+  it('restaurant disabled (flag on): no push is queued for its received orders', async () => {
+    await saveConfig(restaurantId, 'NOVARYQ', {
+      baseUrl: 'https://pos.example.com', clientId: 'nq_test', secret: 'nqsec', webhookSecret: WHSEC, enabled: 'false', pushOn: 'RECEIVED',
+    });
+    try {
+      const o = await makeOrder(OrderStatus.PAYMENT_PENDING);
+      await transitionOrder(o.id, OrderStatus.RECEIVED);
+      expect(await prisma.novaryqOrderSync.count({ where: { orderId: o.id } })).toBe(0);
+    } finally {
+      await saveConfig(restaurantId, 'NOVARYQ', {
+        baseUrl: 'https://pos.example.com', clientId: 'nq_test', secret: 'nqsec', webhookSecret: WHSEC, enabled: 'true', pushOn: 'RECEIVED',
+      });
+    }
   });
 });
 
