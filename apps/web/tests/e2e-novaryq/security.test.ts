@@ -287,6 +287,24 @@ describe('SSRF: tenant-supplied baseUrl', () => {
   });
 });
 
+describe('QA-F8: stored secrets are never reused for a different Novaryq URL / API key', () => {
+  it('saving a new base URL with blank secrets is refused and nothing is signed for the new host', async () => {
+    const s = await makeShop(sim);
+    const evil = new NovaryqSimulator();
+    await evil.start();
+    try {
+      const { saveNovaryqCredentials } = await import(/* @vite-ignore */ '@/server/novaryq/admin' as string);
+      const r = await saveNovaryqCredentials({ restaurantId: s.restaurantId, restaurantName: 'x', userId: s.ownerId }, { baseUrl: evil.baseUrl, clientId: s.key.clientId, enabled: true });
+      expect(r.ok).toBe(false);
+      expect(evil.requests).toHaveLength(0);
+      const same = await saveNovaryqCredentials({ restaurantId: s.restaurantId, restaurantName: 'x', userId: s.ownerId }, { baseUrl: s.config.baseUrl, clientId: s.key.clientId, enabled: true });
+      expect(same.ok).toBe(true); // unchanged URL + key: blank secrets keep the stored ones
+    } finally {
+      await evil.stop();
+    }
+  });
+});
+
 describe('secrets never leak', () => {
   it('push, failure, webhook and worker logs + stored errors contain no secret material', async () => {
     const s = await makeShop(sim);
