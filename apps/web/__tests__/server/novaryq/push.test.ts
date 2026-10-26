@@ -106,6 +106,7 @@ describe('buildOrderPayload (§2.1)', () => {
       payment: { status: 'UNPAID', method: 'COD', amount: '544.40' },
     });
     expect(p.deliveryAddress).toBe('12 MG Road, Near park, Pune 411001');
+    expect(p.deliveryHandledBy).toBe('PARTNER'); // LEAD-1: Flavrly riders deliver
     expect(p.lines[0]).toEqual({
       itemCode: 'SKU-1', quantity: 2, unitPrice: '249.00', notes: 'less spicy',
       modifiers: [
@@ -131,6 +132,7 @@ describe('buildOrderPayload (§2.1)', () => {
     expect(pick.serviceMode).toBe('TAKEOUT');
     expect(pick.payment).toEqual({ status: 'PREPAID', method: 'PHONEPE', amount: '544.40' });
     expect(pick.deliveryAddress).toBeUndefined();
+    expect(pick.deliveryHandledBy).toBeUndefined();
     const dine = (buildOrderPayload(baseOrder({ fulfillmentType: 'DINE_IN' }) as any, 'loc_1', new Map([['m1', 'A'], ['m2', 'B']])) as any).payload;
     expect(dine.serviceMode).toBe('DINE_IN');
   });
@@ -216,6 +218,16 @@ describe('processClaimed — push', () => {
     expect(h.updates[0].data.state).toBe('FAILED');
     expect(h.updates[0].data.lastError).toContain('SKU-2');
     expect(h.alerts).toHaveLength(1);
+  });
+
+  it('409 on create (order exists under another API key, NQ-4) → FAILED once with one alert, never retried', async () => {
+    h.respond = () => new Response(JSON.stringify({ statusCode: 409, error: 'Conflict', message: 'externalRef already used by another API client' }), { status: 409 });
+    expect(await processClaimed(row({ attempts: 1 }), OWNER)).toBe('failed');
+    expect(h.updates).toHaveLength(1);
+    expect(h.updates[0].data.state).toBe('FAILED');
+    expect(h.updates[0].data.lastError).toMatch(/already exists in Novaryq under another API key/);
+    expect(h.alerts).toHaveLength(1);
+    expect(h.alerts[0]).toMatchObject({ kind: 'push_failed' });
   });
 
   it('5xx on attempt 1 → retry in 30s, lease released', async () => {

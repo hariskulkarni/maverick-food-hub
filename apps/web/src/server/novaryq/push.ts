@@ -143,6 +143,8 @@ export function buildOrderPayload(
       externalCode: order.code.slice(0, 32),
       customer: { name: order.customer?.name || 'Flavrly customer', ...(order.customer?.phone ? { phone: order.customer.phone } : {}) },
       ...(deliveryAddress ? { deliveryAddress } : {}),
+      // LEAD-1: Flavrly riders deliver — Novaryq must not dispatch its own driver.
+      ...(order.fulfillmentType === 'DELIVERY' ? { deliveryHandledBy: 'PARTNER' } : {}),
       ...(order.customerNotes ? { notes: order.customerNotes.slice(0, 500) } : {}),
       lines,
       totals: {
@@ -263,6 +265,8 @@ async function pushOrder(row: ClaimedSync, owner: string, cfg: NovaryqConfig): P
     res = await novaryqRequest(cfg, 'POST', '/orders', built.payload);
   } catch (e) {
     if (e instanceof NovaryqApiError && !e.retryable) {
+      // NQ-4: the externalRef is bound to another API key (key deleted and re-issued): never a success, never retried.
+      if (e.status === 409) return fail(row, owner, `Order already exists in Novaryq under another API key — check the POS (${e.message})`);
       const codes = (e.body as { unknownItemCodes?: unknown } | null)?.unknownItemCodes;
       return fail(row, owner, Array.isArray(codes) ? `${e.message} (unknown item codes: ${codes.join(', ')})` : e.message);
     }
