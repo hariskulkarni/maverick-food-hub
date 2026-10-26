@@ -75,6 +75,26 @@ describe('availability (86 / un-86)', () => {
     expect(await available(shop.dal.id)).toBe(true);
   });
 
+  it('QA-C1 / FL-1: two branches of one restaurant can link the same Novaryq code; a global 86 flips both, a location 86 only its branch', async () => {
+    const s = await makeShop(sim);
+    const loc2 = sim.addLocation('INR', 'Second outlet');
+    const b2 = await prisma.branch.create({ data: { restaurantId: s.restaurantId, name: 'Second', slug: `b2-${s.branchId}`, line1: 'y', city: 'Pune', postalCode: '411002' } });
+    const cat2 = await prisma.category.create({ data: { branchId: b2.id, name: 'Mains', slug: `m2-${b2.id}` } });
+    const paneer2 = await prisma.menuItem.create({ data: { branchId: b2.id, categoryId: cat2.id, name: 'Paneer Tikka', slug: `p2-${b2.id}`, price: '249.00' as any } });
+    await db.novaryqLocationLink.create({ data: { restaurantId: s.restaurantId, branchId: b2.id, novaryqLocationId: loc2.id, currency: 'INR' } });
+    await db.novaryqItemLink.create({ data: { restaurantId: s.restaurantId, menuItemId: paneer2.id, novaryqItemCode: s.paneer.code } });
+    sim.set86(s.paneer.code, false, null);
+    await sim.flush();
+    await fl.runWorker();
+    expect(await available(s.paneer.id)).toBe(false);
+    expect(await available(paneer2.id)).toBe(false);
+    sim.set86(s.paneer.code, true, loc2.id);
+    await sim.flush();
+    await fl.runWorker();
+    expect(await available(paneer2.id)).toBe(true);
+    expect(await available(s.paneer.id)).toBe(false);
+  });
+
   it('out-of-order availability events: the newest occurredAt wins', async () => {
     sim.hold = true;
     sim.set86(shop.paneer.code, false, null, new Date(Date.now() - 10_000).toISOString());
@@ -90,7 +110,7 @@ describe('availability (86 / un-86)', () => {
     await sim.flush();
     expect(d!.attempts[0]!.status).toBe(200);
     await fl.runWorker();
-    const row = await eventByDelivery(d!.id);
+    const row = await eventByDelivery(d!.id, d!.body);
     expect(row.processedAt).not.toBeNull();
   });
 

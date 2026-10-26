@@ -25,7 +25,7 @@ export const routeTransport: WebhookTransport = async (url, init) => {
   const m = u.pathname.match(/^\/api\/integrations\/novaryq\/webhook\/([^/]+)$/);
   if (!m) return 404;
   const res = await fl.webhookPOST(new Request(url, { method: 'POST', headers: init.headers, body: init.body }), m[1]!);
-  await quiesceDelivery(init.headers['x-novaryq-idempotency-key'] ?? init.headers['x-novaryq-delivery']);
+  await quiesceDelivery(init.headers['x-novaryq-idempotency-key'] ?? init.headers['x-novaryq-delivery'], init.body);
   return res.status;
 };
 
@@ -34,11 +34,10 @@ export const routeTransport: WebhookTransport = async (url, init) => {
  * delivery's row is processed or has recorded an error, so assertions never race the inline path.
  * Returns at once when nothing was stored (rejected delivery).
  */
-export async function quiesceDelivery(delivery: string | undefined, maxMs = 3_000) {
-  if (!delivery) return;
+export async function quiesceDelivery(delivery: string | undefined, body?: string, maxMs = 3_000) {
   const until = Date.now() + maxMs;
   while (Date.now() < until) {
-    const row = await eventByDelivery(delivery);
+    const row = await eventByDelivery(delivery, body);
     if (!row || row.processedAt || row.error) return;
     await new Promise((r) => setTimeout(r, 20));
   }
@@ -179,12 +178,23 @@ export const statusTrail = async (orderId: string) =>
   (await prisma.orderStatusEvent.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' }, select: { status: true } })).map((e) => e.status);
 
 /**
- * Stored inbox rows for a Novaryq delivery id. The contract fixes `deliveryId @unique` but not its
- * encoding; FL may namespace it (e.g. `${restaurantId}:${id}`), so match the id as a suffix too.
+ * Stored inbox rows for a delivery. The contract fixes `deliveryId @unique` but not its encoding: FL
+ * namespaces it per restaurant and keys on the signed envelope id when present
+ * (`${restaurantId}:evt:${envelope.id}`), else on the X-Novaryq-Delivery header (`${restaurantId}:${id}`).
  */
-const byDelivery = (id: string) => ({ OR: [{ deliveryId: id }, { deliveryId: { endsWith: `:${id}` } }] });
-export const eventByDelivery = (id: string) => db.novaryqWebhookEvent.findFirst({ where: byDelivery(id) });
-export const eventCount = (id: string) => db.novaryqWebhookEvent.count({ where: byDelivery(id) });
+function byDelivery(delivery?: string, body?: string) {
+  const or: object[] = [];
+  if (delivery) or.push({ deliveryId: delivery }, { deliveryId: { endsWith: `:${delivery}` } });
+  try {
+    const id = JSON.parse(body ?? '').id;
+    if (typeof id === 'string') or.push({ deliveryId: { endsWith: `:evt:${id}` } });
+  } catch {
+    /* not JSON: header id only */
+  }
+  return { OR: or.length ? or : [{ deliveryId: '__none__' }] };
+}
+export const eventByDelivery = (delivery?: string, body?: string) => db.novaryqWebhookEvent.findFirst({ where: byDelivery(delivery, body) });
+export const eventCount = (delivery?: string, body?: string) => db.novaryqWebhookEvent.count({ where: byDelivery(delivery, body) });
 
 /** Make every pending Novaryq row due now (time travel instead of sleeping through backoff). */
 export async function fastForward() {

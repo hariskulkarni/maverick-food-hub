@@ -76,10 +76,10 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     const [d] = sim.advance(nq.id, 'IN_PREP');
     await sim.flush();
     expect(d!.attempts.at(-1)!.status).toBe(200);
-    expect(await eventByDelivery(d!.id)).toMatchObject({ restaurantId: shop.restaurantId, event: 'order.status_changed' });
+    expect(await eventByDelivery(d!.id, d!.body)).toMatchObject({ restaurantId: shop.restaurantId, event: 'order.status_changed' });
     await fl.runWorker();
     expect(await statusOf(order.id)).toBe('PREPARING');
-    expect((await eventByDelivery(d!.id)).processedAt).not.toBeNull();
+    expect((await eventByDelivery(d!.id, d!.body)).processedAt).not.toBeNull();
   });
 
   it('duplicate deliveries (same X-Novaryq-Delivery) are stored once and applied once', async () => {
@@ -91,7 +91,7 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     await sim.redeliver(d!);
     await sim.redeliver(d!);
     expect(d!.attempts.map((a) => a.status)).toEqual([200, 200, 200]);
-    expect(await eventCount(d!.id)).toBe(1);
+    expect(await eventCount(d!.id, d!.body)).toBe(1);
     await fl.runWorker();
     expect((await statusTrail(order.id)).filter((s) => s === 'PREPARING')).toHaveLength(1);
   });
@@ -149,7 +149,7 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     expect(d[0]!.attempts[0]!.status).toBe(200);
     await fl.runWorker();
     expect(await prisma.order.count()).toBe(before);
-    const row = await eventByDelivery(d[0]!.id);
+    const row = await eventByDelivery(d[0]!.id, d[0]!.body);
     expect(row?.processedAt ?? null).not.toBeNull();
   });
 
@@ -157,7 +157,7 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     const d = sim.sendTest(shop.sub.id);
     await sim.flush();
     expect(d.attempts[0]!.status).toBe(200);
-    expect(await eventByDelivery(d.id)).toMatchObject({ event: 'webhook.test' });
+    expect(await eventByDelivery(d.id, d.body)).toMatchObject({ event: 'webhook.test' });
     await fl.runWorker();
   });
 });

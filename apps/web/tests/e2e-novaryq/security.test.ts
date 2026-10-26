@@ -22,7 +22,7 @@ const statusBody = (s: Shop, over: Record<string, unknown> = {}) =>
 async function post(s: Shop | string, body: string, headers: Record<string, string>) {
   const rid = typeof s === 'string' ? s : s.restaurantId;
   const res = await fl.webhookPOST(new Request(`http://flavrly.test${webhookPath(rid)}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body }), rid);
-  await quiesceDelivery(headers['x-novaryq-idempotency-key'] ?? headers['x-novaryq-delivery']);
+  await quiesceDelivery(headers['x-novaryq-idempotency-key'] ?? headers['x-novaryq-delivery'], body);
   return res;
 }
 
@@ -40,7 +40,7 @@ function signed(secret: string, body: string, o: { t?: number; delivery?: string
   };
 }
 
-const stored = (delivery: string) => eventCount(delivery);
+const stored = (delivery: string | undefined, body: string) => eventCount(delivery, body);
 
 beforeAll(async () => {
   sim = new NovaryqSimulator({ transport: routeTransport });
@@ -58,7 +58,7 @@ describe('webhook authenticity', () => {
     const body = statusBody(a);
     const h = signed(a.webhookSecret, body);
     expect((await post(a, body, h)).status).toBe(200);
-    expect(await stored(h['x-novaryq-delivery'])).toBe(1);
+    expect(await stored(h['x-novaryq-delivery'], body)).toBe(1);
   });
 
   it.each([
@@ -71,7 +71,7 @@ describe('webhook authenticity', () => {
     const h = mk(body);
     const res = await post(a, body, h);
     expect(res.status).toBe(401);
-    expect(await stored(h['x-novaryq-delivery'] ?? 'none')).toBe(0);
+    expect(await stored(h['x-novaryq-delivery'] ?? 'none', body)).toBe(0);
   });
 
   it('rejects a body tampered after signing', async () => {
@@ -79,7 +79,7 @@ describe('webhook authenticity', () => {
     const h = signed(a.webhookSecret, body);
     const res = await post(a, body.replace('IN_PREP', 'VOIDED'), h);
     expect(res.status).toBe(401);
-    expect(await stored(h['x-novaryq-delivery'])).toBe(0);
+    expect(await stored(h['x-novaryq-delivery'], body)).toBe(0);
   });
 
   it('rejects timestamps outside the 5-minute window (past and future), even with a valid HMAC', async () => {
@@ -88,7 +88,7 @@ describe('webhook authenticity', () => {
     for (const t of [now - 301, now + 301]) {
       const h = signed(a.webhookSecret, body, { t });
       expect((await post(a, body, h)).status).toBe(401);
-      expect(await stored(h['x-novaryq-delivery'])).toBe(0);
+      expect(await stored(h['x-novaryq-delivery'], body)).toBe(0);
     }
     const ok = signed(a.webhookSecret, body, { t: now - 290 });
     expect((await post(a, body, ok)).status).toBe(200);
@@ -99,16 +99,23 @@ describe('webhook authenticity', () => {
     const h = signed(a.webhookSecret, body);
     expect((await post(a, body, h)).status).toBe(200);
     expect((await post(a, body, h)).status).toBe(200);
-    expect(await stored(h['x-novaryq-delivery'])).toBe(1);
+    expect(await stored(h['x-novaryq-delivery'], body)).toBe(1);
     const old = signed(a.webhookSecret, body, { t: Math.floor(Date.now() / 1000) - 600, delivery: `dlv_old_${Date.now()}` });
     expect((await post(a, body, old)).status).toBe(401);
+  });
+
+  it('QA-C5: the same signed body re-posted under a fresh (unsigned) delivery id is still stored once', async () => {
+    const body = statusBody(a);
+    expect((await post(a, body, signed(a.webhookSecret, body))).status).toBe(200);
+    expect((await post(a, body, signed(a.webhookSecret, body))).status).toBe(200);
+    expect(await eventCount(undefined, body)).toBe(1);
   });
 
   it('a delivery signed with restaurant A’s secret is rejected on restaurant B’s URL', async () => {
     const body = statusBody(b);
     const h = signed(a.webhookSecret, body);
     expect((await post(b, body, h)).status).toBe(401);
-    expect(await stored(h['x-novaryq-delivery'])).toBe(0);
+    expect(await stored(h['x-novaryq-delivery'], body)).toBe(0);
   });
 
   it('unknown restaurant id -> not 2xx, nothing stored', async () => {
@@ -116,7 +123,7 @@ describe('webhook authenticity', () => {
     const h = signed(a.webhookSecret, body);
     const res = await post('cl_does_not_exist_000000', body, h);
     expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(await stored(h['x-novaryq-delivery'])).toBe(0);
+    expect(await stored(h['x-novaryq-delivery'], body)).toBe(0);
   });
 
   it('a restaurant whose integration is disabled does not accept or apply webhooks', async () => {
@@ -146,7 +153,7 @@ describe('webhook size and shape', () => {
     }
     const res = await fl.webhookPOST(req, a.restaurantId);
     expect([413, 400]).toContain(res.status);
-    expect(await stored(h['x-novaryq-delivery'])).toBe(0);
+    expect(await stored(h['x-novaryq-delivery'], body)).toBe(0);
   });
 
   it('a lying small Content-Length with a large body is still capped', async () => {
@@ -154,14 +161,14 @@ describe('webhook size and shape', () => {
     const h = signed(a.webhookSecret, body);
     const res = await post(a, body, { ...h, 'content-length': '10' });
     expect(res.status).not.toBe(200);
-    expect(await stored(h['x-novaryq-delivery'])).toBe(0);
+    expect(await stored(h['x-novaryq-delivery'], body)).toBe(0);
   });
 
   it('malformed JSON with a valid signature -> 400, nothing stored', async () => {
     const body = '{"eventType":"order.status_changed",';
     const h = signed(a.webhookSecret, body);
     expect((await post(a, body, h)).status).toBe(400);
-    expect(await stored(h['x-novaryq-delivery'])).toBe(0);
+    expect(await stored(h['x-novaryq-delivery'], body)).toBe(0);
   });
 
   it('missing delivery id -> rejected (cannot dedupe)', async () => {

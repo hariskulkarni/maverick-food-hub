@@ -75,6 +75,10 @@ describe('push: COD and prepaid orders reach Novaryq once, at Flavrly prices', (
     if (body.totals.packagingFee !== undefined) expect(body.totals.packagingFee).toBe(money(o.packagingFee));
     if (body.totals.deliveryFee !== undefined) expect(body.totals.deliveryFee).toBe(money(o.deliveryFee));
     if (body.totals.discount !== undefined) expect(body.totals.discount).toBe(money(o.discountAmount));
+    {
+      const t = body.totals;
+      expect(toPaise(t.subtotal) - toPaise(t.discount ?? '0.00') + toPaise(t.deliveryFee ?? '0.00') + toPaise(t.packagingFee ?? '0.00') + toPaise(t.tax ?? '0.00')).toBe(toPaise(t.grandTotal));
+    }
     // Every money field is a 2-dp decimal string (no floats, no paise integers).
     for (const v of Object.values(body.totals)) expect(v).toMatch(/^\d+\.\d{2}$/);
     for (const l of body.lines) {
@@ -100,6 +104,10 @@ describe('push: COD and prepaid orders reach Novaryq once, at Flavrly prices', (
     expect(body.payment.status).toBe('UNPAID');
     expect(body.totals.grandTotal).toBe(money(o.total));
     if (body.payment.amount !== undefined) expect(body.payment.amount).toBe(money(o.total));
+    // The POS check must add up (QA-C3 / FL-2): subtotal − discount + fees + tax = grandTotal, to the paisa.
+    const t = body.totals;
+    const sum = toPaise(t.subtotal) - toPaise(t.discount ?? '0.00') + toPaise(t.deliveryFee ?? '0.00') + toPaise(t.packagingFee ?? '0.00') + toPaise(t.tax ?? '0.00');
+    expect(sum).toBe(toPaise(t.grandTotal));
   });
 
   it('prepaid order is NOT pushed while PAYMENT_PENDING, and is pushed PREPAID once captured', async () => {
