@@ -35,7 +35,8 @@ export type ProviderKey =
   | 'BREVO_SMTP'
   | 'GOOGLE_BUSINESS'
   | 'YOUPI'
-  | 'LLM_REVIEWS';
+  | 'LLM_REVIEWS'
+  | 'NOVARYQ';
 
 export interface FieldOption {
   value: string;
@@ -565,6 +566,34 @@ const Youpi: ProviderDef = {
   },
 };
 
+// ─── Novaryq POS (dedicated panel at /admin/integrations — NOT in the wizard list) ──
+const Novaryq: ProviderDef = {
+  key: 'NOVARYQ',
+  title: 'Novaryq POS',
+  vendor: 'Novaryq',
+  description: 'Send Flavrly orders to your Novaryq POS kitchen, sync order status and 86\'d items. Configured at /admin/integrations.',
+  docsUrl: '/admin/integrations',
+  fields: [
+    { key: 'baseUrl', label: 'Novaryq URL', type: 'text', required: true, placeholder: 'https://app.novaryq.com' },
+    { key: 'clientId', label: 'API key (client id)', type: 'text', required: true, placeholder: 'nq_live_…' },
+    { key: 'secret', label: 'API secret', type: 'password', required: true, secret: true },
+    { key: 'webhookSecret', label: 'Webhook signing secret', type: 'password', secret: true },
+  ],
+  buildSummary: (c) => ({
+    baseUrl: c.baseUrl,
+    clientId: c.clientId,
+    secret: maskSecret(c.secret),
+    webhookSecret: c.webhookSecret ? maskSecret(c.webhookSecret) : '(not set)',
+    enabled: c.enabled === 'true',
+    pushOn: 'RECEIVED',
+    webhookRegistered: !!c.webhookSubscriptionId,
+  }),
+  async test(c) {
+    const { testNovaryqConnection } = await import('../novaryq/menu');
+    return testNovaryqConnection({ baseUrl: c.baseUrl, clientId: c.clientId, secret: c.secret });
+  },
+};
+
 export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
   RAZORPAY: Razorpay,
   PHONEPE: PhonePe,
@@ -581,7 +610,8 @@ export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
   BREVO_SMTP: BrevoSmtp,
   LLM_REVIEWS: LlmReviews,
   GOOGLE_BUSINESS: GoogleBusiness,
-  YOUPI: Youpi
+  YOUPI: Youpi,
+  NOVARYQ: Novaryq
 };
 
 export const PROVIDER_LIST: ProviderDef[] = [

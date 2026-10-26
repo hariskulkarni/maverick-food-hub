@@ -22,8 +22,11 @@ const WEBHOOK_PATHS = new Set([
   '/api/payments/phonepe/webhook',
   '/api/payments/youpi/webhook',
 ]);
+// Novaryq POS posts per restaurant (signature-verified with that restaurant's secret).
+const NOVARYQ_WEBHOOK = /^\/api\/integrations\/novaryq\/webhook\/[A-Za-z0-9_-]{1,64}$/;
 export function isWebhookPath(path: string): boolean {
-  return WEBHOOK_PATHS.has(path.replace(/\/+$/, ''));
+  const p = path.replace(/\/+$/, '');
+  return WEBHOOK_PATHS.has(p) || NOVARYQ_WEBHOOK.test(p);
 }
 
 function blocked(): NextResponse {

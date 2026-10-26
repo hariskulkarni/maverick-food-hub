@@ -41,6 +41,7 @@ import { branchHasActiveZones } from './delivery/zones';
 import { isBranchOpenAt, isScheduledTimeInsideOpenWindow } from './operating-hours';
 import { isCancelStatus, isPgPrepayOrder, settlePgOrderOnCancel } from './pg/order-state';
 import { debitWalletForOrder, redeemPointsForOrder, releaseOrderBenefitsOnCancel } from './order-benefits';
+import { enqueueNovaryqCancel, enqueueNovaryqPush } from './novaryq/push';
 
 // State machine. Cancellation is allowed from any pre-delivery state into the
 // matching CANCELLED_BY_* terminal. Legacy CANCELLED is kept for back-compat.
@@ -681,6 +682,8 @@ export async function placeOrder(input: PlaceOrderInput) {
     // (no order row, nothing debited) instead of driving the balance negative.
     await debitWalletForOrder(tx, input.customerId, o.id, priced.walletApplied);
     await redeemPointsForOrder(tx, input.customerId, o.id, Math.round(priced.loyaltyApplied)); // 1pt = ₹1
+    // Novaryq POS outbox: a COD/wallet order is RECEIVED at placement (no-op unless enabled + branch linked).
+    if (!awaitingPayment) await enqueueNovaryqPush(tx, o.id, branch.id);
     return o;
   });
 
@@ -905,7 +908,11 @@ export async function transitionOrder(
       await settlePgOrderOnCancel(tx, orderId, order.status);
       // P0-3 / P1-10: wallet, points (if nothing was captured), coupon and offer usage come back.
       await releaseOrderBenefitsOnCancel(tx, orderId);
+      // Novaryq POS outbox: cancel a pushed order there too (no-op when never pushed).
+      await enqueueNovaryqCancel(tx, orderId);
     }
+    // Novaryq POS outbox: a paid online order enters the kitchen (RECEIVED) only now.
+    if (next === OrderStatus.RECEIVED) await enqueueNovaryqPush(tx, orderId, order.branchId);
     if (next === OrderStatus.DELIVERED) {
       // Earn loyalty (rate shared with customer copy: src/lib/loyalty.ts)
       const account = await tx.loyaltyAccount.upsert({ where: { userId: order.customerId }, update: {}, create: { userId: order.customerId } });

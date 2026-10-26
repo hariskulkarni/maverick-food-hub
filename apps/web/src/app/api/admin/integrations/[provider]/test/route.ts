@@ -20,6 +20,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pro
   if (provider === 'YOUPI') {
     return Response.json({ error: 'Flavrly PG is configured through its approval flow, not this endpoint.' }, { status: 403 });
   }
+  // Novaryq's test probes a tenant-supplied URL: only its own route (with the SSRF guard) may do that.
+  if (provider === 'NOVARYQ') {
+    return Response.json({ error: 'Novaryq is configured at /admin/integrations, not this endpoint.' }, { status: 403 });
+  }
   const session = await auth();
   const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId')); // auth gate only — we don't persist on /test
   if (restaurant instanceof Response) return restaurant;

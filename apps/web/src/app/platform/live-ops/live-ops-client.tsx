@@ -28,7 +28,8 @@ type EscType =
   | 'RIDER_STATIONARY'
   | 'CUSTOMER_UNREACHABLE'
   | 'PAYMENT_WEBHOOK_DELAY'
-  | 'COD_NOT_RECONCILED';
+  | 'COD_NOT_RECONCILED'
+  | 'POS_VOIDED';
 
 interface Escalation {
   id: string;
@@ -401,7 +402,8 @@ function humanType(t: EscType) {
     RIDER_STATIONARY:      'Rider stationary',
     CUSTOMER_UNREACHABLE:  'Customer unreachable',
     PAYMENT_WEBHOOK_DELAY: 'Payment webhook delay',
-    COD_NOT_RECONCILED:    'COD not reconciled'
+    COD_NOT_RECONCILED:    'COD not reconciled',
+    POS_VOIDED:            'Voided in POS (Novaryq)'
   } as Record<EscType, string>)[t] ?? t;
 }
 
