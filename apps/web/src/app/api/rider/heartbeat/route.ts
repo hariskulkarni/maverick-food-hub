@@ -4,7 +4,12 @@
  * Rider client pings this every ~30s while online. We upsert a RiderHeartbeat
  * row (one per rider) so the auto-offline sweep can flip stale riders.
  *
- * Returns 204 — body is intentionally empty.
+ * Returns `{ online }` — the server's view of the rider's online flag — so an
+ * app that still shows "Online" after the auto-offline sweep flipped it (app
+ * was backgrounded, phone asleep) can notice and tell the rider, instead of
+ * believing it is live while the fleet map and dispatch treat it as offline.
+ * The heartbeat itself never flips a rider back online: going online stays an
+ * explicit rider action (POST /api/rider/online).
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
@@ -26,7 +31,7 @@ export async function POST(req: NextRequest) {
 
   const profile = await prisma.riderProfile.findUnique({
     where: { userId: session.user.id },
-    select: { id: true }
+    select: { id: true, isOnline: true }
   });
   if (!profile) return new Response('No rider profile', { status: 404 });
 
@@ -57,5 +62,5 @@ export async function POST(req: NextRequest) {
     }
   });
 
-  return new Response(null, { status: 204 });
+  return Response.json({ online: profile.isOnline }, { headers: { 'Cache-Control': 'no-store' } });
 }

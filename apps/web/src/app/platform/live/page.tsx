@@ -32,7 +32,7 @@ export default async function PlatformLivePage() {
           <Radio className="size-7 text-primary" /> Live tracking
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Every rider's GPS, streaming in real time. Grey pins have lost signal for over 2 minutes. Click any pin for the active order, ETA, and trail.
+          Every online rider's GPS, streaming in real time. Grey pins have lost signal for over 2 minutes; riders online without a GPS location are listed above the map. Test riders are labelled TEST and not counted. Click any pin for the active order, ETA, and trail.
         </p>
       </header>
 
@@ -40,6 +40,7 @@ export default async function PlatformLivePage() {
         initial={snapshot.riders}
         branches={branchPins}
         customers={snapshot.customers}
+        waiting={snapshot.waiting}
         isSuperAdmin={true}
         channel="platform:riders"
         pollUrl="/api/platform/riders/live"

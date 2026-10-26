@@ -26,13 +26,15 @@ import {
   type VisibleLayers
 } from '@/components/live-rider-fleet-map-loader';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { computeFleetStats } from '@/lib/live-fleet';
+import { computeFleetStats, formatAgo, withWaitingRiders, type WaitingRider } from '@/lib/live-fleet';
 
 interface Props {
   /** Server snapshot (server/live-fleet.ts): real fix times, leg + destination per rider. */
   initial: RiderPosition[];
   branches: BranchPin[];
   customers: CustomerPin[];
+  /** Online riders with no GPS fix to plot yet (server/live-fleet.ts). */
+  waiting?: WaitingRider[];
   isSuperAdmin?: boolean;
   channel?: string;
   /** Whether to render the branch dropdown. Hidden on the admin page since
@@ -52,12 +54,13 @@ const STATUS_TABS: { id: StatusFilter; label: string }[] = [
   { id: 'SIGNAL_LOST', label: 'Signal lost' }
 ];
 
-export function LivePlatformClient({ initial, branches, customers: initialCustomers, isSuperAdmin = true, channel = 'platform:riders', showBranchFilter = true, pollUrl }: Props) {
+export function LivePlatformClient({ initial, branches, customers: initialCustomers, waiting: initialWaiting = [], isSuperAdmin = true, channel = 'platform:riders', showBranchFilter = true, pollUrl }: Props) {
   const [status, setStatus] = useState<StatusFilter>('ALL');
   const [branchId, setBranchId] = useState<string>('');
   const [layers, setLayers] = useState<VisibleLayers>({ branches: true, customers: false, trails: false });
   const [positions, setPositions] = useState<RiderPosition[]>(initial);
   const [customers, setCustomers] = useState<CustomerPin[]>(initialCustomers);
+  const [waiting, setWaiting] = useState<WaitingRider[]>(initialWaiting);
   // Clock for time-based stats ("signal lost", ETA) between data updates.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -73,7 +76,10 @@ export function LivePlatformClient({ initial, branches, customers: initialCustom
     [branches, branchId]
   );
 
-  const stats = useMemo(() => computeFleetStats(positions, now), [positions, now]);
+  const stats = useMemo(
+    () => withWaitingRiders(computeFleetStats(positions, now), waiting, now),
+    [positions, waiting, now]
+  );
 
   return (
     <div className="space-y-4">
@@ -85,6 +91,27 @@ export function LivePlatformClient({ initial, branches, customers: initialCustom
         <StatChip icon={WifiOff}  label="Signal lost"      value={stats.signalLost}             tone="muted"   hint="No contact from the rider app for over 2 min" />
         <StatChip icon={Timer}    label="Avg ETA"          value={stats.avgEta != null ? `${stats.avgEta} min` : '—'} tone="primary" hint="To the end of each rider's current leg" />
       </div>
+
+      {waiting.length > 0 && (
+        <div className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2.5 text-sm" role="status">
+          <div className="font-medium text-warning">
+            {waiting.length === 1 ? '1 rider is' : `${waiting.length} riders are`} online without a GPS location
+          </div>
+          <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+            {waiting.map((w) => (
+              <li key={w.riderId}>
+                <span className="font-medium text-foreground">{w.name ?? 'Rider'}</span>
+                {' — '}
+                {w.gpsEnabled === false
+                  ? 'location is turned off on the phone'
+                  : 'no location received yet (check the app has location permission)'}
+                {' · last heard '}
+                {formatAgo(w.seenAt, now)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Filter chips row */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card px-3 py-2.5">
@@ -152,6 +179,7 @@ export function LivePlatformClient({ initial, branches, customers: initialCustom
             pollUrl={pollUrl}
             onPositionsChange={setPositions}
             onCustomersChange={setCustomers}
+            onWaitingChange={setWaiting}
           />
         </CardContent>
       </Card>

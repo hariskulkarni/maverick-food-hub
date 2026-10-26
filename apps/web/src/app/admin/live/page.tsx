@@ -1,8 +1,6 @@
-import { prisma } from '@/server/db';
 import { requireRestaurant } from '@/server/tenancy';
-import { resolveGroupContext } from '@/server/group-scope';
 import { LivePlatformClient } from '@/components/live-tracking/live-platform-client';
-import { loadFleetSnapshot } from '@/server/live-fleet';
+import { adminFleetBranches, loadFleetSnapshot } from '@/server/live-fleet';
 import { Radio } from 'lucide-react';
 
 export const metadata = { title: 'Admin · Live tracking' };
@@ -15,23 +13,8 @@ export default async function AdminLivePage() {
   // restaurant in the group (parent + children) — riders are shared across the
   // group so the parent must see riders working ANY group restaurant's orders.
   // Solo restaurants resolve to just themselves (unchanged).
-  const group = await resolveGroupContext(restaurant.id);
-  const groupRestaurantIds = group.restaurantIds.length
-    ? group.restaurantIds
-    : [restaurant.id];
-
-  const branches = await prisma.branch.findMany({
-    where: { restaurantId: { in: groupRestaurantIds }, isActive: true },
-    select: {
-      id: true,
-      name: true,
-      latitude: true,
-      longitude: true,
-      // The branch's restaurant — so each pin can be labelled with the SOURCE
-      // restaurant a rider is collecting from when the group spans many.
-      restaurant: { select: { name: true } }
-    }
-  });
+  const group = await adminFleetBranches(restaurant.id);
+  const branches = group.branches;
   const branchIds = branches.map((b) => b.id);
 
   // Riders working this restaurant's (or group's) orders, with real GPS-fix
@@ -51,9 +34,9 @@ export default async function AdminLivePage() {
       lng: b.longitude!
     }));
 
-  // Pick the most active branch's channel — for multi-branch restaurants we
-  // would ideally subscribe to *all* of them; for now use the first which is
-  // how the previous implementation worked.
+  // SSE can follow one branch channel (sub-second motion there); the 4 s poll
+  // (/api/admin/live/riders) keeps riders on EVERY branch of the restaurant /
+  // group current, adds riders as they take orders and removes them after.
   const channel = branchIds[0] ? `branch:${branchIds[0]}:riders` : 'platform:riders';
 
   return (
@@ -73,9 +56,11 @@ export default async function AdminLivePage() {
         initial={snapshot.riders}
         branches={branchPins}
         customers={snapshot.customers}
+        waiting={snapshot.waiting}
         isSuperAdmin={false}
         channel={channel}
         showBranchFilter={false}
+        pollUrl="/api/admin/live/riders"
       />
     </div>
   );

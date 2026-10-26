@@ -9,6 +9,7 @@ const m = vi.hoisted(() => ({
   restaurant: null as any,
   userFind: vi.fn(),
   profileUpdate: vi.fn(),
+  heartbeatUpsert: vi.fn(async () => ({})),
   list: vi.fn(),
   submit: vi.fn(),
   report: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock('@/server/db', () => ({
   prisma: {
     user: { findUnique: m.userFind },
     riderProfile: { update: m.profileUpdate, findUnique: async () => ({ id: 'rp1' }) },
+    riderHeartbeat: { upsert: m.heartbeatUpsert },
     trainingModule: { findUnique: m.moduleFind, findUniqueOrThrow: m.moduleFind },
     $transaction: async (fn: any) => fn({}),
   },
@@ -166,7 +168,10 @@ describe('rider online gate', () => {
   it('goes online when nothing blocks (gate off or modules passed)', async () => {
     m.riderSession = { user: { id: 'u1', role: 'RIDER' } };
     m.blockers.mockResolvedValue([]);
-    m.profileUpdate.mockResolvedValue({ isOnline: true });
+    m.profileUpdate.mockResolvedValue({ id: 'rp1', isOnline: true });
     expect((await online(req('/x', { online: true }))).status).toBe(200);
+    // Going online stamps lastSeenAt so the auto-offline sweep can't flip the
+    // rider before the app's first heartbeat lands.
+    expect(m.heartbeatUpsert).toHaveBeenCalledWith(expect.objectContaining({ where: { riderId: 'rp1' } }));
   });
 });

@@ -38,6 +38,24 @@ export interface FleetRider {
   /** Where the current leg ends: restaurant before pickup, customer after. */
   dest?: LatLng | null;
   speedKph?: number;
+  /** Pre-launch test rider (server/test-accounts.ts): shown with a TEST label, never counted. */
+  isTest?: boolean;
+}
+
+/**
+ * A rider who is online but has no stored GPS fix yet (location permission
+ * off, GPS disabled, or no fresh fix sent). There is nothing to plot, but ops
+ * must still see them — otherwise an online rider is simply invisible.
+ */
+export interface WaitingRider {
+  riderId: string;
+  name?: string;
+  /** ISO time the app was last heard from (heartbeat). */
+  seenAt?: string;
+  stale: boolean;
+  /** What the app last reported about the phone's location services. */
+  gpsEnabled?: boolean | null;
+  isTest?: boolean;
 }
 
 /** Order statuses that end a delivery — mirrors rider-location-points.ts. */
@@ -74,6 +92,7 @@ export interface RiderInput {
   updatedAt: Date;
   heartbeat?: { lastSeenAt: Date | null; lastLocationAt: Date | null } | null;
   assignments: AssignmentInput[];
+  isTest?: boolean;
 }
 
 function pt(lat: number | null | undefined, lng: number | null | undefined): LatLng | null {
@@ -125,6 +144,7 @@ export function deriveRiderLive(r: RiderInput, now: number): FleetRider | null {
     orderId: lead?.order.id,
     activeOrders: live.length,
     dest,
+    ...(r.isTest ? { isTest: true } : {}),
   };
 }
 
@@ -144,6 +164,8 @@ export function computeFleetStats(riders: FleetRider[], now: number): FleetStats
   let online = 0, signalLost = 0, idle = 0, headingToPickup = 0, onDelivery = 0;
   const etas: number[] = [];
   for (const r of riders) {
+    // Test riders are on the map (labelled) but never part of the fleet numbers.
+    if (r.isTest) continue;
     const stale = isStale(r.seenAt ?? r.at, now);
     if (stale) signalLost++;
     else online++;
@@ -158,6 +180,21 @@ export function computeFleetStats(riders: FleetRider[], now: number): FleetStats
   }
   const avgEta = etas.length ? Math.round(etas.reduce((a, b) => a + b, 0) / etas.length) : null;
   return { online, signalLost, idle, headingToPickup, onDelivery, avgEta };
+}
+
+/**
+ * Fold online-but-unplottable riders (no GPS fix yet) into the fleet numbers:
+ * they are online (or have lost signal) even though there is no pin. Test
+ * riders are never counted.
+ */
+export function withWaitingRiders(stats: FleetStats, waiting: WaitingRider[], now: number): FleetStats {
+  let online = stats.online, signalLost = stats.signalLost, idle = stats.idle;
+  for (const w of waiting) {
+    if (w.isTest) continue;
+    if (isStale(w.seenAt, now)) signalLost++;
+    else { online++; idle++; }
+  }
+  return { ...stats, online, signalLost, idle };
 }
 
 /**

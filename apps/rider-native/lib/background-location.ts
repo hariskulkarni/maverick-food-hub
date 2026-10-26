@@ -1,11 +1,21 @@
 /**
- * Background location tracking for an active delivery.
+ * Background location tracking while the rider is ONLINE.
  *
- * While the rider has an accepted / picked-up assignment we run
- * Location.startLocationUpdatesAsync with an expo-task-manager task, so GPS
- * keeps flowing to POST /api/rider/location (the same endpoint the foreground
- * hook uses, which feeds the customer tracker, live-ops and /trip/<token>)
- * even when the rider switches to Google Maps or locks the phone.
+ * Two modes, one expo-task-manager task (Location.startLocationUpdatesAsync):
+ *   - online (idle): a low-power fix about every 30 s, posted untagged, so an
+ *     online rider whose phone is locked or who is in another app stays on the
+ *     fleet map and is not flipped offline by the server's 2-minute auto-offline
+ *     sweep (every accepted location refreshes RiderHeartbeat.lastSeenAt).
+ *     Before this mode existed, an idle rider's heartbeat and GPS both stopped
+ *     the moment the app left the screen, and the sweep took them offline while
+ *     the app still showed "Online".
+ *   - delivery: while the rider has an accepted / picked-up assignment, GPS
+ *     every 15 s / 30 m tagged with the order, so the customer tracker,
+ *     live-ops and /trip/<token> keep moving even when the rider switches to
+ *     Google Maps or locks the phone.
+ * Both post to POST /api/rider/location (the same endpoint the foreground hook
+ * uses). Background permission ("Allow all the time") is required; without it
+ * the app falls back to foreground-only tracking.
  *
  *   Android: a foreground service with a persistent notification
  *            ("Flavrly is sharing your location for an active delivery").
@@ -47,6 +57,28 @@ const SECURE_OPTS: SecureStore.SecureStoreOptions = {
 };
 
 /**
+ * Online but idle: balanced (Wi-Fi / cell assisted) fix every ~30 s with no
+ * distance filter, so a rider waiting outside a restaurant still checks in
+ * well inside the server's 2-minute window. Light on the battery.
+ */
+const ONLINE_OPTIONS: Location.LocationTaskOptions = {
+  accuracy: Location.Accuracy.Balanced,
+  timeInterval: 30_000,
+  distanceInterval: 0,
+  // iOS
+  activityType: Location.ActivityType.Other,
+  pausesUpdatesAutomatically: false,
+  showsBackgroundLocationIndicator: true,
+  // Android
+  foregroundService: {
+    notificationTitle: "You're online",
+    notificationBody: 'Flavrly is sharing your location so you can receive orders. Go offline to stop.',
+    notificationColor: '#f23e5c',
+    killServiceOnDestroy: false,
+  },
+};
+
+/**
  * Battery-sensible settings for an active delivery. High accuracy (GPS) is
  * used because the customer map and the 200 m arrival geofence need it, and
  * the rider usually has Google Maps navigating anyway (GPS already on); the
@@ -75,13 +107,18 @@ export interface QueuedPoint {
   speedKph?: number;
   /** Fix time, ms since epoch. */
   recordedAt: number;
-  orderId: string;
+  /** Absent for idle (online, no delivery) points. */
+  orderId?: string;
 }
 
 interface TrackingState {
+  /** Rider is online: keep tracking even with no delivery. */
+  online: boolean;
   orderId: string | null;
   queue: QueuedPoint[];
 }
+
+const EMPTY_STATE: TrackingState = { online: false, orderId: null, queue: [] };
 
 // ─── Persistent state (serialised through one promise chain) ────────────────
 
@@ -94,14 +131,17 @@ function stateFile(): File {
 async function readState(): Promise<TrackingState> {
   try {
     const f = stateFile();
-    if (!f.exists) return { orderId: null, queue: [] };
+    if (!f.exists) return { ...EMPTY_STATE };
     const parsed = JSON.parse(await f.text()) as Partial<TrackingState>;
+    const orderId = typeof parsed.orderId === 'string' ? parsed.orderId : null;
     return {
-      orderId: typeof parsed.orderId === 'string' ? parsed.orderId : null,
+      // Older state files have no `online`: a stored order implies online.
+      online: typeof parsed.online === 'boolean' ? parsed.online : !!orderId,
+      orderId,
       queue: Array.isArray(parsed.queue) ? parsed.queue : [],
     };
   } catch {
-    return { orderId: null, queue: [] };
+    return { ...EMPTY_STATE };
   }
 }
 
@@ -132,7 +172,7 @@ export function appendCapped(queue: QueuedPoint[], points: QueuedPoint[], cap = 
   return merged.length > cap ? merged.slice(merged.length - cap) : merged;
 }
 
-const pointKey = (p: QueuedPoint) => `${p.orderId}:${p.recordedAt}:${p.lat}:${p.lng}`;
+const pointKey = (p: QueuedPoint) => `${p.orderId ?? '-'}:${p.recordedAt}:${p.lat}:${p.lng}`;
 
 // ─── Token ──────────────────────────────────────────────────────────────────
 
@@ -186,7 +226,7 @@ async function flushQueue(): Promise<void> {
 
       if (res.status === 401 || res.status === 403) {
         // Token rejected: the rider is signed out or deactivated.
-        await stopDeliveryTracking({ clearQueue: true });
+        await stopAllTracking({ clearQueue: true });
         return;
       }
       if (res.status === 429 || res.status >= 500) return; // retry later
@@ -200,8 +240,15 @@ async function flushQueue(): Promise<void> {
         const state = await readState();
         const newest = batch[batch.length - 1];
         if (body?.orderActive === false && state.orderId && newest.orderId === state.orderId) {
-          // Delivered, cancelled, closed by support or reassigned.
-          await stopDeliveryTracking();
+          // Delivered, cancelled, closed by support or reassigned. Stop tagging
+          // points with that order; keep tracking if the rider is still online
+          // (the next foreground sync switches back to the low-power settings —
+          // Android won't restart a foreground service from the background).
+          if (state.online) {
+            await mutateState((st) => ({ ...st, orderId: st.orderId === newest.orderId ? null : st.orderId }));
+          } else {
+            await stopAllTracking();
+          }
           return;
         }
       }
@@ -220,12 +267,12 @@ TaskManager.defineTask(DELIVERY_LOCATION_TASK, async ({ data, error }) => {
     if (error) return;
     const locations = (data as { locations?: Location.LocationObject[] } | undefined)?.locations ?? [];
     const state = await readState();
-    if (!state.orderId) {
-      // Nothing to track (e.g. the app was killed mid-stop) — shut it down.
+    if (!state.online && !state.orderId) {
+      // Nothing to track (offline, or the app was killed mid-stop) — shut it down.
       await stopUpdates();
       return;
     }
-    const orderId = state.orderId;
+    const orderId = state.orderId ?? undefined;
     const points: QueuedPoint[] = locations
       .filter((l) => Number.isFinite(l.coords.latitude) && Number.isFinite(l.coords.longitude))
       .map((l) => {
@@ -235,7 +282,7 @@ TaskManager.defineTask(DELIVERY_LOCATION_TASK, async ({ data, error }) => {
           lng: l.coords.longitude,
           ...(speed != null && speed >= 0 ? { speedKph: speed * 3.6 } : {}),
           recordedAt: Math.round(l.timestamp || Date.now()),
-          orderId,
+          ...(orderId ? { orderId } : {}),
         };
       });
     if (points.length) await mutateState((s) => ({ ...s, queue: appendCapped(s.queue, points) }));
@@ -248,6 +295,7 @@ TaskManager.defineTask(DELIVERY_LOCATION_TASK, async ({ data, error }) => {
 // ─── Control API (used by the app) ──────────────────────────────────────────
 
 let bgActive = false;
+let runningMode: 'online' | 'delivery' | null = null;
 
 /** True while the background task is streaming — foreground hooks then stay quiet. */
 export function isBackgroundTrackingActive(): boolean {
@@ -263,6 +311,7 @@ async function stopUpdates(): Promise<void> {
     // Task not registered / module unavailable — nothing to stop.
   }
   bgActive = false;
+  runningMode = null;
 }
 
 export async function hasBackgroundPermission(): Promise<boolean> {
@@ -273,22 +322,44 @@ export async function hasBackgroundPermission(): Promise<boolean> {
   }
 }
 
+/** Which background settings a target needs (pure — exported for tests). */
+export function trackingMode(target: { online: boolean; orderId: string | null }): 'online' | 'delivery' | null {
+  if (target.orderId) return 'delivery';
+  return target.online ? 'online' : null;
+}
+
 /**
- * Start (or retarget) background tracking for `orderId`. Returns false when
- * background permission isn't granted or the OS refused — the caller then
- * falls back to foreground-only tracking. Must be called with the app in the
- * foreground (Android won't start a foreground service from the background).
+ * Bring background tracking in line with the rider's state: offline → stop;
+ * online with a delivery → delivery settings, tagged with the order; online
+ * and idle → low-power online settings. Returns false when background
+ * permission isn't granted or the OS refused — the caller then relies on
+ * foreground-only tracking. Must be called with the app in the foreground
+ * (Android won't start a foreground service from the background).
  */
-export async function startDeliveryTracking(orderId: string): Promise<boolean> {
+export async function setTrackingTarget(target: { online: boolean; orderId: string | null }): Promise<boolean> {
+  const mode = trackingMode(target);
+  if (!mode) {
+    await stopAllTracking();
+    return false;
+  }
   try {
     if (!(await hasBackgroundPermission())) {
       bgActive = false;
       return false;
     }
-    await mutateState((s) => ({ ...s, orderId }));
-    if (!(await Location.hasStartedLocationUpdatesAsync(DELIVERY_LOCATION_TASK))) {
-      await Location.startLocationUpdatesAsync(DELIVERY_LOCATION_TASK, TRACKING_OPTIONS);
+    await mutateState((s) => ({ ...s, online: target.online || !!target.orderId, orderId: target.orderId }));
+    const started = await Location.hasStartedLocationUpdatesAsync(DELIVERY_LOCATION_TASK);
+    if (started && runningMode !== mode) {
+      // Switch settings (idle ⇄ delivery): restart the updates with the new options.
+      await Location.stopLocationUpdatesAsync(DELIVERY_LOCATION_TASK);
     }
+    if (!started || runningMode !== mode) {
+      await Location.startLocationUpdatesAsync(
+        DELIVERY_LOCATION_TASK,
+        mode === 'delivery' ? TRACKING_OPTIONS : ONLINE_OPTIONS
+      );
+    }
+    runningMode = mode;
     bgActive = true;
     return true;
   } catch {
@@ -297,10 +368,23 @@ export async function startDeliveryTracking(orderId: string): Promise<boolean> {
   }
 }
 
-/** Stop background tracking. `clearQueue` also discards unsent points (sign-out). */
-export async function stopDeliveryTracking(opts: { clearQueue?: boolean } = {}): Promise<void> {
-  await mutateState((s) => ({ orderId: null, queue: opts.clearQueue ? [] : s.queue })).catch(() => {});
+/** Track an accepted delivery (implies online). */
+export function startDeliveryTracking(orderId: string): Promise<boolean> {
+  return setTrackingTarget({ online: true, orderId });
+}
+
+/** Track an online rider with no delivery. */
+export function startOnlineTracking(): Promise<boolean> {
+  return setTrackingTarget({ online: true, orderId: null });
+}
+
+/** Stop all background tracking (going offline, sign-out). `clearQueue` also discards unsent points. */
+export async function stopAllTracking(opts: { clearQueue?: boolean } = {}): Promise<void> {
+  await mutateState((s) => ({ online: false, orderId: null, queue: opts.clearQueue ? [] : s.queue })).catch(() => {});
   await stopUpdates();
   // Try to deliver whatever was still queued (no-op if a flush is running).
   if (!opts.clearQueue) void flushQueue().catch(() => {});
 }
+
+/** @deprecated name kept for existing callers — stops ALL background tracking. */
+export const stopDeliveryTracking = stopAllTracking;

@@ -25,7 +25,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useSSE } from '@/hooks/use-sse';
 import { RiderPanel } from '@/components/live-tracking/rider-panel';
-import { isStale, mergePolled, mergeSse, type FleetRider } from '@/lib/live-fleet';
+import { isStale, mergePolled, mergeSse, type FleetRider, type WaitingRider } from '@/lib/live-fleet';
 
 /** A rider pin. Workflow status / leg are derived server-side (lib/live-fleet.ts). */
 export type RiderPosition = FleetRider;
@@ -82,6 +82,8 @@ interface Props {
   onPositionsChange?: (positions: RiderPosition[]) => void;
   /** Fires with the drop pins from each poll (orders the fleet is working). */
   onCustomersChange?: (customers: CustomerPin[]) => void;
+  /** Fires with online riders that have no GPS fix to plot (each poll). */
+  onWaitingChange?: (waiting: WaitingRider[]) => void;
 }
 
 function escapeHtml(s: string): string {
@@ -164,7 +166,8 @@ export function LiveRiderFleetMap({
   isSuperAdmin = false,
   pollUrl,
   onPositionsChange,
-  onCustomersChange
+  onCustomersChange,
+  onWaitingChange
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -382,6 +385,7 @@ export function LiveRiderFleetMap({
         if (!map) return;
         const rows: RiderPosition[] = Array.isArray(data?.riders) ? data.riders : [];
         if (Array.isArray(data?.customers)) onCustomersChange?.(data.customers);
+        if (Array.isArray(data?.waiting)) onWaitingChange?.(data.waiting);
         const seen = new Set<string>();
         let changed = false;
 
@@ -448,7 +452,7 @@ export function LiveRiderFleetMap({
       clearInterval(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pollUrl, statusFilter, onPositionsChange, onCustomersChange]);
+  }, [pollUrl, statusFilter, onPositionsChange, onCustomersChange, onWaitingChange]);
 
   const selectedPos = selectedId ? positions.current.get(selectedId) : null;
 

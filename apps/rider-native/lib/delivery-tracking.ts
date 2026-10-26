@@ -15,7 +15,7 @@ import * as Location from 'expo-location';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { api, type Assignment } from './api';
 import { orderHold } from './order-hold';
-import { startDeliveryTracking, stopDeliveryTracking } from './background-location';
+import { setTrackingTarget, startDeliveryTracking } from './background-location';
 
 /** Orders whose disclosure was already shown this session (don't nag on every render). */
 const disclosureShown = new Set<string>();
@@ -30,14 +30,20 @@ export function pickTrackedOrderId(list: Pick<Assignment, 'status' | 'order' | '
 }
 
 /**
- * Bring background tracking in line with the rider's current assignments.
- * Starts only when background permission is already granted (the disclosure is
- * shown from the delivery screen, never from here). Never throws.
+ * Bring background tracking in line with the rider's online flag and current
+ * assignments: delivery mode while a delivery is active, low-power online mode
+ * while online and idle, stopped when offline. Starts only when background
+ * permission is already granted (the disclosure is shown from the dashboard /
+ * delivery screen, never from here). Returns whether background tracking is
+ * running. Never throws.
  */
-export async function syncDeliveryTracking(list: Assignment[], online: boolean): Promise<void> {
+export async function syncDeliveryTracking(list: Assignment[], online: boolean): Promise<boolean> {
   const orderId = online ? pickTrackedOrderId(list) : null;
-  if (orderId) await startDeliveryTracking(orderId);
-  else await stopDeliveryTracking();
+  try {
+    return await setTrackingTarget({ online, orderId });
+  } catch {
+    return false;
+  }
 }
 
 /** Re-read assignments from the server and sync (used when a delivery ends). */
