@@ -33,6 +33,14 @@ export const fl = {
     return handler(new Request('http://flavrly.test/api/platform/jobs/novaryq-worker/run', { method, headers }) as any);
   },
 
+  /** The fallback job (CONTRACT §5 periodic reconcile): POST /api/platform/jobs/novaryq-reconcile/run. */
+  async runReconcileJob(): Promise<any> {
+    const m = await load('@/app/api/platform/jobs/novaryq-reconcile/run/route');
+    const res: Response = await m.POST(new Request('http://flavrly.test/api/platform/jobs/novaryq-reconcile/run', { method: 'POST', headers: { 'x-internal-secret': process.env.INTERNAL_CRON_SECRET! } }) as any);
+    if (res.status !== 200) throw new Error(`novaryq-reconcile returned ${res.status}: ${await res.text()}`);
+    return res.json();
+  },
+
   async runWorker(): Promise<any> {
     const res = await fl.workerRoute();
     if (res.status !== 200) throw new Error(`novaryq-worker returned ${res.status}: ${await res.text()}`);

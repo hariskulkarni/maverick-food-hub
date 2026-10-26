@@ -178,6 +178,37 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
   });
 });
 
+describe('status: missed webhooks are recovered (QA-F4) and the inbox is pruned (QA-F5)', () => {
+  it('a READY never delivered (subscription auto-disabled) is applied by the reconcile job after the order goes quiet', async () => {
+    const { order, nq } = await pushed();
+    await sim.flush();
+    await fl.runWorker();
+    expect(await statusOf(order.id)).toBe('ACCEPTED');
+    shop.sub.isActive = false;
+    try {
+      sim.advance(nq.id, 'READY');
+      await sim.flush();
+      expect(await statusOf(order.id)).toBe('ACCEPTED');
+      await prisma.$executeRawUnsafe(`UPDATE "NovaryqOrderSync" SET "updatedAt" = now() - interval '11 minutes' WHERE "orderId" = $1`, order.id);
+      await fl.runReconcileJob();
+      expect(await statusOf(order.id)).toBe('READY');
+    } finally {
+      shop.sub.isActive = true;
+    }
+  });
+
+  it('processed inbox rows older than 30 days are pruned; unprocessed ones are kept', async () => {
+    const old = new Date(Date.now() - 31 * 86_400_000);
+    const mk = (processed: boolean) =>
+      db.novaryqWebhookEvent.create({ data: { restaurantId: shop.restaurantId, deliveryId: `${shop.restaurantId}:qa-old-${processed}-${Date.now()}`, event: 'order.status_changed', payload: {}, receivedAt: old, processedAt: processed ? old : null } });
+    const done = await mk(true);
+    const pending = await mk(false);
+    await fl.runReconcileJob();
+    expect(await db.novaryqWebhookEvent.findUnique({ where: { id: done.id } })).toBeNull();
+    expect(await db.novaryqWebhookEvent.findUnique({ where: { id: pending.id } })).not.toBeNull();
+  });
+});
+
 describe('status: VOIDED in Novaryq', () => {
   it('before pickup -> CANCELLED_BY_RESTAURANT', async () => {
     const { order, nq } = await pushed();
