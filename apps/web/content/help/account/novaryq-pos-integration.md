@@ -38,7 +38,8 @@ Once your branches and menu are linked, turn on **POS: Novaryq** under **Admin >
 - You can still add photos, descriptions, sizes and add-ons on Flavrly, and keep Flavrly-only items.
 - Spreadsheet and template menu imports are switched off; use **Import Novaryq menu** instead.
 - **Flavrly-only prices** are off by default. Tick "Allow Flavrly-only prices" if you want a different online price for linked items; you then manage those prices on Flavrly.
-- Copy **Your Flavrly restaurant page** from the same screen and paste it into Novaryq's consumer-channel (Flavrly) setting, so your Novaryq storefront sends online customers to Flavrly.
+- Copy **Your Flavrly restaurant page** from the same screen. In Novaryq, open **Admin > Integrations > Flavrly — online ordering & delivery (India)** and paste it there. Novaryq then sends your storefront and online-ordering visitors to Flavrly and turns off its own online ordering, kiosk ordering and in-house delivery dispatch for your restaurant; your POS, kitchen and table orders are unchanged.
+- Novaryq accepts only an https link on flavrly.in, and only for Novaryq India accounts whose locations are all in India and use INR.
 
 ## Good to know
 

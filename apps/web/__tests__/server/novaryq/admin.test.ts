@@ -35,7 +35,7 @@ vi.mock('@/server/integrations', () => ({
 vi.mock('@/server/audit', () => ({ audit: vi.fn(async () => {}) }));
 vi.mock('@/server/auth', () => ({ auth: async () => null }));
 
-import { saveNovaryqCredentials, setMenuMaster, novaryqOverview } from '@/server/novaryq/admin';
+import { saveNovaryqCredentials, setMenuMaster, novaryqOverview, novaryqAcceptsFlavrlyUrl } from '@/server/novaryq/admin';
 
 const ctx = { restaurantId: 'r1', restaurantName: 'R', userId: 'u1' };
 
@@ -108,6 +108,24 @@ describe('novaryqOverview (India onboarding fields)', () => {
     const o = await novaryqOverview('r1');
     expect(o.restaurantUrl).toMatch(/\/r\/spice-route$/);
     expect(o).toMatchObject({ menuMaster: true, allowPriceOverride: false, linkedItems: 3, manageUrl: 'https://pos.example.com' });
+    vi.unstubAllEnvs();
+  });
+});
+
+describe('novaryqAcceptsFlavrlyUrl (mirrors Novaryq PR #61 flavrly_url_invalid rule)', () => {
+  it('https on flavrly.in or a subdomain, no credentials', () => {
+    expect(novaryqAcceptsFlavrlyUrl('https://flavrly.in/r/spice-route')).toBe(true);
+    expect(novaryqAcceptsFlavrlyUrl('https://www.flavrly.in/r/x')).toBe(true);
+    expect(novaryqAcceptsFlavrlyUrl('http://flavrly.in/r/x')).toBe(false);
+    expect(novaryqAcceptsFlavrlyUrl('https://flavrly.in.evil.com/r/x')).toBe(false);
+    expect(novaryqAcceptsFlavrlyUrl('https://u:p@flavrly.in/r/x')).toBe(false);
+    expect(novaryqAcceptsFlavrlyUrl('http://localhost:3000/r/x')).toBe(false);
+    expect(novaryqAcceptsFlavrlyUrl('not a url')).toBe(false);
+  });
+  it('the overview says whether Novaryq will accept this page URL', async () => {
+    vi.stubEnv('NOVARYQ_INTEGRATION_ENABLED', 'true');
+    const o = await novaryqOverview('r1');
+    expect(o.restaurantUrlAccepted).toBe(novaryqAcceptsFlavrlyUrl(o.restaurantUrl!));
     vi.unstubAllEnvs();
   });
 });

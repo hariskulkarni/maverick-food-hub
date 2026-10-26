@@ -25,6 +25,7 @@ interface Overview {
   counts: Record<string, number>;
   retrying: number;
   restaurantUrl: string | null;
+  restaurantUrlAccepted: boolean;
   menuMaster: boolean;
   allowPriceOverride: boolean;
   linkedItems: number;
@@ -144,8 +145,16 @@ function IndiaSetup({ ov, onSaved }: { ov: Overview; onSaved: () => void }) {
               <Button variant="outline" size="sm" onClick={() => copyText(ov.restaurantUrl!)} aria-label="Copy Flavrly restaurant URL"><Copy className="size-4" /></Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Paste it into Novaryq&apos;s consumer-channel (Flavrly) setting so your Novaryq storefront and online-ordering links send customers here.
+              In Novaryq, open <b>Admin → Integrations → Flavrly — online ordering &amp; delivery (India)</b> and paste this link.
+              Novaryq then sends your storefront and online-ordering visitors here, and turns off its own online ordering, kiosk ordering
+              and in-house delivery dispatch for your restaurant (your POS, kitchen and table orders are unchanged). Only Novaryq India
+              accounts whose locations are all in India and use INR can link to Flavrly.
             </p>
+            {!ov.restaurantUrlAccepted && (
+              <p className="text-xs text-warning">
+                Novaryq accepts only https links on flavrly.in, so it will refuse this address. Use your live flavrly.in page link.
+              </p>
+            )}
           </div>
         )}
         <div className="rounded-md border p-3 space-y-2">

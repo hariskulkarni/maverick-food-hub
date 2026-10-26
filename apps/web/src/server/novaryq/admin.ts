@@ -54,6 +54,21 @@ async function storedConfig(restaurantId: string): Promise<NovaryqConfig | null>
 
 export type Health = 'off' | 'not_connected' | 'healthy' | 'degraded' | 'failing';
 
+/**
+ * Novaryq's rule for the Flavrly restaurant URL it stores (PR #61, `PUT /v1/settings/consumer-channel`,
+ * 422 flavrly_url_invalid): https, no credentials, host flavrly.in or a subdomain. Mirrored here so
+ * the admin is warned before pasting a URL Novaryq will refuse (e.g. a staging host).
+ */
+export function novaryqAcceptsFlavrlyUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.toLowerCase();
+    return u.protocol === 'https:' && !u.username && !u.password && (host === 'flavrly.in' || host.endsWith('.flavrly.in'));
+  } catch {
+    return false;
+  }
+}
+
 /** One health rule for the admin badge and the platform list. */
 export function computeHealth(i: { hasCred: boolean; connected: boolean; enabled: boolean; dead: number; failed: number; retrying: number }): Health {
   if (!novaryqFlagOn() || (i.hasCred && !i.enabled)) return 'off';
@@ -103,6 +118,7 @@ export async function novaryqOverview(restaurantId: string) {
     retrying,
     // ADR-FNI-001 §3.1: the URL the owner pastes into Novaryq's consumer-channel setting.
     restaurantUrl: restaurant ? `${brand.url}/r/${restaurant.slug}` : null,
+    restaurantUrlAccepted: restaurant ? novaryqAcceptsFlavrlyUrl(`${brand.url}/r/${restaurant.slug}`) : false,
     menuMaster: !!summary?.menuMaster,
     allowPriceOverride: !!summary?.allowPriceOverride,
     linkedItems,
