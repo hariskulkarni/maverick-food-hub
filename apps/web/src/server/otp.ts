@@ -32,6 +32,7 @@ import { prisma } from './db';
 import { notify } from './notifications';
 import { log } from './log';
 import { getPlatformSecurity, setPlatformSecurity } from './2fa';
+import type { Role } from '@prisma/client';
 import { findActiveTestAccount } from './test-accounts';
 /** Parse a positive integer env var with a default. Tolerant of empty/NaN. */
 function envInt(name: string, dflt: number): number {
@@ -257,7 +258,13 @@ export class OtpDeliveryError extends Error {}
  * Request an OTP. Throws `OtpRateLimitedError` if any of the limits are tripped.
  * `ipAddress` is required in production paths so the per-IP throttle works.
  */
-export async function sendOtp(args: { phone: string; purpose?: string; ipAddress?: string }): Promise<{ ok: true; devCode?: string }> {
+export async function sendOtp(args: {
+  phone: string;
+  purpose?: string;
+  ipAddress?: string;
+  /** Which test-account roles may get the code on screen (default: CUSTOMER). */
+  testAccountRoles?: Role[];
+}): Promise<{ ok: true; devCode?: string; testAccount?: true }> {
   const purposeEnum = normalizePurposeEnum(args.purpose);
   // H20: canonicalize the purpose used for OtpToken storage AND every cooldown /
   // count query. Previously the raw free-form string was used, so rotating it
@@ -380,10 +387,10 @@ export async function sendOtp(args: { phone: string; purpose?: string; ipAddress
   // Pre-launch test customer (server/test-accounts.ts): never deliver to the
   // dummy number; the code is returned for the login screen instead. Deleting
   // the test account turns this off at once.
-  const testAccount = await findActiveTestAccount(args.phone);
+  const testAccount = await findActiveTestAccount(args.phone, args.testAccountRoles);
   if (testAccount) {
     log.info({ userId: testAccount.id, purpose }, 'OTP issued for test account (shown on screen, not sent)');
-    return { ok: true, devCode: code };
+    return { ok: true, devCode: code, testAccount: true };
   }
   const delivery = await deliverOtp(args.phone, code, demo);
   // H25: never report a false "sent". With a real provider in production, a

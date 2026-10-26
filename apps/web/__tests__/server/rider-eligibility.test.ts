@@ -16,13 +16,14 @@ vi.mock('@/server/group-scope', () => ({ resolveGroupContext: async (id: string)
 
 import { checkRiderEligibility } from '@/server/rider-eligibility';
 
-const order = (mode: string, readyAt = new Date()) => ({
+const order = (mode: string, readyAt = new Date(), testCustomer = false) => ({
   readyAt,
+  customer: { isTestAccount: testCustomer },
   branch: { restaurant: { id: 'rest1', riderDispatchMode: mode as any, fleetFallbackMinutes: 10 } }
 });
 const fleet = (over: any = {}) => ({
   id: 'rp1', approvedAt: new Date(), isOnline: true, riderType: 'FLEET', dedicatedRestaurantId: null,
-  user: { deletedAt: null, suspendedAt: null }, ...over
+  user: { deletedAt: null, suspendedAt: null, isTestAccount: false }, ...over
 });
 
 beforeEach(() => {
@@ -57,4 +58,17 @@ describe('checkRiderEligibility', () => {
     m.active = 2;
     expect(await checkRiderEligibility('rp1', order('FLEET_ONLY'))).toMatchObject({ ok: false, code: 'at_capacity', status: 409 });
   });
+  it('test isolation: test riders only get test-customer orders, real riders never do', async () => {
+    const testRider = fleet({ user: { deletedAt: null, suspendedAt: null, isTestAccount: true } });
+    // Test rider × real order → refused.
+    m.rider = testRider;
+    expect(await checkRiderEligibility('rp1', order('FLEET_ONLY'), { requireOnline: true })).toMatchObject({ ok: false, code: 'policy' });
+    // Test rider × test order → allowed.
+    expect(await checkRiderEligibility('rp1', order('FLEET_ONLY', new Date(), true), { requireOnline: true })).toEqual({ ok: true });
+    // Real rider × test order → refused (also for admin assign).
+    m.rider = fleet();
+    expect(await checkRiderEligibility('rp1', order('FLEET_ONLY', new Date(), true), { requireOnline: true, ignoreFleetFallbackWindow: true }))
+      .toMatchObject({ ok: false, code: 'policy' });
+  });
 });
+

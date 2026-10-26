@@ -51,6 +51,7 @@ export function LoginForm() {
   const [digits, setDigits] = useState('');
   const [code, setCode] = useState('');
   const [devCode, setDevCode] = useState<string | null>(null);
+  const [testAccount, setTestAccount] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notRider, setNotRider] = useState(false);
@@ -72,8 +73,9 @@ export function LoginForm() {
     const r = await postJson('/api/rider/auth/request-otp', { phone });
     setBusy(false);
     if (r.ok) {
-      const d = (r.data ?? {}) as { devCode?: string };
+      const d = (r.data ?? {}) as { devCode?: string; testAccount?: boolean };
       setDevCode(typeof d.devCode === 'string' && d.devCode ? d.devCode : null);
+      setTestAccount(d.testAccount === true);
       setStep('code');
       setCode('');
       setCooldown(30);
@@ -166,8 +168,12 @@ export function LoginForm() {
                 autoFocus
               />
               {devCode && (
-                <p className="mt-2 rounded-lg bg-muted p-2 text-xs">
-                  Demo mode — your code is <span className="font-mono font-semibold">{devCode}</span>
+                <p
+                  role="status"
+                  className={`mt-2 rounded-lg p-2 text-xs ${testAccount ? 'border border-dashed border-amber-400 bg-amber-50 text-amber-900' : 'bg-muted'}`}
+                >
+                  {testAccount ? 'Test account — your code is ' : 'Demo mode — your code is '}
+                  <span className="font-mono font-semibold">{devCode}</span>
                 </p>
               )}
             </div>

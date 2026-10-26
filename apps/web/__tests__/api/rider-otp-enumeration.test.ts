@@ -34,4 +34,17 @@ describe('rider request-otp', () => {
     }
     expect(sendOtp).not.toHaveBeenCalled();
   });
+  it('asks sendOtp for RIDER test accounts and passes the on-screen code through', async () => {
+    db.user.findUnique.mockResolvedValue({ role: 'RIDER', deletedAt: null });
+    sendOtp.mockResolvedValueOnce({ ok: true, devCode: '123456', testAccount: true } as any);
+    const r = await call('+918500947947');
+    expect(sendOtp).toHaveBeenCalledWith(expect.objectContaining({ phone: '+918500947947', testAccountRoles: ['RIDER'] }));
+    expect(await r.json()).toEqual({ ok: true, devCode: '123456', testAccount: true });
+  });
+  it('a deleted rider (e.g. a removed test rider) gets the same 200 and nothing is sent', async () => {
+    db.user.findUnique.mockResolvedValue({ role: 'RIDER', deletedAt: new Date() });
+    const r = await call('+918500947947');
+    expect(await r.json()).toEqual({ ok: true });
+    expect(sendOtp).not.toHaveBeenCalled();
+  });
 });

@@ -8,7 +8,7 @@ import {
   ClipboardCheck, Coins, CreditCard, FileSpreadsheet, Flame, Gauge, Gift, GraduationCap, Headphones, History,
   Landmark, Layers, LayoutDashboard, LayoutTemplate, LifeBuoy, ListOrdered, MessageSquare, MessagesSquare,
   QrCode, Radar, Radio, Receipt, Search, Shield, ShieldAlert, ShieldCheck, Siren, SlidersHorizontal, Smartphone,
-  Star, Timer, Trophy, UserPlus, Users, Wallet, Banknote, Bike, X, type LucideIcon,
+  Star, FlaskConical, Timer, Trophy, UserPlus, Users, Wallet, Banknote, Bike, X, type LucideIcon,
 } from 'lucide-react';
 import { activeHref, filterNavByQuery, type PlatformNavGroup, type PlatformNavIcon } from './nav-config';
 
@@ -21,7 +21,7 @@ const ICONS: Record<PlatformNavIcon, LucideIcon> = {
   payoutRules: Receipt, riderPayouts: Wallet, incentives: Trophy, tiers: Award, referrals: UserPlus,
   sos: Siren, incidents: ShieldAlert, riderSupport: Headphones, messages: MessagesSquare,
   settlements: Banknote, cod: Coins, gateways: Landmark, pg: CreditCard, pgAdmin: Gauge,
-  users: Users, support: LifeBuoy, help: BookOpen, bonus: Gift,
+  users: Users, testAccounts: FlaskConical, support: LifeBuoy, help: BookOpen, bonus: Gift,
   iam: ShieldCheck, approvals: ClipboardCheck, security: Shield, auditLog: History, health: Activity,
   observability: Radar,
 };

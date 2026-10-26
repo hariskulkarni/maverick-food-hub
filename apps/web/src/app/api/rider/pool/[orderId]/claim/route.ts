@@ -36,7 +36,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ or
   // rider type is allowed to claim this restaurant's orders.
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { assignment: true, branch: { include: { restaurant: true } } }
+    include: { assignment: true, branch: { include: { restaurant: true } }, customer: { select: { isTestAccount: true } } }
   });
   if (!order) return new Response('Order not found', { status: 404 });
   if (order.assignment) return new Response('Order already claimed', { status: 409 });

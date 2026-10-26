@@ -22,15 +22,22 @@ export async function GET(req: NextRequest) {
       id: true,
       approvedAt: true,
       riderType: true,
-      dedicatedRestaurantId: true
+      dedicatedRestaurantId: true,
+      user: { select: { isTestAccount: true } },
     }
   });
   if (!profile || !profile.approvedAt) return new Response('Rider not approved', { status: 403 });
+  const isTestAccount = profile.user.isTestAccount;
 
   // Widen a DEDICATED rider's eligibility to their whole group (parent +
   // children): a rider dedicated to any restaurant in a group sees orders from
   // every restaurant in it. Solo restaurants resolve to just their own id.
-  const groupProfile = await resolveDedicatedGroup(profile);
+  const groupProfile = await resolveDedicatedGroup({
+    id: profile.id,
+    riderType: profile.riderType,
+    dedicatedRestaurantId: profile.dedicatedRestaurantId,
+    isTestAccount,
+  });
 
   // Fetch all candidate READY + unassigned orders WITH the restaurant's
   // dispatch policy included, then filter to this rider's eligible subset.
@@ -42,13 +49,17 @@ export async function GET(req: NextRequest) {
   const candidates = await prisma.order.findMany({
     where: {
       assignment: null,
+      // Test isolation (rider-sourcing.testIsolationAllows): a test rider only
+      // sees test-customer orders and a real rider never does. Filtered here
+      // too so test orders can't crowd real ones out of the 60-row window.
+      customer: { isTestAccount },
       OR: [
         { status: 'READY' },
         ...(jitIds.length ? [{ id: { in: jitIds }, status: { in: PRE_READY_STATUSES }, fulfillmentType: FulfillmentType.DELIVERY }] : []),
       ],
     },
-    // P0-3: no customer row — the pool DTO never exposes the customer.
-    include: { branch: { include: { restaurant: true } }, address: true, items: true },
+    // P0-3: only the test flag of the customer — the pool DTO never exposes the customer.
+    include: { branch: { include: { restaurant: true } }, address: true, items: true, customer: { select: { isTestAccount: true } } },
     orderBy: { readyAt: 'asc' },
     take: 60
   });

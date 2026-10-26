@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
     otpAttempt: { upsert: vi.fn(), update: vi.fn(), aggregate: vi.fn(), findUnique: vi.fn() },
     otpToken: { findFirst: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     user: { findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), create: vi.fn() },
+    riderProfile: { updateMany: vi.fn() },
     userSession: { updateMany: vi.fn(), create: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -63,7 +64,7 @@ describe('sendOtp — pre-launch test account', () => {
     expect(h.whatsapp).not.toHaveBeenCalled();
     // Only active, flagged customers qualify.
     expect(h.prisma.user.findFirst).toHaveBeenCalledWith({
-      where: { phone: PHONE, isTestAccount: true, deletedAt: null, suspendedAt: null, role: 'CUSTOMER' },
+      where: { phone: PHONE, isTestAccount: true, deletedAt: null, suspendedAt: null, role: { in: ['CUSTOMER'] } },
       select: { id: true },
     });
     // The code itself is never logged.
@@ -96,7 +97,10 @@ describe('test-account admin helpers', () => {
     const { createTestAccount } = await import('@/server/test-accounts');
     const r = await createTestAccount('98765 00001');
     expect(r).toMatchObject({ ok: true, phone: PHONE });
-    expect(h.prisma.user.create).toHaveBeenCalledWith({ data: { phone: PHONE, name: 'Flavrly Test Customer', role: 'CUSTOMER', isTestAccount: true } });
+    expect(h.prisma.user.create).toHaveBeenCalledWith({
+      data: { phone: PHONE, name: 'Flavrly Test Customer', role: 'CUSTOMER', isTestAccount: true },
+      select: { id: true },
+    });
   });
 
   it('create: refuses staff numbers and malformed input', async () => {
@@ -125,3 +129,86 @@ describe('test-account admin helpers', () => {
     expect(h.prisma.user.update).not.toHaveBeenCalled();
   });
 });
+
+describe('sendOtp — test rider (rider login asks for RIDER)', () => {
+  it('returns the code + testAccount flag and sends nothing for an active test rider', async () => {
+    h.prisma.user.findFirst.mockResolvedValue({ id: 'test-rider' });
+    const { sendOtp } = await loadOtp();
+    const r = await sendOtp({ phone: PHONE, purpose: 'login', ipAddress: '203.0.113.9', testAccountRoles: ['RIDER'] });
+    expect(r).toMatchObject({ ok: true, testAccount: true });
+    expect(r.devCode).toMatch(/^\d{6}$/);
+    expect(h.sms).not.toHaveBeenCalled();
+    expect(h.prisma.user.findFirst).toHaveBeenCalledWith({
+      where: { phone: PHONE, isTestAccount: true, deletedAt: null, suspendedAt: null, role: { in: ['RIDER'] } },
+      select: { id: true },
+    });
+  });
+
+  it('a real rider (no active test flag) gets the SMS path and no code', async () => {
+    h.prisma.user.findFirst.mockResolvedValue(null);
+    const { sendOtp } = await loadOtp();
+    const r = await sendOtp({ phone: PHONE, purpose: 'login', testAccountRoles: ['RIDER'] });
+    expect(r.devCode).toBeUndefined();
+    expect(r.testAccount).toBeUndefined();
+    expect(h.sms).toHaveBeenCalledTimes(1);
+  });
+
+  it('the customer login never matches a test rider (role scoping)', async () => {
+    const { findActiveTestAccount } = await import('@/server/test-accounts');
+    h.prisma.user.findFirst.mockResolvedValue(null);
+    await findActiveTestAccount(PHONE);
+    expect(h.prisma.user.findFirst.mock.calls[0][0].where.role).toEqual({ in: ['CUSTOMER'] });
+  });
+});
+
+describe('test-account admin helpers — riders and guards', () => {
+  it('create rider: new number becomes an approved FLEET test rider', async () => {
+    h.prisma.user.findUnique.mockResolvedValue(null);
+    h.prisma.user.create.mockResolvedValue({ id: 'r1' });
+    const { createTestAccount } = await import('@/server/test-accounts');
+    const r = await createTestAccount('8500947947', undefined, 'RIDER');
+    expect(r).toMatchObject({ ok: true, phone: '+918500947947', userId: 'r1' });
+    const arg = h.prisma.user.create.mock.calls[0][0];
+    expect(arg.data).toMatchObject({ phone: '+918500947947', name: 'Flavrly Test Rider', role: 'RIDER', isTestAccount: true });
+    expect(arg.data.riderProfile.create).toMatchObject({ riderType: 'FLEET', approvedAt: expect.any(Date) });
+  });
+
+  it('create rider: refuses ANY real account on that phone (never converts a real person)', async () => {
+    const { createTestAccount } = await import('@/server/test-accounts');
+    for (const role of ['RIDER', 'CUSTOMER', 'ADMIN', 'SUPER_ADMIN']) {
+      h.prisma.user.findUnique.mockResolvedValue({ id: 'x', role, deletedAt: null, isTestAccount: false });
+      const r = await createTestAccount('8500947947', undefined, 'RIDER');
+      expect(r.ok).toBe(false);
+    }
+    expect(h.prisma.user.update).not.toHaveBeenCalled();
+    expect(h.prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it('create: refuses a phone already used by a test account of the other role', async () => {
+    const { createTestAccount } = await import('@/server/test-accounts');
+    h.prisma.user.findUnique.mockResolvedValue({ id: 'c', role: 'CUSTOMER', deletedAt: null, isTestAccount: true });
+    const r = await createTestAccount('9477671834', undefined, 'RIDER');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toMatch(/already a test customer/);
+    expect(h.prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it('create customer: refuses a real customer unless the script explicitly opts in', async () => {
+    const { createTestAccount } = await import('@/server/test-accounts');
+    h.prisma.user.findUnique.mockResolvedValue({ id: 'c', role: 'CUSTOMER', deletedAt: null, isTestAccount: false });
+    expect((await createTestAccount('9876500001')).ok).toBe(false);
+    expect(h.prisma.user.update).not.toHaveBeenCalled();
+    h.prisma.user.update.mockResolvedValue({});
+    expect((await createTestAccount('9876500001', undefined, 'CUSTOMER', { allowExistingCustomer: true })).ok).toBe(true);
+    expect(h.prisma.user.update).toHaveBeenCalledWith({ where: { id: 'c' }, data: { isTestAccount: true } });
+  });
+
+  it('delete rider: also takes the rider offline', async () => {
+    h.prisma.user.findUnique.mockResolvedValue({ id: 'r1', role: 'RIDER', isTestAccount: true });
+    h.prisma.userSession.create.mockResolvedValue({ id: 'marker' });
+    const { deleteTestAccount } = await import('@/server/test-accounts');
+    expect((await deleteTestAccount('8500947947')).ok).toBe(true);
+    expect(h.prisma.riderProfile.updateMany).toHaveBeenCalledWith({ where: { userId: 'r1' }, data: { isOnline: false } });
+  });
+});
+

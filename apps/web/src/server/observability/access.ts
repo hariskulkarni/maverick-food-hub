@@ -92,6 +92,19 @@ export async function observabilityPageDenial(): Promise<ObsDenyReason | null> {
   }
 }
 
+/**
+ * The same SUPER_ADMIN + 2FA-session check, for other sensitive platform
+ * actions (e.g. test accounts at /platform/users/test-accounts) that need the
+ * observability-grade gate with their own wording.
+ */
+export async function superAdmin2faSession(): Promise<{ ok: ObsSession } | { deny: ObsDenyReason }> {
+  try {
+    return await evaluate();
+  } catch {
+    return { deny: 'role' };
+  }
+}
+
 /** Shared parsing of ?range= (15m | 1h | 24h | 7d). */
 export const RANGES = { '15m': 15, '1h': 60, '24h': 1440, '7d': 10080 } as const;
 export type RangeKey = keyof typeof RANGES;

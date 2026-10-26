@@ -33,9 +33,10 @@ export async function loadFleetSnapshot(opts: { branchIds?: string[] } = {}): Pr
   };
 
   const profiles = await prisma.riderProfile.findMany({
+    // Pre-launch test riders (server/test-accounts.ts) never count as fleet.
     where: branchScoped
-      ? { assignments: { some: assignmentWhere } }
-      : { OR: [{ isOnline: true }, { assignments: { some: assignmentWhere } }] },
+      ? { user: { isTestAccount: false }, assignments: { some: assignmentWhere } }
+      : { user: { isTestAccount: false }, OR: [{ isOnline: true }, { assignments: { some: assignmentWhere } }] },
     select: {
       id: true,
       isOnline: true,

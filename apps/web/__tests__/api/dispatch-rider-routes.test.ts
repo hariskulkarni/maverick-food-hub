@@ -74,7 +74,7 @@ const poolOrder = (id: string, status: string) => ({
 
 beforeEach(() => {
   session = { user: { id: 'u1', role: 'RIDER' } };
-  profile = { id: 'rp1', approvedAt: new Date(), isOnline: true, riderType: 'FLEET', dedicatedRestaurantId: null, currentLat: 12.9, currentLng: 77.6 };
+  profile = { id: 'rp1', approvedAt: new Date(), isOnline: true, riderType: 'FLEET', dedicatedRestaurantId: null, currentLat: 12.9, currentLng: 77.6, user: { isTestAccount: false } };
   order = { id: 'o1', status: 'READY', fulfillmentType: 'DELIVERY', assignment: null, branch: { restaurant: { id: 'r1' } } };
   assignment = { id: 'a1', riderId: 'rp1', orderId: 'o1', status: 'ACCEPTED', notes: null };
   released = false;
@@ -89,7 +89,13 @@ beforeEach(() => {
 describe('GET /api/rider/pool', () => {
   it('only READY orders when JIT released nothing', async () => {
     await pool({} as any);
-    expect(lastPoolWhere).toEqual({ assignment: null, OR: [{ status: 'READY' }] });
+    // Real riders only ever see real-customer orders (test isolation).
+    expect(lastPoolWhere).toEqual({ assignment: null, customer: { isTestAccount: false }, OR: [{ status: 'READY' }] });
+  });
+  it('a test rider only sees test-customer orders', async () => {
+    profile = { ...profile, user: { isTestAccount: true } };
+    await pool({} as any);
+    expect(lastPoolWhere.customer).toEqual({ isTestAccount: true });
   });
   it('adds JIT-released pre-ready delivery orders, flagged foodReady:false', async () => {
     jitIds = ['o2'];

@@ -128,8 +128,12 @@ export interface Rider {
 
 export interface RequestOtpResponse {
   ok: true;
-  /** Present only when the backend has OTP_DEBUG_LOG=true (demo / pre-SMS). */
+  /**
+   * Present when the backend has OTP_DEBUG_LOG=true (demo / pre-SMS), or for a
+   * pre-launch TEST rider account (then `testAccount` is true; no SMS is sent).
+   */
   devCode?: string;
+  testAccount?: boolean;
 }
 
 export interface VerifyOtpResponse {

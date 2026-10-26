@@ -46,7 +46,7 @@ export default function LoginScreen() {
       const res = await api.requestOtp(phone);
       router.push({
         pathname: '/verify',
-        params: { phone, devCode: res.devCode ?? '' },
+        params: { phone, devCode: res.devCode ?? '', testAccount: res.testAccount ? '1' : '' },
       });
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {

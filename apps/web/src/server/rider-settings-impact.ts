@@ -13,7 +13,8 @@ export type { RiderGateImpact };
 
 export async function computeRiderGateImpact(now: Date = new Date()): Promise<RiderGateImpact> {
   const riders = await prisma.riderProfile.findMany({
-    where: { approvedAt: { not: null }, user: { deletedAt: null, suspendedAt: null } },
+    // Test riders (server/test-accounts.ts) are exempt from the gates — not real impact.
+    where: { approvedAt: { not: null }, user: { deletedAt: null, suspendedAt: null, isTestAccount: false } },
     select: {
       id: true,
       isOnline: true,
