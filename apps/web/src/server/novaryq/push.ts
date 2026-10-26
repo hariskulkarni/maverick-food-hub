@@ -302,7 +302,8 @@ async function cancelOrder(row: ClaimedSync, owner: string, cfg: NovaryqConfig):
     });
     return (await settle(row, owner, { state: 'CANCELLED', novaryqOrderId, lastError: null })) ? 'cancelled' : 'lost';
   } catch (e) {
-    if (e instanceof NovaryqApiError && !e.retryable) return fail(row, owner, e.message);
+    // 403 on cancel = the order was created by another API key (NQ-API-FINAL §3): permanent.
+    if (e instanceof NovaryqApiError && (!e.retryable || e.status === 403)) return fail(row, owner, e.message);
     return retryOrDie(row, owner, e);
   }
 }

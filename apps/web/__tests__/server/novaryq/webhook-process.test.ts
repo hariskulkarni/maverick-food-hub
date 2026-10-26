@@ -120,6 +120,25 @@ describe('routeNovaryqEvent', () => {
     expect(h.statusCalls[0]).toMatchObject({ externalRef: 'o9', status: 'SENT', occurredAt: '2026-10-25T11:00:00Z' });
   });
 
+  it('reads the NQ-1.5 envelope `data` and handles menu.item.restored without `available`', async () => {
+    const e = ev('menu.item.restored', {});
+    (e.payload as any) = { eventId: 'x', id: 'x', eventType: 'menu.item.restored', occurredAt: '2026-10-25T10:00:00Z', data: { itemCode: 'SKU-1', locationId: null } };
+    h.links[0].menuItem.isAvailable = false;
+    expect(await routeNovaryqEvent(e as any)).toBe('applied');
+    expect(h.itemUpdates[0].data).toEqual({ isAvailable: true });
+  });
+
+  it('legacy alias deliveries (order.sent / order.updated / order.closed) are stored and ignored (NQ-2)', async () => {
+    for (const name of ['order.sent', 'order.updated', 'order.closed']) {
+      expect(await routeNovaryqEvent(ev(name, { orderId: 'nq_1', externalRef: 'o1', status: 'SENT' }) as any)).toBe('ignored:unhandled');
+    }
+    expect(h.statusCalls).toEqual([]);
+  });
+
+  it('webhook.test is recorded as a test delivery', async () => {
+    expect(await routeNovaryqEvent(ev('webhook.test', { message: 'hi', subscriptionId: 's' }) as any)).toBe('test_received');
+  });
+
   it('unrelated events are acknowledged and ignored', async () => {
     expect(await routeNovaryqEvent(ev('payment.succeeded', { paymentId: 'p' }) as any)).toBe('ignored:unhandled');
   });

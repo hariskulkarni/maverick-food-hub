@@ -94,9 +94,9 @@ describe('Novaryq webhook route', () => {
     const res = await call(BODY);
     expect(res.status).toBe(200);
     expect(h.stored).toHaveLength(1);
-    expect(h.stored[0]).toMatchObject({ restaurantId: 'r1', deliveryId: 'r1:evt:evt_1', event: 'order.status_changed' });
+    expect(h.stored[0]).toMatchObject({ restaurantId: 'r1', deliveryId: 'r1:evt:order.status_changed:evt_1', event: 'order.status_changed' });
     expect(h.stored[0].payload).toEqual(JSON.parse(BODY));
-    expect(h.inline).toEqual(['r1:evt:evt_1']);
+    expect(h.inline).toEqual(['r1:evt:order.status_changed:evt_1']);
   });
 
   it('a redelivery (same idempotency key) is acknowledged and not processed twice', async () => {

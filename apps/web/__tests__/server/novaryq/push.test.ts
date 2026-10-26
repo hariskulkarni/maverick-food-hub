@@ -283,6 +283,14 @@ describe('processClaimed — cancel', () => {
   });
 });
 
+describe('processClaimed — cancel refused by key ownership', () => {
+  it('403 (order created by another API key) → FAILED at once, not retried', async () => {
+    h.order = baseOrder({ status: 'CANCELLED_BY_CUSTOMER' });
+    h.respond = () => new Response(JSON.stringify({ message: 'not created by this API key' }), { status: 403 });
+    expect(await processClaimed(row({ state: 'CANCEL_PENDING', novaryqOrderId: 'nq_1' }), OWNER)).toBe('failed');
+  });
+});
+
 describe('replaySync', () => {
   it('requeues a FAILED/DEAD row of the caller restaurant; a cancelled order replays as a cancel', async () => {
     h.syncRow = { id: 's1', restaurantId: 'r1', state: 'DEAD', order: { status: 'CANCELLED_BY_CUSTOMER' } };

@@ -6,7 +6,7 @@
  * 3. X-Novaryq-Signature `t=,v1=` = HMAC-SHA256(webhookSecret, `${t}.${rawBody}`),
  *    constant time, |now - t| <= 5 min (Novaryq re-signs every attempt) else 401.
  * 4. Store NovaryqWebhookEvent BEFORE answering 200; DB failure → 503 so Novaryq retries.
- *    Dedupe key (per restaurant): the SIGNED envelope `id` when present — stable across
+ *    Dedupe key (per restaurant): the SIGNED envelope event name + `id` when present — stable across
  *    retries and not forgeable, unlike the unsigned delivery header (QA-C5) — else
  *    X-Novaryq-Idempotency-Key || X-Novaryq-Delivery (required either way).
  * 5. Process asynchronously: inline best-effort after storing, the novaryq-worker
@@ -65,7 +65,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ res
   const event = (req.headers.get('x-novaryq-event') || (typeof envelope.eventType === 'string' ? envelope.eventType : '') || 'unknown').slice(0, 100);
   const eventId = typeof envelope.id === 'string' && envelope.id.length <= 128 ? envelope.id : null;
   // Namespaced per restaurant so one tenant can never pre-empt another's ids.
-  const deliveryId = eventId ? `${restaurantId}:evt:${eventId}` : `${restaurantId}:${delivery}`;
+  // The event name is part of the key so an alias delivery can never shadow the real event.
+  const deliveryId = eventId ? `${restaurantId}:evt:${event}:${eventId}` : `${restaurantId}:${delivery}`;
 
   try {
     const r = await prisma.novaryqWebhookEvent.createMany({

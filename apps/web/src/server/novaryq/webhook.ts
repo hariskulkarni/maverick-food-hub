@@ -59,12 +59,19 @@ type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
 
-/** Novaryq wraps the event data in an envelope `{ id, eventType, payload, occurredAt }`; accept bare payloads too. */
+/**
+ * Novaryq's envelope carries the event data in `data` (mirrored in `payload`) next to
+ * `eventId/id, eventType, occurredAt`; a bare payload is accepted too.
+ */
 function eventData(body: unknown): Obj {
   if (!isObj(body)) return {};
-  if (isObj(body.payload)) return { ...body.payload, occurredAt: body.payload.occurredAt ?? body.occurredAt };
-  return body;
+  const inner = isObj(body.data) ? body.data : isObj(body.payload) ? body.payload : null;
+  return inner ? { ...inner, occurredAt: inner.occurredAt ?? body.occurredAt } : body;
 }
+
+/** Events Flavrly acts on (NQ-API-FINAL §4). Legacy aliases (order.sent/closed/updated) are stored and ignored (NQ-2). */
+const STATUS_EVENTS = new Set(['order.status_changed']);
+const AVAILABILITY_EVENTS = new Set(['menu.item.availability_changed', 'menu.item.86ed', 'menu.item.restored']);
 
 export async function routeNovaryqEvent(ev: ClaimedEvent): Promise<string> {
   // Novaryq console "Send test": proves the webhook leg; shown as "last webhook received".
@@ -72,17 +79,18 @@ export async function routeNovaryqEvent(ev: ClaimedEvent): Promise<string> {
   const p = eventData(ev.payload);
   const occurredAt = str(p.occurredAt) ?? ev.receivedAt.toISOString();
 
-  const itemCode = str(p.itemCode);
-  if (itemCode) {
-    const available = typeof p.available === 'boolean' ? p.available : ev.event === 'menu.item.86ed' ? false : null;
-    if (available === null) return 'ignored:no_availability';
+  if (AVAILABILITY_EVENTS.has(ev.event)) {
+    const itemCode = str(p.itemCode);
+    const available = typeof p.available === 'boolean' ? p.available : ev.event === 'menu.item.86ed' ? false : ev.event === 'menu.item.restored' ? true : null;
+    if (!itemCode || available === null) return 'ignored:malformed';
     return applyAvailabilityEvent({
       restaurantId: ev.restaurantId, itemCode, available, locationId: str(p.locationId), occurredAt: new Date(occurredAt),
     });
   }
 
-  const status = str(p.status) ?? str(p.to);
-  if (status && (str(p.externalRef) || str(p.orderId))) {
+  if (STATUS_EVENTS.has(ev.event)) {
+    const status = str(p.status) ?? str(p.to);
+    if (!status || !(str(p.externalRef) || str(p.orderId))) return 'ignored:malformed';
     if (str(p.source) && p.source !== 'flavrly') return 'ignored:other_source';
     let externalRef = str(p.externalRef);
     if (!externalRef) {
