@@ -15,6 +15,7 @@
  * never push it later. With the setting off nothing is held and the old flow
  * is untouched.
  */
+import { riderTestSideFilter } from '../rider-sourcing';
 import { FulfillmentType, OrderEventSource, OrderEventType, OrderStatus, RiderDispatchMode, RiderType, AssignmentStatus, Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { publish } from '../realtime';
@@ -92,7 +93,9 @@ export async function nearestIdleRiderKm(
   pickup: LatLng,
   restaurant: { id: string; riderDispatchMode: RiderDispatchMode },
   rangeKm: number,
-  now: Date = new Date()
+  now: Date = new Date(),
+  /** Test isolation: only riders on the order's side count as supply. */
+  isTestOrder = false
 ): Promise<number | null> {
   // Bounding box prefilter (2× range) so we never load every online rider.
   const dLat = (rangeKm * 2) / 111;
@@ -112,6 +115,7 @@ export async function nearestIdleRiderKm(
       currentLng: { gte: pickup.lng - dLng, lte: pickup.lng + dLng },
       assignments: { none: { status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACCEPTED, AssignmentStatus.PICKED_UP] } } },
       ...typeFilter,
+      ...riderTestSideFilter({ customer: { isTestAccount: isTestOrder } }),
     },
     select: { currentLat: true, currentLng: true },
     take: 200,
@@ -135,6 +139,7 @@ const orderForJit = {
   scheduledFor: true,
   branchId: true,
   assignment: { select: { id: true } },
+  customer: { select: { isTestAccount: true } },
   address: { select: { latitude: true, longitude: true } },
   branch: { select: { latitude: true, longitude: true, restaurant: { select: { id: true, riderDispatchMode: true } } } },
 } satisfies Prisma.OrderSelect;
@@ -144,7 +149,7 @@ async function evaluate(order: OrderForJit, predictedPrepMin: number, acceptedAt
   const b = order.branch;
   const pickup = b.latitude != null && b.longitude != null ? { lat: b.latitude, lng: b.longitude } : null;
   const drop = order.address?.latitude != null && order.address?.longitude != null ? { lat: order.address.latitude, lng: order.address.longitude } : null;
-  const nearest = pickup ? await nearestIdleRiderKm(pickup, b.restaurant, cfg.rangeKm, now) : null;
+  const nearest = pickup ? await nearestIdleRiderKm(pickup, b.restaurant, cfg.rangeKm, now, order.customer.isTestAccount) : null;
   return decideJitRelease({
     now,
     acceptedAt,

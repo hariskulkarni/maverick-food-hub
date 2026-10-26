@@ -2,9 +2,10 @@
  * Login — step 2. Rider enters the 6-digit OTP; on success we store the Bearer
  * token + profile and drop them into the app.
  *
- * When the backend runs with OTP_DEBUG_LOG=true (demo / pre-SMS-provider), the
- * request-otp response carries the code — we surface it here as a "Demo mode"
- * hint and pre-fill it, so a demo doesn't need someone reading server logs.
+ * When the backend runs with OTP_DEBUG_LOG=true (demo / pre-SMS-provider), or
+ * the number is a pre-launch TEST rider account, the request-otp response
+ * carries the code — we surface it here ("Demo mode" / "Test account") and
+ * pre-fill it, so nobody needs an SMS or the server logs.
  */
 import { useState, useEffect } from 'react';
 import {
@@ -26,9 +27,10 @@ import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 export default function VerifyScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
-  const params = useLocalSearchParams<{ phone: string; devCode?: string }>();
+  const params = useLocalSearchParams<{ phone: string; devCode?: string; testAccount?: string }>();
   const phone = params.phone ?? '';
-  const devCode = params.devCode ?? '';
+  const [devCode, setDevCode] = useState(params.devCode ?? '');
+  const [testAccount, setTestAccount] = useState(params.testAccount === '1');
 
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +71,11 @@ export default function VerifyScreen() {
     setResending(true);
     try {
       const res = await api.requestOtp(phone);
-      if (res.devCode) setCode(res.devCode);
+      if (res.devCode) {
+        setDevCode(res.devCode);
+        setCode(res.devCode);
+      }
+      setTestAccount(res.testAccount === true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not resend the code.');
     } finally {
@@ -98,9 +104,9 @@ export default function VerifyScreen() {
 
           {devCode ? (
             <View style={styles.demoHint}>
-              <Text style={styles.demoHintLabel}>DEMO MODE</Text>
+              <Text style={styles.demoHintLabel}>{testAccount ? 'TEST ACCOUNT' : 'DEMO MODE'}</Text>
               <Text style={styles.demoHintText}>
-                SMS isn&apos;t wired up yet — your code is{' '}
+                {testAccount ? 'No SMS is sent for this test number — your code is ' : "SMS isn't wired up yet — your code is "}
                 <Text style={styles.demoHintCode}>{devCode}</Text> (pre-filled
                 below).
               </Text>

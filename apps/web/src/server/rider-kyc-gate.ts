@@ -33,6 +33,8 @@ export function kycTypeLabel(type: KycDocumentType): string {
 
 export interface KycGateResult {
   enforced: boolean;
+  /** Pre-launch test rider: gate waived (it can only ever get test orders). */
+  testAccountExempt?: true;
   canGoOnline: boolean;
   blockingTypes: KycDocumentType[];
   message: string | null;
@@ -62,10 +64,23 @@ export function evaluateKycGate(docs: GateDoc[], enforced: boolean, now: Date = 
   };
 }
 
+/**
+ * A pre-launch test rider (User.isTestAccount, server/test-accounts.ts) has no
+ * real documents. The gate is waived for it because test isolation
+ * (rider-sourcing.testIsolationAllows) already guarantees such a rider can only
+ * ever be offered, claim or be assigned TEST orders — so the waiver never
+ * applies to a real order. Every waived evaluation is reported via
+ * `testAccountExempt`.
+ */
 export async function riderKycGate(riderId: string, now: Date = new Date()): Promise<KycGateResult> {
-  const [enforced, docs] = await Promise.all([
+  const [enforced, docs, profile] = await Promise.all([
     getRiderKycGate(),
     prisma.riderKycDocument.findMany({ where: { riderId }, select: { type: true, status: true, expiresOn: true } }),
+    prisma.riderProfile.findUnique({ where: { id: riderId }, select: { user: { select: { isTestAccount: true } } } }),
   ]);
-  return evaluateKycGate(docs, enforced, now);
+  const result = evaluateKycGate(docs, enforced, now);
+  if (profile?.user.isTestAccount && !result.canGoOnline) {
+    return { ...result, canGoOnline: true, message: null, testAccountExempt: true };
+  }
+  return result;
 }

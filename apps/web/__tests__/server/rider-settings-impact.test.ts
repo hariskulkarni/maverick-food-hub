@@ -45,7 +45,7 @@ describe('computeRiderGateImpact', () => {
 
   it('only scans approved, active accounts and asks for shift-blocking rider modules', async () => {
     await computeRiderGateImpact(NOW);
-    expect(findManyArgs.where).toEqual({ approvedAt: { not: null }, user: { deletedAt: null, suspendedAt: null } });
+    expect(findManyArgs.where).toEqual({ approvedAt: { not: null }, user: { deletedAt: null, suspendedAt: null, isTestAccount: false } });
     expect(gapsArgs.audience).toBe('RIDER');
     expect(gapsArgs.opts).toMatchObject({ onlyBlocksShift: true });
     expect(gapsArgs.users).toHaveLength(4);

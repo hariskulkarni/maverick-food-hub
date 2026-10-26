@@ -51,7 +51,7 @@ export async function checkRiderEligibility(
       isOnline: true,
       riderType: true,
       dedicatedRestaurantId: true,
-      user: { select: { deletedAt: true, suspendedAt: true } },
+      user: { select: { deletedAt: true, suspendedAt: true, isTestAccount: true } },
     },
   });
   if (!rider) return { ok: false, code: 'not_found', status: 404, message: 'Rider not found.' };
@@ -67,6 +67,7 @@ export async function checkRiderEligibility(
     id: rider.id,
     riderType: rider.riderType as RiderType,
     dedicatedRestaurantId: rider.dedicatedRestaurantId,
+    isTestAccount: rider.user.isTestAccount,
   });
   const policyOrder = opts.ignoreFleetFallbackWindow ? { ...order, readyAt: new Date(0) } : order;
   if (!riderCanClaimOrder(group, policyOrder, opts.now ?? new Date())) {

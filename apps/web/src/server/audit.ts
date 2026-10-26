@@ -48,6 +48,7 @@ export type AuditAction =
   | 'menu.cross_sell.update'
   // Users
   | 'user.create' | 'user.suspend' | 'user.role.change'
+  | 'user.test_account.create' | 'user.test_account.delete'
   // Offers + cross-sell (Offer engine, separate from legacy Coupons)
   | 'offer.applied'
   | 'offer.create' | 'offer.update' | 'offer.deactivate'

@@ -53,8 +53,9 @@ export default async function PlatformLiveOpsPage() {
     prisma.orderEscalation.count({
       where: { status: 'RESOLVED', resolvedAt: { gte: today } }
     }),
-    prisma.riderProfile.count({ where: { isOnline: true } }),
-    prisma.riderProfile.count(),
+    // Pre-launch test riders (server/test-accounts.ts) are not part of the fleet.
+    prisma.riderProfile.count({ where: { isOnline: true, user: { isTestAccount: false } } }),
+    prisma.riderProfile.count({ where: { user: { isTestAccount: false } } }),
     prisma.branch.count({ where: { isActive: false } }),
     prisma.order.count({ where: { status: 'PAYMENT_PENDING' } }),
     prisma.codCollection.aggregate({

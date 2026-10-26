@@ -16,7 +16,7 @@ export type PlatformNavIcon =
   | 'payoutRules' | 'riderPayouts' | 'incentives' | 'tiers' | 'referrals'
   | 'sos' | 'incidents' | 'riderSupport' | 'messages'
   | 'settlements' | 'cod' | 'gateways' | 'pg' | 'pgAdmin'
-  | 'users' | 'support' | 'help' | 'bonus'
+  | 'users' | 'testAccounts' | 'support' | 'help' | 'bonus'
   | 'iam' | 'approvals' | 'security' | 'auditLog' | 'health' | 'observability';
 
 export interface PlatformNavItem {
@@ -109,6 +109,7 @@ export const PLATFORM_NAV: PlatformNavGroup[] = [
     title: 'Customers & support',
     items: [
       { href: '/platform/users', label: 'All users', icon: 'users', keywords: ['customers', 'accounts', 'staff', 'password reset'] },
+      { href: '/platform/users/test-accounts', label: 'Test accounts', icon: 'testAccounts', keywords: ['test rider', 'test customer', 'dummy', 'otp', 'pre-launch', 'demo'] },
       { href: '/platform/support', label: 'Support', icon: 'support', keywords: ['tickets', 'helpdesk', 'complaints'] },
       { href: '/platform/help', label: 'Help center', icon: 'help', keywords: ['faq', 'knowledge base', 'articles', 'kb'] },
       { href: '/platform/signup-bonus', label: 'Signup bonus', icon: 'bonus', keywords: ['welcome', 'wallet', 'promo'] },

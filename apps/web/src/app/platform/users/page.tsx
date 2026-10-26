@@ -1,7 +1,8 @@
 import { prisma } from '@/server/db';
 import { UsersExplorer } from './explorer';
 import { Card, CardContent } from '@/components/ui/card';
-import { Users, UserCog, Bike, ChefHat, ShoppingBag } from 'lucide-react';
+import Link from 'next/link';
+import { Users, UserCog, Bike, ChefHat, ShoppingBag, FlaskConical } from 'lucide-react';
 
 export const metadata = { title: 'Platform · Users' };
 export const dynamic = 'force-dynamic';
@@ -46,9 +47,17 @@ export default async function PlatformUsersPage({ searchParams }: { searchParams
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl">
-      <header>
-        <h1 className="display text-3xl font-semibold">Users</h1>
-        <p className="text-sm text-muted-foreground mt-1">Everyone on the platform — customers, restaurant staff, riders, and admins.</p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="display text-3xl font-semibold">Users</h1>
+          <p className="text-sm text-muted-foreground mt-1">Everyone on the platform — customers, restaurant staff, riders, and admins.</p>
+        </div>
+        <Link
+          href="/platform/users/test-accounts"
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium hover:bg-muted"
+        >
+          <FlaskConical className="size-4" /> Test accounts
+        </Link>
       </header>
 
       <div className="grid gap-4 md:grid-cols-5">

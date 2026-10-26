@@ -81,6 +81,8 @@ describe('GET /api/platform/riders/live', () => {
   it('includes a rider mid-delivery even if their online flag dropped', async () => {
     await GET();
     expect(h.lastWhere).toEqual({
+      // Pre-launch test riders never count as fleet.
+      user: { isTestAccount: false },
       OR: [{ isOnline: true }, { assignments: { some: { status: { in: ['PENDING', 'ACCEPTED', 'PICKED_UP'] } } } }],
     });
   });

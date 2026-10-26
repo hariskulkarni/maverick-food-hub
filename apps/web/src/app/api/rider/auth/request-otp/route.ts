@@ -6,7 +6,9 @@
  * a customer's or staff member's phone simply can't get a code here.
  *
  * Body: { phone: string }
- * 200:  { ok: true, devCode?: string }   devCode present only when OTP_DEBUG_LOG=true
+ * 200:  { ok: true, devCode?: string, testAccount?: true }
+ *       devCode present when OTP_DEBUG_LOG=true, or for an active pre-launch
+ *       TEST rider (User.isTestAccount — no SMS; see server/test-accounts.ts)
  *       A phone that is NOT a rider gets the same { ok: true } and no code is
  *       sent (no enumeration of registered riders); verify-otp then fails.
  * 429:  { error, retryAfter }             rate limited (see src/server/otp.ts)
@@ -34,14 +36,21 @@ export async function POST(req: NextRequest) {
     // Rider-only gate: the phone must already belong to a RIDER account.
     const user = await prisma.user.findUnique({
       where: { phone },
-      select: { role: true }
+      select: { role: true, deletedAt: true }
     });
-    if (!user || user.role !== 'RIDER') {
+    // Deleted accounts (incl. a removed test rider) can never sign in (verify
+    // refuses them), so don't text them a code either.
+    if (!user || user.role !== 'RIDER' || user.deletedAt) {
       // Same answer as a real send — a 404 here let anyone enumerate riders.
       return Response.json({ ok: true });
     }
 
-    const r = await sendOtp({ phone, purpose: 'login', ipAddress: clientIp(req.headers) ?? undefined });
+    const r = await sendOtp({
+      phone,
+      purpose: 'login',
+      ipAddress: clientIp(req.headers) ?? undefined,
+      testAccountRoles: ['RIDER'],
+    });
     return Response.json(r);
   } catch (e) {
     if (e instanceof OtpRateLimitedError) {

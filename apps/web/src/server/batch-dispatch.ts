@@ -92,7 +92,7 @@ export async function maybeOfferAsBatch(
     //    detour and silently skip.
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { branch: { include: { restaurant: true } }, address: true },
+      include: { branch: { include: { restaurant: true } }, address: true, customer: { select: { isTestAccount: true } } },
     });
     if (!order) return { invited: 0 };
     if (

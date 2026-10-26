@@ -34,6 +34,11 @@ export interface RiderSourcingProfile {
   riderType: RiderType;
   dedicatedRestaurantId: string | null;
   /**
+   * Pre-launch test rider (`User.isTestAccount`). Required so every dispatch
+   * path has to load it — see `testIsolationAllows`.
+   */
+  isTestAccount: boolean;
+  /**
    * Every restaurant id in the rider's dedicated restaurant's group (root +
    * children). Optional: when absent we treat the rider as dedicated only to
    * `dedicatedRestaurantId`. Use `resolveDedicatedGroup()` to populate it.
@@ -79,6 +84,8 @@ export async function resolveDedicatedGroup(
  */
 export interface OrderWithRestaurant {
   readyAt: Date | null;
+  /** The ordering customer; `isTestAccount` marks a pre-launch test order. */
+  customer: { isTestAccount: boolean } | null;
   branch: {
     restaurant: {
       id: string;
@@ -105,6 +112,26 @@ function fleetFallbackElapsed(
 }
 
 /**
+ * Pre-launch test isolation (server/test-accounts.ts). Test riders and test
+ * customers exist only so the team can exercise the live system before launch,
+ * so the two worlds never mix: a test rider only ever sees/claims orders placed
+ * by a test customer, and a real rider never sees/claims (or is pushed) a test
+ * order. Deleting the test accounts at launch removes the test side entirely.
+ */
+export function testIsolationAllows(riderIsTest: boolean, order: Pick<OrderWithRestaurant, 'customer'>): boolean {
+  return Boolean(riderIsTest) === Boolean(order.customer?.isTestAccount);
+}
+
+/**
+ * Prisma `RiderProfile` filter for the riders on an order's side of the test
+ * isolation — use it wherever riders are *queried* for an order (push fan-out,
+ * JIT supply) so the DB filter and `testIsolationAllows` can't drift.
+ */
+export function riderTestSideFilter(order: Pick<OrderWithRestaurant, 'customer'>) {
+  return { user: { isTestAccount: Boolean(order.customer?.isTestAccount) } } as const;
+}
+
+/**
  * Core predicate: may this rider claim/see this single order right now?
  *
  * `order` must include `branch.restaurant` (with `id`, `riderDispatchMode`,
@@ -116,6 +143,7 @@ export function riderCanClaimOrder(
   order: OrderWithRestaurant,
   now: Date = new Date()
 ): boolean {
+  if (!testIsolationAllows(profile.isTestAccount, order)) return false;
   const restaurant = order.branch.restaurant;
   const isDedicated = profile.riderType === RiderType.DEDICATED;
   // A DEDICATED rider is "this restaurant's" when the order's restaurant is in
@@ -200,6 +228,7 @@ export async function targetRidersForNewOrder(
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     select: {
+      customer: { select: { isTestAccount: true } },
       branch: {
         select: {
           restaurant: {
@@ -210,6 +239,8 @@ export async function targetRidersForNewOrder(
     },
   });
   if (!order) return [];
+  // Test isolation (testIsolationAllows): push only riders on the order's side.
+  const testSide = riderTestSideFilter(order);
 
   const restaurant = order.branch.restaurant;
 
@@ -217,6 +248,7 @@ export async function targetRidersForNewOrder(
   const onlineWithToken = {
     isOnline: true,
     expoPushToken: { not: null },
+    ...testSide,
   } as const;
 
   let where;

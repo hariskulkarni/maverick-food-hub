@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 let session: any = { user: { id: 'u1', role: 'RIDER' } };
 let created: any = null;
+let profileRow: any = { id: 'rp1', user: { isTestAccount: false } };
 
 vi.mock('@/server/rider-auth', () => ({ auth: async () => session }));
 vi.mock('@/server/rider-payments', () => ({ computeAvailableBalance: async () => 1000 }));
@@ -21,7 +22,7 @@ vi.mock('@/server/db', () => {
   };
   return {
     prisma: {
-      riderProfile: { findUnique: async () => ({ id: 'rp1' }) },
+      riderProfile: { findUnique: async () => profileRow },
       $transaction: async (fn: any) => fn(tx)
     }
   };
@@ -39,6 +40,7 @@ const post = () =>
 beforeEach(() => {
   session = { user: { id: 'u1', role: 'RIDER' } };
   created = null;
+  profileRow = { id: 'rp1', user: { isTestAccount: false } };
 });
 
 describe('C6: rider payout request', () => {
@@ -53,3 +55,14 @@ describe('C6: rider payout request', () => {
     expect(body.payout.processedAt).toBeNull();
   });
 });
+
+describe('test riders', () => {
+  it('a pre-launch test rider cannot request a payout', async () => {
+    profileRow = { id: 'rp1', user: { isTestAccount: true } };
+    const res = await post();
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe('test_account');
+    expect(created).toBeNull();
+  });
+});
+

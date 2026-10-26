@@ -61,12 +61,14 @@ export async function runZoneSnapshot(now: Date = new Date()): Promise<{ bucketA
         fulfillmentType: FulfillmentType.DELIVERY,
         status: { in: [OrderStatus.RECEIVED, OrderStatus.ACCEPTED, OrderStatus.PREPARING, OrderStatus.READY] },
         assignment: null,
+        // Pre-launch test orders/riders (server/test-accounts.ts) are not demand/supply.
+        customer: { isTestAccount: false },
       },
       select: { branch: { select: { latitude: true, longitude: true } } },
       take: 5000,
     }),
     prisma.riderProfile.findMany({
-      where: { isOnline: true, approvedAt: { not: null } },
+      where: { isOnline: true, approvedAt: { not: null }, user: { isTestAccount: false } },
       select: {
         currentLat: true,
         currentLng: true,

@@ -51,7 +51,7 @@ export class RiderAssignError extends Error {
 export async function suggestRiders(orderId: string, scorer: RiderScorer = defaultScorer): Promise<RiderScore[]> {
   const order = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },
-    include: { branch: { include: { restaurant: true } }, address: true }
+    include: { branch: { include: { restaurant: true } }, address: true, customer: { select: { isTestAccount: true } } }
   });
   // P1-10: candidates are every online, approved, active rider the restaurant's
   // dispatch policy allows — fleet riders have no branchId, so filtering on the
@@ -67,12 +67,17 @@ export async function suggestRiders(orderId: string, scorer: RiderScorer = defau
         { riderType: RiderType.DEDICATED, dedicatedRestaurantId: { not: null } }
       ]
     },
-    include: { user: { select: { name: true, phone: true } } },
+    include: { user: { select: { name: true, phone: true, isTestAccount: true } } },
     take: 200
   });
   const allowed: typeof riders = [];
   for (const r of riders) {
-    const group = await resolveDedicatedGroup({ id: r.id, riderType: r.riderType, dedicatedRestaurantId: r.dedicatedRestaurantId });
+    const group = await resolveDedicatedGroup({
+      id: r.id,
+      riderType: r.riderType,
+      dedicatedRestaurantId: r.dedicatedRestaurantId,
+      isTestAccount: r.user.isTestAccount,
+    });
     // Admin picks may skip the DEDICATED_FIRST fleet wait (see assignRider).
     if (riderCanClaimOrder(group, { ...order, readyAt: new Date(0) })) allowed.push(r);
   }
@@ -124,7 +129,7 @@ export async function autoAssign(orderId: string): Promise<{ riderId: string } |
 export async function assignRider(orderId: string, riderId: string) {
   const order = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },
-    include: { assignment: true, branch: { include: { restaurant: true } } }
+    include: { assignment: true, branch: { include: { restaurant: true } }, customer: { select: { isTestAccount: true } } }
   });
   const eligibleStatuses: OrderStatus[] = [OrderStatus.ACCEPTED, OrderStatus.PREPARING, OrderStatus.READY];
   if (!eligibleStatuses.includes(order.status)) {

@@ -6,6 +6,7 @@ import { publish } from '@/server/realtime';
 import { unauthenticated, forbidden } from '@/server/api-auth';
 import { AssignmentStatus, Role } from '@prisma/client';
 import { recordOrderEvent } from '@/server/dispatch/events';
+import { testIsolationAllows } from '@/server/rider-sourcing';
 
 const Body = z.object({ riderId: z.string(), reason: z.string().max(500).optional() });
 
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const order = await prisma.order.findUnique({
     where: { id },
-    include: { branch: { select: { restaurantId: true } }, assignment: true }
+    include: { branch: { select: { restaurantId: true } }, assignment: true, customer: { select: { isTestAccount: true } } }
   });
   if (!order) {
     return Response.json({ error: 'Order not found.', reason: 'not_found' }, { status: 404 });
@@ -71,9 +72,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   // Sanity-check the target rider — must exist and be online.
-  const target = await prisma.riderProfile.findUnique({ where: { id: body.riderId } });
+  const target = await prisma.riderProfile.findUnique({
+    where: { id: body.riderId },
+    include: { user: { select: { isTestAccount: true } } },
+  });
   if (!target) {
     return Response.json({ error: 'Rider not found.', reason: 'rider_not_found' }, { status: 404 });
+  }
+  // Pre-launch test isolation (rider-sourcing.testIsolationAllows): never hand a
+  // real order to a test rider, or a test order to a real rider.
+  if (!testIsolationAllows(target.user.isTestAccount, order)) {
+    return Response.json(
+      { error: 'Test riders can only take test orders, and real riders only real orders.', reason: 'test_isolation' },
+      { status: 409 }
+    );
   }
   if (!target.isOnline) {
     return Response.json(

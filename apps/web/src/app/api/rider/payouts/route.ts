@@ -71,9 +71,17 @@ export async function POST(req: Request) {
 
   const profile = await prisma.riderProfile.findUnique({
     where: { userId: session.user.id },
-    select: { id: true },
+    select: { id: true, user: { select: { isTestAccount: true } } },
   });
   if (!profile) return new Response('No rider profile', { status: 404 });
+  // Pre-launch test riders (server/test-accounts.ts) only carry test orders;
+  // their earnings are not real money and can never be withdrawn.
+  if (profile.user.isTestAccount) {
+    return Response.json(
+      { error: 'Test rider accounts cannot request payouts.', code: 'test_account' },
+      { status: 403 },
+    );
+  }
 
   let body: { amount?: unknown; method?: unknown; upiId?: unknown };
   try {

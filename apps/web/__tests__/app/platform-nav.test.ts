@@ -24,12 +24,14 @@ const PREVIOUS_LINKS = [
   '/platform/rider-shifts', '/platform/rider-support', '/platform/training-modules', '/platform/rider-settings',
   '/platform/app-releases',
 ];
+// Added after the grouping: sub-pages that get their own menu entry.
+const ADDED_LINKS = ['/platform/users/test-accounts'];
 
 describe('platform nav config', () => {
   it('keeps every previous link, each exactly once', () => {
     const hrefs = allHrefs();
     expect(new Set(hrefs).size).toBe(hrefs.length);
-    expect([...hrefs].sort()).toEqual([...PREVIOUS_LINKS].sort());
+    expect([...hrefs].sort()).toEqual([...PREVIOUS_LINKS, ...ADDED_LINKS].sort());
   });
 
   it('links every top-level /platform page and only real pages', () => {
@@ -37,7 +39,12 @@ describe('platform nav config', () => {
     const pages = readdirSync(dir, { withFileTypes: true })
       .filter((d) => d.isDirectory() && !d.name.startsWith('_') && existsSync(path.join(dir, d.name, 'page.tsx')))
       .map((d) => `/platform/${d.name}`);
-    expect([...allHrefs()].sort()).toEqual(['/platform', ...pages].sort());
+    const topLevel = allHrefs().filter((h) => !ADDED_LINKS.includes(h));
+    expect([...topLevel].sort()).toEqual(['/platform', ...pages].sort());
+    // Nested menu entries must be real pages too.
+    for (const href of ADDED_LINKS) {
+      expect(existsSync(path.join(dir, href.replace('/platform/', ''), 'page.tsx'))).toBe(true);
+    }
   });
 
   it('groups items by operation with unique group ids', () => {
@@ -90,7 +97,7 @@ describe('filterNavByAccess (capability filtering stays server-side)', () => {
     filterNavByAccess(PLATFORM_NAV, (href) => can(role, pageGateFor(href))).flatMap((g) => g.items.map((it) => it.href));
 
   it('shows SUPER_ADMIN every page', () => {
-    expect(visible('SUPER_ADMIN').length).toBe(PREVIOUS_LINKS.length);
+    expect(visible('SUPER_ADMIN').length).toBe(PREVIOUS_LINKS.length + ADDED_LINKS.length);
   });
 
   it('hides finance, IAM and platform-admin pages from a GUEST and drops empty groups', () => {

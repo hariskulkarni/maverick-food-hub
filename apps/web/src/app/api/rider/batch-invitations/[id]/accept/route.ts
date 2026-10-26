@@ -58,7 +58,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const order = await prisma.order.findUnique({
     where: { id: inv.orderId },
-    include: { branch: { include: { restaurant: true } } },
+    include: { branch: { include: { restaurant: true } }, customer: { select: { isTestAccount: true } } },
   });
   if (!order || order.status !== OrderStatus.READY) {
     return new Response('This order is no longer available', { status: 409 });
