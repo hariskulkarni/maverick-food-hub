@@ -4,7 +4,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { NovaryqSimulator } from '../novaryq-sim/simulator';
 import { fl } from './fl';
-import { db, makeShop, placeCod, prisma, routeTransport, type Shop } from './harness';
+import { db, makeShop, placeCod, prisma, routeTransport, type Shop, eventByDelivery } from './harness';
 
 let sim: NovaryqSimulator;
 let shop: Shop;
@@ -90,7 +90,7 @@ describe('availability (86 / un-86)', () => {
     await sim.flush();
     expect(d!.attempts[0]!.status).toBe(200);
     await fl.runWorker();
-    const row = await db.novaryqWebhookEvent.findUnique({ where: { deliveryId: d!.id } });
+    const row = await eventByDelivery(d!.id);
     expect(row.processedAt).not.toBeNull();
   });
 

@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { NovaryqSimulator } from '../novaryq-sim/simulator';
 import { signWebhook } from '../novaryq-sim/signing';
 import { fl } from './fl';
-import { db, makeShop, placeCod, prisma, routeTransport, saveCfg, statusOf, statusTrail, webhookPath, type Shop } from './harness';
+import { db, makeShop, placeCod, prisma, routeTransport, saveCfg, statusOf, statusTrail, webhookPath, type Shop, eventCount } from './harness';
 
 let sim: NovaryqSimulator;
 let a: Shop;
@@ -38,7 +38,7 @@ function signed(secret: string, body: string, o: { t?: number; delivery?: string
   };
 }
 
-const stored = (delivery: string) => db.novaryqWebhookEvent.count({ where: { deliveryId: delivery } });
+const stored = (delivery: string) => eventCount(delivery);
 
 beforeAll(async () => {
   sim = new NovaryqSimulator({ transport: routeTransport });

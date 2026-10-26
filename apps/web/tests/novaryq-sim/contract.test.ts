@@ -320,8 +320,9 @@ describe.skipIf(REAL)('simulator — signed at-least-once webhook delivery', () 
     const o = await nqFetch(creds, 'POST', '/api/v1/orders', exampleOrder(externalRef));
     sim.advance(o.json.id, 'IN_PREP');
     await sim.flush();
-    expect(received.length).toBe(2); // OPEN->SENT on create, SENT->IN_PREP
-    const last = received[1]!;
+    const canonical = received.filter((r) => r.headers['x-novaryq-event'] === 'order.status_changed');
+    expect(canonical.length).toBe(2); // OPEN->SENT on create, SENT->IN_PREP
+    const last = canonical[1]!;
     expect(verifyWebhookSignature(sub.secret, last.body, last.headers['x-novaryq-signature'])).toBeNull();
     expect(last.headers['x-novaryq-signature']).toMatch(/^t=\d+,v1=[0-9a-f]{64}$/);
     expect(last.headers['x-novaryq-signature']).toContain(`t=${last.headers['x-novaryq-timestamp']},`);
@@ -361,6 +362,24 @@ describe.skipIf(REAL)('simulator — signed at-least-once webhook delivery', () 
     sim.deliveries.length = 0;
   });
 
+  it('subscription aliases fire under the concrete event name; legacy order facts carry no source/externalRef', async () => {
+    received.length = 0;
+    const sub = sim.addSubscription(sinkUrl, ['order.status_changed', 'menu.item.availability_changed']);
+    sim.set86(codeB, false, null);
+    sim.set86(codeB, true, null);
+    const o = await nqFetch(creds, 'POST', '/api/v1/orders', exampleOrder(ref()));
+    sim.advance(o.json.id, 'READY');
+    sim.advance(o.json.id, 'COMPLETED');
+    await sim.flush();
+    const events = received.map((r) => r.headers['x-novaryq-event']);
+    expect(events.slice(0, 2)).toEqual(['menu.item.86ed', 'menu.item.restored']);
+    expect(events).not.toContain('order.created'); // not subscribed
+    expect(events).toEqual(expect.arrayContaining(['order.sent', 'order.updated', 'order.closed']));
+    const legacy = received.find((r) => r.headers['x-novaryq-event'] === 'order.updated')!;
+    expect(JSON.parse(legacy.body).data).toEqual({ orderId: o.json.id, locationId, status: 'READY' });
+    sim.subscriptions.delete(sub.id);
+  });
+
   it('retries non-2xx with a stable delivery id, incrementing X-Novaryq-Attempt, dead after 8', async () => {
     received.length = 0;
     respond = 503;
@@ -385,17 +404,18 @@ describe.skipIf(REAL)('simulator — signed at-least-once webhook delivery', () 
     received.length = 0;
     sim.hold = true;
     sim.advance(o.json.id, 'IN_PREP');
-    sim.advance(o.json.id, 'READY');
+    const d = sim.advance(o.json.id, 'READY').find((x) => x.eventType === 'order.status_changed')!;
     expect(received).toHaveLength(0);
     await sim.releaseHeld('reverse');
-    expect(received.map((r) => JSON.parse(r.body).data.status)).toEqual(['READY', 'IN_PREP']);
-    const d = sim.deliveries.find((x) => x.envelope.data.status === 'READY')!;
+    const statusOrder = received.filter((r) => r.headers['x-novaryq-event'] === 'order.status_changed').map((r) => JSON.parse(r.body).data.status);
+    expect(statusOrder).toEqual(['READY', 'IN_PREP']);
+    received.length = 0;
     await sim.redeliver(d);
-    expect(received[2]!.headers['x-novaryq-delivery']).toBe(d.id);
-    expect(received[2]!.headers['x-novaryq-attempt']).toBe('2');
+    expect(received[0]!.headers['x-novaryq-delivery']).toBe(d.id);
+    expect(received[0]!.headers['x-novaryq-attempt']).toBe('2');
     await sim.replayRaw(d, 0);
-    expect(received[3]!.headers['x-novaryq-signature']).toBe(d.attempts[0]!.headers['x-novaryq-signature']);
-    expect(received[3]!.body).toBe(d.body);
+    expect(received[1]!.headers['x-novaryq-signature']).toBe(d.attempts[0]!.headers['x-novaryq-signature']);
+    expect(received[1]!.body).toBe(d.body);
     sim.subscriptions.delete(sub.id);
   });
 

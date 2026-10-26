@@ -26,6 +26,11 @@ export type NqOrderStatus = 'OPEN' | 'SENT' | 'IN_PREP' | 'READY' | 'COMPLETED' 
 export const SERVICE_MODES = ['DINE_IN', 'TAKEOUT', 'DELIVERY', 'CURBSIDE', 'DRIVE_THRU', 'KIOSK', 'ONLINE', 'BAR_TAB'] as const;
 export const CANCEL_REASONS = ['customer_cancelled', 'restaurant_cancelled', 'admin_cancelled', 'other'] as const;
 export const MAX_ATTEMPTS = 8;
+/** Novaryq dev-platform/event-catalog.ts: a subscription name also receives these fired events. */
+export const PUBLIC_EVENT_ALIASES: Record<string, string[]> = {
+  'order.status_changed': ['order.status_changed', 'order.sent', 'order.closed', 'order.updated'],
+  'menu.item.availability_changed': ['menu.item.86ed', 'menu.item.restored'],
+};
 /** Operator 'send test' / manual redeliver use the helper default, not the catalog's 8. */
 export const AD_HOC_MAX_ATTEMPTS = 5;
 export const RATE_LIMIT_PER_MIN = 120;
@@ -130,6 +135,8 @@ export interface SimulatorOptions {
   emitOnCreate?: boolean;
   /** Event names for availability (NQ documents the final names; §2.4). */
   availabilityEvents?: { off: string; on: string };
+  /** Also fire Novaryq's legacy order.sent / order.updated / order.closed facts (default true, as real Novaryq). */
+  legacyEvents?: boolean;
   transport?: WebhookTransport;
   rateLimitPerMin?: number;
   now?: () => number;
@@ -160,7 +167,8 @@ export class NovaryqSimulator {
     this.opts = {
       channelOrderInitialStatus: o.channelOrderInitialStatus ?? 'SENT',
       emitOnCreate: o.emitOnCreate ?? true,
-      availabilityEvents: o.availabilityEvents ?? { off: 'menu.item.availability_changed', on: 'menu.item.availability_changed' },
+      availabilityEvents: o.availabilityEvents ?? { off: 'menu.item.86ed', on: 'menu.item.restored' },
+      legacyEvents: o.legacyEvents ?? true,
       rateLimitPerMin: o.rateLimitPerMin ?? RATE_LIMIT_PER_MIN,
       now: o.now ?? Date.now,
     };
@@ -489,6 +497,8 @@ export class NovaryqSimulator {
     this.orders.set(o.id, o);
     this.emit('order.created', { orderId: o.id, locationId: o.locationId, orderNumber: o.orderNumber, source: o.source }, o.locationId);
     if (initial !== 'OPEN' && this.opts.emitOnCreate) this.emitStatus(o, 'OPEN');
+    if (initial === 'SENT' && this.opts.legacyEvents)
+      this.emit('order.sent', { orderId: o.id, locationId: o.locationId, orderNumber: o.orderNumber, ticketCount: lines.length, heldCourses: false }, o.locationId);
     return { status: 201, body: this.orderView(o, false) };
   }
 
@@ -526,7 +536,11 @@ export class NovaryqSimulator {
     if (!o) throw new Error(`sim: unknown order ${orderId}`);
     const prev = o.status;
     o.status = status;
-    return this.emitStatus(o, prev, occurredAt);
+    const out = this.emitStatus(o, prev, occurredAt);
+    // Real Novaryq also fires these legacy facts (kds.service bumpReady, pay-links close); payloads have no source/externalRef.
+    if (this.opts.legacyEvents && status === 'READY') out.push(...this.emit('order.updated', { orderId: o.id, locationId: o.locationId, status: 'READY' }, o.locationId));
+    if (this.opts.legacyEvents && status === 'COMPLETED') out.push(...this.emit('order.closed', { orderId: o.id, locationId: o.locationId, grandTotal: o.grandTotal }, o.locationId));
+    return out;
   }
 
   orderByExternalRef(externalRef: string, source = 'flavrly'): SimOrder | undefined {
@@ -610,7 +624,7 @@ export class NovaryqSimulator {
   emit(eventType: string, data: unknown, locationId?: string): SimDelivery[] {
     const env = this.envelope(eventType, data, locationId);
     return [...this.subscriptions.values()]
-      .filter((s) => s.isActive && s.events.includes(eventType))
+      .filter((s) => s.isActive && s.events.some((e) => e === eventType || PUBLIC_EVENT_ALIASES[e]?.includes(eventType)))
       .map((s) => this.queue(s, eventType, env));
   }
 

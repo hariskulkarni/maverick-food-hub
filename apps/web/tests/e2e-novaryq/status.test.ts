@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { NovaryqSimulator, type NqOrderStatus } from '../novaryq-sim/simulator';
 import { sent } from './sent';
 import { fl } from './fl';
-import { db, fastForward, makeShop, placeCod, prisma, routeTransport, settle, statusOf, statusTrail, syncOf, transitionOrder, type Shop } from './harness';
+import { capturePrepaid, db, fastForward, makeShop, placeCod, placePrepaid, prisma, routeTransport, settle, statusOf, statusTrail, syncOf, transitionOrder, type Shop, eventByDelivery, eventCount } from './harness';
 
 let sim: NovaryqSimulator;
 let shop: Shop;
@@ -16,6 +16,12 @@ async function pushed(s: Shop = shop, extra: Record<string, unknown> = {}) {
   const nq = sim.orderByExternalRef(order.id)!;
   expect(nq).toBeTruthy();
   return { order, nq };
+}
+
+async function placePrepaidReceived(s: Shop = shop) {
+  const order = await placePrepaid(s);
+  await capturePrepaid(order.id);
+  return order;
 }
 
 /** POS kitchen action -> signed webhook into the route -> worker applies it. */
@@ -63,19 +69,17 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     expect(await statusTrail(order.id)).toEqual(['RECEIVED', 'ACCEPTED', 'PREPARING', 'READY']);
   });
 
-  it('the webhook is stored before 200 and processed asynchronously by the worker', async () => {
+  it('the webhook is stored durably by the time the route answers 200, and is applied by the worker', async () => {
     const { order, nq } = await pushed();
     await sim.flush();
     await fl.runWorker();
     const [d] = sim.advance(nq.id, 'IN_PREP');
     await sim.flush();
     expect(d!.attempts.at(-1)!.status).toBe(200);
-    const row = await db.novaryqWebhookEvent.findUnique({ where: { deliveryId: d!.id } });
-    expect(row).toMatchObject({ restaurantId: shop.restaurantId, event: 'order.status_changed', processedAt: null });
-    expect(await statusOf(order.id)).toBe('ACCEPTED');
+    expect(await eventByDelivery(d!.id)).toMatchObject({ restaurantId: shop.restaurantId, event: 'order.status_changed' });
     await fl.runWorker();
     expect(await statusOf(order.id)).toBe('PREPARING');
-    expect((await db.novaryqWebhookEvent.findUnique({ where: { deliveryId: d!.id } })).processedAt).not.toBeNull();
+    expect((await eventByDelivery(d!.id)).processedAt).not.toBeNull();
   });
 
   it('duplicate deliveries (same X-Novaryq-Delivery) are stored once and applied once', async () => {
@@ -87,7 +91,7 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     await sim.redeliver(d!);
     await sim.redeliver(d!);
     expect(d!.attempts.map((a) => a.status)).toEqual([200, 200, 200]);
-    expect(await db.novaryqWebhookEvent.count({ where: { deliveryId: d!.id } })).toBe(1);
+    expect(await eventCount(d!.id)).toBe(1);
     await fl.runWorker();
     expect((await statusTrail(order.id)).filter((s) => s === 'PREPARING')).toHaveLength(1);
   });
@@ -145,7 +149,7 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     expect(d[0]!.attempts[0]!.status).toBe(200);
     await fl.runWorker();
     expect(await prisma.order.count()).toBe(before);
-    const row = await db.novaryqWebhookEvent.findUnique({ where: { deliveryId: d[0]!.id } });
+    const row = await eventByDelivery(d[0]!.id);
     expect(row?.processedAt ?? null).not.toBeNull();
   });
 
@@ -153,7 +157,7 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     const d = sim.sendTest(shop.sub.id);
     await sim.flush();
     expect(d.attempts[0]!.status).toBe(200);
-    expect(await db.novaryqWebhookEvent.findUnique({ where: { deliveryId: d.id } })).toMatchObject({ event: 'webhook.test' });
+    expect(await eventByDelivery(d.id)).toMatchObject({ event: 'webhook.test' });
     await fl.runWorker();
   });
 });
@@ -237,6 +241,29 @@ describe('cancel: Flavrly cancellation cancels in Novaryq', () => {
     await fastForward();
     await settle(sim);
     expect(sim.orders.get(nq.id)!.status).toBe('VOIDED');
+  });
+
+  it('RECEIVED -> PAYMENT_FAILED (payment reversed) voids the Novaryq ticket: the kitchen must not cook an unpaid order', async () => {
+    const order = await placePrepaidReceived();
+    await fl.runWorker();
+    const nq = sim.orderByExternalRef(order.id)!;
+    await transitionOrder(order.id, 'PAYMENT_FAILED' as any);
+    await settle(sim);
+    expect(sim.orders.get(nq.id)!.status).toBe('VOIDED');
+  });
+
+  it('PAYMENT_FAILED -> RECEIVED again: the kitchen ends up with a live (non-VOIDED) ticket', async () => {
+    const order = await placePrepaidReceived();
+    await fl.runWorker();
+    await transitionOrder(order.id, 'PAYMENT_FAILED' as any);
+    await settle(sim);
+    await transitionOrder(order.id, 'RECEIVED' as any, { pgRelease: true });
+    await settle(sim);
+    await fastForward();
+    await settle(sim);
+    const live = [...sim.orders.values()].filter((o) => o.externalRef === order.id && o.status !== 'VOIDED');
+    expect(await statusOf(order.id)).toBe('RECEIVED');
+    expect(live).toHaveLength(1);
   });
 
   it('a Novaryq order already COMPLETED cannot be voided: surfaced, not retried forever', async () => {

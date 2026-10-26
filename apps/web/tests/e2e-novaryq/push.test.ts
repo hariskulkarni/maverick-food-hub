@@ -183,7 +183,7 @@ describe('push: exactly once under concurrency, crash and lost responses', () =>
     const order = await placeCod(shop);
     await fl.runWorker();
     const sync = await syncOf(order.id);
-    await fl.replay(sync.id, shop.ownerId).catch(() => undefined); // refusing is also fine
+    await fl.replay(shop.restaurantId, sync.id, shop.ownerId).catch(() => undefined); // refusing is also fine
     await fastForward();
     await fl.runWorker();
     expect(simOrdersFor(order.id)).toHaveLength(1);
@@ -212,7 +212,7 @@ describe('push: unmapped items and Novaryq rejections fail clearly without retry
     expect((await syncOf(order.id)).state).toBe('FAILED');
     const code = NovaryqSimulator.itemCode(sim.addItem({ name: 'Mango Lassi', price: '99.00', sku: `SKU-L-${order.id.slice(-6)}` }));
     await db.novaryqItemLink.create({ data: { restaurantId: shop.restaurantId, menuItemId: shop.unmapped.id, novaryqItemCode: code } });
-    await fl.replay((await syncOf(order.id)).id, shop.ownerId);
+    await fl.replay(shop.restaurantId, (await syncOf(order.id)).id, shop.ownerId);
     await fastForward();
     await fl.runWorker();
     expect((await syncOf(order.id)).state).toBe('SENT');
@@ -266,11 +266,21 @@ describe('push: Novaryq down / 429 / timeouts -> backoff -> DEAD -> manual repla
     await fl.runWorker();
     expect(simOrdersFor(order.id)).toHaveLength(0);
     // ...but a manual replay pushes it exactly once.
-    await fl.replay(dead.id, shop.ownerId);
+    await fl.replay(shop.restaurantId, dead.id, shop.ownerId);
     await fastForward();
     await fl.runWorker();
     expect((await syncOf(order.id)).state).toBe('SENT');
     expect(simOrdersFor(order.id)).toHaveLength(1);
+  });
+
+  it('replay is tenant-scoped: another restaurant cannot requeue this sync', async () => {
+    const order = await placeCod(shop, [{ menuItemId: shop.unmapped.id, quantity: 1 }]);
+    await fl.runWorker();
+    const s = await syncOf(order.id);
+    expect(s.state).toBe('FAILED');
+    const other = await makeShop(sim);
+    await expect(fl.replay(other.restaurantId, s.id, other.ownerId)).rejects.toThrow();
+    expect((await syncOf(order.id)).state).toBe('FAILED');
   });
 
   it('429 honours Retry-After when it is longer than the backoff step', async () => {

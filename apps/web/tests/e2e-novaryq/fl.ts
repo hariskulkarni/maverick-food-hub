@@ -48,9 +48,12 @@ export const fl = {
     return f(restaurantId, branchId, actorId);
   },
 
-  async replay(syncId: string, actorId?: string) {
-    const f = pick(await fl.server(), ['replayOrderSync', 'replaySync', 'replayNovaryqSync', 'manualReplay'], 'manual replay');
-    return f(syncId, actorId);
+  /** Admin replay of a FAILED/DEAD sync. Throws when FL reports { ok:false } so tests see why. */
+  async replay(restaurantId: string, syncId: string, actorId: string) {
+    const f = pick(await fl.server(), ['replaySync', 'replayOrderSync', 'replayNovaryqSync'], 'manual replay');
+    const r = await f(restaurantId, syncId, actorId);
+    if (r && r.ok === false) throw new Error(`replay refused: ${r.error}`);
+    return r;
   },
 
   /** Periodic menu + availability reconcile (fallback for missed webhooks). */

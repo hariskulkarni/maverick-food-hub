@@ -162,6 +162,14 @@ export const statusOf = async (orderId: string) => (await prisma.order.findUniqu
 export const statusTrail = async (orderId: string) =>
   (await prisma.orderStatusEvent.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' }, select: { status: true } })).map((e) => e.status);
 
+/**
+ * Stored inbox rows for a Novaryq delivery id. The contract fixes `deliveryId @unique` but not its
+ * encoding; FL may namespace it (e.g. `${restaurantId}:${id}`), so match the id as a suffix too.
+ */
+const byDelivery = (id: string) => ({ OR: [{ deliveryId: id }, { deliveryId: { endsWith: `:${id}` } }] });
+export const eventByDelivery = (id: string) => db.novaryqWebhookEvent.findFirst({ where: byDelivery(id) });
+export const eventCount = (id: string) => db.novaryqWebhookEvent.count({ where: byDelivery(id) });
+
 /** Make every pending Novaryq row due now (time travel instead of sleeping through backoff). */
 export async function fastForward() {
   const past = new Date(Date.now() - 1000);
