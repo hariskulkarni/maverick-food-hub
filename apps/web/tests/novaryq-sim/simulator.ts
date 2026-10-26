@@ -436,8 +436,14 @@ export class NovaryqSimulator {
     if (b.deliveryAddress !== undefined && (typeof b.deliveryAddress !== 'string' || b.deliveryAddress.length > 500))
       throw new HttpError(400, 'deliveryAddress must be ≤500 chars');
     if (b.serviceMode !== undefined && !SERVICE_MODES.includes(b.serviceMode)) throw new HttpError(400, `Unknown serviceMode ${b.serviceMode}`);
+    if (b.deliveryAddress !== undefined && b.serviceMode !== 'DELIVERY') throw new HttpError(400, 'deliveryAddress is only allowed with serviceMode DELIVERY');
+    if (typeof b.source === 'string' && b.source.length > 40) throw new HttpError(400, 'source must be ≤40 chars');
+    if (b.customer !== undefined && ((b.customer.name ?? '').length > 120 || (b.customer.phone ?? '').length > 32)) throw new HttpError(400, 'customer.name ≤120, customer.phone ≤32');
+    // NQ-API-FINAL: the currency check runs before the replay lookup.
+    if (b.currency !== undefined && String(b.currency).toUpperCase() !== loc.currency)
+      throw new HttpError(422, `currency ${b.currency} does not match this location's currency ${loc.currency}`, { currency: loc.currency });
 
-    // Idempotency first: a replay returns the existing order even if the payload drifted.
+    // Replay before item resolution: a retry returns the stored order even if the payload drifted.
     if (b.externalRef) {
       const existing = [...this.orders.values()].find((o) => o.source === source && o.externalRef === b.externalRef);
       if (existing) {
@@ -450,21 +456,21 @@ export class NovaryqSimulator {
       }
     }
 
-    if (b.currency !== undefined && b.currency !== loc.currency)
-      throw new HttpError(422, `currency ${b.currency} does not match location currency ${loc.currency}`);
     const lines: any[] = Array.isArray(b.lines) ? b.lines : [];
     if (lines.length === 0) throw new HttpError(400, 'lines must not be empty');
     const unknown: string[] = [];
     for (const l of lines) {
       const code = l.itemCode ?? l.menuItemId;
       if (!code || !this.findItem(code)) unknown.push(String(code ?? '(none)'));
-      if (!Number.isInteger(l.quantity) || l.quantity < 1) throw new HttpError(400, 'quantity must be a positive integer');
       if (l.unitPrice !== undefined && !(typeof l.unitPrice === 'string' && MONEY.test(l.unitPrice))) throw new HttpError(400, 'unitPrice must be a decimal string');
       for (const mod of l.modifiers ?? []) {
         if (typeof mod.name !== 'string' || !(typeof mod.unitPrice === 'string' && MONEY.test(mod.unitPrice))) throw new HttpError(400, 'modifier needs name + decimal-string unitPrice');
       }
     }
-    if (unknown.length) throw new HttpError(422, `Unknown item code(s): ${unknown.join(', ')}`, { unknownItemCodes: unknown });
+    if (unknown.length) {
+      const codes = [...new Set(unknown)];
+      throw new HttpError(422, `Unknown item code(s): ${codes.join(', ')} (use a federated itemCode or menuItemId)`, { unknownItemCodes: codes });
+    }
     for (const [k, v] of Object.entries(b.totals ?? {})) {
       if (!(typeof v === 'string' && MONEY.test(v))) throw new HttpError(400, `totals.${k} must be a decimal string`);
     }
@@ -480,7 +486,10 @@ export class NovaryqSimulator {
       l.unitPrice !== undefined
         ? toPaise(l.unitPrice)
         : toPaise(this.findItem(l.itemCode ?? l.menuItemId)!.price) + (l.modifiers ?? []).reduce((t: number, m: any) => t + toPaise(m.unitPrice) * (m.quantity ?? 1), 0);
-    const priced = lines.reduce((s, l) => s + unitPaise(l) * l.quantity, 0);
+    // Real NQ keeps the pre-1.5 leniency for LINE quantities (missing / < 1 / fractional -> floor, min 1):
+    // QA-N2. Mirrored, not endorsed; the request itself is stored verbatim.
+    const qty = (l: any) => Math.max(1, Math.floor(typeof l.quantity === 'number' && Number.isFinite(l.quantity) ? l.quantity : 1));
+    const priced = lines.reduce((s, l) => s + unitPaise(l) * qty(l), 0);
     const grandTotal = b.totals?.grandTotal ?? fromPaise(priced);
     const initial = this.opts.channelOrderInitialStatus;
     const o: SimOrder = {
@@ -516,8 +525,10 @@ export class NovaryqSimulator {
       source: o.source,
       externalRef: o.externalRef,
       externalCode: o.externalCode,
-      currency: o.currency,
+      subtotal: o.request?.totals?.subtotal ?? o.grandTotal,
       grandTotal: o.grandTotal,
+      openedAt: o.createdAt,
+      currency: o.currency,
       idempotentReplay,
     };
   }
@@ -528,11 +539,16 @@ export class NovaryqSimulator {
     const o = this.orders.get(id);
     if (!o) throw new HttpError(404, 'Order not found');
     if (o.apiClientId !== key.clientId) throw new HttpError(403, 'Order was not created by this API client');
-    if (o.status === 'VOIDED') return { status: 200, body: this.orderView(o, false) };
-    if (o.status === 'COMPLETED' || o.status === 'REFUNDED') throw new HttpError(409, `Order is ${o.status} and cannot be cancelled`);
+    const view = (alreadyCancelled: boolean) => {
+      const { idempotentReplay: _ignored, ...rest } = this.orderView(o, false);
+      return { ...rest, cancelled: true, alreadyCancelled };
+    };
+    if (o.status === 'VOIDED') return { status: 200, body: view(true) };
+    if (o.status === 'COMPLETED' || o.status === 'REFUNDED')
+      throw new HttpError(409, `Order is ${o.status} and can no longer be cancelled`, { status: o.status });
     o.cancel = { reason: b.reason, note: b.note };
     this.advance(o.id, 'VOIDED');
-    return { status: 200, body: this.orderView(o, false) };
+    return { status: 200, body: view(false) };
   }
 
   /** Kitchen action in the POS: move an order and emit order.status_changed (§2.4). */

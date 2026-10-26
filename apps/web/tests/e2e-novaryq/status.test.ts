@@ -142,6 +142,20 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     expect(await statusOf(order.id)).toBe('READY');
   });
 
+  it('NQ-2: legacy alias deliveries (order.updated / order.sent / order.closed) are stored and ignored', async () => {
+    const { order, nq } = await pushed();
+    await sim.flush();
+    await fl.runWorker();
+    expect(await statusOf(order.id)).toBe('ACCEPTED');
+    // KDS bump-ready legacy fact, delivered on an order.status_changed subscription with X-Novaryq-Event order.updated.
+    const [d] = sim.emit('order.updated', { orderId: nq.id, locationId: nq.locationId, status: 'READY' }, nq.locationId);
+    await sim.flush();
+    await fl.runWorker();
+    expect(d!.attempts[0]!.status).toBe(200);
+    expect(await statusOf(order.id)).toBe('ACCEPTED');
+    expect((await eventByDelivery(d!.id, d!.body)).processedAt).not.toBeNull();
+  });
+
   it('webhooks for non-Flavrly POS orders (source ≠ flavrly) are accepted and ignored', async () => {
     const before = await prisma.order.count();
     const d = sim.emit('order.status_changed', { orderId: 'ord_pos_dinein', orderNumber: 7, locationId: shop.location.id, source: 'pos', externalRef: null, externalCode: null, status: 'READY', previousStatus: 'IN_PREP', occurredAt: new Date().toISOString() });

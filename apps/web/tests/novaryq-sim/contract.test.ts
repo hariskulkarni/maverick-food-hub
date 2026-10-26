@@ -170,7 +170,34 @@ describe('partner surface — §2.1 POST /api/v1/orders', () => {
   it('rejects an externalRef outside ≤64 [A-Za-z0-9_-]', async () => {
     expect((await nqFetch(creds, 'POST', '/api/v1/orders', exampleOrder('bad ref!'))).status).toBe(400);
     expect((await nqFetch(creds, 'POST', '/api/v1/orders', exampleOrder('x'.repeat(65)))).status).toBe(400);
-    expect((await nqFetch(creds, 'POST', '/api/v1/orders', exampleOrder('x'.repeat(64)))).status).toBe(201);
+    expect((await nqFetch(creds, 'POST', '/api/v1/orders', exampleOrder((ref() + 'x'.repeat(64)).slice(0, 64)))).status).toBe(201);
+  });
+});
+
+describe('partner surface — NQ-API-FINAL details', () => {
+  it('deliveryAddress is only accepted with serviceMode DELIVERY', async () => {
+    const r = await nqFetch(creds, 'POST', '/api/v1/orders', exampleOrder(ref(), { serviceMode: 'TAKEOUT' }));
+    expect(r.status).toBe(400);
+    const ok = await nqFetch(creds, 'POST', '/api/v1/orders', exampleOrder(ref(), { serviceMode: 'TAKEOUT', deliveryAddress: undefined }));
+    expect(ok.status).toBe(201);
+  });
+
+  it('unknown item codes are de-duplicated in request order', async () => {
+    const r = await nqFetch(creds, 'POST', '/api/v1/orders', exampleOrder(ref(), {
+      lines: [{ itemCode: 'NOPE-9', quantity: 1 }, { itemCode: 'NOPE-9', quantity: 2 }, { itemCode: 'NOPE-3', quantity: 1 }],
+    }));
+    expect(r.status).toBe(422);
+    expect(r.json.unknownItemCodes).toEqual(['NOPE-9', 'NOPE-3']);
+  });
+
+  it('create answers subtotal + openedAt; cancel answers cancelled / alreadyCancelled', async () => {
+    const o = await nqFetch(creds, 'POST', '/api/v1/orders', exampleOrder(ref()));
+    expect(String(o.json.subtotal)).toMatch(/^528(\.00?)?$/);
+    expect(Number.isNaN(Date.parse(o.json.openedAt))).toBe(false);
+    const c1 = await nqFetch(creds, 'POST', `/api/v1/orders/${o.json.id}/cancel`, { reason: 'restaurant_cancelled' });
+    expect(c1.json).toMatchObject({ status: 'VOIDED', cancelled: true, alreadyCancelled: false });
+    const c2 = await nqFetch(creds, 'POST', `/api/v1/orders/${o.json.id}/cancel`, { reason: 'restaurant_cancelled' });
+    expect(c2.json).toMatchObject({ status: 'VOIDED', alreadyCancelled: true });
   });
 });
 
