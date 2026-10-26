@@ -7,6 +7,7 @@ import { sendMenuToggleAlert } from '@/server/alerts';
 import { log } from '@/server/log';
 import { imageRef } from '@/server/zod-helpers';
 import { branchOwned, callerRestaurantId, categoryInBranch, notFound } from '../../_tenant';
+import { novaryqItemLock } from '@/server/novaryq/menu-master';
 
 const Patch = z.object({
   name: z.string().optional(),
@@ -57,6 +58,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const targetBranchId = data.branchId ?? before.branch.id;
   if (data.branchId !== undefined && !(await branchOwned(data.branchId, restaurantId))) return notFound('Branch');
   if (data.categoryId !== undefined && !(await categoryInBranch(data.categoryId, targetBranchId))) return notFound('Category');
+  // "POS: Novaryq": name / price / availability of a linked item are owned by Novaryq.
+  const lock = await novaryqItemLock(restaurantId, [id], { name: data.name, price: data.price, isAvailable: data.isAvailable });
+  if (lock) return lock;
 
   const u = await prisma.menuItem.update({
     where: { id },

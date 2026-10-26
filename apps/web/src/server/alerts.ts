@@ -270,7 +270,7 @@ export async function recipientsForRestaurant(restaurantId: string | null): Prom
 
 // ── Debounce-aware senders ────────────────────────────────────────────────
 
-async function checkAndStamp(entityType: string, entityId: string, kind: string, payload: any, windowMin = DEBOUNCE_WINDOW_MIN): Promise<{ skipped: boolean }> {
+export async function checkAndStamp(entityType: string, entityId: string, kind: string, payload: any, windowMin = DEBOUNCE_WINDOW_MIN): Promise<{ skipped: boolean }> {
   const existing = await (prisma as any).alertDebounce.findUnique({
     where: { entityType_entityId_kind: { entityType, entityId, kind } }
   });

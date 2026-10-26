@@ -164,6 +164,8 @@ enum IntegrationProvider {
   // Experimental self-hosted UPI payment gateway. Pilot only; gated per-restaurant
   // via YoupiFeatureRequest approval.
   YOUPI
+  // Novaryq POS partner API (HMAC clientId/secret + webhook secret). See src/server/novaryq/.
+  NOVARYQ
 }
 
 enum IntegrationStatus {
@@ -188,6 +190,7 @@ enum EscalationType {
   PAYMENT_WEBHOOK_DELAY
   COD_NOT_RECONCILED
   RIDER_STATIONARY // dispatch telemetry: on-task rider parked away from pickup/drop (server-side GPS check)
+  POS_VOIDED // Novaryq POS voided an order Flavrly may not auto-cancel (past pickup / past restaurant-cancel)
 }
 
 enum EscalationSeverity {
@@ -589,6 +592,11 @@ model Restaurant {
   reviewReplyTemplates   ReviewReplyTemplate[]
   reviewAnalyses         ReviewAnalysis[]
   reviewInsights         ReviewInsightsSnapshot?
+  // Novaryq POS integration (src/server/novaryq/)
+  novaryqLocationLinks   NovaryqLocationLink[]
+  novaryqItemLinks       NovaryqItemLink[]
+  novaryqOrderSyncs      NovaryqOrderSync[]
+  novaryqWebhookEvents   NovaryqWebhookEvent[]
 
   @@index([status])
   @@index([brandId])
@@ -792,6 +800,7 @@ model Branch {
   reservations   Reservation[]
   freebieRules   FreebieRule[]
   deliveryZones  DeliveryZone[]
+  novaryqLink    NovaryqLocationLink?
 
   @@index([isActive])
 }
@@ -1076,6 +1085,7 @@ model MenuItem {
   freebieRules      FreebieRule[]
   variants          MenuItemVariant[]
   modifierGroups    ModifierGroup[]
+  novaryqLink       NovaryqItemLink?
 
   @@unique([branchId, slug])
   @@index([branchId, categoryId])
@@ -1276,6 +1286,7 @@ model Order {
   freebieRule       FreebieRule?         @relation(fields: [freebieRuleId], references: [id])
   reviewRequest     ReviewRequest?
   recoveryTicket    ServiceRecoveryTicket?
+  novaryqSync       NovaryqOrderSync?
 
   @@index([branchId, status])
   @@index([branchId, status, createdAt])
@@ -4696,4 +4707,98 @@ model AppRelease {
 
   @@unique([app, platform, channel, versionCode])
   @@index([app, platform, channel, isActive])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Novaryq POS integration (contract §4). Credentials live in
+//  IntegrationCredential(provider NOVARYQ); these tables hold the mapping,
+//  the order-push outbox and the inbound webhook inbox. src/server/novaryq/.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum NovaryqSyncState {
+  PENDING // push due (first try or retrying with backoff)
+  SENT // Novaryq accepted the order (201 or idempotent 200)
+  FAILED // needs a human: unmapped items, 4xx rejection; replay from admin UI
+  DEAD // retry budget exhausted; owner alerted; replay from admin UI
+  CANCEL_PENDING // Flavrly cancelled; POST /orders/:id/cancel due
+  CANCELLED // cancel confirmed by Novaryq (or nothing to cancel there)
+}
+
+/// One Flavrly branch ↔ one Novaryq location. Orders of a linked branch are pushed.
+model NovaryqLocationLink {
+  id                String   @id @default(cuid())
+  restaurantId      String
+  branchId          String   @unique
+  novaryqLocationId String
+  currency          String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  branch     Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+}
+
+/// Flavrly menu item ↔ Novaryq item code (used for order lines and 86 sync).
+/// One code may back several Flavrly items (one per branch, or Half/Full of one dish):
+/// Flavrly menus are per branch, Novaryq codes tenant-wide (CONTRACT-CHANGES FL-1 / QA-C1).
+model NovaryqItemLink {
+  id              String    @id @default(cuid())
+  restaurantId    String
+  menuItemId      String    @unique
+  novaryqItemCode String
+  lastSyncedAt    DateTime?
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  menuItem   MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, novaryqItemCode])
+}
+
+/// Transactional outbox row per pushed order (also tracks cancel + last POS status).
+/// leaseOwner/leaseExpiresAt follow the PgOutbox claim pattern (FOR UPDATE SKIP LOCKED).
+model NovaryqOrderSync {
+  id                 String           @id @default(cuid())
+  orderId            String           @unique
+  restaurantId       String
+  state              NovaryqSyncState @default(PENDING)
+  novaryqOrderId     String?
+  novaryqOrderNumber String?
+  attempts           Int              @default(0)
+  nextAttemptAt      DateTime         @default(now())
+  leaseOwner         String?
+  leaseExpiresAt     DateTime?
+  lastError          String?
+  lastStatus         String?
+  lastStatusAt       DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([state, nextAttemptAt])
+  @@index([restaurantId, state])
+  @@index([novaryqOrderId])
+}
+
+/// Inbound webhook inbox: stored (deduped on delivery id) before we answer 200,
+/// processed asynchronously by the novaryq-worker job.
+model NovaryqWebhookEvent {
+  id            String    @id @default(cuid())
+  restaurantId  String
+  deliveryId    String    @unique
+  event         String
+  payload       Json
+  receivedAt    DateTime  @default(now())
+  processedAt   DateTime?
+  error         String?
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([processedAt, nextAttemptAt])
+  @@index([restaurantId, receivedAt])
 }

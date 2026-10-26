@@ -75,3 +75,9 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 * * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 50 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/obs-alerts/run >> /var/log/restaurant-manager/jobs.log 2>&1
 # Observability retention — prune metrics (30d), errors (14d), job runs (90d); daily 03:30 IST.
 30 3 * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 300 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/obs-retention/run >> /var/log/restaurant-manager/jobs.log 2>&1
+
+# Novaryq POS worker — webhook inbox (POS status + 86'd items) and order push/cancel outbox, each under a DB lease. Every minute.
+# No-op unless NOVARYQ_INTEGRATION_ENABLED=true in apps/web/.env.
+* * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 55 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/novaryq-worker/run >> /var/log/restaurant-manager/jobs.log 2>&1
+# Novaryq menu/availability reconcile — fallback for missed webhooks. Every 15 minutes.
+*/15 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 55 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/novaryq-reconcile/run >> /var/log/restaurant-manager/jobs.log 2>&1

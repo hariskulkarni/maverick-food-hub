@@ -42,6 +42,8 @@ export const DEFAULT_CRON_TEXT = `
 */2 * * * * curl https://x/api/platform/jobs/rider-stationary/run
 */5 * * * * curl https://x/api/platform/jobs/zone-snapshot/run
 10 3 * * * curl https://x/api/platform/jobs/prep-stats/run
+* * * * * curl https://x/api/platform/jobs/novaryq-worker/run
+*/15 * * * * curl https://x/api/platform/jobs/novaryq-reconcile/run
 `;
 
 /**

@@ -17,6 +17,10 @@ function parseProvider(s: string): ProviderKey | null {
 
 const YOUPI_BLOCKED = () =>
   Response.json({ error: 'Flavrly PG is configured through its approval flow, not this endpoint.' }, { status: 403 });
+// Novaryq has its own panel (/admin/integrations) with a base-URL SSRF guard and
+// webhook registration; the generic wizard path must not write it.
+const NOVARYQ_BLOCKED = () =>
+  Response.json({ error: 'Novaryq is configured at /admin/integrations, not this endpoint.' }, { status: 403 });
 
 function diffFields(before: Record<string, string> | null, after: Record<string, string>): Record<string, { from: string; to: string }> {
   const a = maskCredentials(before ?? {});
@@ -33,6 +37,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ prov
   const p = parseProvider(provider);
   if (!p) return new Response('Unknown provider', { status: 400 });
   if (p === 'YOUPI') return YOUPI_BLOCKED();
+  if (p === 'NOVARYQ') return NOVARYQ_BLOCKED();
 
   const session = await auth();
   const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
@@ -90,6 +95,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ p
   const p = parseProvider(provider);
   if (!p) return new Response('Unknown provider', { status: 400 });
   if (p === 'YOUPI') return YOUPI_BLOCKED();
+  if (p === 'NOVARYQ') return NOVARYQ_BLOCKED();
   const session = await auth();
   const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
   if (restaurant instanceof Response) return restaurant;

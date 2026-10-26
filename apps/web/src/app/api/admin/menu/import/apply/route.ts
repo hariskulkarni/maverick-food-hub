@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { applyMenuImport, type MenuRow } from '@/server/menu-io';
 import { resolveBranchScope } from '../_helpers';
 import { log } from '@/server/log';
+import { novaryqBulkImportLock } from '@/server/novaryq/menu-master';
 
 const RowSchema = z.object({
   category: z.string(),
@@ -32,6 +33,8 @@ export async function POST(req: NextRequest) {
     throw e;
   }
   if ('error' in scope) return scope.error;
+  const lock = await novaryqBulkImportLock(scope.restaurantId);
+  if (lock) return lock;
 
   let parsed;
   try {

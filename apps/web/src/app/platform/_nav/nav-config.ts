@@ -17,7 +17,7 @@ export type PlatformNavIcon =
   | 'sos' | 'incidents' | 'riderSupport' | 'messages'
   | 'settlements' | 'cod' | 'gateways' | 'pg' | 'pgAdmin'
   | 'users' | 'testAccounts' | 'support' | 'help' | 'bonus'
-  | 'iam' | 'approvals' | 'security' | 'auditLog' | 'health' | 'observability';
+  | 'iam' | 'approvals' | 'security' | 'auditLog' | 'health' | 'observability' | 'pos';
 
 export interface PlatformNavItem {
   href: string;
@@ -56,6 +56,7 @@ export const PLATFORM_NAV: PlatformNavGroup[] = [
       { href: '/platform/qr', label: 'QR codes', icon: 'qr', keywords: ['table', 'print'] },
       { href: '/platform/feedback', label: 'Feedback', icon: 'feedback', keywords: ['ratings', 'complaints'] },
       { href: '/platform/reviews-analytics', label: 'Review analytics', icon: 'reviews', keywords: ['google', 'reviews', 'stars'] },
+      { href: '/platform/novaryq', label: 'Novaryq POS', icon: 'pos', keywords: ['pos', 'integration', 'kitchen', 'sync'] },
     ],
   },
   {

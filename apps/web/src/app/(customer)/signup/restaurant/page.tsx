@@ -1,8 +1,11 @@
 import { RestaurantSignupForm } from './form';
 import { brand } from '@/lib/brand';
-import { Sparkles, ChefHat, Truck, ShieldCheck } from 'lucide-react';
+import { Sparkles, ChefHat, Truck, ShieldCheck, MonitorSmartphone } from 'lucide-react';
+import { novaryqFlagOn } from '@/server/novaryq/config';
 
 export const metadata = { title: 'Open your restaurant' };
+// Reads NOVARYQ_INTEGRATION_ENABLED at request time (the POS-partner section follows the live flag).
+export const dynamic = 'force-dynamic';
 
 export default function RestaurantSignupPage() {
   return (
@@ -29,6 +32,30 @@ export default function RestaurantSignupPage() {
         </div>
 
         <RestaurantSignupForm />
+
+        {/* POS partner (ADR-FNI-001 §4.4). Shown only while the integration is switched on, so it never promises what isn't live. */}
+        {novaryqFlagOn() && (
+          <section aria-labelledby="pos-partner" className="mt-8 rounded-2xl border bg-card/60 p-5 sm:p-6">
+            <div className="flex items-start gap-3">
+              <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                <MonitorSmartphone className="size-5" />
+              </div>
+              <div className="space-y-2 text-sm">
+                <h2 id="pos-partner" className="font-semibold text-base">POS partner: powered by Novaryq</h2>
+                <p className="text-muted-foreground">
+                  Already run your counter on Novaryq India? Connect it to {brand.name} from your admin. {brand.name} orders print as
+                  tickets in your Novaryq kitchen at {brand.name} prices, marked prepaid or cash to collect. Kitchen progress comes back
+                  to {brand.name}, and items you mark sold out in Novaryq are hidden on {brand.name} automatically. {brand.name} riders
+                  deliver; your Novaryq menu stays the one you edit.
+                </p>
+                <p className="text-muted-foreground">
+                  Only Novaryq India (INR) accounts can be connected. Learn about Novaryq at{' '}
+                  <a href="https://novaryq.in" target="_blank" rel="noopener noreferrer" className="text-primary underline">novaryq.in</a>.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
 
         <p className="text-center text-xs text-muted-foreground mt-6">
           Already approved? <a href="/login?mode=admin&next=/admin" className="text-primary underline">Sign in here</a>.

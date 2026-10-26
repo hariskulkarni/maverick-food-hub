@@ -30,8 +30,12 @@ function timeToMinutes(s: string) {
   return (h || 0) * 60 + (m || 0);
 }
 
-export function MenuManager({ branchId, categories, items }: { branchId: string; categories: any[]; items: any[] }) {
+/** "POS: Novaryq": items whose name/price/availability are owned by Novaryq (ADR-FNI-001 §4.2). */
+export interface NovaryqLock { lockedIds: string[]; manageUrl: string | null; allowPriceOverride: boolean }
+
+export function MenuManager({ branchId, categories, items, novaryq }: { branchId: string; categories: any[]; items: any[]; novaryq?: NovaryqLock }) {
   const [editing, setEditing] = useState<any | null>(null);
+  const lockedIds = useMemo(() => new Set(novaryq?.lockedIds ?? []), [novaryq]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Drop stale selections if the list changes (e.g. after refresh removes some).
@@ -143,14 +147,17 @@ export function MenuManager({ branchId, categories, items }: { branchId: string;
                       <span className={`m-auto h-1.5 w-1.5 rounded-full ${it.isVeg ? 'bg-success' : 'bg-destructive'}`} />
                     </span>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{it.name}</div>
+                      <div className="font-medium truncate">
+                        {it.name}
+                        {lockedIds.has(it.id) && <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary align-middle">Novaryq</span>}
+                      </div>
                       <div className="text-xs text-muted-foreground">{cat?.name} · {it.prepTimeMin} min · {money(it.price)}</div>
                     </div>
                   </label>
                   {/* Actions live OUTSIDE the label so clicking the switch
                       / edit pencil / delete trash can't toggle the row. */}
                   <div className="flex items-center gap-1 shrink-0">
-                    <ToggleAvailability id={it.id} initial={it.isAvailable} />
+                    <ToggleAvailability id={it.id} initial={it.isAvailable} locked={lockedIds.has(it.id)} />
                     <Button size="icon" variant="ghost" onClick={() => setEditing(it)} title="Edit"><Pencil className="size-4" /></Button>
                     <DeleteItem id={it.id} name={it.name} />
                   </div>
@@ -159,7 +166,14 @@ export function MenuManager({ branchId, categories, items }: { branchId: string;
             );
           })}
         </div>
-        {editing && <ItemDialog item={editing} categories={categories} onClose={() => setEditing(null)} />}
+        {editing && (
+          <ItemDialog
+            item={editing}
+            categories={categories}
+            onClose={() => setEditing(null)}
+            novaryq={editing.id && lockedIds.has(editing.id) ? { manageUrl: novaryq?.manageUrl ?? null, allowPriceOverride: !!novaryq?.allowPriceOverride } : null}
+          />
+        )}
       </TabsContent>
       <TabsContent value="categories">
         <CategoriesEditor branchId={branchId} categories={categories} />
@@ -276,9 +290,18 @@ function BulkActionBar({
   );
 }
 
-function ToggleAvailability({ id, initial }: { id: string; initial: boolean }) {
+function ToggleAvailability({ id, initial, locked }: { id: string; initial: boolean; locked?: boolean }) {
   const router = useRouter();
   const [v, setV] = useState(initial);
+  if (locked) {
+    // Availability of a Novaryq-linked item is 86'd / restored in Novaryq and syncs here.
+    return (
+      <div className="flex items-center gap-2" title="Managed in Novaryq">
+        <span className="hidden text-xs text-muted-foreground sm:inline">{v ? 'Available' : 'Hidden'}</span>
+        <Switch checked={v} disabled aria-label={`${v ? 'Available' : 'Hidden'} (managed in Novaryq)`} />
+      </div>
+    );
+  }
   return (
     <div className="flex items-center gap-2">
       <span className="hidden text-xs text-muted-foreground sm:inline">{v ? 'Available' : 'Hidden'}</span>
@@ -383,7 +406,7 @@ function DeleteItem({ id, name }: { id: string; name?: string }) {
   );
 }
 
-function ItemDialog({ item, categories, onClose }: { item: any; categories: any[]; onClose: () => void }) {
+function ItemDialog({ item, categories, onClose, novaryq }: { item: any; categories: any[]; onClose: () => void; novaryq?: { manageUrl: string | null; allowPriceOverride: boolean } | null }) {
   const router = useRouter();
   const [data, setData] = useState({
     name: item.name ?? '',
@@ -405,6 +428,12 @@ function ItemDialog({ item, categories, onClose }: { item: any; categories: any[
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{isNew ? 'New menu item' : 'Edit item'}</DialogTitle></DialogHeader>
+        {novaryq && (
+          <p className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs">
+            Name{novaryq.allowPriceOverride ? '' : ', price'} and availability of this item are managed in Novaryq and sync here automatically.
+            {novaryq.manageUrl && <> <a href={novaryq.manageUrl} target="_blank" rel="noreferrer noopener" className="text-primary underline">Manage in Novaryq</a></>}
+          </p>
+        )}
         <form
           className="space-y-4"
           onSubmit={async (e) => {
@@ -436,13 +465,13 @@ function ItemDialog({ item, categories, onClose }: { item: any; categories: any[
               recommended="800×800 px (square) · bright, top-down shot looks best"
             />
             <div className="space-y-3">
-              <Field label="Name" value={data.name} onChange={(v) => setData({ ...data, name: v })} required />
+              <Field label="Name" value={data.name} onChange={(v) => setData({ ...data, name: v })} required disabled={!!novaryq} />
               <div>
                 <Label>Description</Label>
                 <Input className="mt-1" value={data.description} onChange={(e) => setData({ ...data, description: e.target.value })} placeholder="What's in it? Any allergens?" />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Price (₹)" type="number" value={String(data.price)} onChange={(v) => setData({ ...data, price: Number(v) })} required />
+                <Field label="Price (₹)" type="number" value={String(data.price)} onChange={(v) => setData({ ...data, price: Number(v) })} required disabled={!!novaryq && !novaryq.allowPriceOverride} />
                 <Field label="Prep time (min)" type="number" step={1} min={1} max={180} inputMode="numeric" value={String(data.prepTimeMin)} onChange={(v) => setData({ ...data, prepTimeMin: v === '' ? 0 : Math.min(180, Math.max(1, Math.round(Number(v) || 0))) })} />
               </div>
               <div>
@@ -474,7 +503,7 @@ function ItemDialog({ item, categories, onClose }: { item: any; categories: any[
 
           <div className="grid grid-cols-2 gap-3">
             <ToggleField label="Vegetarian" value={data.isVeg} onChange={(v) => setData({ ...data, isVeg: v })} />
-            <ToggleField label="Available" value={data.isAvailable} onChange={(v) => setData({ ...data, isAvailable: v })} />
+            <ToggleField label="Available" value={data.isAvailable} onChange={(v) => setData({ ...data, isAvailable: v })} disabled={!!novaryq} />
             <ToggleField label="Popular" value={data.isPopular} onChange={(v) => setData({ ...data, isPopular: v })} />
             <ToggleField label="Recommended" value={data.isRecommended} onChange={(v) => setData({ ...data, isRecommended: v })} />
           </div>
@@ -769,11 +798,11 @@ function Field({ label, value, onChange, type = 'text', ...rest }: { label: stri
     </div>
   );
 }
-function ToggleField({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+function ToggleField({ label, value, onChange, disabled }: { label: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <label className="flex items-center justify-between rounded-lg border p-2 px-3">
       <span className="text-sm">{label}</span>
-      <Switch checked={value} onCheckedChange={(v) => onChange(!!v)} />
+      <Switch checked={value} disabled={disabled} onCheckedChange={(v) => onChange(!!v)} />
     </label>
   );
 }

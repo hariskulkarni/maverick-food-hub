@@ -8,7 +8,7 @@ import {
   ClipboardCheck, Coins, CreditCard, FileSpreadsheet, Flame, Gauge, Gift, GraduationCap, Headphones, History,
   Landmark, Layers, LayoutDashboard, LayoutTemplate, LifeBuoy, ListOrdered, MessageSquare, MessagesSquare,
   QrCode, Radar, Radio, Receipt, Search, Shield, ShieldAlert, ShieldCheck, Siren, SlidersHorizontal, Smartphone,
-  Star, FlaskConical, Timer, Trophy, UserPlus, Users, Wallet, Banknote, Bike, X, type LucideIcon,
+  Star, FlaskConical, Timer, Trophy, UserPlus, Users, Wallet, Banknote, Bike, X, Plug, type LucideIcon,
 } from 'lucide-react';
 import { activeHref, filterNavByQuery, type PlatformNavGroup, type PlatformNavIcon } from './nav-config';
 
@@ -23,7 +23,7 @@ const ICONS: Record<PlatformNavIcon, LucideIcon> = {
   settlements: Banknote, cod: Coins, gateways: Landmark, pg: CreditCard, pgAdmin: Gauge,
   users: Users, testAccounts: FlaskConical, support: LifeBuoy, help: BookOpen, bonus: Gift,
   iam: ShieldCheck, approvals: ClipboardCheck, security: Shield, auditLog: History, health: Activity,
-  observability: Radar,
+  observability: Radar, pos: Plug,
 };
 
 const STORAGE_KEY = 'flavrly.platformNav.open';
