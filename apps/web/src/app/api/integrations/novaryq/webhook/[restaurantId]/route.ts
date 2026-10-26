@@ -9,6 +9,8 @@
  *    Dedupe key (per restaurant): the SIGNED envelope event name + `id` when present — stable across
  *    retries and not forgeable, unlike the unsigned delivery header (QA-C5) — else
  *    X-Novaryq-Idempotency-Key || X-Novaryq-Delivery (required either way).
+ *    Events Flavrly never acts on (legacy order.sent/updated/closed aliases…) are
+ *    acknowledged without storing (QA-F5); retention of processed rows is 30 days.
  * 5. Process asynchronously: inline best-effort after storing, the novaryq-worker
  *    job owns correctness (retries, dead-letter).
  */
@@ -18,7 +20,7 @@ import { prisma } from '@/server/db';
 import { log } from '@/server/log';
 import { readBodyCapped } from '@/server/pg/webhook-auth';
 import { loadNovaryqConfig, novaryqFlagOn } from '@/server/novaryq/config';
-import { processNovaryqDeliveryNow, verifyNovaryqSignature } from '@/server/novaryq/webhook';
+import { isHandledNovaryqEvent, processNovaryqDeliveryNow, verifyNovaryqSignature } from '@/server/novaryq/webhook';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -62,7 +64,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ res
     return new Response('Bad JSON', { status: 400 });
   }
   const envelope = (body ?? {}) as { id?: unknown; eventType?: unknown };
-  const event = (req.headers.get('x-novaryq-event') || (typeof envelope.eventType === 'string' ? envelope.eventType : '') || 'unknown').slice(0, 100);
+  // The body is signed, X-Novaryq-Event is not: the envelope eventType wins, a contradicting header is refused.
+  const signedEvent = typeof envelope.eventType === 'string' ? envelope.eventType : null;
+  const headerEvent = req.headers.get('x-novaryq-event');
+  if (signedEvent && headerEvent && headerEvent !== signedEvent) return new Response('X-Novaryq-Event does not match the signed body', { status: 400 });
+  const event = (signedEvent || headerEvent || 'unknown').slice(0, 100);
+  // Only events Flavrly acts on are kept (QA-F5): the tenant-wide legacy aliases would grow the inbox unbounded.
+  if (!isHandledNovaryqEvent(event)) return Response.json({ ok: true, ignored: true });
   const eventId = typeof envelope.id === 'string' && envelope.id.length <= 128 ? envelope.id : null;
   // Namespaced per restaurant so one tenant can never pre-empt another's ids.
   // The event name is part of the key so an alias delivery can never shadow the real event.

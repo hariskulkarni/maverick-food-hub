@@ -13,6 +13,8 @@ vi.hoisted(() => {
   process.env.NOVARYQ_INTEGRATION_ENABLED = 'true';
   delete process.env.REDIS_URL;
 });
+// The base-URL guard resolves the host on every call; keep unit tests off the network.
+vi.mock('node:dns/promises', () => ({ lookup: async () => [{ address: '93.184.216.34', family: 4 }] }));
 vi.mock('@/server/realtime', () => ({ publish: vi.fn() }));
 vi.mock('@/server/notifications', () => ({ notify: { sms: vi.fn(async () => undefined), email: vi.fn(async () => undefined) } }));
 vi.mock('@/server/push/milestones', () => ({ pushOrderMilestone: vi.fn(async () => undefined) }));

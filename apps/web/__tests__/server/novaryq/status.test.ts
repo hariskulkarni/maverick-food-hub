@@ -3,9 +3,12 @@
  * through transitionOrder, with the stale/out-of-order guard and the
  * never-auto-cancel-after-pickup rule.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const h = vi.hoisted(() => ({
+  staleSyncs: [] as any[],
+  cfg: { baseUrl: 'https://pos.example.com', clientId: 'c', secret: 's', webhookSecret: 'w', enabled: true, pushOn: 'RECEIVED' } as any,
+  fetched: [] as string[],
   sync: null as any,
   guardCount: 1,
   transitions: [] as Array<[string, string, any]>,
@@ -20,7 +23,9 @@ vi.mock('@/server/db', () => {
     novaryqOrderSync: {
       findFirst: vi.fn(async ({ where }: any) => (h.sync && where.orderId === h.sync.orderId && where.restaurantId === h.sync.restaurantId ? { ...h.sync, order: { id: h.sync.orderId, code: 'ORD-1', status: h.orderStatus, fulfillmentType: h.sync.fulfillmentType ?? 'DELIVERY' } } : null)),
       updateMany: vi.fn(async () => ({ count: h.guardCount })),
+      findMany: vi.fn(async () => h.staleSyncs),
     },
+    novaryqLocationLink: { findMany: vi.fn(async () => [{ restaurantId: 'r1' }]) },
     orderEscalation: {
       findFirst: vi.fn(async () => null),
       create: vi.fn(async ({ data }: any) => { h.escalations.push(data); return data; }),
@@ -36,8 +41,10 @@ vi.mock('@/server/orders', () => ({
   }),
 }));
 vi.mock('@/server/novaryq/alerts', () => ({ sendNovaryqAlert: vi.fn(async (a: any) => { h.alerts.push(a); }) }));
+vi.mock('@/server/novaryq/config', async (orig) => ({ ...(await orig<any>()), loadNovaryqConfig: vi.fn(async () => h.cfg) }));
+vi.mock('node:dns/promises', () => ({ lookup: async () => [{ address: '93.184.216.34', family: 4 }] }));
 
-import { planStatusAction, applyOrderStatusEvent } from '@/server/novaryq/status';
+import { planStatusAction, applyOrderStatusEvent, pollStaleOrderStatuses } from '@/server/novaryq/status';
 
 beforeEach(() => {
   h.sync = { id: 's1', orderId: 'o1', restaurantId: 'r1', novaryqOrderId: 'nq1', lastStatusAt: null };
@@ -88,6 +95,42 @@ describe('planStatusAction (§3 table)', () => {
   it('REFUNDED and unknown statuses → nothing', () => {
     expect(steps('REFUNDED', 'DELIVERED')).toBe('none');
     expect(steps('WHATEVER', 'RECEIVED')).toBe('none');
+  });
+});
+
+describe('pollStaleOrderStatuses (missed-webhook fallback, QA-F4)', () => {
+  beforeEach(() => {
+    h.staleSyncs = [{ orderId: 'o1', novaryqOrderId: 'nq1' }];
+    h.fetched = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      h.fetched.push(url);
+      return new Response(JSON.stringify({ id: 'nq1', status: 'READY' }), { status: 200 });
+    }));
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('GETs each quiet SENT order and applies its POS status through the same §3 path', async () => {
+    const r = await pollStaleOrderStatuses('r1');
+    expect(h.fetched).toEqual(['https://pos.example.com/api/v1/orders/nq1']);
+    expect(h.transitions.map((t) => t[1])).toEqual(['ACCEPTED', 'PREPARING', 'READY']);
+    expect(r).toEqual({ polled: 1, applied: 1, errors: 0 });
+  });
+
+  it('only polls SENT rows that went quiet while the Flavrly order is still in the kitchen funnel', async () => {
+    await pollStaleOrderStatuses('r1');
+    const { prisma } = await import('@/server/db');
+    const where = (prisma as any).novaryqOrderSync.findMany.mock.calls.at(-1)[0].where;
+    expect(where).toMatchObject({ restaurantId: 'r1', state: 'SENT', novaryqOrderId: { not: null } });
+    expect(where.order.status.in).toEqual(['RECEIVED', 'ACCEPTED', 'PREPARING', 'READY']);
+    expect(where.updatedAt.lt.getTime()).toBeLessThanOrEqual(Date.now() - 10 * 60_000 + 1000);
+  });
+
+  it('a disabled restaurant is not polled; a failing GET is counted, not thrown', async () => {
+    h.cfg = { ...h.cfg, enabled: false };
+    expect(await pollStaleOrderStatuses('r1')).toEqual({ polled: 0, applied: 0, errors: 0 });
+    h.cfg = { ...h.cfg, enabled: true };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('down', { status: 503 })));
+    expect(await pollStaleOrderStatuses('r1')).toEqual({ polled: 1, applied: 0, errors: 1 });
   });
 });
 

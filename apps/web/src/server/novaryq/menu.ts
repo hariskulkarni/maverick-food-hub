@@ -6,7 +6,7 @@
 import { prisma } from '../db';
 import { log } from '../log';
 import { applyMenuImport, type MenuRow } from '../menu-io';
-import { NovaryqApiError, checkBaseUrl, novaryqRequest, type NovaryqCredentials } from './client';
+import { NovaryqApiError, novaryqRequest, type NovaryqCredentials } from './client';
 import { loadNovaryqConfig, novaryqFlagOn } from './config';
 
 export interface NovaryqMenuItem {
@@ -49,10 +49,8 @@ function apiError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** Integration test(): base-URL guard + a signed GET /menu. */
+/** Integration test(): a signed GET /menu (novaryqRequest applies the base-URL guard). */
 export async function testNovaryqConnection(creds: NovaryqCredentials): Promise<{ ok: boolean; detail?: string; error?: string }> {
-  const bad = await checkBaseUrl(creds.baseUrl);
-  if (bad) return { ok: false, error: bad };
   try {
     const menu = await fetchNovaryqMenu(creds);
     return { ok: true, detail: `Connected to Novaryq. ${menu.items.length} menu items visible to this API key.` };

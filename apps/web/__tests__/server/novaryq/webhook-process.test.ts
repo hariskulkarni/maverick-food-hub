@@ -26,7 +26,10 @@ vi.mock('@/server/db', () => {
     },
     novaryqLocationLink: { findMany: vi.fn(async ({ where }: any) => h.locs.filter((l) => l.novaryqLocationId === where.novaryqLocationId)) },
     menuItem: { update: vi.fn(async (a: any) => { h.itemUpdates.push(a); return {}; }) },
-    novaryqWebhookEvent: { updateMany: vi.fn(async (a: any) => { h.eventUpdates.push(a); return { count: 1 }; }) },
+    novaryqWebhookEvent: {
+      updateMany: vi.fn(async (a: any) => { h.eventUpdates.push(a); return { count: 1 }; }),
+      deleteMany: vi.fn(async (a: any) => { h.eventUpdates.push(a); return { count: 4 }; }),
+    },
     novaryqOrderSync: { findFirst: vi.fn(async () => h.syncByNq) },
   };
   return { prisma, db: prisma };
@@ -40,7 +43,7 @@ vi.mock('@/server/novaryq/status', () => ({
 }));
 vi.mock('@/server/novaryq/alerts', () => ({ sendNovaryqAlert: vi.fn(async (a: any) => { h.alerts.push(a); }) }));
 
-import { handleClaimedEvent, routeNovaryqEvent } from '@/server/novaryq/webhook';
+import { handleClaimedEvent, routeNovaryqEvent, pruneNovaryqWebhookEvents } from '@/server/novaryq/webhook';
 import { applyAvailabilityEvent } from '@/server/novaryq/menu';
 
 const ev = (event: string, payload: any, attempts = 1) => ({
@@ -141,6 +144,15 @@ describe('routeNovaryqEvent', () => {
 
   it('unrelated events are acknowledged and ignored', async () => {
     expect(await routeNovaryqEvent(ev('payment.succeeded', { paymentId: 'p' }) as any)).toBe('ignored:unhandled');
+  });
+});
+
+describe('pruneNovaryqWebhookEvents (QA-F5)', () => {
+  it('deletes processed events older than 30 days only', async () => {
+    expect(await pruneNovaryqWebhookEvents()).toEqual({ deleted: 4 });
+    const where = h.eventUpdates[0].where;
+    expect(where.processedAt.lt.getTime()).toBeLessThanOrEqual(Date.now() - 30 * 86_400_000 + 1000);
+    expect(where.processedAt.not).toBeNull();
   });
 });
 

@@ -69,9 +69,24 @@ function eventData(body: unknown): Obj {
   return inner ? { ...inner, occurredAt: inner.occurredAt ?? body.occurredAt } : body;
 }
 
-/** Events Flavrly acts on (NQ-API-FINAL §4). Legacy aliases (order.sent/closed/updated) are stored and ignored (NQ-2). */
+/** Events Flavrly acts on (NQ-API-FINAL §4). Legacy aliases (order.sent/closed/updated) are ignored (NQ-2). */
 const STATUS_EVENTS = new Set(['order.status_changed']);
 const AVAILABILITY_EVENTS = new Set(['menu.item.availability_changed', 'menu.item.86ed', 'menu.item.restored']);
+
+/** The route stores only these; anything else is acknowledged and dropped (QA-F5). */
+export function isHandledNovaryqEvent(event: string): boolean {
+  return event === 'webhook.test' || STATUS_EVENTS.has(event) || AVAILABILITY_EVENTS.has(event);
+}
+
+export const WEBHOOK_RETENTION_DAYS = 30;
+
+/** Deletes processed inbox rows older than 30 days (QA-F5). */
+export async function pruneNovaryqWebhookEvents(): Promise<{ deleted: number }> {
+  const r = await prisma.novaryqWebhookEvent.deleteMany({
+    where: { processedAt: { not: null, lt: new Date(Date.now() - WEBHOOK_RETENTION_DAYS * 86_400_000) } },
+  });
+  return { deleted: r.count };
+}
 
 export async function routeNovaryqEvent(ev: ClaimedEvent): Promise<string> {
   // Novaryq console "Send test": proves the webhook leg; shown as "last webhook received".

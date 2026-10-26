@@ -60,15 +60,27 @@ function insecureAllowed(): boolean {
   return process.env.NOVARYQ_ALLOW_INSECURE_BASE_URL === 'true' && process.env.NODE_ENV !== 'production';
 }
 
+/**
+ * Egress allow-list (QA-F1). IPv4: anything public (private, loopback, link-local, CGNAT,
+ * benchmarking, documentation, multicast and reserved ranges are blocked). IPv6: only
+ * global unicast 2000::/3, minus 6to4, Teredo and documentation — which also excludes
+ * IPv4-mapped (::ffff:0:0/96), NAT64 (64:ff9b::/96), ULA, link-local and loopback.
+ */
+const BLOCKED_V4 = new net.BlockList();
+for (const [a, p] of [
+  ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
+  ['192.0.0.0', 24], ['192.0.2.0', 24], ['192.88.99.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15],
+  ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4],
+] as const) BLOCKED_V4.addSubnet(a, p, 'ipv4');
+const GLOBAL_V6 = new net.BlockList();
+GLOBAL_V6.addSubnet('2000::', 3, 'ipv6');
+const BLOCKED_V6 = new net.BlockList();
+for (const [a, p] of [['2002::', 16], ['2001::', 32], ['2001:db8::', 32]] as const) BLOCKED_V6.addSubnet(a, p, 'ipv6');
+
 function isPrivateIp(ip: string): boolean {
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split('.').map(Number);
-    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
-  }
-  const v = ip.toLowerCase();
-  if (v.startsWith('::ffff:')) return isPrivateIp(v.slice(7));
-  return v === '::' || v === '::1' || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('fe80');
+  if (net.isIPv4(ip)) return BLOCKED_V4.check(ip, 'ipv4');
+  if (net.isIPv6(ip)) return !GLOBAL_V6.check(ip, 'ipv6') || BLOCKED_V6.check(ip, 'ipv6');
+  return true;
 }
 
 /**
@@ -106,6 +118,8 @@ export async function checkBaseUrl(
 export interface RequestOptions {
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
+  /** DNS resolver for the base-URL guard (tests inject one; default node:dns lookup). */
+  resolve?: (host: string) => Promise<string[]>;
 }
 
 function retryableStatus(status: number): boolean {
@@ -119,6 +133,12 @@ export async function novaryqRequest<T = unknown>(
   body?: unknown,
   opts: RequestOptions = {},
 ): Promise<{ status: number; data: T }> {
+  // Re-vetted on EVERY call (QA-F2): a URL saved under the dev escape hatch, or a host that
+  // resolved public at save time and private now, is refused before anything is sent.
+  // (No IP pinning: production is https-only, so a rebound target must also present a valid
+  // certificate for the tenant's hostname before any request bytes are sent.)
+  const bad = await checkBaseUrl(creds.baseUrl, { resolve: opts.resolve });
+  if (bad) throw new NovaryqApiError(`Novaryq URL refused: ${bad}`, null, false);
   const rawBody = body === undefined ? '' : JSON.stringify(body);
   const ts = Math.floor(Date.now() / 1000);
   const headers: Record<string, string> = {

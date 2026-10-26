@@ -115,6 +115,20 @@ describe('Novaryq webhook route', () => {
     expect(h.stored).toHaveLength(1);
   });
 
+  it('events Flavrly never acts on (legacy aliases) are acknowledged but not stored (QA-F5)', async () => {
+    const alias = JSON.stringify({ id: 'evt_9', eventType: 'order.updated', data: { orderId: 'nq_1' } });
+    const res = await call(alias, { 'x-novaryq-signature': sign(alias), 'x-novaryq-event': 'order.updated' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ignored: true });
+    expect(h.stored).toHaveLength(0);
+  });
+
+  it('the signed envelope eventType wins; a contradicting (unsigned) header is rejected', async () => {
+    const res = await call(BODY, { 'x-novaryq-event': 'order.updated' });
+    expect(res.status).toBe(400);
+    expect(h.stored).toHaveLength(0);
+  });
+
   it('bad signature → 401, nothing stored', async () => {
     const res = await call(BODY, { 'x-novaryq-signature': sign(BODY, undefined, 'wrong') });
     expect(res.status).toBe(401);

@@ -14,6 +14,7 @@ import {
 } from '@/server/novaryq/client';
 
 const cfg = { baseUrl: 'https://pos.example.com', clientId: 'nq_test_abc', secret: 'nqsec_123' };
+const pub = async () => ['93.184.216.34'];
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -44,7 +45,7 @@ describe('novaryqRequest', () => {
       expect(h.get('x-signature')).toBe(signRequest('nqsec_123', String(init.body), ts));
       return new Response(JSON.stringify({ id: 'o1' }), { status: 201 });
     });
-    const res = await novaryqRequest(cfg, 'POST', '/orders', { a: 1 }, { fetchImpl: fetchImpl as any });
+    const res = await novaryqRequest(cfg, 'POST', '/orders', { a: 1 }, { fetchImpl: fetchImpl as any, resolve: pub });
     expect(res).toEqual({ status: 201, data: { id: 'o1' } });
     expect(fetchImpl.mock.calls[0][0]).toBe('https://pos.example.com/api/v1/orders');
     expect((fetchImpl.mock.calls[0][1] as RequestInit).redirect).toBe('manual');
@@ -57,13 +58,13 @@ describe('novaryqRequest', () => {
       expect(init.body).toBeUndefined();
       return new Response(JSON.stringify({ data: [] }), { status: 200 });
     });
-    await novaryqRequest(cfg, 'GET', '/menu?locationId=loc_1', undefined, { fetchImpl: fetchImpl as any });
+    await novaryqRequest(cfg, 'GET', '/menu?locationId=loc_1', undefined, { fetchImpl: fetchImpl as any, resolve: pub });
     expect(fetchImpl.mock.calls[0][0]).toBe('https://pos.example.com/api/v1/menu?locationId=loc_1');
   });
 
   it('429 → retryable error carrying Retry-After in ms', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: 'slow down' }), { status: 429, headers: { 'Retry-After': '42' } }));
-    const err = await novaryqRequest(cfg, 'GET', '/menu', undefined, { fetchImpl: fetchImpl as any }).catch((e) => e);
+    const err = await novaryqRequest(cfg, 'GET', '/menu', undefined, { fetchImpl: fetchImpl as any, resolve: pub }).catch((e) => e);
     expect(err).toBeInstanceOf(NovaryqApiError);
     expect(err.status).toBe(429);
     expect(err.retryable).toBe(true);
@@ -71,14 +72,14 @@ describe('novaryqRequest', () => {
   });
 
   it('5xx and network failures are retryable; 422 is permanent with the body attached', async () => {
-    const e5 = await novaryqRequest(cfg, 'GET', '/menu', undefined, { fetchImpl: (async () => new Response('x', { status: 503 })) as any }).catch((e) => e);
+    const e5 = await novaryqRequest(cfg, 'GET', '/menu', undefined, { resolve: pub, fetchImpl: (async () => new Response('x', { status: 503 })) as any }).catch((e) => e);
     expect(e5.retryable).toBe(true);
-    const net = await novaryqRequest(cfg, 'GET', '/menu', undefined, { fetchImpl: (async () => { throw new TypeError('fetch failed'); }) as any }).catch((e) => e);
+    const net = await novaryqRequest(cfg, 'GET', '/menu', undefined, { resolve: pub, fetchImpl: (async () => { throw new TypeError('fetch failed'); }) as any }).catch((e) => e);
     expect(net).toBeInstanceOf(NovaryqApiError);
     expect(net.status).toBeNull();
     expect(net.retryable).toBe(true);
     const body = { statusCode: 422, message: 'Unknown item codes', unknownItemCodes: ['A', 'B'] };
-    const e422 = await novaryqRequest(cfg, 'POST', '/orders', {}, { fetchImpl: (async () => new Response(JSON.stringify(body), { status: 422 })) as any }).catch((e) => e);
+    const e422 = await novaryqRequest(cfg, 'POST', '/orders', {}, { resolve: pub, fetchImpl: (async () => new Response(JSON.stringify(body), { status: 422 })) as any }).catch((e) => e);
     expect(e422.retryable).toBe(false);
     expect(e422.body).toEqual(body);
     expect(e422.message).toContain('Unknown item codes');
@@ -89,7 +90,7 @@ describe('novaryqRequest', () => {
       new Promise((_resolve, reject) => {
         init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'TimeoutError' })));
       });
-    const err = await novaryqRequest(cfg, 'GET', '/menu', undefined, { fetchImpl: fetchImpl as any, timeoutMs: 20 }).catch((e) => e);
+    const err = await novaryqRequest(cfg, 'GET', '/menu', undefined, { fetchImpl: fetchImpl as any, timeoutMs: 20, resolve: pub }).catch((e) => e);
     expect(err).toBeInstanceOf(NovaryqApiError);
     expect(err.retryable).toBe(true);
     expect(err.message).toMatch(/timed out/i);
@@ -97,10 +98,24 @@ describe('novaryqRequest', () => {
 
   it('a redirect is never followed and is not retried', async () => {
     const err = await novaryqRequest(cfg, 'GET', '/menu', undefined, {
+      resolve: pub,
       fetchImpl: (async () => new Response(null, { status: 302, headers: { location: 'http://169.254.169.254/' } })) as any,
     }).catch((e) => e);
     expect(err.status).toBe(302);
     expect(err.retryable).toBe(false);
+  });
+});
+
+describe('call-time base URL re-check (QA-F2)', () => {
+  it('never sends to a base URL that fails the guard now, even if it was saved earlier', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 200 }));
+    const err = await novaryqRequest({ ...cfg, baseUrl: 'http://127.0.0.1:4010' }, 'POST', '/orders', {}, { fetchImpl: fetchImpl as any, resolve: pub }).catch((e) => e);
+    expect(err).toBeInstanceOf(NovaryqApiError);
+    expect(err.retryable).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    const rebound = await novaryqRequest(cfg, 'GET', '/menu', undefined, { fetchImpl: fetchImpl as any, resolve: async () => ['10.0.0.7'] }).catch((e) => e);
+    expect(rebound).toBeInstanceOf(NovaryqApiError);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 
@@ -128,6 +143,18 @@ describe('base URL guard', () => {
     expect(await checkBaseUrl('https://user:pw@pos.example.com', { resolve: async () => ['93.184.216.34'] })).toMatch(/credentials/);
     expect(await checkBaseUrl('not a url', { resolve: async () => [] })).toMatch(/valid/);
     expect(await checkBaseUrl('https://pos.example.com', { resolve: async () => ['93.184.216.34'] })).toBeNull();
+  });
+
+  it('refuses IPv4-mapped / NAT64 / 6to4 / Teredo / reserved addresses (QA-F1)', async () => {
+    const none = { resolve: async () => [] as string[] };
+    for (const u of [
+      'https://[::ffff:127.0.0.1]', 'https://[::ffff:a9fe:a9fe]', 'https://[::1]', 'https://[::]', 'https://[::7f00:1]',
+      'https://[64:ff9b::7f00:1]', 'https://[2002:7f00:1::]', 'https://[2001:0:4136:e378:8000:63bf:3fff:fdd2]',
+      'https://[fe80::1]', 'https://[fc00::1]', 'https://[2001:db8::1]', 'https://198.18.0.1', 'https://192.0.0.8', 'https://100.64.0.1',
+    ]) {
+      expect(await checkBaseUrl(u, none), u).toMatch(/public/);
+    }
+    expect(await checkBaseUrl('https://[2606:4700:4700::1111]', none)).toBeNull();
   });
 
   it('NOVARYQ_ALLOW_INSECURE_BASE_URL=true (dev/QA only) admits http://localhost', async () => {

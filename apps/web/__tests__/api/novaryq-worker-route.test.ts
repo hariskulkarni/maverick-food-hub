@@ -7,11 +7,14 @@ const h = vi.hoisted(() => ({
   webhooks: vi.fn(),
   push: vi.fn(),
   reconcile: vi.fn(),
+  poll: vi.fn(),
+  prune: vi.fn(),
 }));
 vi.mock('@/server/auth', () => ({ auth: h.auth }));
 vi.mock('@/server/log', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock('@/server/pg/job-lease', () => ({ withJobLease: h.lease }));
-vi.mock('@/server/novaryq/webhook', () => ({ runNovaryqWebhookWorker: h.webhooks }));
+vi.mock('@/server/novaryq/webhook', () => ({ runNovaryqWebhookWorker: h.webhooks, pruneNovaryqWebhookEvents: h.prune }));
+vi.mock('@/server/novaryq/status', () => ({ runNovaryqStatusPoll: h.poll }));
 vi.mock('@/server/novaryq/push', () => ({ runNovaryqPushWorker: h.push }));
 vi.mock('@/server/novaryq/menu', () => ({ runNovaryqReconcile: h.reconcile }));
 
@@ -29,6 +32,8 @@ beforeEach(() => {
   h.webhooks.mockResolvedValue({ claimed: 1, done: 1, retried: 0, dead: 0 });
   h.push.mockResolvedValue({ claimed: 2, sent: 2, cancelled: 0, retried: 0, failed: 0, dead: 0 });
   h.reconcile.mockResolvedValue({ restaurants: 1, changed: 0, errors: 0 });
+  h.poll.mockResolvedValue({ polled: 2, applied: 1, errors: 0 });
+  h.prune.mockResolvedValue({ deleted: 3 });
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -52,8 +57,8 @@ describe('POST /api/platform/jobs/novaryq-worker/run', () => {
     const { POST: reconcile } = await import('@/app/api/platform/jobs/novaryq-reconcile/run/route');
     expect((await reconcile(new Request('http://x', { method: 'POST', headers: { 'x-internal-secret': 'bad' } }) as any)).status).toBe(403);
     const j = await (await reconcile(new Request('http://x', { method: 'POST', headers: { 'x-internal-secret': 's3cret' } }) as any)).json();
-    expect(h.lease.mock.calls.map((c) => c[0])).toEqual(['novaryq-reconcile']);
-    expect(j).toMatchObject({ ok: true, reconcile: { ran: true, restaurants: 1 } });
+    expect(h.lease.mock.calls.map((c) => c[0])).toEqual(['novaryq-reconcile:menu', 'novaryq-reconcile:status', 'novaryq-reconcile:retention']);
+    expect(j).toMatchObject({ ok: true, reconcile: { ran: true, restaurants: 1 }, status: { ran: true, polled: 2 }, retention: { ran: true, deleted: 3 } });
   });
 
   it('feature flag off → no-op', async () => {

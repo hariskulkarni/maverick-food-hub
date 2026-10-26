@@ -97,12 +97,22 @@ export async function novaryqOverview(restaurantId: string) {
 
 export interface CredentialInput { baseUrl: string; clientId: string; secret?: string; webhookSecret?: string; enabled: boolean }
 
-/** Test-then-save. Blank secret fields keep the stored values (secrets are write-only in the UI). */
+/**
+ * Test-then-save. Blank secrets keep the stored values (secrets are write-only in the UI),
+ * but only while the URL and API key are unchanged: otherwise an admin who never saw the
+ * secret could aim it at their own host (QA-F8), so both secrets must be entered again.
+ */
 export async function saveNovaryqCredentials(ctx: AdminContext, input: CredentialInput) {
-  const prev = await storedConfig(ctx.restaurantId);
+  const found = await storedConfig(ctx.restaurantId);
+  const baseUrl = normalizeBaseUrl(input.baseUrl);
+  const clientId = input.clientId.trim();
+  const prev = found && found.baseUrl === baseUrl && found.clientId === clientId ? found : null;
+  if (found && !prev && (!input.secret?.trim() || (found.webhookSecret && !input.webhookSecret?.trim()))) {
+    return { ok: false as const, error: 'The Novaryq URL or API key changed: enter the API secret and the webhook signing secret again.' };
+  }
   const cfg: NovaryqConfig = {
-    baseUrl: normalizeBaseUrl(input.baseUrl),
-    clientId: input.clientId.trim(),
+    baseUrl,
+    clientId,
     secret: input.secret?.trim() || prev?.secret || '',
     webhookSecret: input.webhookSecret?.trim() || prev?.webhookSecret || '',
     enabled: input.enabled,

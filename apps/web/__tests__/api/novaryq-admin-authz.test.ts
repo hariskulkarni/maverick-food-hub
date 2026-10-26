@@ -5,7 +5,7 @@
  * (the db stub throws on anything but the membership lookups). An ADMIN of
  * restaurant A cannot read or write restaurant B's branches, items or syncs.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 
 const h = vi.hoisted(() => ({
   session: null as any,
@@ -71,6 +71,13 @@ const ROUTES: [string, () => Promise<Response>][] = [
   ['GET syncs', async () => (await import(`${base}/syncs/route`)).GET(req('GET', undefined, 'http://x/api/admin/integrations/novaryq/syncs'))],
   ['POST replay', async () => (await import(`${base}/syncs/[id]/replay/route`)).POST(req('POST'), ctx({ id: 'sA' }))],
 ];
+
+// Load every route module once up front so a cold import never eats a test's 5 s budget.
+beforeAll(async () => {
+  for (const m of ['route', 'test/route', 'locations/route', 'items/route', 'items/auto-match/route', 'import/route', 'syncs/route', 'syncs/[id]/replay/route']) {
+    await import(`${base}/${m}`);
+  }
+}, 120_000);
 
 beforeEach(() => {
   vi.stubEnv('NOVARYQ_INTEGRATION_ENABLED', 'true');

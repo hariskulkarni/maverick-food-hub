@@ -11,6 +11,8 @@ import { prisma } from '../db';
 import { log } from '../log';
 import { transitionOrder } from '../orders';
 import { sendNovaryqAlert } from './alerts';
+import { novaryqRequest } from './client';
+import { loadNovaryqConfig, novaryqFlagOn } from './config';
 
 export type StatusAction =
   | { kind: 'none'; reason: string }
@@ -129,4 +131,64 @@ export async function applyOrderStatusEvent(ev: OrderStatusEvent): Promise<Apply
     await transitionOrder(sync.orderId, next, { scopeRestaurantId: ev.restaurantId, note: `Novaryq POS: ${ev.status}` });
   }
   return 'applied';
+}
+
+// ── Missed-webhook fallback (QA-F4) ──────────────────────────────────────────
+
+const POLL_QUIET_MS = 10 * 60_000;
+const POLL_LIMIT = 50;
+const KITCHEN_FUNNEL: OrderStatus[] = [OrderStatus.RECEIVED, OrderStatus.ACCEPTED, OrderStatus.PREPARING, OrderStatus.READY];
+
+/**
+ * For pushed orders still in the kitchen funnel whose sync row has been quiet for 10
+ * minutes, read the POS status (GET /orders/:id) and apply it through the same §3 path.
+ * The poll time is the event time, so a delayed webhook from before the poll is stale.
+ */
+export async function pollStaleOrderStatuses(restaurantId: string): Promise<{ polled: number; applied: number; errors: number }> {
+  const out = { polled: 0, applied: 0, errors: 0 };
+  const cfg = await loadNovaryqConfig(restaurantId);
+  if (!cfg?.enabled) return out;
+  const rows = await prisma.novaryqOrderSync.findMany({
+    where: {
+      restaurantId,
+      state: 'SENT',
+      novaryqOrderId: { not: null },
+      updatedAt: { lt: new Date(Date.now() - POLL_QUIET_MS) },
+      order: { status: { in: KITCHEN_FUNNEL } },
+    },
+    orderBy: { updatedAt: 'asc' },
+    take: POLL_LIMIT,
+    select: { orderId: true, novaryqOrderId: true },
+  });
+  for (const r of rows) {
+    out.polled++;
+    try {
+      const polledAt = new Date();
+      const res = await novaryqRequest<{ status?: unknown }>(cfg, 'GET', `/orders/${encodeURIComponent(r.novaryqOrderId!)}`);
+      if (typeof res.data?.status !== 'string') continue;
+      const outcome = await applyOrderStatusEvent({ restaurantId, externalRef: r.orderId, orderId: r.novaryqOrderId, status: res.data.status, occurredAt: polledAt });
+      if (outcome === 'applied' || outcome === 'exception') out.applied++;
+    } catch (e) {
+      out.errors++;
+      log.warn({ orderId: r.orderId, err: (e as Error).message }, 'novaryq.status.poll_failed');
+    }
+  }
+  return out;
+}
+
+export async function runNovaryqStatusPoll(): Promise<{ restaurants: number; polled: number; applied: number; errors: number }> {
+  const out = { restaurants: 0, polled: 0, applied: 0, errors: 0 };
+  if (!novaryqFlagOn()) return out;
+  const rows = await prisma.novaryqLocationLink.findMany({ distinct: ['restaurantId'], select: { restaurantId: true } });
+  for (const { restaurantId } of rows) {
+    const r = await pollStaleOrderStatuses(restaurantId).catch((e) => {
+      log.error({ restaurantId, err: (e as Error).message }, 'novaryq.status.poll_restaurant_failed');
+      return { polled: 0, applied: 0, errors: 1 };
+    });
+    out.restaurants++;
+    out.polled += r.polled;
+    out.applied += r.applied;
+    out.errors += r.errors;
+  }
+  return out;
 }

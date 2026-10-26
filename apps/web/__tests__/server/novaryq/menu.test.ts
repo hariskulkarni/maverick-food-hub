@@ -19,6 +19,8 @@ const h = vi.hoisted(() => ({
   cfg: null as any,
 }));
 
+// The base-URL guard resolves the host on every call; keep unit tests off the network.
+vi.mock('node:dns/promises', () => ({ lookup: async () => [{ address: '93.184.216.34', family: 4 }] }));
 vi.mock('@/server/db', () => {
   const prisma: any = {
     novaryqLocationLink: {
