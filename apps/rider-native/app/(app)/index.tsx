@@ -3,7 +3,10 @@
  *
  *   - Online / offline toggle (POST /api/rider/online). While online we ping
  *     /api/rider/heartbeat every 30s so the server's auto-offline sweep keeps
- *     us live.
+ *     us live, and (with "Allow all the time") background tracking keeps the
+ *     rider live while the phone is locked. If the server set us offline while
+ *     the app was away, the next heartbeat / resume says so and the toggle
+ *     follows, with an explanation.
  *   - Current delivery card — the active assignment, if any.
  *   - Pull-to-refresh.
  *
@@ -21,7 +24,9 @@ import {
   Switch,
   ActivityIndicator,
   Alert,
+  AppState,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,7 +41,7 @@ import { TrainingBanner } from '../../components/training-banner';
 import { BreakModeCard } from '../../components/break-mode-card';
 import { useRiderLocation } from '../../lib/use-rider-location';
 import { pickTrackedOrderId, syncDeliveryTracking } from '../../lib/delivery-tracking';
-import { stopDeliveryTracking } from '../../lib/background-location';
+import { hasBackgroundPermission, stopDeliveryTracking } from '../../lib/background-location';
 
 /** A square quick-action tile on the dashboard. */
 function QuickAction({
@@ -161,6 +166,32 @@ function AssignmentCard({ a }: { a: Assignment }) {
   );
 }
 
+/** Shown once per app session when the server set the rider offline behind their back. */
+let setOfflineNoticeShown = false;
+function notifySetOffline() {
+  if (setOfflineNoticeShown) return;
+  setOfflineNoticeShown = true;
+  Alert.alert(
+    'You were set offline',
+    'Flavrly could not reach your app for over 2 minutes, so you were taken offline and will not get new orders. Go online again when you are ready. To stay online with your phone locked, allow location "All the time".'
+  );
+}
+
+/** Background-location disclosure: offered once per session when going online without it. */
+let backgroundOfferShown = false;
+async function offerBackgroundLocation() {
+  if (backgroundOfferShown) return;
+  try {
+    if (await hasBackgroundPermission()) return;
+    const bg = await Location.getBackgroundPermissionsAsync();
+    if (!bg.canAskAgain) return;
+    backgroundOfferShown = true;
+    router.push('/location-disclosure');
+  } catch {
+    // Permission APIs unavailable — foreground tracking still works.
+  }
+}
+
 export default function DashboardScreen() {
   const { rider, signOut } = useAuth();
   const router = useRouter();
@@ -175,6 +206,11 @@ export default function DashboardScreen() {
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Latest known online flag for callbacks that outlive a render (heartbeat, resume).
+  const onlineRef = useRef(false);
+  useEffect(() => {
+    onlineRef.current = online;
+  }, [online]);
 
   // "Last synced" indicator — set whenever data lands or the heartbeat fires,
   // and ticked on an interval so the relative label stays fresh.
@@ -195,6 +231,7 @@ export default function DashboardScreen() {
     setError(null);
     try {
       const [meRes, list] = await Promise.all([api.me(), api.assignments()]);
+      if (onlineRef.current && !meRes.online) notifySetOffline();
       setOnline(meRes.online);
       setMe(meRes);
       setAssignments(list);
@@ -228,17 +265,28 @@ export default function DashboardScreen() {
 
   // Heartbeat — runs only while online. Each successful ping refreshes the
   // "last synced" stamp so the indicator visibly tracks the 30s loop.
+  const sendHeartbeat = useCallback(async () => {
+    try {
+      const gps = await Location.hasServicesEnabledAsync().catch(() => true);
+      const res = await api.heartbeat(gps);
+      setLastSyncedAt(Date.now());
+      // The server set us offline (e.g. the app was away for >2 min without
+      // background location): follow it instead of showing a false "Online".
+      if (res && res.online === false && onlineRef.current) {
+        notifySetOffline();
+        setOnline(false);
+        void stopDeliveryTracking();
+      }
+    } catch {
+      // Network blip — the next tick retries.
+    }
+  }, []);
+
   useEffect(() => {
     if (online) {
-      api
-        .heartbeat()
-        .then(() => setLastSyncedAt(Date.now()))
-        .catch(() => {});
+      void sendHeartbeat();
       heartbeatRef.current = setInterval(() => {
-        api
-          .heartbeat()
-          .then(() => setLastSyncedAt(Date.now()))
-          .catch(() => {});
+        void sendHeartbeat();
       }, HEARTBEAT_MS);
     }
     return () => {
@@ -247,7 +295,18 @@ export default function DashboardScreen() {
         heartbeatRef.current = null;
       }
     };
-  }, [online]);
+  }, [online, sendHeartbeat]);
+
+  // Back in the foreground: refresh at once (heartbeat timers don't run while
+  // the phone is asleep) so the toggle shows the server's real state.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      void load();
+      if (onlineRef.current) void sendHeartbeat();
+    });
+    return () => sub.remove();
+  }, [load, sendHeartbeat]);
 
   // Re-render the relative "synced Ns ago" label once a second.
   useEffect(() => {
@@ -269,8 +328,14 @@ export default function DashboardScreen() {
     setOnline(next); // optimistic
     try {
       await api.setOnline(next);
-      // Going offline ends background delivery tracking.
-      if (!next) void stopDeliveryTracking();
+      if (!next) {
+        // Going offline ends all background tracking.
+        void stopDeliveryTracking();
+      } else {
+        // Keep the rider live while the phone is locked / in another app.
+        const running = await syncDeliveryTracking(assignments, true);
+        if (!running) void offerBackgroundLocation();
+      }
     } catch (e) {
       setOnline(!next); // revert on failure
       if (e instanceof ApiError && e.status === 409 && (e.body as { code?: string } | null)?.code === 'training/required') {

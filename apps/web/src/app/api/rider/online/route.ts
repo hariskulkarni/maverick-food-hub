@@ -44,5 +44,16 @@ export async function POST(req: NextRequest) {
     }
   }
   const p = await prisma.riderProfile.update({ where: { userId: session.user.id }, data: { isOnline: online } });
+  if (online) {
+    // Going online is proof the app is alive right now: stamp lastSeenAt so the
+    // auto-offline sweep (1-minute cron, 2-minute window) can't flip the rider
+    // back offline before the app's first heartbeat / location ping lands.
+    const now = new Date();
+    await prisma.riderHeartbeat.upsert({
+      where: { riderId: p.id },
+      create: { riderId: p.id, lastSeenAt: now },
+      update: { lastSeenAt: now },
+    });
+  }
   return Response.json(p);
 }

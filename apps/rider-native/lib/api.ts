@@ -413,9 +413,15 @@ export const api = {
   /** Active assignments (PENDING / ACCEPTED / PICKED_UP) with full order detail. */
   assignments: () => request<Assignment[]>('/api/rider/assignments'),
 
-  /** Liveness ping — sent every ~30s while online so the server doesn't auto-offline us. */
-  heartbeat: () =>
-    request<null>('/api/rider/heartbeat', { method: 'POST', body: { gpsEnabled: true } }),
+  /**
+   * Liveness ping — sent every ~30s while online so the server doesn't
+   * auto-offline us. Reports whether the phone's location services are on.
+   * The server answers with its own view of the online flag (`online`), so the
+   * app can notice it was set offline while it was in the background. Older
+   * servers answer 204 (null).
+   */
+  heartbeat: (gpsEnabled: boolean) =>
+    request<{ online?: boolean } | null>('/api/rider/heartbeat', { method: 'POST', body: { gpsEnabled } }),
 
   /** Claimable orders from the shared pool (READY, unclaimed, platform-wide). */
   pool: () => request<PoolOrder[]>('/api/rider/pool'),
