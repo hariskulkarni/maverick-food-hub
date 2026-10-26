@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 const Body = z.object({ branchId: z.string().min(1).max(64) });
 
 export async function POST(req: NextRequest) {
-  const ctx = await novaryqAdminGate({ write: true });
+  const ctx = await novaryqAdminGate({ write: true }, req.nextUrl.searchParams.get('restaurantId'));
   if (ctx instanceof Response) return ctx;
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'branchId is required.' }, { status: 400 });

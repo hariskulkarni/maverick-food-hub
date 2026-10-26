@@ -25,20 +25,25 @@ vi.mock('@/server/db', () => {
     restaurantUser: {
       findMany: async () => [{ restaurantId: 'A', role: h.role, restaurant: { id: 'A', name: 'A', parentId: null } }],
     },
-    restaurant: { findMany: async () => [] },
+    restaurant: {
+      findMany: async () => [],
+      findUnique: async ({ where }: any) => (['A', 'B'].includes(where.id) ? { id: where.id, name: where.id, slug: where.id.toLowerCase() } : null),
+    },
   };
   const tenant: Record<string, any> = {
     branch: { findFirst: async ({ where }: any) => (branches[where.id] === where.restaurantId ? { id: where.id } : null) },
     menuItem: { findFirst: async ({ where }: any) => (branches[items[where.id]] === where.branch.restaurantId ? { id: where.id } : null) },
     novaryqOrderSync: {
       findFirst: async ({ where }: any) => (syncs[where.id] === where.restaurantId ? { id: where.id, state: 'DEAD', orderId: 'o', order: { status: 'RECEIVED' } } : null),
+      findMany: async ({ where }: any) => { h.writes.push(`read-syncs:${where.restaurantId}`); return []; },
       updateMany: async () => { h.writes.push('sync'); return { count: 1 }; },
     },
     novaryqItemLink: {
       upsert: async () => { h.writes.push('link'); return {}; },
       deleteMany: async () => { h.writes.push('unlink'); return { count: 1 }; },
     },
-    novaryqLocationLink: { deleteMany: async () => { h.writes.push('location'); return { count: 0 }; } },
+    novaryqLocationLink: { deleteMany: async ({ where }: any) => { h.writes.push(`location:${where.restaurantId}`); return { count: 0 }; } },
+    novaryqWebhookEvent: { findMany: async () => [] },
   };
   const prisma = new Proxy({}, {
     get(_t, model: string) {
@@ -58,10 +63,10 @@ const ctx = (params: Record<string, string>): any => ({ params: Promise.resolve(
 const base = '@/app/api/admin/integrations/novaryq';
 
 const ROUTES: [string, () => Promise<Response>][] = [
-  ['GET overview', async () => (await import(`${base}/route`)).GET()],
+  ['GET overview', async () => (await import(`${base}/route`)).GET(req('GET'))],
   ['PUT credentials', async () => (await import(`${base}/route`)).PUT(req('PUT', { baseUrl: 'https://p', clientId: 'c', secret: 's', enabled: true }))],
-  ['DELETE credentials', async () => (await import(`${base}/route`)).DELETE()],
-  ['POST test', async () => (await import(`${base}/test/route`)).POST()],
+  ['DELETE credentials', async () => (await import(`${base}/route`)).DELETE(req('DELETE'))],
+  ['POST test', async () => (await import(`${base}/test/route`)).POST(req('POST'))],
   ['PUT locations', async () => (await import(`${base}/locations/route`)).PUT(req('PUT', { branchId: 'bA', novaryqLocationId: 'loc_1' }))],
   ['DELETE locations', async () => (await import(`${base}/locations/route`)).DELETE(req('DELETE', undefined, 'http://x/api/admin/integrations/novaryq/locations?branchId=bA'))],
   ['GET items', async () => (await import(`${base}/items/route`)).GET(req('GET', undefined, 'http://x/api/admin/integrations/novaryq/items?branchId=bA'))],
@@ -108,11 +113,37 @@ describe('Novaryq admin routes refuse non-admins before touching tenant data', (
   });
 });
 
-describe('SUPER_ADMIN cannot target a tenant with ?restaurantId=', () => {
-  it('GET overview?restaurantId=A → 403', async () => {
+describe('platform console: SUPER_ADMIN manages any restaurant explicitly (?restaurantId=)', () => {
+  beforeEach(() => { h.open = true; });
+  const syncsUrl = (rid: string) => `http://x/api/admin/integrations/novaryq/syncs?restaurantId=${rid}`;
+
+  it('SUPER_ADMIN with ?restaurantId=B reads and writes restaurant B', async () => {
     h.session = { user: { id: 'sa', role: 'SUPER_ADMIN' } };
     const { GET } = await import(`${base}/syncs/route`);
-    expect((await GET(req('GET', undefined, 'http://x/api/admin/integrations/novaryq/syncs?restaurantId=A'))).status).toBe(403);
+    expect((await GET(req('GET', undefined, syncsUrl('B')))).status).toBe(200);
+    const { DELETE } = await import(`${base}/locations/route`);
+    expect((await DELETE(req('DELETE', undefined, 'http://x/api/admin/integrations/novaryq/locations?branchId=bB&restaurantId=B'))).status).toBe(200);
+    expect(h.writes).toEqual(['read-syncs:B', 'location:B']);
+  });
+
+  it('SUPER_ADMIN targeting an unknown restaurant → 404', async () => {
+    h.session = { user: { id: 'sa', role: 'SUPER_ADMIN' } };
+    const { GET } = await import(`${base}/syncs/route`);
+    expect((await GET(req('GET', undefined, syncsUrl('ZZ')))).status).toBe(404);
+  });
+
+  it('a restaurant ADMIN of A passing ?restaurantId=B still only reaches A', async () => {
+    const { GET } = await import(`${base}/syncs/route`);
+    expect((await GET(req('GET', undefined, syncsUrl('B')))).status).toBe(200);
+    expect(h.writes).toEqual(['read-syncs:A']);
+  });
+
+  it('delegated platform roles (ADMIN_ASSIST, QA, GUEST) are refused even with ?restaurantId=', async () => {
+    for (const role of ['ADMIN_ASSIST', 'QA', 'GUEST', 'DEVELOPER']) {
+      h.session = { user: { id: 'x', role } };
+      const { GET } = await import(`${base}/syncs/route`);
+      expect((await GET(req('GET', undefined, syncsUrl('B')))).status, role).toBe(403);
+    }
   });
 });
 

@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 const Body = z.object({ on: z.boolean(), allowPriceOverride: z.boolean().default(false) });
 
 export async function PUT(req: NextRequest) {
-  const ctx = await novaryqAdminGate({ write: true });
+  const ctx = await novaryqAdminGate({ write: true }, req.nextUrl.searchParams.get('restaurantId'));
   if (ctx instanceof Response) return ctx;
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'on is required.' }, { status: 400 });

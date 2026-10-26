@@ -5,8 +5,8 @@ import { replaySync } from '@/server/novaryq/push';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await novaryqAdminGate({ write: true });
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await novaryqAdminGate({ write: true }, req.nextUrl.searchParams.get('restaurantId'));
   if (ctx instanceof Response) return ctx;
   const { id } = await params;
   const r = await replaySync(ctx.restaurantId, id, ctx.userId);

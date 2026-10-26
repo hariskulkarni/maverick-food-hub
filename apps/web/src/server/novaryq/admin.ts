@@ -1,11 +1,12 @@
 /**
- * Novaryq admin surface (restaurant ADMIN of the active restaurant only).
+ * Novaryq admin surface.
  *
  * `novaryqAdminGate()` is the single authorization point for every
- * /api/admin/integrations/novaryq/* route: membership ADMIN via tenantAdminOrError
- * WITHOUT an explicit restaurantId, so a SUPER_ADMIN cannot target a tenant here
- * (they get the read-only /platform/novaryq page) and KITCHEN members get 403.
- * Writes additionally need the platform flag.
+ * /api/admin/integrations/novaryq/* route (tenantAdminOrError):
+ *  - restaurant ADMIN membership of the ACTIVE restaurant (a `?restaurantId=` from them is ignored);
+ *  - SUPER_ADMIN only with an explicit `?restaurantId=` — the /platform/novaryq console manages any
+ *    restaurant (owner decision 2026-10-26, FL-13); delegated platform roles, KITCHEN and customers get 403.
+ * Writes additionally need the platform flag. Every write is audited with the acting user.
  */
 import { prisma } from '../db';
 import { auth } from '../auth';
@@ -17,13 +18,16 @@ import { disconnect, saveConfig, testAndSave } from '../integrations';
 import { NovaryqApiError, checkBaseUrl, normalizeBaseUrl } from './client';
 import { novaryqFlagOn, novaryqWebhookUrl, parseNovaryqConfig, serializeNovaryqConfig, type NovaryqConfig } from './config';
 import { checkLocationCurrency, testNovaryqConnection } from './menu';
+import { computeHealth, type Health } from './health';
+
+export { computeHealth, type Health };
 
 export const NOVARYQ_WEBHOOK_EVENTS = ['order.status_changed', 'menu.item.availability_changed'];
 
 export interface AdminContext { restaurantId: string; restaurantName: string; userId: string }
 
-export async function novaryqAdminGate(opts: { write?: boolean } = {}): Promise<AdminContext | Response> {
-  const restaurant = await tenantAdminOrError(null);
+export async function novaryqAdminGate(opts: { write?: boolean } = {}, targetRestaurantId: string | null = null): Promise<AdminContext | Response> {
+  const restaurant = await tenantAdminOrError(targetRestaurantId);
   if (restaurant instanceof Response) return restaurant;
   if (opts.write && !novaryqFlagOn()) {
     return Response.json({ error: 'The Novaryq integration is not enabled on this platform yet.' }, { status: 403 });
@@ -52,7 +56,6 @@ async function storedConfig(restaurantId: string): Promise<NovaryqConfig | null>
   }
 }
 
-export type Health = 'off' | 'not_connected' | 'healthy' | 'degraded' | 'failing';
 
 /**
  * Novaryq's rule for the Flavrly restaurant URL it stores (PR #61, `PUT /v1/settings/consumer-channel`,
@@ -67,15 +70,6 @@ export function novaryqAcceptsFlavrlyUrl(raw: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** One health rule for the admin badge and the platform list. */
-export function computeHealth(i: { hasCred: boolean; connected: boolean; enabled: boolean; dead: number; failed: number; retrying: number }): Health {
-  if (!novaryqFlagOn() || (i.hasCred && !i.enabled)) return 'off';
-  if (!i.hasCred) return 'not_connected';
-  if (!i.connected || i.dead > 0) return 'failing';
-  if (i.failed > 0 || i.retrying > 0) return 'degraded';
-  return 'healthy';
 }
 
 export async function novaryqOverview(restaurantId: string) {

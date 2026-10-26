@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
 const Body = z.object({ menuItemId: z.string().min(1).max(64), itemCode: z.string().max(64).nullable() });
 
 export async function GET(req: NextRequest) {
-  const ctx = await novaryqAdminGate();
+  const ctx = await novaryqAdminGate({}, req.nextUrl.searchParams.get('restaurantId'));
   if (ctx instanceof Response) return ctx;
   const branchId = req.nextUrl.searchParams.get('branchId') ?? '';
   const branch = await prisma.branch.findFirst({ where: { id: branchId, restaurantId: ctx.restaurantId }, select: { id: true } });
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const ctx = await novaryqAdminGate({ write: true });
+  const ctx = await novaryqAdminGate({ write: true }, req.nextUrl.searchParams.get('restaurantId'));
   if (ctx instanceof Response) return ctx;
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'menuItemId and itemCode are required.' }, { status: 400 });

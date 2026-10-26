@@ -4,7 +4,7 @@ summary: Send every Flavrly order to your Novaryq POS kitchen, follow kitchen pr
 audience: RESTAURANT_ADMIN
 appArea: admin.integrations
 tags: novaryq, pos, integration, kitchen ticket, kot, 86, sold out, sync, webhook
-related: restaurant-order-statuses, menu-item-availability, restaurant-accept-orders
+related: restaurant-order-statuses, menu-item-availability, restaurant-accept-orders, platform-novaryq-console
 language: en
 ---
 ## What it does
@@ -48,5 +48,6 @@ Once your branches and menu are linked, turn on **POS: Novaryq** under **Admin >
 - Kitchen progress follows the POS: when the kitchen marks the order ready in Novaryq, it becomes **Ready** on Flavrly (accepted and preparing on the way). If **Auto-accept orders** is on in Settings > Order flow, the order is accepted as soon as the ticket reaches the kitchen; otherwise it stays new until you accept it on Flavrly or the POS marks it ready.
 - Flavrly riders deliver: delivery orders are marked in Novaryq as delivered by Flavrly, so do not send your own driver. For delivery orders the rider completes the order on Flavrly.
 - If an order is voided in Novaryq after the rider has picked it up, Flavrly does not cancel it automatically. The platform team is alerted to decide.
+- The Flavrly platform team can also set this up for you from their console; every change is recorded.
 - Your API secret and webhook secret are stored encrypted and are never shown again. To change one, type the new value; leave the box empty to keep the saved one.
 - See [Order statuses](help:restaurant-order-statuses) and [Item availability](help:menu-item-availability).

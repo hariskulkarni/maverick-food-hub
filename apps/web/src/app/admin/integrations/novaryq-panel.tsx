@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -60,16 +60,42 @@ async function call<T = ApiResult>(url: string, init?: RequestInit): Promise<{ o
   return { ok: r.ok && (data as { ok?: boolean }).ok !== false, data };
 }
 
-export function NovaryqPanel() {
+/**
+ * The restaurant the panel manages: '' = the caller's active restaurant (restaurant admin);
+ * an id = the super-admin platform console (/platform/novaryq/[restaurantId]), sent as
+ * ?restaurantId= — the API honours it for SUPER_ADMIN only.
+ */
+const Scope = createContext('');
+
+function useApi() {
+  const rid = useContext(Scope);
+  return useMemo(
+    () =>
+      <T = ApiResult,>(url: string, init?: RequestInit) =>
+        call<T>(rid ? `${url}${url.includes('?') ? '&' : '?'}restaurantId=${encodeURIComponent(rid)}` : url, init),
+    [rid],
+  );
+}
+
+export function NovaryqPanel({ restaurantId = '' }: { restaurantId?: string } = {}) {
+  return (
+    <Scope.Provider value={restaurantId}>
+      <PanelBody />
+    </Scope.Provider>
+  );
+}
+
+function PanelBody() {
+  const api = useApi();
   const [ov, setOv] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await call<Overview>(API);
+    const r = await api<Overview>(API);
     if (r.ok) setOv(r.data);
     else toast.error((r.data as ApiResult).error ?? 'Could not load the Novaryq settings');
     setLoading(false);
-  }, []);
+  }, [api]);
   useEffect(() => { load(); }, [load]);
 
   if (!ov) return <div className="h-40 rounded-lg border bg-muted/20 shimmer" aria-busy={loading} />;
@@ -104,6 +130,7 @@ const copyText = (t: string) => navigator.clipboard?.writeText(t).then(() => toa
 
 /** "Already on Novaryq India?" — the onboarding path (ADR-FNI-001 §4.2) as a checklist over the sections below. */
 function IndiaSetup({ ov, onSaved }: { ov: Overview; onSaved: () => void }) {
+  const api = useApi();
   const [allowPrice, setAllowPrice] = useState(ov.allowPriceOverride);
   const [busy, setBusy] = useState(false);
   const steps = [
@@ -115,7 +142,7 @@ function IndiaSetup({ ov, onSaved }: { ov: Overview; onSaved: () => void }) {
   ];
   const setMaster = async (on: boolean, allowPriceOverride = allowPrice) => {
     setBusy(true);
-    const r = await call(`${API}/menu-master`, { method: 'PUT', body: JSON.stringify({ on, allowPriceOverride }) });
+    const r = await api(`${API}/menu-master`, { method: 'PUT', body: JSON.stringify({ on, allowPriceOverride }) });
     setBusy(false);
     if (r.ok) { toast.success(on ? 'Novaryq is now your menu master' : 'Menu editing is back on Flavrly'); onSaved(); }
     else toast.error(r.data.error ?? 'Failed');
@@ -180,6 +207,7 @@ function IndiaSetup({ ov, onSaved }: { ov: Overview; onSaved: () => void }) {
 }
 
 function Credentials({ ov, onSaved }: { ov: Overview; onSaved: () => void }) {
+  const api = useApi();
   const [baseUrl, setBaseUrl] = useState(ov.summary?.baseUrl ?? '');
   const [clientId, setClientId] = useState(ov.summary?.clientId ?? '');
   const [secret, setSecret] = useState('');
@@ -188,20 +216,20 @@ function Credentials({ ov, onSaved }: { ov: Overview; onSaved: () => void }) {
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
-    const r = await call(API, { method: 'PUT', body: JSON.stringify({ baseUrl, clientId, secret, webhookSecret, enabled }) });
+    const r = await api(API, { method: 'PUT', body: JSON.stringify({ baseUrl, clientId, secret, webhookSecret, enabled }) });
     setBusy(false);
     if (r.ok) { toast.success(r.data.detail ?? 'Saved'); setSecret(''); setWebhookSecret(''); onSaved(); }
     else toast.error(r.data.error ?? 'Save failed');
   };
   const test = async () => {
     setBusy(true);
-    const r = await call(`${API}/test`, { method: 'POST' });
+    const r = await api(`${API}/test`, { method: 'POST' });
     setBusy(false);
     if (r.ok) toast.success(r.data.detail ?? 'Connected'); else toast.error(r.data.error ?? 'Connection failed');
   };
   const remove = async () => {
     if (!confirm('Disconnect Novaryq? New orders stop being sent to your POS.')) return;
-    const r = await call(API, { method: 'DELETE' });
+    const r = await api(API, { method: 'DELETE' });
     if (r.ok) { toast.success('Disconnected'); onSaved(); } else toast.error(r.data.error ?? 'Failed');
   };
   return (
@@ -273,15 +301,16 @@ function Webhook({ ov }: { ov: Overview }) {
 }
 
 function Locations({ ov, onSaved }: { ov: Overview; onSaved: () => void }) {
+  const api = useApi();
   const [draft, setDraft] = useState<Record<string, string>>(() =>
     Object.fromEntries(ov.branches.map((b) => [b.id, b.location?.novaryqLocationId ?? ''])),
   );
   const save = async (branchId: string) => {
-    const r = await call(`${API}/locations`, { method: 'PUT', body: JSON.stringify({ branchId, novaryqLocationId: draft[branchId] ?? '' }) });
+    const r = await api(`${API}/locations`, { method: 'PUT', body: JSON.stringify({ branchId, novaryqLocationId: draft[branchId] ?? '' }) });
     if (r.ok) { toast.success(`Linked (${r.data.itemCount} Novaryq items, INR)`); onSaved(); } else toast.error(r.data.error ?? 'Failed');
   };
   const remove = async (branchId: string) => {
-    const r = await call(`${API}/locations?branchId=${encodeURIComponent(branchId)}`, { method: 'DELETE' });
+    const r = await api(`${API}/locations?branchId=${encodeURIComponent(branchId)}`, { method: 'DELETE' });
     if (r.ok) { toast.success('Unlinked'); onSaved(); } else toast.error(r.data.error ?? 'Failed');
   };
   return (
@@ -318,6 +347,7 @@ function Locations({ ov, onSaved }: { ov: Overview; onSaved: () => void }) {
 }
 
 function ItemMapping({ branches }: { branches: Overview['branches'] }) {
+  const api = useApi();
   const [branchId, setBranchId] = useState(branches[0]?.id ?? '');
   const [data, setData] = useState<Mapping | null>(null);
   const [q, setQ] = useState('');
@@ -325,22 +355,22 @@ function ItemMapping({ branches }: { branches: Overview['branches'] }) {
   const load = useCallback(async () => {
     if (!branchId) return;
     setBusy(true);
-    const r = await call<Mapping>(`${API}/items?branchId=${encodeURIComponent(branchId)}`);
+    const r = await api<Mapping>(`${API}/items?branchId=${encodeURIComponent(branchId)}`);
     setBusy(false);
     if (r.ok) setData(r.data); else { setData(null); toast.error((r.data as ApiResult).error ?? 'Could not load the Novaryq menu'); }
-  }, [branchId]);
+  }, [api, branchId]);
   useEffect(() => { load(); }, [load]);
   const suggested = useMemo(() => new Map((data?.suggestions ?? []).map((s) => [s.menuItemId, s.itemCode])), [data]);
   const rows = (data?.items ?? []).filter((i) => !q || `${i.name} ${i.category} ${i.linkedCode ?? ''}`.toLowerCase().includes(q.toLowerCase()));
 
   const link = async (menuItemId: string, itemCode: string | null) => {
-    const r = await call(`${API}/items`, { method: 'PUT', body: JSON.stringify({ menuItemId, itemCode }) });
+    const r = await api(`${API}/items`, { method: 'PUT', body: JSON.stringify({ menuItemId, itemCode }) });
     if (r.ok) load(); else toast.error(r.data.error ?? 'Failed');
   };
   const post = async (path: string, confirmText?: string) => {
     if (confirmText && !confirm(confirmText)) return;
     setBusy(true);
-    const r = await call(`${API}/${path}`, { method: 'POST', body: JSON.stringify({ branchId }) });
+    const r = await api(`${API}/${path}`, { method: 'POST', body: JSON.stringify({ branchId }) });
     setBusy(false);
     if (r.ok) { toast.success(path === 'import' ? `Imported: ${r.data.created} new, ${r.data.updated} updated, ${r.data.linked} linked` : `Linked ${r.data.linked} items`); load(); }
     else toast.error(r.data.error ?? 'Failed');
@@ -415,15 +445,16 @@ function ItemMapping({ branches }: { branches: Overview['branches'] }) {
 }
 
 function SyncLog({ onChange }: { onChange: () => void }) {
+  const api = useApi();
   const [state, setState] = useState('');
   const [data, setData] = useState<{ syncs: SyncRow[]; events: EventRow[] } | null>(null);
   const load = useCallback(async () => {
-    const r = await call<{ syncs: SyncRow[]; events: EventRow[] }>(`${API}/syncs${state ? `?state=${state}` : ''}`);
+    const r = await api<{ syncs: SyncRow[]; events: EventRow[] }>(`${API}/syncs${state ? `?state=${state}` : ''}`);
     if (r.ok) setData(r.data);
-  }, [state]);
+  }, [api, state]);
   useEffect(() => { load(); }, [load]);
   const replay = async (id: string) => {
-    const r = await call(`${API}/syncs/${encodeURIComponent(id)}/replay`, { method: 'POST' });
+    const r = await api(`${API}/syncs/${encodeURIComponent(id)}/replay`, { method: 'POST' });
     if (r.ok) { toast.success('Queued again'); load(); onChange(); } else toast.error(r.data.error ?? 'Failed');
   };
   return (

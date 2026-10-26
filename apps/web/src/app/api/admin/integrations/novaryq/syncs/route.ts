@@ -5,7 +5,7 @@ import { novaryqAdminGate, syncLog } from '@/server/novaryq/admin';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  const ctx = await novaryqAdminGate();
+  const ctx = await novaryqAdminGate({}, req.nextUrl.searchParams.get('restaurantId'));
   if (ctx instanceof Response) return ctx;
   return Response.json(await syncLog(ctx.restaurantId, req.nextUrl.searchParams.get('state')));
 }

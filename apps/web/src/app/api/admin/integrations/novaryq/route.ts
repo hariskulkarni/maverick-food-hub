@@ -19,14 +19,14 @@ const Body = z.object({
   enabled: z.boolean(),
 });
 
-export async function GET() {
-  const ctx = await novaryqAdminGate();
+export async function GET(req: NextRequest) {
+  const ctx = await novaryqAdminGate({}, req.nextUrl.searchParams.get('restaurantId'));
   if (ctx instanceof Response) return ctx;
   return Response.json(await novaryqOverview(ctx.restaurantId));
 }
 
 export async function PUT(req: NextRequest) {
-  const ctx = await novaryqAdminGate({ write: true });
+  const ctx = await novaryqAdminGate({ write: true }, req.nextUrl.searchParams.get('restaurantId'));
   if (ctx instanceof Response) return ctx;
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: 'Novaryq URL, API key and enabled are required.' }, { status: 400 });
@@ -34,8 +34,8 @@ export async function PUT(req: NextRequest) {
   return Response.json(r, { status: r.ok ? 200 : 422 });
 }
 
-export async function DELETE() {
-  const ctx = await novaryqAdminGate({ write: true });
+export async function DELETE(req: NextRequest) {
+  const ctx = await novaryqAdminGate({ write: true }, req.nextUrl.searchParams.get('restaurantId'));
   if (ctx instanceof Response) return ctx;
   await disconnectNovaryq(ctx);
   return Response.json({ ok: true });
