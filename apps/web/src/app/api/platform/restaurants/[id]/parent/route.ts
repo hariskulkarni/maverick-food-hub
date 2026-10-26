@@ -1,11 +1,12 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { auth } from '@/server/auth';
 import { validateParentAssignment } from './_helpers';
 import { revalidateRestaurantSurfaces } from '@/server/revalidate';
+import { clientIp } from '@/server/http/client-ip';
 
 const Body = z.object({
   /** Parent restaurant id to nest under, or null to detach. */
@@ -14,7 +15,8 @@ const Body = z.object({
 
 /** Set or clear a restaurant's parent (group membership). Super-admin only. */
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const { id } = await params;
   const { parentId } = Body.parse(await req.json());
 
@@ -35,7 +37,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     entityId: id,
     before,
     after: { parentId: after.parentId },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+    ipAddress: clientIp(req.headers),
   });
 
   revalidateRestaurantSurfaces();

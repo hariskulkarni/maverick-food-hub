@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 
 /**
  * Recent NotificationLog entries that are addressed to users of this
@@ -13,7 +13,9 @@ import { requireRestaurant } from '@/server/tenancy';
  *   - limit:    1..200 (default 50)
  */
 export async function GET(req: NextRequest) {
-  const restaurant = await requireRestaurant();
+  // Admin-only (kitchen UI never calls this) — membership-role gate.
+  const restaurant = await tenantAdminOrError();
+  if (restaurant instanceof Response) return restaurant;
   const url = new URL(req.url);
   const channel = url.searchParams.get('channel') || undefined;
   const status  = url.searchParams.get('status')  || undefined;

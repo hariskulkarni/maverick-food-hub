@@ -10,6 +10,7 @@ import { Gift, ArrowRight } from 'lucide-react';
 import { remainingBalance } from '@/server/signup-bonus';
 import { LogoutButton } from './logout-button';
 import { PushToggle } from '@/components/push/push-toggle';
+import { EditProfile } from './edit-profile';
 
 export const metadata = { title: 'Profile' };
 // Always render the live profile (addresses, balances) from the DB.
@@ -21,7 +22,7 @@ export default async function ProfilePage() {
   if (!session?.user?.id) redirect('/login?next=/profile');
 
   const [user, wallet, loyalty, addresses, recentOrders, referrals, signupGrant] = await Promise.all([
-    prisma.user.findUnique({ where: { id: session.user.id } }),
+    prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true, name: true, phone: true, email: true, role: true } }),
     prisma.wallet.findUnique({ where: { userId: session.user.id } }),
     prisma.loyaltyAccount.findUnique({ where: { userId: session.user.id } }),
     prisma.address.findMany({ where: { userId: session.user.id }, orderBy: { isDefault: 'desc' } }),
@@ -45,8 +46,10 @@ export default async function ProfilePage() {
   } : null;
 
   return (
-    <div className="container py-6 md:py-8 grid gap-6 md:grid-cols-[280px_1fr]">
-      <aside className="space-y-3">
+    <div className="container py-6 md:py-8 grid grid-cols-1 gap-6 md:grid-cols-[280px_1fr]">
+      {/* min-w-0: grid items default to min-width:auto, so the scrolling tab rail
+          widened the column past a 390px viewport and clipped the page. */}
+      <aside className="space-y-3 min-w-0">
         {/* Avatar + name header. Tighter 64px circle on mobile (size-16), more
             generous breathing room on desktop. */}
         <Card className="rounded-2xl md:rounded-xl">
@@ -103,7 +106,8 @@ export default async function ProfilePage() {
         <LogoutButton />
       </aside>
 
-      <section className="space-y-4">
+      <section className="space-y-4 min-w-0">
+        {user?.role === 'CUSTOMER' && <EditProfile name={user.name} email={user.email} phone={user.phone} />}
         <PushToggle />
         {bonus && !bonus.revoked && bonus.balance > 0 && (
           <Card className="border-primary/30 bg-gradient-to-br from-primary/10 via-warning/5 to-card">

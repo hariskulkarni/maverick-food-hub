@@ -131,7 +131,7 @@ export function IntegrationWizard(props: Props) {
   }
 
   async function disconnect() {
-    if (!confirm(`Disconnect ${title}? The system will fall back to mock mode.`)) return;
+    if (!confirm(`Disconnect ${title}? Anything that depends on it (e.g. online payments for a payment gateway) stops working until you reconnect.`)) return;
     const r = await fetch(`/api/admin/integrations/${provider}${qs}`, { method: 'DELETE' });
     if (!r.ok) return toast.error('Disconnect failed');
     toast.success(`${title} disconnected.`);
@@ -167,7 +167,7 @@ export function IntegrationWizard(props: Props) {
               <ul className="ml-5 list-disc text-muted-foreground space-y-0.5">
                 <li>Credentials are encrypted at rest with AES-256-GCM.</li>
                 <li>Secrets are never shown again after saving — only the last 4 characters.</li>
-                <li>Disconnect any time to revert to mock mode.</li>
+                <li>Disconnect any time — features that depend on it (e.g. online payments) stop until you reconnect; there is no mock fallback in production.</li>
               </ul>
             </div>
           </div>

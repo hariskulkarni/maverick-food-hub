@@ -229,6 +229,13 @@ export function ZoneForm({
             <Plus className="size-4" /> Add
           </Button>
         </div>
+        {brackets.length === 0 && (
+          <p className={editing ? 'text-xs font-medium text-destructive' : 'text-xs text-muted-foreground'}>
+            {editing
+              ? 'Add at least one fee bracket. A zone without fee brackets refuses every delivery.'
+              : 'No brackets added: the zone will start with one bracket (from ₹0) charging the branch base delivery fee. You can edit it later.'}
+          </p>
+        )}
         {brackets.map((b, i) => (
           <div key={i} className="flex flex-wrap items-end gap-2 rounded-md border p-2">
             <div className="min-w-0 flex-1 basis-28 space-y-1">
@@ -286,7 +293,7 @@ export function ZoneForm({
       </section>
 
       <div className="flex justify-end gap-2">
-        <Button className="h-11" onClick={save} disabled={busy || !name.trim() || !shapeOk}>
+        <Button className="h-11" onClick={save} disabled={busy || !name.trim() || !shapeOk || (!!editing && brackets.length === 0)}>
           {busy ? 'Saving…' : editing ? 'Save zone' : 'Create zone'}
         </Button>
       </div>

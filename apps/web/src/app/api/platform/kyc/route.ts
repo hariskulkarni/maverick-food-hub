@@ -11,7 +11,7 @@
  */
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { toPublicDoc, ALL_KYC_TYPES } from '@/server/kyc';
 import { KycDocumentStatus, KycDocumentType, Prisma } from '@prisma/client';
 
@@ -20,7 +20,8 @@ export const dynamic = 'force-dynamic';
 const ALL_STATUSES: KycDocumentStatus[] = ['PENDING', 'APPROVED', 'REJECTED', 'EXPIRED'];
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const url = new URL(req.url);
 
   const statusParam = url.searchParams.get('status');

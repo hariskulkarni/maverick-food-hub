@@ -13,7 +13,8 @@ const h = vi.hoisted(() => ({
 }));
 vi.mock('@/server/integrations', () => ({ getConfig: h.getConfig, listForRestaurant: h.listForRestaurant }));
 vi.mock('@/server/log', () => ({ log: { info: h.info, warn: h.warn, error: h.error } }));
-vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: h.requireManagedRestaurant }));
+vi.mock('@/server/tenancy', async () => ({ requireManagedRestaurant: h.requireManagedRestaurant, ...(await import('../../helpers/tenant-admin-mock')).tenantAdminMocks((rid) => (h.requireManagedRestaurant)(rid)) }));
+vi.mock('@/server/reviews/review-audit', () => ({ auditReview: vi.fn() }));
 vi.mock('@/server/db', () => ({
   prisma: { reviewAutoReplyConfig: { upsert: h.upsert, findUnique: h.findUnique } },
 }));
@@ -87,7 +88,8 @@ describe('reviews security', () => {
     expect(s).not.toContain('configEncrypted');
     expect(s).not.toContain('sk-ant-');
     const body = JSON.parse(s);
-    expect(Object.keys(body).sort()).toEqual(['autoPublishReviews', 'autoReply', 'google', 'llm']);
+    expect(Object.keys(body).sort()).toEqual(['autoPublishReviews', 'autoReply', 'google', 'llm', 'places']);
+    expect(Object.keys(body.places).sort()).toEqual(['configured', 'connected', 'name']);
     expect(Object.keys(body.google).sort()).toEqual(['status', 'summary']);
     expect(Object.keys(body.llm).sort()).toEqual(['status', 'summary']);
     expect(body.llm.summary).toEqual({ provider: 'anthropic', apiKey: '••••T123', model: 'm' });

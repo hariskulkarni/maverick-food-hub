@@ -15,7 +15,7 @@
  *                       count, price, branchId so the client can add-to-cart)
  *   - `recentOrders`  → last 5 orders to this restaurant (code, date,
  *                       total, status)
- *   - `activeCoupons` → platform-wide ACTIVE coupons currently valid
+ *   - `activeCoupons` → ACTIVE coupons of this restaurant + platform-wide ones, currently valid
  *   - `restaurant`    → id, slug, name, logo, cover
  *
  * 401 if no session, 404 if the slug doesn't resolve to an ACTIVE restaurant.
@@ -92,7 +92,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ slug: string }
     prisma.coupon.findMany({
       where: {
         isActive: true,
-        OR: [{ validTo: null }, { validTo: { gt: now } }]
+        validFrom: { lte: now },
+        // Only coupons this restaurant created (any of its branches) plus
+        // platform-wide ones (no branch) — mirrors isLegacyCouponUsable().
+        AND: [
+          { OR: [{ validTo: null }, { validTo: { gt: now } }] },
+          { OR: [{ branchId: null }, { branchId: { in: branchIds } }] }
+        ]
       },
       orderBy: { createdAt: 'desc' },
       take: 6,

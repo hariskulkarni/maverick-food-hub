@@ -24,10 +24,10 @@ import {
   api,
   ApiError,
   type Assignment,
-  type AssignmentStatus,
   type EarningsSummary,
 } from '../../lib/api';
 import { colors, spacing, radius, font } from '../../lib/theme';
+import { orderHold } from '../../lib/order-hold';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -59,12 +59,19 @@ function assignmentWhen(a: Assignment): string | null {
   return a.pickedUpAt ?? a.acceptedAt ?? a.assignedAt ?? null;
 }
 
-function activeLabel(status: AssignmentStatus): {
+function activeLabel(a: Assignment): {
   label: string;
   icon: IconName;
   color: string;
 } {
-  switch (status) {
+  const hold = orderHold(a);
+  if (hold === 'unreachable') {
+    return { label: 'Customer unreachable — support alerted', icon: 'alert-circle-outline', color: colors.warning };
+  }
+  if (hold === 'closed') {
+    return { label: 'Closed by support', icon: 'close-circle-outline', color: colors.danger };
+  }
+  switch (a.status) {
     case 'PICKED_UP':
       return { label: 'Out for delivery', icon: 'bicycle', color: colors.primary };
     case 'ACCEPTED':
@@ -82,7 +89,7 @@ function buildFeed(
   const items: FeedItem[] = [];
 
   for (const a of assignments) {
-    const meta = activeLabel(a.status);
+    const meta = activeLabel(a);
     items.push({
       key: `assignment-${a.id}`,
       label: meta.label,

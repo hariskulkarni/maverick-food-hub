@@ -3,23 +3,28 @@
 import { useState, useMemo } from 'react';
 import { Wallet, TrendingUp, Award, Star } from 'lucide-react';
 
-/**
- * Interactive per-delivery earnings calculator. Riders slide three inputs
- * (distance, surge multiplier, tier) and we run the same maths the dispatch
- * engine uses to compute the actual payout — so the number on screen is what
- * they'd really see in their wallet for a delivery with these parameters.
- *
- * Formula: ((BASE + DISTANCE × PER_KM) × surge) × (1 + tier%) + tip
- */
-const BASE_FARE = 30;
-const PER_KM = 6;
+import { computeFromRule } from '@/lib/payout-math';
+import { TIERS as TIER_LADDER } from '@/lib/rider-tiers';
 
-const TIERS = [
-  { name: 'Bronze',   pct: 0,  hint: '0–60 deliveries / month' },
-  { name: 'Silver',   pct: 5,  hint: '61–150 deliveries / month' },
-  { name: 'Gold',     pct: 10, hint: '151–300 deliveries / month' },
-  { name: 'Platinum', pct: 15, hint: '301+ deliveries / month' },
-];
+/**
+ * Interactive per-delivery earnings calculator. Riders pick a distance, a
+ * surge level and a tier, and we run the pay engine's own maths
+ * (`computeFromRule`, the function the dispatch engine calls at claim time)
+ * with the platform DEFAULT rates — ₹30 base, ₹5/km after the first km, tier
+ * bonus applied to the surge uplift only. The live rate can differ when the
+ * platform team configures a payout rule, so the copy says "default rates".
+ *
+ * Evaluated at an off-peak IST time so peak/late-night bonuses don't inflate
+ * the example. Tips are not shown: the platform does not collect tips yet.
+ */
+const OFF_PEAK_EXAMPLE = new Date('2026-01-07T10:30:00.000Z'); // Wed 16:00 IST
+
+const TIERS = TIER_LADDER.map((t) => ({
+  name: t.name.charAt(0) + t.name.slice(1).toLowerCase(),
+  pct: Math.round(t.surgeShareBonus * 100),
+  share: t.surgeShareBonus,
+  hint: t.requirement,
+}));
 
 const SURGES = [
   { val: 1.0, label: 'No surge' },
@@ -32,25 +37,25 @@ export function EarningsCalculator() {
   const [km, setKm] = useState(4);
   const [surge, setSurge] = useState(1.0);
   const [tierIdx, setTierIdx] = useState(0);
-  const [tip, setTip] = useState(0);
 
   const breakdown = useMemo(() => {
-    const distance = km * PER_KM;
-    const subtotal = BASE_FARE + distance;
-    const afterSurge = subtotal * surge;
-    const tierPct = TIERS[tierIdx].pct;
-    const afterTier = afterSurge * (1 + tierPct / 100);
-    const total = afterTier + tip;
+    const r = computeFromRule(null, {
+      distanceKm: km,
+      placedAt: OFF_PEAK_EXAMPLE,
+      subtotal: 0,
+      surgeMultiplier: surge,
+      tierSurgeShareBonus: TIERS[tierIdx].share,
+    });
+    // Split the engine's surge bonus into the plain surge uplift and the tier's extra share.
+    const surgeOnly = r.surgeMultiplier > 1 ? (r.surgeBonus / (1 + r.tierSurgeShareBonus)) : 0;
     return {
-      base: BASE_FARE,
-      distance,
-      subtotal,
-      surgeAdd: afterSurge - subtotal,
-      tierAdd: afterTier - afterSurge,
-      tip,
-      total,
+      base: r.baseAmount,
+      distance: r.perKmAmount + r.longDistanceAmount,
+      surgeAdd: +surgeOnly.toFixed(2),
+      tierAdd: +(r.surgeBonus - surgeOnly).toFixed(2),
+      total: r.payout,
     };
-  }, [km, surge, tierIdx, tip]);
+  }, [km, surge, tierIdx]);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
@@ -91,7 +96,7 @@ export function EarningsCalculator() {
               <div className="text-sm font-semibold">Your tier</div>
               <div className="text-xs text-muted-foreground">{TIERS[tierIdx].hint}</div>
             </div>
-            <div className="text-sm font-bold text-primary">+{TIERS[tierIdx].pct}%</div>
+            <div className="text-sm font-bold text-primary">+{TIERS[tierIdx].pct}% of surge</div>
           </div>
           <div className="grid grid-cols-4 gap-2">
             {TIERS.map((t, i) => {
@@ -114,10 +119,6 @@ export function EarningsCalculator() {
           </div>
         </div>
 
-        <SliderRow label="Tip" value={`₹${tip}`} hint="You keep 100% of every tip">
-          <input type="range" min={0} max={100} step={10} value={tip} onChange={(e) => setTip(Number(e.target.value))}
-            className="w-full accent-primary" />
-        </SliderRow>
       </div>
 
       {/* Result panel */}
@@ -128,14 +129,13 @@ export function EarningsCalculator() {
         <div key={breakdown.total.toFixed(2)} className="display text-5xl md:text-6xl font-extrabold mt-2 roll-up tabular-nums">
           ₹{breakdown.total.toFixed(0)}
         </div>
-        <div className="text-xs opacity-80 mt-1">Lands in your wallet the second you tap DELIVERED.</div>
+        <div className="text-xs opacity-80 mt-1">Platform default rates. Added to your earnings balance when you confirm delivery.</div>
 
         <div className="mt-5 space-y-1.5 text-sm border-t border-white/20 pt-4">
           <Row label="Base fare" value={breakdown.base} />
-          <Row label={`Distance · ${km} km × ₹${PER_KM}`} value={breakdown.distance} />
+          <Row label={`Distance · ₹5/km after the first km`} value={breakdown.distance} />
           {breakdown.surgeAdd > 0 && <Row label={`Surge ${surge}×`} value={breakdown.surgeAdd} positive />}
-          {breakdown.tierAdd > 0 && <Row label={`${TIERS[tierIdx].name} tier`} value={breakdown.tierAdd} positive />}
-          {breakdown.tip > 0 && <Row label="Tip" value={breakdown.tip} positive />}
+          {breakdown.tierAdd > 0 && <Row label={`${TIERS[tierIdx].name} tier surge share`} value={breakdown.tierAdd} positive />}
         </div>
 
         <div className="mt-5 rounded-xl bg-white/10 backdrop-blur p-3 text-xs flex items-start gap-2">

@@ -9,7 +9,7 @@
 
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { getPlatformSecurity, setPlatformSecurity, verifyTotp } from '@/server/2fa';
 import { audit } from '@/server/audit';
 import { parseOrJsonError } from '@/server/zod-helpers';
@@ -17,7 +17,8 @@ import { parseOrJsonError } from '@/server/zod-helpers';
 const Body = z.object({ token: z.string().min(6).max(8) });
 
 export async function POST(req: NextRequest) {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const parsed = parseOrJsonError(Body, await req.json());
   if (parsed instanceof Response) return parsed;
   const { token } = parsed;
@@ -43,7 +44,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE() {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const sec = await getPlatformSecurity();
   await setPlatformSecurity({ ...sec, totpSecret: undefined, totpPending: undefined });
   await audit('platform.security.totp.disable', {

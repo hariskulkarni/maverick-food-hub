@@ -14,11 +14,11 @@ import {
   type CategoryLite
 } from '@/server/category-availability';
 
-const wed_10am = new Date('2026-05-13T10:00:00'); // Wednesday 10:00
-const wed_12pm = new Date('2026-05-13T12:00:00'); // Wednesday 12:00
-const wed_8am  = new Date('2026-05-13T08:00:00'); // Wednesday 08:00
-const fri_3pm  = new Date('2026-05-15T15:00:00'); // Friday    15:00
-const sat_2pm  = new Date('2026-05-16T14:00:00'); // Saturday  14:00
+const wed_10am = new Date('2026-05-13T10:00:00+05:30'); // Wednesday 10:00
+const wed_12pm = new Date('2026-05-13T12:00:00+05:30'); // Wednesday 12:00
+const wed_8am  = new Date('2026-05-13T08:00:00+05:30'); // Wednesday 08:00
+const fri_3pm  = new Date('2026-05-15T15:00:00+05:30'); // Friday    15:00
+const sat_2pm  = new Date('2026-05-16T14:00:00+05:30'); // Saturday  14:00
 
 function cat(partial: Partial<CategoryLite>): CategoryLite {
   return {
@@ -82,7 +82,7 @@ describe('isCategoryAvailableNow', () => {
     // At exactly 12:00 → in
     expect(isCategoryAvailableNow(lunch, wed_12pm).available).toBe(true);
     // At exactly 15:00 → out (window is [12, 15))
-    expect(isCategoryAvailableNow(lunch, new Date('2026-05-13T15:00:00')).available).toBe(false);
+    expect(isCategoryAvailableNow(lunch, new Date('2026-05-13T15:00:00+05:30')).available).toBe(false);
   });
 
   it('weekend-only schedule is unavailable on weekdays', () => {
@@ -118,7 +118,7 @@ describe('isCategoryAvailableNow', () => {
       availabilities: Array.from({ length: 7 }, (_, d) => ({ dayOfWeek: d, startMin: 18 * 60, endMin: 23 * 60 }))
     });
     // Wednesday 23:30 — past today's dinner window → next is Thursday 18:00
-    const r = isCategoryAvailableNow(dinner, new Date('2026-05-13T23:30:00'));
+    const r = isCategoryAvailableNow(dinner, new Date('2026-05-13T23:30:00+05:30'));
     expect(r.available).toBe(false);
     // From Wed 23:30 → Thu 18:00 = 18*60 + 30 = 1110 mins
     expect(r.minutesUntilOpen).toBe(18 * 60 + 30);

@@ -1,62 +1,77 @@
 /**
- * Super-admin preview of a training module — renders the lesson exactly as a
- * rider would see it (block-by-block, with quizzes + checklists + animations),
- * so super-admins can sense-check content before activating a module.
+ * Platform "preview as learner": the saved module rendered in the same viewer
+ * restaurant staff use, in preview mode (nothing is recorded; the quiz is
+ * graded locally with the answer key). Works for drafts and every audience.
  */
-import { redirect, notFound } from 'next/navigation';
-import Link from 'next/link';
-import { auth } from '@/server/auth';
+import { notFound } from 'next/navigation';
+import { Eye } from 'lucide-react';
+import { requireCapability } from '@/server/tenancy';
 import { prisma } from '@/server/db';
-import { parseContentBlocks } from '@/server/training-cms';
-import { LessonPlayer } from '@/components/training/lesson-player';
-import { ArrowLeft, Eye } from 'lucide-react';
+import { loadModuleForEditor } from '@/server/training/authoring';
+import { normalizeLang, localizeLesson, localizeModuleText, localizeQuestion, localizedExplanation, availableLanguages } from '@/server/training/content';
+import { ModuleViewer, type PreviewData } from '@/components/training/module-viewer';
 import { Badge } from '@/components/ui/badge';
 
 export const metadata = { title: 'Platform · Training preview' };
 export const dynamic = 'force-dynamic';
 
-export default async function TrainingModulePreviewPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== 'SUPER_ADMIN') {
-    redirect('/login?next=/platform/training-modules&mode=admin');
-  }
+export default async function TrainingModulePreviewPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ lang?: string }>;
+}) {
+  await requireCapability('cms:read');
   const { id } = await params;
-  const mod = await prisma.trainingModule.findUnique({ where: { id } });
-  if (!mod) return notFound();
+  const lang = normalizeLang((await searchParams).lang);
+  const m = await loadModuleForEditor(prisma, id);
+  if (!m) notFound();
 
-  const blocks = parseContentBlocks(mod.contentBlocks);
+  const lessons = m.lessons.map((l, i) =>
+    localizeLesson({ id: l.id ?? `draft-${i}`, order: i, kind: l.kind, title: l.title, body: l.body, mediaUrl: l.mediaUrl ?? null, checklistItems: l.checklistItems, translations: l.translations }, lang),
+  );
+  const questions = m.questions.map((q, i) => ({ ...q, id: q.id ?? `draft-q${i}`, order: i, explanation: q.explanation ?? null }));
+  const text = localizeModuleText(m, lang);
+  const preview: PreviewData = {
+    module: {
+      id: m.id,
+      title: text.title,
+      summary: text.summary,
+      durationMin: m.durationMin,
+      isRequired: m.isRequired,
+      version: m.version,
+      languages: availableLanguages(m.translations),
+      lessons,
+      completedLessonIds: [],
+      quiz: questions.length
+        ? {
+            questions: questions.map((q) => localizeQuestion(q, lang)),
+            passMarkPct: m.passMarkPct,
+            maxAttempts: m.maxAttempts,
+            retakeCooldownMin: m.retakeCooldownMin,
+            eligibility: { allowed: true, reason: null, attemptsUsed: 0, attemptsLeft: m.maxAttempts, retryAt: null },
+            lastAttempt: null,
+          }
+        : null,
+      status: { state: 'NOT_STARTED', progressPct: 0, lessonsDone: 0, lessonsTotal: lessons.length, needsRecert: false, overdue: false, dueAt: null, certificateCode: null },
+      completedAt: null,
+    },
+    answerKey: Object.fromEntries(questions.map((q) => [q.id, { correctIndex: q.correctIndex, explanation: localizedExplanation(q, lang) }])),
+  };
 
   return (
-    <div className="min-h-dvh">
-      <header className="border-b bg-card/80 backdrop-blur sticky top-0 z-40">
-        <div className="container max-w-3xl py-3 flex items-center gap-3">
-          <Link href="/platform/training-modules" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="size-4" /> All modules
-          </Link>
-          <Badge variant="muted" className="ml-auto"><Eye className="size-3 mr-1" /> Preview · no progress saved</Badge>
-          {mod.isRequired && <Badge variant="warning">Required</Badge>}
-          <Badge variant={mod.isActive ? 'success' : 'muted'}>{mod.isActive ? 'Active' : 'Inactive'}</Badge>
-        </div>
-      </header>
-
-      <div className="container px-4 md:px-6 pt-6">
-        {blocks.length === 0 ? (
-          <div className="mx-auto max-w-3xl rounded-xl border border-dashed bg-muted/30 p-8 text-center text-sm text-muted-foreground">
-            This module has no block-based content yet — it&apos;s still on the legacy plain-text body. Open the editor and
-            run the upgrade script, or add blocks manually.
-          </div>
-        ) : (
-          <LessonPlayer
-            moduleId={mod.id}
-            title={mod.title}
-            summary={mod.summary}
-            heroImageUrl={mod.heroImageUrl}
-            durationMin={mod.durationMin}
-            blocks={blocks}
-            mode="preview"
-          />
+    <div className="space-y-4 p-4 sm:p-6">
+      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        <Eye className="size-4" /> Preview as learner · nothing is recorded
+        {!m.isActive && <Badge variant="muted">Draft</Badge>}
+        {preview.module.languages.includes('hi') && (
+          <a href={`?lang=${lang === 'hi' ? 'en' : 'hi'}`} className="ml-auto font-medium text-primary">
+            {lang === 'hi' ? 'View in English' : 'हिन्दी में देखें'}
+          </a>
         )}
       </div>
+      <ModuleViewer key={lang} apiBase="" moduleId={m.id} backHref={`/platform/training-modules/${m.id}`} preview={JSON.parse(JSON.stringify(preview))} />
     </div>
   );
 }

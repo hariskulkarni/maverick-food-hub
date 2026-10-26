@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { optionalString, parseOrJsonError } from '@/server/zod-helpers';
+import { addressHasActiveOrder, changesLocation, ADDRESS_IN_USE_MESSAGE } from '@/server/address-guard';
 
 const PatchBody = z.object({
   label: optionalString(40),
@@ -46,6 +47,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const parsed = parseOrJsonError(PatchBody, await req.json());
   if (parsed instanceof Response) return parsed;
   const data = parsed;
+  if (changesLocation(existing as unknown as Record<string, unknown>, data as Record<string, unknown>) && (await addressHasActiveOrder(id))) {
+    return Response.json({ error: 'address_in_use', message: ADDRESS_IN_USE_MESSAGE }, { status: 409 });
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
     if (data.isDefault) {
@@ -78,6 +82,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const existing = await ownedAddress(id, session.user.id);
   if (!existing) return new Response('Not found', { status: 404 });
 
+  if (await addressHasActiveOrder(id)) {
+    return Response.json({ error: 'address_in_use', message: ADDRESS_IN_USE_MESSAGE }, { status: 409 });
+  }
   const count = await prisma.address.count({ where: { userId: session.user.id } });
   if (existing.isDefault && count <= 1) {
     return Response.json(

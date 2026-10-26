@@ -1,7 +1,8 @@
 /**
  * POST /api/platform/jobs/kyc-expiry/run
  *
- * Flips APPROVED RiderKycDocument rows to EXPIRED when expiresOn < today.
+ * Flips APPROVED RiderKycDocument rows to EXPIRED when expiresOn < today,
+ * takes newly-blocked riders offline, and texts expiry / renewal reminders.
  * Intended for a daily cron (e.g. 02:00 IST) or on-demand from the super-admin
  * dashboard.
  *
@@ -9,8 +10,10 @@
  */
 import { NextRequest } from 'next/server';
 import { auth } from '@/server/auth';
+import { secretMatches } from '@/server/http/secret-compare';
 import { runKycExpirySweep } from '@/server/jobs/kyc-expiry-sweep';
 
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
@@ -18,12 +21,10 @@ export async function POST(req: NextRequest) {
   const headerSecret = req.headers.get('x-internal-secret');
   const session = await auth();
   const allowed =
-    (internalSecret && headerSecret === internalSecret) ||
+    secretMatches(headerSecret, internalSecret) ||
     session?.user?.role === 'SUPER_ADMIN';
   if (!allowed) return new Response('Forbidden', { status: 403 });
 
   const result = await runKycExpirySweep();
   return Response.json({ ok: true, ...result, at: new Date().toISOString() });
 }
-
-export const GET = POST;

@@ -1,9 +1,9 @@
 /**
- * Help & Support — raise a ticket, track existing ones, browse the FAQ.
+ * Help & Support — raise a ticket, track existing ones, open the help center.
  *
  * A "Raise a ticket" form (subject + category chips + message), the rider's
  * ticket list with status chips and last-message previews (tap → thread), and
- * a small static FAQ accordion for the most common rider questions.
+ * a link to the Help center (searchable articles, app/help.tsx).
  *
  * Wired to GET/POST /api/rider/support.
  */
@@ -18,9 +18,6 @@ import {
   RefreshControl,
   TextInput,
   Alert,
-  LayoutAnimation,
-  Platform,
-  UIManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
@@ -35,13 +32,6 @@ import {
   type TicketStatus,
 } from '../lib/api-growth';
 import { colors, spacing, radius, font, shadow } from '../lib/theme';
-
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 const CATEGORIES: { value: TicketCategory; label: string }[] = [
   { value: 'PAYMENT', label: 'Payment' },
@@ -60,29 +50,6 @@ const STATUS_STYLE: Record<TicketStatus, { bg: string; fg: string; label: string
   RESOLVED: { bg: colors.successSoft, fg: colors.success, label: 'Resolved' },
   CLOSED: { bg: colors.bg, fg: colors.textMuted, label: 'Closed' },
 };
-
-const FAQ: { q: string; a: string }[] = [
-  {
-    q: 'When do I get paid for my deliveries?',
-    a: 'Earnings are tallied daily and paid out to your registered bank account on a weekly cycle. Check the Payouts screen for your next payout date.',
-  },
-  {
-    q: 'A customer was not at the delivery address — what do I do?',
-    a: 'Use the "Customer unreachable" action on the active delivery. Wait at the location for the prompted time, then the order can be returned. You are still paid for the trip.',
-  },
-  {
-    q: 'How is my rating calculated?',
-    a: 'Your rating is the average of customer delivery ratings over your recent orders. On-time delivery and careful handling keep it high.',
-  },
-  {
-    q: 'My KYC document was rejected. How do I re-upload?',
-    a: 'Open Profile to see the rejection reason, then re-upload the corrected document from the web rider portal. Verification usually completes within 24 hours.',
-  },
-  {
-    q: 'How do I go online to receive orders?',
-    a: 'Toggle yourself online from the Home tab. Make sure location permission is granted so the dispatcher can match you with nearby orders.',
-  },
-];
 
 function fmtWhen(iso: string): string {
   const d = new Date(iso);
@@ -105,8 +72,6 @@ export default function SupportScreen() {
   const [category, setCategory] = useState<TicketCategory>('OTHER');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -164,11 +129,6 @@ export default function SupportScreen() {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  function toggleFaq(i: number) {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setOpenFaq((cur) => (cur === i ? null : i));
   }
 
   const tickets = data?.tickets ?? [];
@@ -346,33 +306,22 @@ export default function SupportScreen() {
             </View>
           )}
 
-          {/* FAQ */}
-          <Text style={styles.sectionLabel}>FREQUENTLY ASKED</Text>
-          <View style={styles.card}>
-            {FAQ.map((item, i) => {
-              const open = openFaq === i;
-              return (
-                <View
-                  key={item.q}
-                  style={[styles.faqRow, i === FAQ.length - 1 && styles.faqRowLast]}
-                >
-                  <Pressable
-                    style={styles.faqQuestion}
-                    onPress={() => toggleFaq(i)}
-                    hitSlop={6}
-                  >
-                    <Text style={styles.faqQuestionText}>{item.q}</Text>
-                    <Ionicons
-                      name={open ? 'chevron-up' : 'chevron-down'}
-                      size={18}
-                      color={colors.textMuted}
-                    />
-                  </Pressable>
-                  {open ? <Text style={styles.faqAnswer}>{item.a}</Text> : null}
-                </View>
-              );
-            })}
-          </View>
+          {/* Help center */}
+          <Text style={styles.sectionLabel}>HELP ARTICLES</Text>
+          <Pressable
+            style={({ pressed }) => [styles.helpCard, pressed && styles.pressed]}
+            onPress={() => router.push('/help')}
+            accessibilityRole="button"
+          >
+            <Ionicons name="book-outline" size={22} color={colors.primary} />
+            <View style={styles.helpCardText}>
+              <Text style={styles.helpCardTitle}>Help center</Text>
+              <Text style={styles.helpCardSub}>
+                Search guides on shifts, deliveries, earnings, payouts and safety — saved for offline use.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
         </ScrollView>
       )}
     </SafeAreaView>
@@ -554,29 +503,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  faqRow: {
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  faqRowLast: { borderBottomWidth: 0 },
-  faqQuestion: {
+  helpCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
     gap: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadow.card,
   },
-  faqQuestionText: {
-    flex: 1,
-    fontSize: font.size.sm,
-    fontWeight: font.weight.semibold,
-    color: colors.text,
-  },
-  faqAnswer: {
-    fontSize: font.size.sm,
-    color: colors.textMuted,
-    lineHeight: 20,
-    paddingBottom: spacing.md,
-  },
+  helpCardText: { flex: 1, gap: 2 },
+  helpCardTitle: { fontSize: font.size.md, fontWeight: font.weight.semibold, color: colors.text },
+  helpCardSub: { fontSize: font.size.sm, color: colors.textMuted },
 });

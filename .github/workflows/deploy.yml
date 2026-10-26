@@ -13,6 +13,9 @@ on:
         description: "Apply schema migration on the VPS (pass --migrate)"
         type: boolean
         default: false
+# T-24: least-privilege token; the job only talks to the VPS over SSH.
+permissions:
+  contents: read
 concurrency:
   group: deploy-production
   cancel-in-progress: true
@@ -26,11 +29,21 @@ jobs:
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     steps:
       - name: Configure SSH
+        # T-24: the VPS host key comes from the VPS_KNOWN_HOSTS secret (pinned
+        # known_hosts lines), never from ssh-keyscan on a fresh runner (TOFU).
+        env:
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
         run: |
+          if [ -z "${VPS_KNOWN_HOSTS}" ]; then
+            echo "::error::VPS_KNOWN_HOSTS secret is not set. Add the VPS host key line(s) (see docs/flavrly-pg/DEPLOYMENT_AND_ROLLBACK.md §3)."
+            exit 1
+          fi
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -t ed25519 "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          printf '%s\n' "${VPS_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
       - name: Deploy over SSH (with retry)
         env:
           APP_DIR: ${{ vars.APP_DIR || '/opt/restaurant-manager' }}
@@ -42,7 +55,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "== deploy attempt $attempt =="
-            if ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+            if ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
                  -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=8 \
                  "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
                  "bash -lc 'cd ${APP_DIR} && git fetch origin main && git reset --hard origin/main && ./scripts/deploy-remote.sh ${MIGRATE_FLAG}'"; then
@@ -53,7 +66,7 @@ jobs:
           echo "all attempts failed"; exit 1
       - name: Health check
         run: |
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=20 \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "curl -fsS --max-time 8 http://127.0.0.1:3000/api/system/health >/dev/null && echo healthy"

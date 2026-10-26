@@ -3,7 +3,7 @@
 # Runs ON THE VPS. Full production recovery sweep:
 #   1. Pull latest code (hard sync to origin/main)
 #   2. npm install
-#   3. prisma db push   — sync the production schema (adds any missing columns,
+#   3. prisma migrate deploy — apply versioned migrations to the production schema (adds any missing columns,
 #                          e.g. Branch.packagingFee / Order.packagingFee)
 #   4. Verify the packagingFee column actually exists
 #   5. rm -rf .next     — clear any stale build cache
@@ -101,8 +101,8 @@ node -e 'try{const u=new URL(process.env.DATABASE_URL);console.log("host:",u.hos
 line "4. npm install"
 npm install --no-audit --no-fund
 
-line "5. prisma db push (sync schema → add missing columns)"
-npx prisma db push
+line "5. prisma migrate deploy (versioned migrations; never db push — see docs/flavrly-pg/DATABASE_MIGRATIONS.md)"
+npx prisma migrate deploy
 
 line "6. verify packagingFee column exists on the live DB"
 if echo 'SELECT "packagingFee" FROM "Branch" LIMIT 1;' | npx prisma db execute --stdin >/dev/null 2>&1; then

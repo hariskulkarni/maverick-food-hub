@@ -5,7 +5,8 @@ import { currentRestaurant, accessibleRestaurants } from '@/server/tenancy';
 import {
   LayoutDashboard, ScrollText, CalendarClock, Armchair, Radio, Building2,
   Bike, ShieldAlert, MessagesSquare, BarChart3, History, MessageSquare,
-  Settings, Paintbrush, Star, MapPinned,
+  Settings, Paintbrush, Star, MapPinned, LifeBuoy, Rocket, GraduationCap,
+  Landmark,
 } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { RestaurantSwitcher } from './restaurant-switcher';
@@ -24,6 +25,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     items: [
       { href: '/admin',                icon: <LayoutDashboard className={ICON} />, label: 'Dashboard' },
+      { href: '/admin/onboarding',     icon: <Rocket className={ICON} />,          label: 'Setup guide' },
       { href: '/admin/orders',         icon: <ScrollText className={ICON} />,      label: 'Orders' },
       { href: '/admin/reservations',   icon: <CalendarClock className={ICON} />,   label: 'Reservations' },
       { href: '/admin/tables',         icon: <Armchair className={ICON} />,        label: 'Tables' },
@@ -34,9 +36,12 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/safety',         icon: <ShieldAlert className={ICON} />,     label: 'Rider Safety' },
       { href: '/admin/messages',       icon: <MessagesSquare className={ICON} />,  label: 'Messages' },
       { href: '/admin/reports',        icon: <BarChart3 className={ICON} />,       label: 'Reports' },
+      { href: '/admin/flavrly-pg',     icon: <Landmark className={ICON} />,        label: 'Flavrly PG' },
       { href: '/admin/activity',       icon: <History className={ICON} />,         label: 'Activity' },
       { href: '/admin/feedback',       icon: <MessageSquare className={ICON} />,   label: 'Feedback' },
       { href: '/admin/reviews',        icon: <Star className={ICON} />,            label: 'Reviews' },
+      { href: '/admin/reviews/recovery', icon: <LifeBuoy className={ICON} />,      label: 'Service recovery' },
+      { href: '/admin/training',       icon: <GraduationCap className={ICON} />,   label: 'Training' },
     ],
   },
   {
@@ -44,6 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/admin/storefront',     icon: <Paintbrush className={ICON} />,      label: 'Storefront CMS' },
       { href: '/admin/settings',       icon: <Settings className={ICON} />,        label: 'Settings' },
+      { href: '/admin/help',           icon: <LifeBuoy className={ICON} />,        label: 'Help center' },
     ],
   },
 ];
@@ -78,6 +84,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               : restaurant.status === 'SUSPENDED' ? 'temporarily suspended' : 'not active'}.
             {restaurant.rejectedReason ? ` Reason: ${restaurant.rejectedReason}` : ''}
           </p>
+          {restaurant.status === 'PENDING' && (
+            <div className="rounded-lg border bg-muted/30 p-4 text-left text-sm">
+              <div className="font-medium">What happens next</div>
+              <ol className="mt-1 list-decimal space-y-1 pl-5 text-muted-foreground">
+                <li>The Flavrly team reviews your application — usually within 1 business day.</li>
+                <li>Once approved, sign in again and the setup guide opens automatically: FSSAI licence, full menu, delivery zones, staff and QR code.</li>
+                <li>Pass the readiness check and press <b>Go live</b>.</li>
+              </ol>
+            </div>
+          )}
           <p className="text-sm">If this is unexpected, contact platform support.</p>
         </div>
       </div>
@@ -87,6 +103,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const title = flat.length > 1
     ? <RestaurantSwitcher groups={groups} activeId={activeId} />
     : <Link href="/admin" className="display text-lg font-bold text-primary">{restaurant.name}</Link>;
+
+  // P1-5: authorisation follows the per-restaurant MEMBERSHIP role, not the
+  // global User.role. A global ADMIN who only holds a KITCHEN grant on the
+  // active restaurant gets the switcher + a pointer to the kitchen console,
+  // never the admin screens (every admin API refuses them anyway).
+  const activeRole = flat.find((r) => r.id === restaurant.id)?.role;
+  const kitchenOnly = activeRole === 'KITCHEN';
 
   return (
     <AdminShell
@@ -101,7 +124,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </>
       }
     >
-      {children}
+      {kitchenOnly ? (
+        <div className="mx-auto max-w-md space-y-3 py-16 text-center">
+          <h1 className="display text-2xl font-semibold">Kitchen access only</h1>
+          <p className="text-muted-foreground">
+            You have kitchen access to {restaurant.name}, not admin access. Switch to a restaurant you
+            manage, or run orders from the kitchen console.
+          </p>
+          <Link href="/kitchen" className="text-primary underline">Open the kitchen console</Link>
+        </div>
+      ) : children}
     </AdminShell>
   );
 }

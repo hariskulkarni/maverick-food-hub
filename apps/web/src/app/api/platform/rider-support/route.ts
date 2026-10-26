@@ -4,7 +4,7 @@
  * Pass ?ticket=<id> to fetch one ticket with its full message thread.
  */
 import { NextRequest } from 'next/server';
-import { requireCapability } from '@/server/tenancy';
+import { requireCapabilityApi } from '@/server/api-auth';
 import { prisma } from '@/server/db';
 import { serializeTicket } from './_serializers';
 
@@ -12,7 +12,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  await requireCapability('riders:read');
+  const gate = await requireCapabilityApi('riders:read');
+  if (gate instanceof Response) return gate;
   const sp = req.nextUrl.searchParams;
   const status = sp.get('status') || undefined;
   const category = sp.get('category') || undefined;

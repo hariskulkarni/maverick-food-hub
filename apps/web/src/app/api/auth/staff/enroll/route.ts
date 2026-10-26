@@ -3,13 +3,16 @@
  *
  * Step 2 (first-time only). Re-validates the password, then confirms the first
  * Google Authenticator code against the pending secret and activates 2FA. After
- * { ok:true } the client completes a normal signIn with the same code.
+ * { ok:true, recoveryCodes } the client completes a normal signIn with the same
+ * code and shows the recovery codes once.
  */
 import { NextRequest } from 'next/server';
 import argon2 from 'argon2';
 import { prisma } from '@/server/db';
+import { audit } from '@/server/audit';
 import { rateLimit } from '@/server/http/rate-limit';
-import { isStaffTotpRole, confirmEnrollment } from '@/server/user-totp';
+import { getPlatformSecurity, isLockedOut, recordLoginFailure } from '@/server/2fa';
+import { isStaffTotpRole, confirmEnrollment, generateRecoveryCodes } from '@/server/user-totp';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,13 +28,33 @@ export async function POST(req: NextRequest) {
   const code = String(body.code ?? '').trim();
   if (!email || !password || !code) return Response.json({ ok: false });
 
+  // F6: this route verifies the password, so it shares the login lockout —
+  // otherwise it is a password oracle that sidesteps the email-password gate.
+  if (await isLockedOut(email)) {
+    await audit('auth.login.locked', { entityType: 'User', after: { email, via: 'staff.enroll' } }).catch(() => {});
+    return Response.json({ ok: false });
+  }
+  const sec = await getPlatformSecurity().catch(() => ({ lockoutMinutes: undefined }));
+  const lockoutMinutes = sec.lockoutMinutes ?? 15;
+
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !user.passwordHash || !isStaffTotpRole(user.role) || user.suspendedAt) {
+  if (!user || !user.passwordHash || !isStaffTotpRole(user.role) || user.suspendedAt || user.deletedAt) {
+    await recordLoginFailure(email, lockoutMinutes);
     return Response.json({ ok: false });
   }
   const okPw = await argon2.verify(user.passwordHash, password).catch(() => false);
-  if (!okPw) return Response.json({ ok: false });
+  if (!okPw) {
+    await recordLoginFailure(email, lockoutMinutes);
+    return Response.json({ ok: false });
+  }
 
   const ok = await confirmEnrollment(user.id, code);
-  return Response.json({ ok });
+  if (!ok) {
+    await recordLoginFailure(email, lockoutMinutes);
+    return Response.json({ ok: false });
+  }
+  // Single-use recovery codes for a lost authenticator — shown to the user
+  // exactly once, here; only their hashes are stored.
+  const recoveryCodes = await generateRecoveryCodes(user.id);
+  return Response.json({ ok: true, recoveryCodes }, { headers: { 'Cache-Control': 'no-store' } });
 }

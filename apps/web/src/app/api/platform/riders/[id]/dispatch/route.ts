@@ -9,9 +9,10 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { auth } from '@/server/auth';
 import { audit } from '@/server/audit';
+import { clientIp } from '@/server/http/client-ip';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,7 +26,8 @@ const Body = z.object({
 );
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const session = await auth();
   const { id } = await params;
   const data = Body.parse(await req.json());
@@ -58,7 +60,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     entityId: id,
     before: { riderType: before.riderType, dedicatedRestaurantId: before.dedicatedRestaurantId },
     after: { riderType: after.riderType, dedicatedRestaurantId: after.dedicatedRestaurantId },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+    ipAddress: clientIp(req.headers) ?? null,
     userAgent: req.headers.get('user-agent') ?? null
   });
 

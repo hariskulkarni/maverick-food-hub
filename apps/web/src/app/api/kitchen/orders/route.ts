@@ -1,4 +1,5 @@
 import { prisma } from '@/server/db';
+import { KITCHEN_BOARD_INCLUDE, KITCHEN_STATUSES, withComboBreakdown } from '@/server/staff-orders';
 import { requireRestaurant, accessibleOrderScope } from '@/server/tenancy';
 
 export const dynamic = 'force-dynamic';
@@ -25,33 +26,17 @@ export async function GET() {
   const orders = await prisma.order.findMany({
     where: {
       branchId: { in: scope.branchIds },
-      status: { in: ['RECEIVED', 'ACCEPTED', 'PREPARING', 'READY'] }
+      status: { in: KITCHEN_STATUSES }
     },
-    include: {
-      items: {
-        include: {
-          combo: { include: { items: { include: { menuItem: true } } } }
-        }
-      },
-      customer: true
-    },
+    include: KITCHEN_BOARD_INCLUDE, // P2-13: customer as {id,name,phone}
     orderBy: [{ acceptedAt: 'asc' }, { placedAt: 'asc' }]
   });
   // Same combo expansion the SSR path does — keeps the shape identical so
   // the client can swap snapshot for SSE-driven state without juggling
   // two formats.
   const decorated = orders.map((o) => ({
-    ...o,
+    ...withComboBreakdown(o),
     _label: scope.labelByBranchId[o.branchId] ?? null,
-    items: o.items.map((i: any) => ({
-      ...i,
-      comboBreakdown: i.combo
-        ? (i.combo.items as any[]).map((ci) => ({
-            name: ci.menuItem?.name ?? 'Unknown item',
-            qty: ci.quantity
-          }))
-        : null
-    }))
   }));
   return Response.json(
     {

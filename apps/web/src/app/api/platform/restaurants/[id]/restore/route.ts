@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { revalidateRestaurantSurfaces } from '@/server/revalidate';
 
 /**
@@ -9,7 +9,8 @@ import { revalidateRestaurantSurfaces } from '@/server/revalidate';
  * live again. (The slug stays its freed form; rename via Identity if reusing.)
  */
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { id } = await params;
   const r = await prisma.restaurant.update({ where: { id }, data: { deletedAt: null } });
   revalidateRestaurantSurfaces(r.slug);

@@ -12,7 +12,8 @@
  * All server work goes through the public availability API and the
  * auth-required create API; this component never touches Prisma.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { openPhonePeCheckout } from '@/lib/phonepe-checkout';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,9 +50,14 @@ interface DepositOrder {
   amount: number;
   currency: string;
   publicKey: string | null;
+  /** PhonePe: PayPage token URL + mercury bundle. */
+  redirectUrl?: string | null;
+  checkoutScriptUrl?: string | null;
 }
 
 type RazorpayCtor = new (options: Record<string, unknown>) => { open: () => void };
+
+class DepositPending extends Error {}
 
 export interface ReserveClientProps {
   slug: string;
@@ -145,15 +151,45 @@ export function ReserveClient(props: ReserveClientProps) {
 
   // Verify-and-confirm the online deposit on the server.
   async function confirmDepositCall(reservationId: string, payload: Record<string, unknown>) {
-    const res = await fetch(`/api/r/${slug}/reservations/${reservationId}/confirm-deposit`, {
+    // Both segments are encoded so a crafted ?depositFor= value can never walk the
+    // request onto another same-origin endpoint (e.g. `../../admin/...`).
+    const res = await fetch(`/api/r/${encodeURIComponent(slug)}/reservations/${encodeURIComponent(reservationId)}/confirm-deposit`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
     });
     const data = await res.json();
+    if (res.status === 202) throw new DepositPending(data.error || 'Your deposit payment is still being confirmed.');
     if (!res.ok) throw new Error(data.error || 'Could not confirm your deposit.');
     return data.reservation as CreatedReservation;
   }
+
+  // PhonePe: the server asks PhonePe's status API; poll briefly while it is still PENDING.
+  async function pollPhonePeDeposit(reservationId: string) {
+    for (let i = 0; i < 8; i++) {
+      try {
+        showSuccess(await confirmDepositCall(reservationId, {}));
+        return;
+      } catch (e) {
+        if (!(e instanceof DepositPending)) {
+          setError((e as Error).message);
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    }
+    setError('Your deposit is still being confirmed. We will hold the table briefly — refresh this page in a minute.');
+  }
+
+  // Back from a full-page PhonePe redirect (?depositFor=<reservationId>).
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('depositFor');
+    // Reservation ids are cuids — ignore anything else rather than POSTing it.
+    if (!id || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) return;
+    setBooking(true);
+    pollPhonePeDeposit(id).finally(() => setBooking(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Lazily inject the Razorpay checkout script.
   function loadRazorpay(): Promise<boolean> {
@@ -170,8 +206,8 @@ export function ReserveClient(props: ReserveClientProps) {
 
   // Handle an online deposit returned by the booking POST.
   async function payDeposit(reservationId: string, deposit: DepositOrder) {
-    // Mock provider (dev / no gateway creds): confirm straight through.
-    if (deposit.providerName === 'mock' || !deposit.publicKey) {
+    // Mock provider (dev / no gateway creds) only — decided by provider name, never by a missing key.
+    if (deposit.providerName === 'mock') {
       try {
         showSuccess(await confirmDepositCall(reservationId, {}));
       } catch (e) {
@@ -179,6 +215,24 @@ export function ReserveClient(props: ReserveClientProps) {
       } finally {
         setBooking(false);
       }
+      return;
+    }
+    // PhonePe: iframe PayPage (redirect fallback returns to ?depositFor=...).
+    if (deposit.providerName === 'phonepe') {
+      if (!deposit.redirectUrl) {
+        setError('Could not open the payment page. Please try again.');
+        setBooking(false);
+        return;
+      }
+      const outcome = await openPhonePeCheckout({ tokenUrl: deposit.redirectUrl, scriptUrl: deposit.checkoutScriptUrl ?? undefined });
+      if (outcome === 'REDIRECTED') return; // navigating away
+      await pollPhonePeDeposit(reservationId);
+      setBooking(false);
+      return;
+    }
+    if (deposit.providerName !== 'razorpay' || !deposit.publicKey) {
+      setError('Online deposit is not available right now. Choose pay at restaurant.');
+      setBooking(false);
       return;
     }
     // Real Razorpay checkout.

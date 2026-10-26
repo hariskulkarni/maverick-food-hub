@@ -48,7 +48,13 @@ export interface AdminShellProps {
   /** Small line under the title (e.g. "Super admin", "Restaurant admin"). */
   subtitle?: React.ReactNode;
   /** Sidebar nav, in display order. Groups render with section headers. */
-  navGroups: NavGroup[];
+  navGroups?: NavGroup[];
+  /**
+   * Custom nav (e.g. the grouped, filterable /platform nav). When set it
+   * replaces `navGroups` in both the desktop sidebar and the mobile drawer,
+   * and must render its own <nav> landmark.
+   */
+  navSlot?: React.ReactNode;
   /** Optional content at the bottom of the sidebar (user info + logout). */
   footer?: React.ReactNode;
   /**
@@ -68,7 +74,8 @@ export interface AdminShellProps {
 export function AdminShell({
   title,
   subtitle,
-  navGroups,
+  navGroups = [],
+  navSlot,
   footer,
   topBanner,
   contentTopSlot,
@@ -96,11 +103,13 @@ export function AdminShell({
         title={title}
         subtitle={subtitle}
         drawerContent={
-          <div className="space-y-1">
-            {navGroups.map((g, i) => (
-              <SidebarGroup key={i} group={g} />
-            ))}
-          </div>
+          navSlot ?? (
+            <nav aria-label="Main navigation" className="space-y-1">
+              {navGroups.map((g, i) => (
+                <SidebarGroup key={i} group={g} />
+              ))}
+            </nav>
+          )
         }
         footer={footer}
       />
@@ -112,11 +121,15 @@ export function AdminShell({
             <div className="display text-lg font-bold text-primary">{title}</div>
             {subtitle && <div className="text-xs text-muted-foreground mt-0.5">{subtitle}</div>}
           </div>
-          <nav className="flex-1 overflow-y-auto p-3 space-y-1 text-sm">
-            {navGroups.map((g, i) => (
-              <SidebarGroup key={i} group={g} />
-            ))}
-          </nav>
+          {navSlot ? (
+            <div className="flex-1 overflow-y-auto p-3 text-sm">{navSlot}</div>
+          ) : (
+            <nav className="flex-1 overflow-y-auto p-3 space-y-1 text-sm">
+              {navGroups.map((g, i) => (
+                <SidebarGroup key={i} group={g} />
+              ))}
+            </nav>
+          )}
           {footer && <div className="p-3 border-t">{footer}</div>}
         </aside>
 

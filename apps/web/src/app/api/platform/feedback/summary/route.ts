@@ -10,12 +10,13 @@
  * Default range is the last 30 days; clients can pass `from`/`to` to widen.
  */
 import { NextRequest } from 'next/server';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { summariseRatings } from '@/server/feedback';
 import { prisma } from '@/server/db';
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const sp = req.nextUrl.searchParams;
   const to = sp.get('to') ? new Date(sp.get('to') as string) : new Date();
   const from = sp.get('from') ? new Date(sp.get('from') as string) : new Date(to.getTime() - 30 * 86_400_000);

@@ -21,6 +21,7 @@ import { prisma } from '@/server/db';
 import { log } from '@/server/log';
 import { getConfig } from '@/server/integrations';
 import { refundStatusFromEvent, paymentStatusFromEvent } from '@/server/payments/webhook-events';
+import { captureRazorpayPayment } from '@/server/payments/reconcile';
 import { PaymentStatus, RefundStatus } from '@prisma/client';
 
 export const runtime = 'nodejs';
@@ -176,13 +177,19 @@ export async function POST(req: NextRequest) {
       const payStatus = paymentStatusFromEvent(eventType, paymentEntity?.status);
       if (payStatus && payment) {
         if (payStatus === 'CAPTURED') {
-          await prisma.payment.update({
-            where: { id: payment.id },
-            data: { status: PaymentStatus.CAPTURED, providerRef: paymentId ?? payment.providerRef },
-          });
+          // Amount-checked, over-collection-guarded capture; releases the PAYMENT_PENDING order to
+          // the kitchen (P0-4). order.paid carries the order entity, so fall back to its amount_paid.
+          const amountPaise =
+            typeof paymentEntity?.amount === 'number'
+              ? paymentEntity.amount
+              : typeof event?.payload?.order?.entity?.amount_paid === 'number'
+                ? event.payload.order.entity.amount_paid
+                : null;
+          await captureRazorpayPayment(payment.id, { gatewayPaymentId: paymentId, amountPaise, source: 'webhook' });
         } else if (payStatus === 'FAILED') {
-          await prisma.payment.update({
-            where: { id: payment.id },
+          // Never move a captured/refunded payment backwards on a late failure event.
+          await prisma.payment.updateMany({
+            where: { id: payment.id, status: { in: [PaymentStatus.PENDING, PaymentStatus.AUTHORIZED] } },
             data: { status: PaymentStatus.FAILED, errorMessage: paymentEntity?.error_description ?? 'failed' },
           });
         }

@@ -14,8 +14,11 @@
 
 import { prisma } from '../db';
 import { log } from '../log';
-import { paymentProvider, type ProviderOrder } from './index';
+import { paymentProvider, youpiEnabledForRestaurant, type ProviderOrder } from './index';
+import { brand } from '@/lib/brand';
 import { PaymentMethod, PaymentStatus } from '@prisma/client';
+import { createPgAttempt, precheckPgAttempt, PgAttemptError } from '../pg/attempts';
+import { decimalToPaise } from '../pg/money';
 
 /** Payment methods that open a gateway checkout rather than settling in-app. */
 export const ONLINE_METHODS: PaymentMethod[] = [PaymentMethod.RAZORPAY, PaymentMethod.PHONEPE];
@@ -74,14 +77,24 @@ function toSession(paymentId: string, p: ProviderOrder): OnlinePaymentSession {
  */
 export async function startOnlinePayment(
   orderId: string,
-  opts: { method?: PaymentMethod; amount?: number; expireAfterSec?: number } = {},
+  opts: {
+    method?: PaymentMethod;
+    amount?: number;
+    expireAfterSec?: number;
+    /**
+     * 'youpi' opts this attempt into the Flavrly PG rail (experimental, per-restaurant
+     * APPROVED). Omitted = the restaurant's normal gateway, exactly as before.
+     * The Payment stays PENDING; only reconcile/webhook may capture it.
+     */
+    rail?: 'youpi';
+  } = {},
 ): Promise<OnlinePaymentSession> {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
       customer: { select: { name: true, phone: true, email: true } },
       branch: { select: { id: true, restaurantId: true } },
-      payments: { select: { id: true, method: true, status: true } },
+      payments: { select: { id: true, method: true, status: true, providerName: true } },
     },
   });
   if (!order) throw new OnlinePaymentError('Order not found.', 404);
@@ -93,6 +106,12 @@ export async function startOnlinePayment(
   // double-charged.
   if (order.payments.some((p) => p.status === PaymentStatus.CAPTURED)) {
     throw new OnlinePaymentError('This order is already paid.', 409);
+  }
+
+  // A retry of an order whose earlier attempt was Flavrly PG stays on Flavrly PG.
+  // Flavrly PG never supersedes or re-mints blindly: createPgAttempt decides (contract D8).
+  if (opts.rail === 'youpi' || order.payments.some((p) => p.providerName === 'youpi')) {
+    return startYoupiSession(order, opts);
   }
 
   // C7: mark any prior non-terminal online attempt as superseded before minting
@@ -176,4 +195,84 @@ export async function startOnlinePayment(
   });
 
   return toSession(payment.id, providerOrder);
+}
+
+/**
+ * P0-2: refuse a Flavrly PG checkout before placeOrder commits anything. Returns null when the
+ * session would be allowed, or a customer-safe refusal message.
+ */
+export async function precheckYoupiPayment(restaurantId: string, customerId: string, amount: number | string): Promise<string | null> {
+  let amountPaise: number;
+  try {
+    amountPaise = decimalToPaise(typeof amount === 'number' ? amount.toFixed(2) : amount);
+  } catch {
+    return 'Order total is not a valid INR amount.';
+  }
+  try {
+    await precheckPgAttempt({ restaurantId, customerId }, { amountPaise });
+    return null;
+  } catch (e) {
+    if (e instanceof PgAttemptError) return e.message;
+    throw e;
+  }
+}
+
+/**
+ * Flavrly PG rail: attempt identity, limits, receiver readback and unknown-outcome handling
+ * live in createPgAttempt (pg/attempts.ts). The Payment stays PENDING; only the
+ * reconciliation engine's allocateBankCredit() may capture it (contract D3).
+ */
+async function startYoupiSession(
+  order: {
+    id: string;
+    customerId: string;
+    total: unknown;
+    currency: string | null;
+    paymentMethod: PaymentMethod | string;
+    customer: { name: string | null; phone: string | null };
+    branch: { restaurantId: string };
+  },
+  opts: { method?: PaymentMethod; amount?: number },
+): Promise<OnlinePaymentSession> {
+  // Fail loud rather than silently routing a Flavrly PG request to another gateway.
+  if (!(await youpiEnabledForRestaurant(order.branch.restaurantId))) {
+    throw new OnlinePaymentError('Flavrly PG is not available for this restaurant.', 400);
+  }
+  if (!brand.url) {
+    throw new OnlinePaymentError('Flavrly PG return URL is not configured (brand.url missing)', 500);
+  }
+  let amountPaise: number;
+  try {
+    amountPaise = decimalToPaise((opts.amount ?? order.total) as string | number);
+  } catch {
+    throw new OnlinePaymentError('Order total is not a valid INR amount.', 400);
+  }
+  const method = opts.method ?? (order.paymentMethod as PaymentMethod);
+  try {
+    const s = await createPgAttempt(
+      { id: order.id, restaurantId: order.branch.restaurantId, customerId: order.customerId, customer: order.customer },
+      {
+        amountPaise,
+        method: isOnlineMethod(method) ? method : PaymentMethod.RAZORPAY,
+        currency: order.currency || 'INR',
+        // Flavrly PG sends the customer back here; the page only polls, never trusts the return.
+        redirectUrl: `${brand.url.replace(/\/+$/, '')}/checkout/payment-status?orderId=${encodeURIComponent(order.id)}&provider=youpi`,
+      },
+    );
+    return {
+      paymentId: s.paymentId,
+      providerName: 'youpi',
+      providerOrderId: s.gatewayPaymentId,
+      amount: s.amountPaise / 100,
+      currency: 'INR',
+      redirectUrl: s.checkoutUrl,
+      expireAt: s.expiresAt.getTime(),
+    };
+  } catch (e) {
+    if (e instanceof PgAttemptError) {
+      log.warn({ orderId: order.id, code: e.code }, 'youpi.start_failed');
+      throw new OnlinePaymentError(e.message, e.status);
+    }
+    throw e;
+  }
 }

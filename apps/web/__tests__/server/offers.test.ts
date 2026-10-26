@@ -13,7 +13,7 @@ import { evaluateOffer, pickBestOffers, type OfferRow, type OfferContext } from 
 
 // ── Fixtures ──────────────────────────────────────────────────────────────
 
-const NOW = new Date('2026-05-13T13:00:00');
+const NOW = new Date('2026-05-13T13:00:00+05:30');
 
 function offer(partial: Partial<OfferRow>): OfferRow {
   return {

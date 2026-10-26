@@ -7,10 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { msg91Enabled, loadMsg91Widget, sendWidgetOtp, verifyWidgetOtp, toMsg91Identifier } from '@/lib/msg91-otp';
-import { User, ChefHat, ShieldCheck, Sparkles } from 'lucide-react';
+import { User, ChefHat, ShieldCheck } from 'lucide-react';
 import { RoleTile } from '@/components/auth/role-tile';
 import { MarketingPanel } from '@/components/auth/marketing-panel';
 import { PortalMarketingPanel } from '@/components/auth/portal-marketing-panel';
+import { CustomerAuthShell } from '@/components/auth/customer/customer-auth-shell';
+import { CustomerPhoneFlow, CustomerAuthLegal } from '@/components/auth/customer/customer-phone-flow';
 
 export type LoginRole = 'customer' | 'staff' | 'super';
 
@@ -28,7 +30,7 @@ type RoleSpec = {
 const ROLES: RoleSpec[] = [
   { id: 'customer', label: 'Customer',         tagline: 'Order from anywhere',  Icon: User,        auth: 'phone' },
   { id: 'staff',    label: 'Restaurant Staff', tagline: 'Manage orders & menu', Icon: ChefHat,     auth: 'email' },
-  { id: 'super',    label: 'Super Admin',      tagline: 'Platform operations',  Icon: ShieldCheck, auth: 'email' }
+  { id: 'super',    label: 'Super Admin',      tagline: 'Platform team & operations', Icon: ShieldCheck, auth: 'email' }
 ];
 
 /**
@@ -52,13 +54,16 @@ export function LoginClient({
   initialRole = 'customer',
   surface = 'all',
   restaurantsLive,
-  cuisinesCount
+  cuisinesCount,
+  googleEnabled = false
 }: {
   next?: string;
   initialRole?: LoginRole;
   surface?: 'customer' | 'portal' | 'all';
   restaurantsLive: number;
   cuisinesCount: number;
+  /** Show "Continue with Google" for customers (provider configured on the server). */
+  googleEnabled?: boolean;
 }) {
   // Roles this surface is allowed to show. flavrly.in = customer only;
   // portal.flavrly.in = staff + super; localhost/all = everything.
@@ -74,13 +79,35 @@ export function LoginClient({
   const [code, setCode] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [devCode, setDevCode] = useState<string | null>(null);
+  // True when this code came from the built-in OTP (pre-launch test account),
+  // even though the MSG91 widget handles everyone else.
+  const [builtinOtp, setBuiltinOtp] = useState(false);
+  // Inline (and screen-reader announced) error for the customer phone flow.
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  // OTP resend cooldown (server enforces 45s + hourly/daily caps; mirror it so
+  // the user sees when they can ask again instead of a dead end).
+  const [resendAt, setResendAt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (resendAt <= Date.now()) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [resendAt]);
+  const resendIn = Math.max(0, Math.ceil((resendAt - now) / 1000));
 
   // Email/password state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   // Staff 2FA (Google Authenticator) two-step flow.
-  const [staffPhase, setStaffPhase] = useState<'creds' | 'code'>('creds');
+  // 'newpw' = a super admin issued a temporary password that must be replaced.
+  const [staffPhase, setStaffPhase] = useState<'creds' | 'code' | 'newpw'>('creds');
+  const [newPassword, setNewPassword] = useState('');
+  // Recovery codes: shown once right after enrolment; or typed instead of a
+  // TOTP code when the authenticator is lost.
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  const [useRecovery, setUseRecovery] = useState(false);
+  const [newPassword2, setNewPassword2] = useState('');
   const [totpCode, setTotpCode] = useState('');
   const [enroll, setEnroll] = useState<{ qr: string; secret: string; otpauth: string } | null>(null);
 
@@ -112,6 +139,8 @@ export function LoginClient({
     // Reset transient form state when switching, but keep typed identifiers.
     setOtpSent(false);
     setDevCode(null);
+    setBuiltinOtp(false);
+    setPhoneError(null);
     setCode('');
     setStaffPhase('creds');
     setEnroll(null);
@@ -119,11 +148,32 @@ export function LoginClient({
   }
 
   async function sendOtp() {
-    if (!/^\+?\d{10,15}$/.test(phone)) return toast.error('Enter a valid phone number with country code (e.g. +9198…)');
+    if (!/^\+?\d{10,15}$/.test(phone)) return setPhoneError('Enter your 10-digit mobile number.');
+    setPhoneError(null);
     setBusy(true);
     try {
       if (msg91Enabled) {
+        // Pre-launch test accounts get a built-in code shown on screen; the
+        // probe issues nothing for any other number.
+        const probe = await fetch('/api/auth/otp/test-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) })
+          .then(async (res) => ({ status: res.status, ok: res.ok, data: await res.json() }))
+          .catch(() => null);
+        if (probe?.data?.testAccount) {
+          if (probe.status === 429 && Number(probe.data.retryAfter) > 0) {
+            setResendAt(Date.now() + Number(probe.data.retryAfter) * 1000);
+            setNow(Date.now());
+          }
+          if (!probe.ok) throw new Error(probe.data.error || 'Could not issue the code. Please try again.');
+          setBuiltinOtp(true);
+          setResendAt(Date.now() + 45_000);
+          setNow(Date.now());
+          setOtpSent(true);
+          setDevCode(probe.data.devCode ?? null);
+          toast.success(probe.data.devCode ? `Test code: ${probe.data.devCode}` : 'OTP sent');
+          return;
+        }
         // MSG91 widget owns send + verify (multi-channel).
+        setBuiltinOtp(false);
         await loadMsg91Widget();
         await sendWidgetOtp(toMsg91Identifier(phone));
         setOtpSent(true);
@@ -132,16 +182,22 @@ export function LoginClient({
       }
       const r = await fetch('/api/auth/otp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
       const data = await r.json();
-      if (!r.ok) throw new Error(data?.error || 'Failed');
+      if (r.status === 429 && Number(data?.retryAfter) > 0) {
+        setResendAt(Date.now() + Number(data.retryAfter) * 1000);
+        setNow(Date.now());
+      }
+      if (!r.ok) throw new Error(data?.error || 'Could not send the code. Please try again.');
+      setResendAt(Date.now() + 45_000);
+      setNow(Date.now());
       setOtpSent(true);
       if (data.devCode) {
         setDevCode(data.devCode);
-        toast.success(`OTP sent (dev: ${data.devCode})`);
+        toast.success(`Test code: ${data.devCode}`);
       } else {
         toast.success('OTP sent');
       }
     } catch (e) {
-      toast.error((e as Error).message);
+      setPhoneError((e as Error).message);
     } finally { setBusy(false); }
   }
 
@@ -167,6 +223,8 @@ export function LoginClient({
       const r = me?.role;
       const target =
           r === 'SUPER_ADMIN' ? '/platform'
+        // Platform-team roles (same password + Google Authenticator gate).
+        : r === 'ADMIN_ASSIST' || r === 'DEVELOPER' || r === 'QA' || r === 'GUEST' ? '/platform'
         : r === 'ADMIN'       ? '/admin'
         : r === 'KITCHEN'     ? '/kitchen'
         : r === 'CUSTOMER'    ? '/restaurants'
@@ -181,22 +239,22 @@ export function LoginClient({
   async function verifyOtp() {
     setBusy(true);
     try {
-      if (msg91Enabled) {
+      if (msg91Enabled && !builtinOtp) {
         // Verify the code in the widget, then hand the signed token to the server.
         const accessToken = await verifyWidgetOtp(code);
         const r = await signIn('msg91-widget', { accessToken, phone, redirect: false });
-        if (r?.error) { toast.error('Sign-in failed. Please try again.'); return; }
+        if (r?.error) { setPhoneError('Sign-in failed. Please try again.'); return; }
         await routeByRole('/restaurants');
         return;
       }
       const r = await signIn('phone-otp', { phone, code, purpose: 'login', redirect: false });
-      if (r?.error) { toast.error('Invalid or expired code'); return; }
+      if (r?.error) { setPhoneError('That code is wrong or has expired. Check it, or tap Resend code.'); return; }
       // Customers land on the restaurant picker (/restaurants) so they immediately
       // choose a restaurant, then see its menu. routeByRole returns /restaurants
       // for the CUSTOMER role; this fallback covers the rare case /api/me is slow.
       await routeByRole('/restaurants');
     } catch (e) {
-      toast.error((e as Error).message);
+      setPhoneError((e as Error).message);
     } finally { setBusy(false); }
   }
 
@@ -211,7 +269,18 @@ export function LoginClient({
         body: JSON.stringify({ email, password }),
       });
       const d = await r.json();
+      if (d?.locked) {
+        const mins = Math.max(1, Math.ceil(Number(d.retryAfterSeconds || 0) / 60));
+        toast.error(`Too many failed attempts. Try again in ${mins} min, or ask a platform super admin to unlock your account.`);
+        return;
+      }
+      if (d?.suspended || d?.closed) { toast.error(d.message || 'This account cannot sign in. Contact your platform super admin.'); return; }
       if (!d?.ok) { toast.error('Invalid credentials'); return; }
+      if (d.status === 'change_password') {
+        setNewPassword(''); setNewPassword2('');
+        setStaffPhase('newpw');
+        return;
+      }
       setEnroll(d.status === 'enroll' ? { qr: d.qr, secret: d.secret, otpauth: d.otpauth } : null);
       setTotpCode('');
       setStaffPhase('code');
@@ -220,10 +289,43 @@ export function LoginClient({
     } finally { setBusy(false); }
   }
 
+  // Temp-password step: replace a super-admin issued password, then continue
+  // with the normal precheck (→ authenticator enrolment or code).
+  async function changeTempPassword() {
+    if (newPassword.length < 12) return toast.error('Use at least 12 characters.');
+    if (newPassword !== newPassword2) return toast.error('Passwords do not match.');
+    setBusy(true);
+    try {
+      const r = await fetch('/api/auth/staff/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, newPassword }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.status === 400) { toast.error(d.error || 'Choose a different password.'); return; }
+      if (d?.locked) {
+        const mins = Math.max(1, Math.ceil(Number(d.retryAfterSeconds || 0) / 60));
+        toast.error(`Too many failed attempts. Try again in ${mins} min.`);
+        return;
+      }
+      if (!d?.ok) { toast.error('Your temporary password was not accepted. Ask your super admin for a new one.'); setStaffPhase('creds'); return; }
+      toast.success('Password updated.');
+      setPassword(newPassword);
+      setNewPassword(''); setNewPassword2('');
+      setStaffPhase('creds');
+    } catch {
+      toast.error('Could not reach the server. Please try again.');
+    } finally { setBusy(false); }
+  }
+
   // Staff step 2: (first time) confirm enrollment, then sign in with the code.
   async function staffSignIn() {
-    if (!/^\d{6}$/.test(totpCode.trim())) return toast.error('Enter the 6-digit code from Google Authenticator.');
+    const typed = totpCode.trim();
+    if (useRecovery && !enroll) {
+      if (!/^[A-Za-z2-9]{5}-?[A-Za-z2-9]{5}$/.test(typed)) return toast.error('Enter one of your recovery codes, e.g. ABCDE-FGHJK.');
+    } else if (!/^\d{6}$/.test(typed)) return toast.error('Enter the 6-digit code from Google Authenticator.');
     setBusy(true);
+    let enrolledCodes: string[] | null = null;
     try {
       if (enroll) {
         const er = await fetch('/api/auth/staff/enroll', {
@@ -233,6 +335,7 @@ export function LoginClient({
         });
         const ed = await er.json();
         if (!ed?.ok) { toast.error("That code didn't match — enter the current 6-digit code."); return; }
+        enrolledCodes = Array.isArray(ed.recoveryCodes) ? ed.recoveryCodes : null;
       }
       const r = await signIn('email-password', { email, password, totp: totpCode.trim(), redirect: false });
       if (r?.error) { toast.error('Sign-in failed. Check your code and try again.'); return; }
@@ -249,10 +352,59 @@ export function LoginClient({
           return;
         }
       }
+      if (enrolledCodes?.length) {
+        // Signed in; show the recovery codes once before leaving the page.
+        setRecoveryCodes(enrolledCodes);
+        return;
+      }
       await routeByRole(role === 'super' ? '/platform' : '/admin');
     } catch {
       toast.error('Could not reach the server. Please try again.');
     } finally { setBusy(false); }
+  }
+
+  const customerPhoneFlow = (
+    <CustomerPhoneFlow
+      step={otpSent ? 'otp' : 'phone'}
+      phone={phone}
+      onPhoneChange={(v) => { setPhone(v); setPhoneError(null); }}
+      code={code}
+      onCodeChange={(v) => { setCode(v); setPhoneError(null); }}
+      busy={busy}
+      error={phoneError}
+      devCode={devCode}
+      resendIn={resendIn}
+      onSendOtp={() => { void sendOtp(); }}
+      onVerify={() => { void verifyOtp(); }}
+      onResend={() => { setCode(''); void sendOtp(); }}
+      onChangeNumber={() => { setOtpSent(false); setCode(''); setDevCode(null); setPhoneError(null); }}
+      googleEnabled={googleEnabled}
+      onGoogle={() => { void signIn('google', { callbackUrl: next || '/restaurants' }); }}
+    />
+  );
+
+  // flavrly.in: customers only — the dedicated, mobile-first customer screen.
+  if (surface === 'customer') {
+    return (
+      <CustomerAuthShell stats={{ restaurantsLive, cuisinesCount }}>
+        <div className="space-y-6">
+          {!otpSent && (
+            <div>
+              <h2 className="font-display text-2xl font-extrabold tracking-tight">Sign in or sign up</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Order from every kitchen in town, track it live.</p>
+            </div>
+          )}
+          {customerPhoneFlow}
+          <CustomerAuthLegal />
+          <div className="border-t border-border pt-5 text-center text-sm text-muted-foreground">
+            Own a restaurant?{' '}
+            <Link href="/signup/restaurant" className="inline-flex min-h-11 items-center font-semibold text-primary hover:underline">
+              Open your kitchen on Flavrly
+            </Link>
+          </div>
+        </div>
+      </CustomerAuthShell>
+    );
   }
 
   return (
@@ -317,61 +469,57 @@ export function LoginClient({
                 </div>
               </div>
 
-              {activeSpec.auth === 'phone' ? (
-                !otpSent ? (
-                  <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); sendOtp(); }}>
-                    <div>
-                      <Label htmlFor="phone">Mobile number</Label>
-                      <Input
-                        id="phone"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="+919876500001"
-                        autoComplete="tel"
-                        required
-                      />
-                    </div>
-                    <Button className="w-full gap-2" size="lg" disabled={busy} type="submit">
-                      <Sparkles className="size-4" />
-                      {busy ? 'Sending…' : 'Send OTP'}
-                    </Button>
-                    <p className="text-xs text-muted-foreground">
-                      We&apos;ll text a 6-digit code. Standard SMS rates may apply.
+              {recoveryCodes ? (
+                <div className="space-y-4" role="status">
+                  <div className="rounded-xl border bg-muted/30 p-4 text-sm">
+                    <div className="font-semibold">Save your recovery codes</div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      If you lose your phone, each code signs you in once instead of an authenticator code. They are
+                      shown only now — store them somewhere safe (a password manager or printed copy).
                     </p>
-                  </form>
-                ) : (
-                  <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); verifyOtp(); }}>
-                    <div className="text-sm text-muted-foreground">
-                      We sent a code to {phone}.{devCode && <> Dev code: <span className="font-mono">{devCode}</span></>}
-                    </div>
-                    <div>
-                      <Label htmlFor="otp">6-digit code</Label>
-                      <Input
-                        id="otp"
-                        value={code}
-                        onChange={(e) => setCode(e.target.value)}
-                        inputMode="numeric"
-                        pattern="[0-9]{6}"
-                        maxLength={6}
-                        required
-                      />
-                    </div>
-                    <Button className="w-full gap-2" size="lg" disabled={busy} type="submit">
-                      <Sparkles className="size-4" />
-                      {busy ? 'Verifying…' : 'Verify & sign in'}
+                  </div>
+                  <ul className="grid grid-cols-1 gap-2 font-mono text-sm sm:grid-cols-2">
+                    {recoveryCodes.map((c) => <li key={c} className="rounded-md border bg-card px-3 py-2 text-center tracking-wider">{c}</li>)}
+                  </ul>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button type="button" variant="outline" className="flex-1" onClick={() => { void navigator.clipboard?.writeText(recoveryCodes.join('\n')); toast.success('Copied'); }}>
+                      Copy codes
                     </Button>
-                    <button
-                      type="button"
-                      className="w-full text-sm text-muted-foreground hover:text-foreground"
-                      onClick={() => setOtpSent(false)}
-                    >
-                      ← change number
-                    </button>
-                  </form>
-                )
+                    <Button type="button" className="flex-1" onClick={() => { setRecoveryCodes(null); void routeByRole(role === 'super' ? '/platform' : '/admin'); }}>
+                      I&apos;ve saved them — continue
+                    </Button>
+                  </div>
+                </div>
+              ) : activeSpec.auth === 'phone' ? (
+                customerPhoneFlow
               ) : (
-                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (staffPhase === 'creds') staffContinue(); else staffSignIn(); }}>
-                  {staffPhase === 'creds' ? (
+                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (staffPhase === 'creds') staffContinue(); else if (staffPhase === 'newpw') changeTempPassword(); else staffSignIn(); }}>
+                  {staffPhase === 'newpw' ? (
+                    <>
+                      <div className="rounded-xl border bg-muted/30 p-4 text-sm">
+                        <div className="font-semibold">Choose a new password</div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Your password was reset by a platform super admin. Set your own password to continue.
+                        </p>
+                      </div>
+                      <div>
+                        <Label htmlFor="new-password">New password</Label>
+                        <Input id="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" minLength={12} required />
+                        <p className="mt-1 text-xs text-muted-foreground">At least 12 characters.</p>
+                      </div>
+                      <div>
+                        <Label htmlFor="new-password-2">Confirm new password</Label>
+                        <Input id="new-password-2" type="password" value={newPassword2} onChange={(e) => setNewPassword2(e.target.value)} autoComplete="new-password" minLength={12} required />
+                      </div>
+                      <Button className="w-full gap-2" size="lg" disabled={busy} type="submit">
+                        <ShieldCheck className="size-4" />
+                        {busy ? 'Saving…' : 'Save & continue'}
+                      </Button>
+                      <button type="button" className="w-full min-h-11 text-sm text-muted-foreground hover:text-foreground" onClick={() => setStaffPhase('creds')}>
+                        ← back
+                      </button>
+                    </>
+                  ) : staffPhase === 'creds' ? (
                     <>
                       {role === 'staff' && (
                         <div>
@@ -407,6 +555,9 @@ export function LoginClient({
                         {busy ? 'Checking…' : 'Continue'}
                       </Button>
                       <p className="text-xs text-muted-foreground">Protected by Google Authenticator (2FA). You&apos;ll enter a code next.</p>
+                      <div className="text-center">
+                        <Link href="/forgot-password" className="inline-flex min-h-11 items-center text-sm text-primary underline">Forgot password?</Link>
+                      </div>
                     </>
                   ) : (
                     <>
@@ -430,16 +581,15 @@ export function LoginClient({
                         </p>
                       )}
                       <div>
-                        <Label htmlFor="totp">Authenticator code</Label>
+                        <Label htmlFor="totp">{useRecovery && !enroll ? 'Recovery code' : 'Authenticator code'}</Label>
                         <Input
                           id="totp"
                           value={totpCode}
                           onChange={(e) => setTotpCode(e.target.value)}
-                          inputMode="numeric"
-                          pattern="[0-9]{6}"
-                          maxLength={6}
+                          inputMode={useRecovery && !enroll ? 'text' : 'numeric'}
+                          maxLength={useRecovery && !enroll ? 11 : 6}
                           autoComplete="one-time-code"
-                          placeholder="123456"
+                          placeholder={useRecovery && !enroll ? 'ABCDE-FGHJK' : '123456'}
                           required
                         />
                       </div>
@@ -454,6 +604,17 @@ export function LoginClient({
                       >
                         ← back
                       </button>
+                      {!enroll && (
+                        <div className="space-y-1 text-xs text-muted-foreground">
+                          <button type="button" className="min-h-11 text-primary underline" onClick={() => { setUseRecovery((v) => !v); setTotpCode(''); }}>
+                            {useRecovery ? 'Use my authenticator code instead' : 'Lost your authenticator? Use a recovery code'}
+                          </button>
+                          <p>
+                            No recovery codes left? Contact your platform super admin — they can reset your authenticator from
+                            Platform → Users, and you&apos;ll set it up again at your next sign-in.
+                          </p>
+                        </div>
+                      )}
                     </>
                   )}
                 </form>

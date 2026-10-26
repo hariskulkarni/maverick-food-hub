@@ -4,15 +4,20 @@ const h = vi.hoisted(() => ({
   terms: vi.fn(),
   prisma: {
     branch: { findUniqueOrThrow: vi.fn() },
-    address: { findUnique: vi.fn() },
-    combo: { findUnique: vi.fn() },
+    address: { findFirst: vi.fn() },
+    combo: { findFirst: vi.fn() },
+    coupon: { findUnique: vi.fn() },
     menuItem: { findFirst: vi.fn() }
   },
-  rules: vi.fn()
+  rules: vi.fn(),
+  session: { user: { id: 'u1' } } as null | { user: { id: string } },
+  offers: { loadAndApplyOffers: vi.fn(), loadOfferByCode: vi.fn() },
+  bonus: vi.fn()
 }));
 vi.mock('@/server/db', () => ({ prisma: h.prisma }));
-vi.mock('@/server/auth', () => ({ auth: async () => null }));
-vi.mock('@/server/offers', () => ({ loadAndApplyOffers: vi.fn(), loadOfferByCode: vi.fn() }));
+vi.mock('@/server/auth', () => ({ auth: async () => h.session }));
+vi.mock('@/server/offers', () => h.offers);
+vi.mock('@/server/signup-bonus', () => ({ previewSignupBonusForUser: h.bonus }));
 vi.mock('@/server/happy-hours', async (orig) => ({
   ...(await orig<typeof import('@/server/happy-hours')>()),
   loadRulesForRestaurant: h.rules
@@ -30,9 +35,12 @@ beforeEach(() => {
   h.prisma.branch.findUniqueOrThrow.mockResolvedValue({
     id: 'b1', restaurantId: 'r1', taxRatePct: 0, baseDeliveryFee: 30, perKmDeliveryFee: 10, packagingFee: 0, latitude: 12.9, longitude: 77.6
   });
-  h.prisma.address.findUnique.mockResolvedValue({ id: 'a1', latitude: 12.9, longitude: 77.6, postalCode: '560001' });
-  h.prisma.combo.findUnique.mockResolvedValue({ id: 'c1', price: 300 });
+  h.prisma.address.findFirst.mockResolvedValue({ id: 'a1', latitude: 12.9, longitude: 77.6, postalCode: '560001' });
+  h.prisma.combo.findFirst.mockResolvedValue({ id: 'c1', price: 300, isAvailable: true });
   h.rules.mockResolvedValue([]);
+  h.session = { user: { id: 'u1' } };
+  h.offers.loadAndApplyOffers.mockResolvedValue({ winners: [] });
+  h.bonus.mockResolvedValue({ appliedAmount: 0 });
 });
 
 describe('quote mirrors placement delivery terms', () => {
@@ -64,7 +72,7 @@ describe('quote mirrors placement delivery terms', () => {
 
 describe('quote subtotal matches placeOrder pricing (happy hour / variant / modifiers)', () => {
   const item = {
-    id: 'm1', name: 'Biryani', price: 200, categoryId: 'cat1', category: { id: 'cat1' },
+    id: 'm1', name: 'Biryani', price: 200, categoryId: 'cat1', category: { id: 'cat1' }, isAvailable: true,
     variants: [{ id: 'v1', name: 'Large', price: 180, isDefault: false, isAvailable: true }],
     modifierGroups: [{
       id: 'g1', name: 'Extras', minSelect: 0, maxSelect: 2, required: false,
@@ -114,5 +122,44 @@ describe('quote subtotal matches placeOrder pricing (happy hour / variant / modi
     h.rules.mockResolvedValue([hh]);
     await call(body);
     expect(h.terms.mock.calls[0][0].subtotalPaise).toBe(15000);
+  });
+});
+
+describe('quote agrees with placeOrder (P1-7) and scopes lookups (P2-15)', () => {
+  it('address is resolved only for the signed-in owner; anonymous quotes ignore addressId', async () => {
+    h.terms.mockResolvedValue({ kind: 'legacy' });
+    await call(body);
+    expect(h.prisma.address.findFirst).toHaveBeenCalledWith({ where: { id: 'a1', userId: 'u1' } });
+    h.session = null;
+    h.prisma.address.findFirst.mockClear();
+    h.terms.mockResolvedValue({ kind: 'legacy' });
+    await call(body);
+    expect(h.prisma.address.findFirst).not.toHaveBeenCalled();
+  });
+  it('combo lookup is branch-scoped', async () => {
+    h.terms.mockResolvedValue({ kind: 'legacy' });
+    await call(body);
+    expect(h.prisma.combo.findFirst).toHaveBeenCalledWith({ where: { id: 'c1', branchId: 'b1' } });
+  });
+  it('an item or combo not orderable from this branch is a 400, not a silent ₹0 line', async () => {
+    h.prisma.combo.findFirst.mockResolvedValue(null);
+    const res = await call({ ...body, fulfillmentType: 'PICKUP' });
+    expect(res.status).toBe(400);
+  });
+  it('offer context carries fulfillmentType (default DELIVERY) like placeOrder', async () => {
+    h.terms.mockResolvedValue({ kind: 'legacy' });
+    h.prisma.menuItem.findFirst.mockResolvedValue({ id: 'm1', name: 'Dal', price: 100, categoryId: 'cat1', category: { id: 'cat1' }, isAvailable: true, variants: [], modifierGroups: [] });
+    await call({ ...body, fulfillmentType: 'PICKUP', items: [{ menuItemId: 'm1', quantity: 1 }] });
+    expect(h.offers.loadAndApplyOffers.mock.calls[0][0].fulfillmentType).toBe('PICKUP');
+    await call({ ...body, items: [{ menuItemId: 'm1', quantity: 1 }] });
+    expect(h.offers.loadAndApplyOffers.mock.calls[1][0].fulfillmentType).toBe('DELIVERY');
+  });
+  it('signup bonus is previewed into the total like placeOrder', async () => {
+    h.terms.mockResolvedValue({ kind: 'legacy' });
+    h.bonus.mockResolvedValue({ appliedAmount: 25 });
+    const j = await (await call({ ...body, fulfillmentType: 'PICKUP' })).json();
+    expect(h.bonus).toHaveBeenCalledWith('u1', 300);
+    expect(j.signupBonusApplied).toBe(25);
+    expect(j.total).toBe(275);
   });
 });

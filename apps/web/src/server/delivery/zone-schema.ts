@@ -51,6 +51,19 @@ export const ZoneBody = z
 
 export type ZoneInput = z.infer<typeof ZoneBody>;
 
+/** Shown when a save would leave a zone with no fee brackets (it would refuse every delivery). */
+export const NO_BRACKETS_MESSAGE = "Add at least one fee bracket. A zone without fee brackets refuses every delivery.";
+
+/**
+ * Default bracket for a zone created without any: every subtotal from ₹0 pays
+ * the branch's base delivery fee (rupees → paise). The engine fails closed on
+ * an empty bracket list, so a new zone would otherwise refuse every order.
+ */
+export function defaultFeeBrackets(baseDeliveryFeeRupees: number): Array<{ minSubtotal: number; charge: number }> {
+  const charge = Math.max(0, Math.round((Number(baseDeliveryFeeRupees) || 0) * 100));
+  return [{ minSubtotal: 0, charge }];
+}
+
 /** Prisma data for a validated zone (only fields relevant to the type are kept; others cleared). */
 export function zoneData(v: ZoneInput) {
   return {

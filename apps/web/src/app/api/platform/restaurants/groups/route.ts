@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 
 /**
  * Group tree for the super-admin restaurants area: every top-level restaurant
@@ -8,7 +8,8 @@ import { requireSuperAdmin } from '@/server/tenancy';
  * (top-level restaurants only) for the assignment selector.
  */
 export async function GET(_req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
 
   const tops = await prisma.restaurant.findMany({
     where: { parentId: null },

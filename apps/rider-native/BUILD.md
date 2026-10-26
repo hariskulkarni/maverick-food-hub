@@ -36,7 +36,7 @@ needs your own key:
 1. Google Cloud Console → create a project (or reuse one) → enable
    **Maps SDK for Android**.
 2. Create an API key, restrict it to Android apps with package name
-   `com.oakandsizzler.rider`.
+   `com.flavrly.rider`.
 3. In `app.json`, replace `REPLACE_WITH_GOOGLE_MAPS_ANDROID_KEY` under
    `android.config.googleMaps.apiKey` with the real key.
 
@@ -92,8 +92,8 @@ Internal Testing → Closed → Open → Production.
 ## Pointing at the production domain
 
 `lib/api.ts` currently has `API_BASE = 'http://148.230.66.124'` (the raw VPS
-IP). Once `oakandsizzler.com` has DNS + SSL live, change that one line to
-`https://oakandsizzler.com` and rebuild. Everything else — auth, maps, GPS,
+IP). Once `flavrly.in` has DNS + SSL live, change that one line to
+`https://flavrly.in` and rebuild. Everything else — auth, maps, GPS,
 camera, push — already routes through that constant.
 
 ---

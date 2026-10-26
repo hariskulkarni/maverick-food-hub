@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
-import { requireManagedRestaurant } from "@/server/tenancy";
-import { ZoneBody, zoneData } from "@/server/delivery/zone-schema";
+import { requireTenantAdmin } from "@/server/tenancy";
+import { ZoneBody, zoneData, defaultFeeBrackets } from "@/server/delivery/zone-schema";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 /** Resolve the managed restaurant; a thrown Response (401/403/404) becomes the reply. */
 async function managed(req: NextRequest) {
   try {
-    return { restaurant: await requireManagedRestaurant(req.nextUrl.searchParams.get("restaurantId")) };
+    return { restaurant: await requireTenantAdmin(req.nextUrl.searchParams.get("restaurantId")) };
   } catch (e) {
     if (e instanceof Response) return { error: e };
     throw e;
@@ -40,6 +40,13 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return Response.json({ error: "Invalid zone", issues: parsed.error.issues }, { status: 400 });
   const v = parsed.data;
   if (!(await ownsBranch(m.restaurant!.id, v.branchId))) return new Response("Not found", { status: 404 });
+
+  // No brackets supplied → seed one from the branch base delivery fee so the
+  // new zone actually accepts deliveries (the fee engine fails closed on []).
+  if (!v.feeBrackets || v.feeBrackets.length === 0) {
+    const b = await prisma.branch.findUnique({ where: { id: v.branchId }, select: { baseDeliveryFee: true } });
+    v.feeBrackets = defaultFeeBrackets(Number(b?.baseDeliveryFee ?? 0));
+  }
 
   const zone = await prisma.$transaction(async (tx) => {
     if (v.isDefault) {

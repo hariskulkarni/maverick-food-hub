@@ -1,10 +1,12 @@
 import { prisma } from '@/server/db';
+import { loadAdminBoardOrders } from '@/server/staff-orders';
 import { requireRestaurant, accessibleOrderScope } from '@/server/tenancy';
 import { OrdersBoard } from './orders-board';
 import { PauseControl } from './pause-control';
 import { isPaused } from '@/server/branch-pause';
 import { auth } from '@/server/auth';
 import { LogoMark } from '@/components/brand/logo';
+import { HelpButton } from '@/components/help/help-button';
 
 export const metadata = { title: 'Admin · Orders' };
 // Never cache — every page render must reflect the live database. Without
@@ -28,12 +30,9 @@ export default async function AdminOrdersPage({ searchParams: _sp }: { searchPar
   const primaryBranchId = scope.primaryBranchId ?? scope.branchIds[0]!;
   const pause = await isPaused(primaryBranchId);
 
-  const orders = await prisma.order.findMany({
-    where: { branchId: { in: scope.branchIds } },
-    include: { customer: true, items: true, address: true, assignment: { include: { rider: { include: { user: true } } } } },
-    orderBy: { placedAt: 'desc' },
-    take: 100
-  });
+  // P2-15: every ACTIVE order + the latest 100 of any status (a busy day can't
+  // push a live order off the board). P2-13: customer/rider as {id,name,phone}.
+  const orders = await loadAdminBoardOrders(prisma, scope.branchIds);
   // Annotate each order with its source restaurant for the board's label/filter.
   const annotated = orders.map((o) => ({
     ...o,
@@ -49,6 +48,7 @@ export default async function AdminOrdersPage({ searchParams: _sp }: { searchPar
       <div className="flex items-center gap-3">
         <LogoMark className="h-9 w-9 shrink-0" />
         <h1 className="display text-2xl font-semibold text-gradient-brand">Orders</h1>
+        <HelpButton appArea="admin.orders" className="ml-auto" />
       </div>
       <PauseControl
         branchId={primaryBranchId}

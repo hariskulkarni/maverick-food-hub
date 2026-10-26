@@ -9,15 +9,17 @@ import { resolveLineSelections } from '@/server/menu-selections';
 import { loadRulesForRestaurant, priceForItem, priceForCombo } from '@/server/happy-hours';
 import { clampTwo } from '@/lib/utils';
 import { parseOrJsonError } from '@/server/zod-helpers';
+import { previewSignupBonusForUser } from '@/server/signup-bonus';
+import { isLegacyCouponUsable } from '@/server/coupons';
 
 const Body = z.object({
   branchId: z.string(),
   addressId: z.string().optional(),
   fulfillmentType: z.enum(['DELIVERY', 'PICKUP', 'DINE_IN']).optional(),
-  items: z.array(z.object({ menuItemId: z.string().optional(), comboId: z.string().optional(), quantity: z.number().int().positive(),
-    selectedVariantId: z.string().optional(),
-    selectedModifierOptionIds: z.array(z.string()).optional()
-  })),
+  items: z.array(z.object({ menuItemId: z.string().optional(), comboId: z.string().optional(), quantity: z.number().int().positive().max(50),
+    selectedVariantId: z.string().optional().nullable(),
+    selectedModifierOptionIds: z.array(z.string()).max(50).optional()
+  })).max(100),
   couponCode: z.string().optional(),
   walletApply: z.number().nonnegative().optional(),
   loyaltyApply: z.number().nonnegative().optional()
@@ -29,7 +31,11 @@ export async function POST(req: NextRequest) {
   if (parsed instanceof Response) return parsed;
   const body = parsed;
   const branch = await prisma.branch.findUniqueOrThrow({ where: { id: body.branchId } });
-  const address = body.addressId ? await prisma.address.findUnique({ where: { id: body.addressId } }) : null;
+  // P2-15: an address is quoted only for its signed-in owner (same rule as placeOrder) — never read
+  // another customer's address (and its coordinates) by id.
+  const userId = session?.user?.id ?? null;
+  const address = body.addressId && userId ? await prisma.address.findFirst({ where: { id: body.addressId, userId } }) : null;
+  const fulfillmentType = body.fulfillmentType ?? 'DELIVERY';
 
   // Priced lines (for tax/total) + an offer cart (menu items carry id/category
   // so the Offer engine can scope item/category-restricted offers).
@@ -51,7 +57,11 @@ export async function POST(req: NextRequest) {
           modifierGroups: { orderBy: { sortOrder: 'asc' }, include: { options: { orderBy: { sortOrder: 'asc' } } } }
         }
       });
-      if (m) {
+      if (!m || !m.isAvailable) {
+        // placeOrder refuses this line; a preview that silently drops it would show a wrong total.
+        return Response.json({ error: m ? `Item not available: ${m.name}` : 'An item in your cart is no longer on this menu.' }, { status: 400 });
+      }
+      {
         let selections;
         try {
           selections = resolveLineSelections(
@@ -77,8 +87,12 @@ export async function POST(req: NextRequest) {
         offerCart.push({ menuItemId: m.id, categoryId: m.categoryId ?? null, unitPrice, quantity: it.quantity });
       }
     } else if (it.comboId) {
-      const c = await prisma.combo.findUnique({ where: { id: it.comboId } });
-      if (c) {
+      // P2-15: branch-scoped like placeOrder (a combo id from another branch is not orderable here).
+      const c = await prisma.combo.findFirst({ where: { id: it.comboId, branchId: body.branchId } });
+      if (!c || c.isAvailable === false) {
+        return Response.json({ error: 'A combo in your cart is no longer available.' }, { status: 400 });
+      }
+      {
         const priced = priceForCombo({ id: c.id, price: Number(c.price) }, hhRules, hhNow);
         lines.push({ unitPrice: priced.effectivePrice, quantity: it.quantity });
       }
@@ -88,8 +102,12 @@ export async function POST(req: NextRequest) {
   // Legacy coupon path (kept for backward compatibility with /admin/coupons).
   let coupon = null as null | { flatOff?: number | null; percentOff?: number | null; minOrderAmount?: number | null; maxDiscount?: number | null };
   if (body.couponCode) {
-    const c = await prisma.coupon.findUnique({ where: { code: body.couponCode } });
-    if (c && c.isActive) {
+    const c = await prisma.coupon.findUnique({
+      where: { code: body.couponCode },
+      include: { branch: { select: { restaurantId: true } } }
+    });
+    // Same eligibility as placeOrder(): restaurant scope, start/end date, usage limit.
+    if (c && isLegacyCouponUsable(c, { restaurantId: branch.restaurantId })) {
       coupon = {
         flatOff: c.flatOff ? Number(c.flatOff) : null,
         percentOff: c.percentOff,
@@ -108,6 +126,8 @@ export async function POST(req: NextRequest) {
       cart: offerCart,
       subtotal: offerSubtotal,
       channel: 'ONLINE' as const,
+      // P1-7: fulfillment-scoped offers must evaluate exactly as placeOrder does.
+      fulfillmentType,
       branchId: branch.id,
       restaurantId: branch.restaurantId,
       customerId: session.user.id,
@@ -140,7 +160,7 @@ export async function POST(req: NextRequest) {
 
   // Zone-authoritative delivery terms — identical resolution to placeOrder so the
   // preview equals the charged fee. Only for DELIVERY with a chosen address.
-  const isDelivery = body.fulfillmentType === 'DELIVERY' || !body.fulfillmentType;
+  const isDelivery = fulfillmentType === 'DELIVERY';
   let deliveryFeeOverride: number | undefined;
   let zone: { etaMinutes: number; minOrderPaise: number } | null = null;
   let zoneBlock: { reason: string; message: string; minOrderPaise?: number } | null = null;
@@ -155,20 +175,28 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // P1-7: placeOrder auto-applies the signup bonus (on the subtotal); the preview must too.
+  let bonusApplied = 0;
+  if (userId) {
+    const sub = clampTwo(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0));
+    bonusApplied = (await previewSignupBonusForUser(userId, sub).catch(() => ({ appliedAmount: 0 }))).appliedAmount;
+  }
+
   const r = pricing({
     lines,
     taxRatePct: branch.taxRatePct,
-    baseDeliveryFee: body.fulfillmentType === 'DELIVERY' || !body.fulfillmentType ? Number(branch.baseDeliveryFee) : 0,
-    perKmDeliveryFee: body.fulfillmentType === 'DELIVERY' || !body.fulfillmentType ? Number(branch.perKmDeliveryFee) : 0,
+    baseDeliveryFee: isDelivery ? Number(branch.baseDeliveryFee) : 0,
+    perKmDeliveryFee: isDelivery ? Number(branch.perKmDeliveryFee) : 0,
     // Packaging applies to delivery + pickup but not dine-in (served at table).
     packagingFee: body.fulfillmentType === 'DINE_IN' ? 0 : Number(branch.packagingFee),
     branch: { lat: branch.latitude, lng: branch.longitude },
-    delivery: address ? { lat: address.latitude, lng: address.longitude } : null,
+    delivery: isDelivery && address ? { lat: address.latitude, lng: address.longitude } : null,
     deliveryFeeOverride,
     coupon,
     offers,
     walletApplied: body.walletApply,
-    loyaltyApplied: body.loyaltyApply
+    loyaltyApplied: body.loyaltyApply,
+    signupBonusApplied: bonusApplied
   });
   return Response.json({ ...r, taxRatePct: branch.taxRatePct, zone, zoneBlock });
 }

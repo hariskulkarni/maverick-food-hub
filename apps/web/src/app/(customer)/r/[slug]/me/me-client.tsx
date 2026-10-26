@@ -23,14 +23,15 @@ import Link from 'next/link';
 import { signOut } from 'next-auth/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { LOYALTY_MAX_REDEEM_PER_ORDER, LOYALTY_POINT_VALUE_RUPEES, loyaltyEarnCopy } from '@/lib/loyalty';
 import { Button } from '@/components/ui/button';
 import { OrderStatusBadge } from '@/components/order-status-badge';
 import { money, fmtDate } from '@/lib/utils';
 import { FOOD_FALLBACK } from '@/lib/food-images';
 import { useCart } from '../../../cart-context';
 import {
-  Wallet as WalletIcon, Sparkles, Flame, MapPin, BadgePercent, Heart,
-  CreditCard, User as UserIcon, ChevronRight, LogOut, ArrowRight, Plus,
+  Wallet as WalletIcon, Sparkles, Flame, MapPin, BadgePercent,
+  User as UserIcon, ChevronRight, LogOut, ArrowRight, Plus,
   Receipt, Star, Gift
 } from 'lucide-react';
 
@@ -123,10 +124,6 @@ export function MeClient(props: MeClientProps) {
   const { restaurant, user, wallet, walletTxns, loyalty, addresses, recentOrders, ordersFromHereCount, mostOrdered, activeCoupons } = props;
   const initials = getInitials(user.name, user.phone);
 
-  // Loyalty milestone — first hit at 200 pts (₹50 cashback), bar shows pct.
-  const MILESTONE = 200;
-  const milestonePct = Math.min(100, Math.round((loyalty.pointsBalance / MILESTONE) * 100));
-  const pointsToGo = Math.max(0, MILESTONE - loyalty.pointsBalance);
 
   return (
     <div className="bg-gradient-to-b from-primary/5 via-background to-background min-h-dvh pb-12">
@@ -151,12 +148,8 @@ export function MeClient(props: MeClientProps) {
             points={loyalty.pointsBalance}
             lifetimeEarn={loyalty.lifetimeEarn}
             lifetimeRedeem={loyalty.lifetimeRedeem}
-            milestone={MILESTONE}
-            milestonePct={milestonePct}
-            pointsToGo={pointsToGo}
           />
           <OffersCard coupons={activeCoupons} />
-          <NearYouPlaceholder />
           <AccountActionsCard restaurantSlug={restaurant.slug} />
         </div>
       </div>
@@ -494,12 +487,12 @@ function walletTxnLabel(type: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Loyalty — balance + how to earn + progress bar to next milestone.
+//  Loyalty — balance, what it is worth at checkout, and how to earn.
 // ─────────────────────────────────────────────────────────────────────────────
-function LoyaltyCard({ points, lifetimeEarn, lifetimeRedeem, milestone, milestonePct, pointsToGo }: {
+function LoyaltyCard({ points, lifetimeEarn, lifetimeRedeem }: {
   points: number; lifetimeEarn: number; lifetimeRedeem: number;
-  milestone: number; milestonePct: number; pointsToGo: number;
 }) {
+  const usable = Math.min(points, LOYALTY_MAX_REDEEM_PER_ORDER);
   return (
     <Card>
       <CardContent className="p-5">
@@ -517,18 +510,13 @@ function LoyaltyCard({ points, lifetimeEarn, lifetimeRedeem, milestone, mileston
           </div>
         </div>
 
-        {/* Progress to next milestone */}
-        <div className="mt-4">
-          <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="font-medium">Next reward at {milestone} pts</span>
-            <span className="text-muted-foreground">{pointsToGo > 0 ? `${pointsToGo} pts to go` : 'Unlocked!'}</span>
+        {/* What the points are worth — same constants the server earns/redeems with. */}
+        <div className="mt-4 space-y-1.5">
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <span className="font-medium">Worth at checkout</span>
+            <span className="text-muted-foreground">{money(usable * LOYALTY_POINT_VALUE_RUPEES)} on your next order</span>
           </div>
-          <div className="h-2 rounded-full bg-muted overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-warning to-primary" style={{ width: `${milestonePct}%` }} />
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-2">
-            Earn 1 pt for every ₹10 spent. Hit {milestone} pts to unlock ₹50 cashback at checkout.
-          </p>
+          <p className="text-[11px] text-muted-foreground">{loyaltyEarnCopy()}</p>
         </div>
       </CardContent>
     </Card>
@@ -536,26 +524,7 @@ function LoyaltyCard({ points, lifetimeEarn, lifetimeRedeem, milestone, mileston
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Phase-2 placeholder — "Offers near you" with a heart icon, per spec.
-// ─────────────────────────────────────────────────────────────────────────────
-function NearYouPlaceholder() {
-  return (
-    <Card className="border-dashed">
-      <CardContent className="p-5 text-center">
-        <div className="mx-auto size-10 rounded-full bg-primary/10 grid place-items-center mb-3">
-          <Heart className="size-5 text-primary" />
-        </div>
-        <div className="font-medium text-sm">Offers near you</div>
-        <p className="text-xs text-muted-foreground mt-1">
-          More offers coming soon — we&apos;ll surface deals from restaurants close to your saved addresses.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Account actions — edit profile, saved cards (placeholder), sign out.
+//  Account actions — edit profile, favorites, sign out.
 //  We duplicate the LogoutButton's `signOut({ redirect: false }) → hard nav`
 //  pattern so the redirect target is the tenant's storefront, not /login.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -577,15 +546,6 @@ function AccountActionsCard({ restaurantSlug }: { restaurantSlug: string }) {
             <span className="flex items-center gap-2"><UserIcon className="size-4 text-muted-foreground" /> Edit profile</span>
             <ChevronRight className="size-4 text-muted-foreground" />
           </Link>
-          <button
-            type="button"
-            className="flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 hover:bg-accent text-left tap-press disabled:opacity-50"
-            disabled
-            title="Coming soon"
-          >
-            <span className="flex items-center gap-2"><CreditCard className="size-4 text-muted-foreground" /> Saved cards</span>
-            <Badge variant="muted">Soon</Badge>
-          </button>
           <Link href="/profile/favorites" className="flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 hover:bg-accent tap-press">
             <span className="flex items-center gap-2"><Gift className="size-4 text-muted-foreground" /> Favorites</span>
             <ChevronRight className="size-4 text-muted-foreground" />

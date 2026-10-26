@@ -1,134 +1,227 @@
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { publish } from '@/server/realtime';
 import { maybePublishNearby } from '@/server/proximity';
 import { maybeEmitArrival } from '@/server/arrival';
+import { parseOrJsonError } from '@/server/zod-helpers';
+import {
+  LocationBody,
+  bodyPoints,
+  classifyPoints,
+  pointsToPersist,
+  isActiveDelivery
+} from '@/server/rider-location-points';
 
 /**
- * High-frequency rider location ping.
+ * Rider location ping — one point from the foreground app, or a batch of up to
+ * 50 (`{ points: [...] }`) flushed by the native app's background
+ * delivery-tracking task (incl. points queued while the phone was offline).
  *
- * - Publishes to SSE every call (sub-second propagation to all subscribers).
- * - Throttles DB writes to once per ~3 seconds per rider to avoid hammering
- *   Postgres. The in-process throttle works for single-instance deploys; swap
- *   to Redis if/when this runs behind multiple workers.
+ * - Out-of-order / duplicate / far-stale points are ignored (see
+ *   server/rider-location-points.ts). Only the newest fresh point is "live":
+ *   it is published over SSE (customer tracker, branch feed, platform live-ops)
+ *   and becomes RiderProfile.currentLat/Lng (read by live-ops, ETA and
+ *   /trip/<token>).
+ * - An `orderId` is honoured only when that order's assignment belongs to this
+ *   rider (else the point is an untagged fleet ping), and order-scoped
+ *   channels (order:/branch:, proximity, arrival) are fed only while that
+ *   assignment is still active. Never 403 for this: the background task
+ *   treats 403 as "signed out".
+ * - Every request with accepted points refreshes RiderHeartbeat.lastSeenAt.
+ * - Accepted points go into DeliveryLocationPing (the route trail) thinned to
+ *   one per ~3 s per rider, stamped with their fix time.
+ * - The response carries `orderActive` for the newest tagged point so the
+ *   background task can stop itself once the delivery is over.
+ *
+ * In-process maps assume a single instance (as before); swap to Redis if this
+ * ever runs behind multiple workers.
  */
 
-const Body = z.object({
-  lat: z.number(),
-  lng: z.number(),
-  speedKph: z.number().optional(),
-  orderId: z.string().optional()
-});
+type OrderInfo = {
+  riderId: string;
+  assignmentStatus: string;
+  orderStatus: string;
+  branchId: string | null;
+  pickup: { lat: number; lng: number } | null;
+  drop: { lat: number; lng: number } | null;
+  at: number;
+};
 
-// In-memory throttle bookkeeping. Resets across deploys (acceptable).
-const lastPersistAt = new Map<string, number>(); // riderId → ms
-const lastBranchAt  = new Map<string, number>(); // riderId → ms (for last known branchId on this assignment)
-// Cache of order → drop coords so we can compute proximity without a DB hit
-// on every ping. Lifetime matches lastBranchAt — refreshed every 30s.
-const dropCache = new Map<string, { branchId: string | null; pickup: { lat: number; lng: number } | null; drop: { lat: number; lng: number } | null }>();
-const DB_THROTTLE_MS = 3_000;
+const ORDER_CACHE_MS = 30_000;
+const orderCache = new Map<string, OrderInfo>(); // orderId → assignment + coords
+const lastAcceptedAt = new Map<string, number>(); // riderId → newest accepted fix time
+const lastPersistedAt = new Map<string, number>(); // riderId → newest persisted fix time
+
+async function loadOrder(orderId: string): Promise<OrderInfo | null> {
+  const cached = orderCache.get(orderId);
+  if (cached && Date.now() - cached.at < ORDER_CACHE_MS) return cached;
+  const a = await prisma.riderAssignment.findUnique({
+    where: { orderId },
+    select: {
+      riderId: true,
+      status: true,
+      order: {
+        select: {
+          status: true,
+          branchId: true,
+          branch: { select: { latitude: true, longitude: true } },
+          address: { select: { latitude: true, longitude: true } }
+        }
+      }
+    }
+  });
+  if (!a) {
+    orderCache.delete(orderId);
+    return null;
+  }
+  const o = a.order;
+  const info: OrderInfo = {
+    riderId: a.riderId,
+    assignmentStatus: a.status,
+    orderStatus: o.status,
+    branchId: o.branchId ?? null,
+    pickup:
+      o.branch?.latitude != null && o.branch?.longitude != null
+        ? { lat: Number(o.branch.latitude), lng: Number(o.branch.longitude) }
+        : null,
+    drop:
+      o.address?.latitude != null && o.address?.longitude != null
+        ? { lat: Number(o.address.latitude), lng: Number(o.address.longitude) }
+        : null,
+    at: Date.now()
+  };
+  orderCache.set(orderId, info);
+  return info;
+}
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (session?.user.role !== 'RIDER') return new Response('Forbidden', { status: 403 });
-  const data = Body.parse(await req.json());
+
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  const parsed = parseOrJsonError(LocationBody, raw);
+  if (parsed instanceof Response) return parsed;
 
   const profile = await prisma.riderProfile.findUnique({
     where: { userId: session.user.id },
     select: { id: true }
   });
   if (!profile) return new Response('No rider profile', { status: 404 });
+  const riderId = profile.id;
 
-  const at = new Date().toISOString();
-  const event = {
-    kind: 'rider:position' as const,
-    riderId: profile.id,
-    lat: data.lat,
-    lng: data.lng,
-    speedKph: data.speedKph,
-    orderId: data.orderId,
-    at
-  };
+  // Resolve each referenced order once; keep only the rider's own.
+  const { points, sentAt } = bodyPoints(parsed);
+  const owned = new Map<string, OrderInfo>();
+  for (const orderId of new Set(points.map((p) => p.orderId).filter((x): x is string => !!x))) {
+    const info = await loadOrder(orderId);
+    if (info && info.riderId === riderId) owned.set(orderId, info);
+  }
+  const scoped = points.map((p) => (p.orderId && !owned.has(p.orderId) ? { ...p, orderId: undefined } : p));
 
-  // Fast fan-out paths — every single ping reaches subscribers immediately.
-  publish(`rider:${profile.id}:location`, event);
-  publish('platform:riders', event);
-
-  if (data.orderId) {
-    // Customer tracker channel — keep old `location` shape so existing
-    // subscribers don't need to change.
-    publish(`order:${data.orderId}`, { kind: 'location', orderId: data.orderId, lat: data.lat, lng: data.lng, at });
-
-    // Restaurant branch feed + drop coords: only refresh from DB every 30s.
-    // We cache the order's drop lat/lng alongside the branchId so the
-    // proximity check below avoids hitting Postgres on every ping.
-    const branchAt = lastBranchAt.get(profile.id) ?? 0;
-    let cached = dropCache.get(data.orderId);
-    if (!cached || Date.now() - branchAt > 30_000) {
-      const o = await prisma.order.findUnique({
-        where: { id: data.orderId },
-        select: { branchId: true, branch: { select: { latitude: true, longitude: true } }, address: { select: { latitude: true, longitude: true } } }
-      });
-      const drop = o?.address?.latitude != null && o.address?.longitude != null
-        ? { lat: Number(o.address.latitude), lng: Number(o.address.longitude) }
-        : null;
-      const pickup = o?.branch?.latitude != null && o.branch?.longitude != null
-        ? { lat: Number(o.branch.latitude), lng: Number(o.branch.longitude) }
-        : null;
-      cached = { branchId: o?.branchId ?? null, pickup, drop };
-      dropCache.set(data.orderId, cached);
-      if (cached.branchId) {
-        (event as any).branchId = cached.branchId;
-        publish(`branch:${cached.branchId}:riders`, event);
-        lastBranchAt.set(profile.id, Date.now());
-      }
-    } else {
-      // Re-publish using last-known branch info attached to the event payload.
-      publish(`branch:_:riders`, event);
-    }
-
-    // Proximity broadcast — fires once per order per 5-minute window when the
-    // rider crosses inside 200m of the drop. The helper handles the dedupe.
-    if (cached?.drop) {
-      maybePublishNearby(data.orderId, { lat: data.lat, lng: data.lng }, cached.drop);
-    }
-
-    // Geofence arrival (pickup/dropoff) — idempotent per order+phase; never blocks the ack.
-    if (cached) {
-      void maybeEmitArrival(data.orderId, { lat: data.lat, lng: data.lng }, cached.pickup, cached.drop).catch(() => {});
-    }
+  // orderActive answers for the newest point that named an order.
+  let newestTagged: { orderId: string; t: number } | null = null;
+  for (const p of points) {
+    if (!p.orderId) continue;
+    const t = p.recordedAt ?? Number.MAX_SAFE_INTEGER;
+    if (!newestTagged || t >= newestTagged.t) newestTagged = { orderId: p.orderId, t };
+  }
+  let orderActive: boolean | undefined;
+  if (newestTagged) {
+    const info = owned.get(newestTagged.orderId);
+    orderActive = !!info && isActiveDelivery(info.assignmentStatus, info.orderStatus);
   }
 
-  // Throttled DB persistence — keeps the current position fresh on the rider
-  // profile but doesn't flood DeliveryLocationPing.
-  const last = lastPersistAt.get(profile.id) ?? 0;
   const now = Date.now();
-  if (now - last >= DB_THROTTLE_MS) {
-    lastPersistAt.set(profile.id, now);
-    const nowDate = new Date();
-    // Fire-and-forget: do not block the SSE-publish acknowledgment behind disk I/O.
-    Promise.all([
-      // Source of truth for the super-admin live map between SSE frames.
-      // `@updatedAt` on RiderProfile bumps automatically, so the freshness of
-      // currentLat/currentLng is observable via `updatedAt`.
-      prisma.riderProfile.update({ where: { id: profile.id }, data: { currentLat: data.lat, currentLng: data.lng } }),
-      prisma.deliveryLocationPing.create({
-        data: { riderId: profile.id, orderId: data.orderId, lat: data.lat, lng: data.lng, speedKph: data.speedKph }
-      }),
-      // Stamp lastLocationAt on the heartbeat row so the live endpoint can
-      // report an accurate "last GPS fix" time even when the rider is idle
-      // (no active order) and only the location stream is running.
-      prisma.riderHeartbeat.upsert({
-        where: { riderId: profile.id },
-        create: { riderId: profile.id, lastSeenAt: nowDate, lastLocationAt: nowDate, gpsEnabled: true },
-        update: { lastLocationAt: nowDate }
-      })
-    ]).catch(() => {});
+  const { accepted, live, lastAcceptedAt: mark } = classifyPoints(scoped, now, lastAcceptedAt.get(riderId), sentAt);
+  if (mark !== undefined) lastAcceptedAt.set(riderId, mark);
+
+  // ── Live fan-out (newest fresh point only) ────────────────────────────────
+  if (live) {
+    const at = new Date(Math.min(live.t, now)).toISOString();
+    const event = {
+      kind: 'rider:position' as const,
+      riderId,
+      lat: live.lat,
+      lng: live.lng,
+      speedKph: live.speedKph,
+      orderId: live.orderId,
+      at
+    };
+    publish(`rider:${riderId}:location`, event);
+    publish('platform:riders', event);
+
+    // Order-scoped channels only for the rider's own ACTIVE delivery — a
+    // finished, cancelled or someone else's order never gets positions,
+    // proximity or arrival events from this rider.
+    const info = live.orderId ? owned.get(live.orderId) : undefined;
+    if (live.orderId && info && isActiveDelivery(info.assignmentStatus, info.orderStatus)) {
+      // Customer tracker channel — keep the old `location` shape.
+      publish(`order:${live.orderId}`, { kind: 'location', orderId: live.orderId, lat: live.lat, lng: live.lng, at });
+      if (info.branchId) {
+        // Branch feed carries the branchId alongside the rider position.
+        publish(`branch:${info.branchId}:riders`, Object.assign({}, event, { branchId: info.branchId }));
+      }
+      // Proximity broadcast (200 m of the drop, deduped by the helper).
+      if (info.drop) maybePublishNearby(live.orderId, { lat: live.lat, lng: live.lng }, info.drop);
+      // Geofence arrival (pickup/dropoff) — idempotent; never blocks the ack.
+      void maybeEmitArrival(live.orderId, { lat: live.lat, lng: live.lng }, info.pickup, info.drop).catch(() => {});
+    }
   }
 
-  return Response.json({ ok: true });
+  // ── Persistence (thinned trail + current position) ────────────────────────
+  const { persist, lastPersistedAt: pmark } = pointsToPersist(accepted, lastPersistedAt.get(riderId));
+  if (pmark !== undefined) lastPersistedAt.set(riderId, pmark);
+  if (persist.length > 0) {
+    const nowDate = new Date(now);
+    const writes: Promise<unknown>[] = [
+      prisma.deliveryLocationPing.createMany({
+        data: persist.map((p) => ({
+          riderId,
+          orderId: p.orderId,
+          lat: p.lat,
+          lng: p.lng,
+          speedKph: p.speedKph,
+          createdAt: new Date(Math.min(p.t, now))
+        }))
+      })
+    ];
+    // Any accepted point (incl. a background batch) proves the app is alive:
+    // refresh lastSeenAt so the auto-offline sweep doesn't flip a rider whose
+    // Home-tab heartbeat interval is paused in the background.
+    // lastLocationAt (the "last GPS fix" on the live maps) moves only together
+    // with RiderProfile.currentLat/Lng and carries the fix time, so the poll
+    // never pairs an old stored position with a newer timestamp.
+    const storedLive = live && persist.includes(live) ? live : null;
+    const fixAt = storedLive ? new Date(Math.min(storedLive.t, now)) : null;
+    writes.push(
+      prisma.riderHeartbeat.upsert({
+        where: { riderId },
+        create: { riderId, lastSeenAt: nowDate, lastLocationAt: fixAt, gpsEnabled: true },
+        update: fixAt ? { lastSeenAt: nowDate, lastLocationAt: fixAt } : { lastSeenAt: nowDate }
+      })
+    );
+    if (storedLive) {
+      // Source of truth for the live maps between SSE frames.
+      writes.push(
+        prisma.riderProfile.update({ where: { id: riderId }, data: { currentLat: storedLive.lat, currentLng: storedLive.lng } })
+      );
+    }
+    // Fire-and-forget: never block the ack behind disk I/O.
+    Promise.all(writes).catch(() => {});
+  }
+
+  return Response.json({
+    ok: true,
+    accepted: accepted.length,
+    ...(orderActive !== undefined ? { orderActive } : {})
+  });
 }

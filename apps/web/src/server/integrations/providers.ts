@@ -34,6 +34,7 @@ export type ProviderKey =
   | 'ZOHO_SMTP'
   | 'BREVO_SMTP'
   | 'GOOGLE_BUSINESS'
+  | 'YOUPI'
   | 'LLM_REVIEWS';
 
 export interface FieldOption {
@@ -218,9 +219,10 @@ const TwoFactor: ProviderDef = {
   fields: [
     { key: 'apiKey',       label: 'API key',        type: 'password', required: true, secret: true, hint: 'From your 2Factor dashboard → API.' },
     { key: 'senderId',     label: 'Sender ID',      type: 'text',     placeholder: 'FLAVRLY', hint: 'Optional. DLT-approved 6-char header for branded SMS.' },
-    { key: 'templateName', label: 'OTP template',   type: 'text',     placeholder: 'OTP1', hint: 'Optional. The 2Factor template name to use for OTP sends.' }
+    { key: 'templateName', label: 'OTP template',   type: 'text',     placeholder: 'OTP1', hint: 'Optional. The 2Factor template name to use for OTP sends.' },
+    { key: 'tsmsTemplateName', label: 'Transactional template', type: 'text', placeholder: 'ALERTS1', hint: 'Optional. DLT-approved 2Factor transactional template for non-OTP SMS (alerts, SOS, review asks). Without it those go out on the plain transactional route.' }
   ],
-  buildSummary: (c) => ({ senderId: c.senderId || '(default)', templateName: c.templateName || '(default)', apiKey: maskSecret(c.apiKey) }),
+  buildSummary: (c) => ({ senderId: c.senderId || '(default)', templateName: c.templateName || '(default)', tsmsTemplateName: c.tsmsTemplateName || '(none)', apiKey: maskSecret(c.apiKey) }),
   async test(c) {
     const res = await checkTwoFactorBalance({ apiKey: c.apiKey, senderId: c.senderId, templateName: c.templateName });
     if (res.ok) return { ok: true, detail: `Authenticated. SMS balance: ${res.balance ?? 'unknown'}.` };
@@ -526,6 +528,43 @@ const GoogleBusiness: ProviderDef = {
   async test() { return { ok: true, detail: 'Connected via OAuth' }; },
 };
 
+// ─── Flavrly PG UPI (experimental; split platform/restaurant config — NOT in the wizard list) ──
+const Youpi: ProviderDef = {
+  key: 'YOUPI',
+  title: 'Flavrly PG UPI (experimental)',
+  vendor: 'Flavrly PG',
+  description: 'Experimental — self-hosted research gateway, pilot only. Configured via dedicated approval pages, not the generic wizard.',
+  docsUrl: 'https://github.com/youpi-pg/YouPI-PG',
+  fields: [
+    { key: 'baseUrl', label: 'Gateway base URL', type: 'text', required: true, placeholder: 'https://pg.example.com' },
+    // Flavrly PG auth: public X-Merchant-Id (UUID) + X-Merchant-Key (= the webhook secret). No Bearer key.
+    { key: 'merchantId', label: 'Merchant ID', type: 'text', required: true, placeholder: 'X-Merchant-Id (UUID)' },
+    { key: 'merchantKey', label: 'Merchant creation key', type: 'password', secret: true, required: false },
+    { key: 'webhookSecret', label: 'Merchant key / webhook secret', type: 'password', required: true, secret: true },
+    { key: 'receivingVpa', label: 'Receiving VPA', type: 'text', required: true, placeholder: 'shop@bank' },
+    { key: 'dailyLimit', label: 'Daily limit (transactions)', type: 'number', required: false },
+    { key: 'maxAmountPaise', label: 'Max amount per payment (paise)', type: 'number', required: false },
+  ],
+  buildSummary: (c) => ({
+    baseUrl: c.baseUrl,
+    merchantId: c.merchantId,
+    receivingVpa: c.receivingVpa,
+    webhookSecret: c.webhookSecret ? maskSecret(c.webhookSecret) : '(not set)',
+    dailyLimit: c.dailyLimit,
+    maxAmountPaise: c.maxAmountPaise,
+  }),
+  async test(c) {
+    try {
+      const res = await fetch(c.baseUrl, { method: 'GET', signal: AbortSignal.timeout(5000) });
+      return { ok: true, detail: `Gateway reachable (HTTP ${res.status})` };
+    } catch (e) {
+      let msg = e instanceof Error ? e.message : String(e);
+      if (c.webhookSecret) msg = msg.split(c.webhookSecret).join(maskSecret(c.webhookSecret));
+      return { ok: false, error: `Gateway unreachable: ${msg}` };
+    }
+  },
+};
+
 export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
   RAZORPAY: Razorpay,
   PHONEPE: PhonePe,
@@ -541,7 +580,8 @@ export const PROVIDERS: Record<ProviderKey, ProviderDef> = {
   ZOHO_SMTP: ZohoSmtp,
   BREVO_SMTP: BrevoSmtp,
   LLM_REVIEWS: LlmReviews,
-  GOOGLE_BUSINESS: GoogleBusiness
+  GOOGLE_BUSINESS: GoogleBusiness,
+  YOUPI: Youpi
 };
 
 export const PROVIDER_LIST: ProviderDef[] = [

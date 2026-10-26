@@ -10,7 +10,8 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
 import { audit } from '@/server/audit';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
+import { clientIp } from '@/server/http/client-ip';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +41,8 @@ const DEFAULTS = {
 };
 
 export async function GET() {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   let cfg = await (prisma as any).signupBonusConfig.findUnique({ where: { id: 'singleton' } });
   if (!cfg) {
     cfg = await (prisma as any).signupBonusConfig.create({ data: DEFAULTS });
@@ -49,7 +51,8 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const data = Body.parse(await req.json());
 
   const before = await (prisma as any).signupBonusConfig.findUnique({ where: { id: 'singleton' } });
@@ -85,7 +88,7 @@ export async function PUT(req: NextRequest) {
     entityId: 'singleton',
     before: before ? JSON.parse(JSON.stringify(before)) : null,
     after:  JSON.parse(JSON.stringify(after)),
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+    ipAddress: clientIp(req.headers) ?? null,
     userAgent: req.headers.get('user-agent') ?? null
   });
 

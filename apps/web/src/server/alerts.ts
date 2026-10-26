@@ -311,9 +311,9 @@ export async function sendMenuToggleAlert(opts: SendMenuToggleOpts): Promise<{ s
   // sequencing keeps the call simple and rare (this is admin-side, low volume).
   for (const to of recipients) {
     await notify.email({
-      to, subject, body: html, template: `alert.${debounceKind}`,
+      to, subject, body: text, html, template: `alert.${debounceKind}`,
       restaurantId: opts.restaurantId,
-      meta: { text, payload: { ...opts, timestamp: opts.timestamp.toISOString() } }
+      meta: { payload: { ...opts, timestamp: opts.timestamp.toISOString() } }
     }).catch((e) => log.error({ err: (e as Error).message, to }, 'alert email failed'));
   }
   return { sent: true, recipients };
@@ -341,9 +341,9 @@ export async function sendIntegrationAlert(opts: SendIntegrationAlertOpts): Prom
 
   for (const to of recipients) {
     await notify.email({
-      to, subject, body: html, template: `alert.${debounceKind}`,
+      to, subject, body: text, html, template: `alert.${debounceKind}`,
       restaurantId: opts.restaurantId,
-      meta: { text, provider: opts.provider, category: opts.category, testStatus: opts.testStatus }
+      meta: { provider: opts.provider, category: opts.category, testStatus: opts.testStatus }
     }).catch((e) => log.error({ err: (e as Error).message, to }, 'integration alert email failed'));
   }
   return { sent: true, recipients };
@@ -448,9 +448,9 @@ export async function sendLicenseExpiryAlert(
 
   for (const to of emails) {
     await notify.email({
-      to, subject, body: html, template: 'alert.license.expiry',
+      to, subject, body: text, html, template: 'alert.license.expiry',
       restaurantId: opts.restaurantId,
-      meta: { text, branchId: opts.branchId, state: opts.state, daysLeft: opts.daysLeft }
+      meta: { branchId: opts.branchId, state: opts.state, daysLeft: opts.daysLeft }
     }).catch((e) => log.error({ err: (e as Error).message, to }, 'license alert email failed'));
   }
   for (const to of phones) {

@@ -6,13 +6,17 @@
  * dispatches the appropriate customer notification, and updates ETA timestamps.
  */
 
-import { OrderStatus, PaymentMethod, PaymentStatus, AssignmentStatus, FulfillmentType, Prisma } from '@prisma/client';
+import { OrderStatus, PaymentMethod, PaymentStatus, AssignmentStatus, FulfillmentType, Prisma, OrderEventSource } from '@prisma/client';
+import { releaseAssignmentOnOrderClose } from './rider-assignment-release';
+import { markCodCollectedOnDelivery } from './rider-cod';
 import { prisma } from './db';
 import { publish } from './realtime';
 import { notify } from './notifications';
 import { genDeliveryOtp, genOrderCode, STATUS_LABELS } from '@/lib/utils';
 import { pricing, type OfferReward } from './pricing';
-import { isOnlineMethod, startOnlinePayment } from './payments/online';
+import { isOnlineMethod, precheckYoupiPayment, startOnlinePayment } from './payments/online';
+import { isDirectUpiPrepayment } from './payments/youpi-order-policy';
+import { youpiEnabledForRestaurant } from './payments';
 import { isCategoryAvailableNow } from './category-availability';
 import { log } from './log';
 import { brand } from '@/lib/brand';
@@ -22,6 +26,7 @@ import { notifyRidersOfNewOrder } from './rider-push';
 import { maybeOfferAsBatch } from './batch-dispatch';
 import { resolveQualifyingFreebie, grantFreebieTx, restoreFreebieStock } from './freebies';
 import { clampTwo } from '@/lib/utils';
+import { loyaltyPointsForSubtotal } from '@/lib/loyalty';
 import { loadRulesForRestaurant, priceForItem, priceForCombo } from './happy-hours';
 import { refreshChallengeProgressForOrder } from './challenges';
 import { previewSignupBonusForUser, holdSignupBonusForOrder, commitSignupBonusForOrder, restoreSignupBonusForOrder } from './signup-bonus';
@@ -29,10 +34,13 @@ import { sendDeliveryOtpSms } from './notify-templates';
 import { pushOrderMilestone } from './push/milestones';
 import { requestFeedbackOnDelivered } from './reviews/feedback-request';
 import { resolveLineSelections } from './menu-selections';
+import { isLegacyCouponUsable } from './coupons';
 import { groupOrderChannel } from './group-scope';
 import { resolveDeliveryTerms } from './delivery/placement';
 import { branchHasActiveZones } from './delivery/zones';
 import { isBranchOpenAt, isScheduledTimeInsideOpenWindow } from './operating-hours';
+import { isCancelStatus, isPgPrepayOrder, settlePgOrderOnCancel } from './pg/order-state';
+import { debitWalletForOrder, redeemPointsForOrder, releaseOrderBenefitsOnCancel } from './order-benefits';
 
 // State machine. Cancellation is allowed from any pre-delivery state into the
 // matching CANCELLED_BY_* terminal. Legacy CANCELLED is kept for back-compat.
@@ -73,6 +81,13 @@ export const ALLOWED_NEXT: Record<OrderStatus, OrderStatus[]> = {
 };
 
 export class OrderTransitionError extends Error {}
+/** Direct-UPI checkout refused for this restaurant (disabled/unconfigured). Client error, not a server fault. */
+export class PgUnavailableError extends Error {}
+/** Checkout refused for a reason the customer can fix (bad method for the total, closed, …). HTTP 400. */
+export class CheckoutRejectedError extends Error {}
+
+/** Assignment states that still hold a rider load slot. */
+const RIDER_ACTIVE_ASSIGNMENT: AssignmentStatus[] = [AssignmentStatus.PENDING, AssignmentStatus.ACCEPTED, AssignmentStatus.PICKED_UP];
 
 export interface PlaceOrderInput {
   branchId: string;
@@ -96,6 +111,8 @@ export interface PlaceOrderInput {
    */
   offerCode?: string;
   paymentMethod: PaymentMethod;
+  /** Opt-in Flavrly PG rail (experimental). Only honoured for online methods. */
+  paymentRail?: 'youpi';
   customerNotes?: string;
   walletApply?: number;
   loyaltyApply?: number;
@@ -112,6 +129,11 @@ export interface PlaceOrderInput {
 }
 
 export async function placeOrder(input: PlaceOrderInput) {
+  const directUpiAwaitingBank = isDirectUpiPrepayment(input.paymentMethod, input.paymentRail);
+  // Every online order (Flavrly PG, PhonePe, Razorpay) waits in PAYMENT_PENDING — hidden from the
+  // kitchen, KOT, riders, auto-accept and GMV — until a server-verified capture moves it to RECEIVED
+  // (PhonePe reconcile, Razorpay webhook/verify, Flavrly PG ORDER_RELEASE).
+  const awaitingPayment = isOnlineMethod(input.paymentMethod);
   const branch = await prisma.branch.findUniqueOrThrow({
     where: { id: input.branchId },
     include: { hours: true } as any,
@@ -121,6 +143,11 @@ export async function placeOrder(input: PlaceOrderInput) {
     // through transitionOrder unaffected. validate-address surfaces this earlier
     // in the funnel but a direct POST to /api/orders must still be guarded.
     throw new Error('Branch is not accepting new orders right now');
+  }
+  // Flavrly PG: refuse BEFORE committing an order. Otherwise a disabled or
+  // unconfigured restaurant would leave a PAYMENT_PENDING order with no session.
+  if (directUpiAwaitingBank && !(await youpiEnabledForRestaurant(branch.restaurantId))) {
+    throw new PgUnavailableError('Flavrly PG is not available for this restaurant.');
   }
 
   // Operating-hours guard. Same data the customer storefront uses to render
@@ -312,8 +339,12 @@ export async function placeOrder(input: PlaceOrderInput) {
 
   let coupon: { id: string; flatOff?: number | null; percentOff?: number | null; minOrderAmount?: number | null; maxDiscount?: number | null; perUserLimit: number } | null = null;
   if (input.couponCode) {
-    const found = await prisma.coupon.findUnique({ where: { code: input.couponCode } });
-    if (found && found.isActive && (!found.validTo || found.validTo > new Date()) && (!found.usageLimit || found.usedCount < found.usageLimit)) {
+    const found = await prisma.coupon.findUnique({
+      where: { code: input.couponCode },
+      include: { branch: { select: { restaurantId: true } } }
+    });
+    // Restaurant scope + start/end date + usage limit (see server/coupons.ts).
+    if (found && isLegacyCouponUsable(found, { restaurantId: branch.restaurantId })) {
       coupon = {
         id: found.id,
         flatOff: found.flatOff ? Number(found.flatOff) : null,
@@ -442,6 +473,11 @@ export async function placeOrder(input: PlaceOrderInput) {
   // order is placed for "now" (scheduledFor stays null). Server-authoritative —
   // the UI gates this too, but a direct API call can't schedule when disabled.
   let scheduledFor: Date | null = null;
+  // P1-8: the hours guard above let a closed branch through BECAUSE of scheduledFor; silently dropping
+  // it here (scheduling disabled) would place an ASAP order while closed. Refuse instead.
+  if (input.scheduledFor && flow && !flow.scheduledOrdersEnabled) {
+    throw new CheckoutRejectedError('Scheduled orders are not available at this restaurant.');
+  }
   if (input.scheduledFor && flow?.scheduledOrdersEnabled) {
     const when = new Date(input.scheduledFor);
     if (!Number.isNaN(when.getTime()) && when.getTime() > Date.now()) {
@@ -508,6 +544,22 @@ export async function placeOrder(input: PlaceOrderInput) {
   const finalTotal = reservation ? dineInTotal : priced.total;
   const finalDiscount = clampTwo(priced.discountAmount + dineInDiscountAdded);
 
+  // Flavrly PG (P0-2): every refusal createPgAttempt can know up front (₹0 total, no binding, caps,
+  // velocity) is checked BEFORE the order transaction, so a refusal never leaves a PAYMENT_PENDING
+  // order holding the customer's coupon/wallet/points.
+  if (directUpiAwaitingBank) {
+    const refusal = await precheckYoupiPayment(branch.restaurantId, input.customerId, finalTotal);
+    if (refusal) throw new PgUnavailableError(refusal);
+  }
+  // P0-1: WALLET is a settlement method only for an order the wallet (plus other benefits) fully
+  // covers; anything still owed must go through COD or a gateway. And a gateway cannot take ₹0.
+  if (input.paymentMethod === PaymentMethod.WALLET && finalTotal > 0) {
+    throw new CheckoutRejectedError('Your wallet does not cover this order. Choose another payment method for the remaining amount.');
+  }
+  if (awaitingPayment && !(finalTotal > 0)) {
+    throw new CheckoutRejectedError('Nothing is left to pay online for this order. Choose wallet to place it.');
+  }
+
   const order = await prisma.$transaction(async (tx) => {
     // Claim the freebie atomically (conditional stock decrement). If we win a
     // unit, build the ₹0 gift line + record the rule id on the order so we can
@@ -544,7 +596,7 @@ export async function placeOrder(input: PlaceOrderInput) {
         branchId: branch.id,
         customerId: input.customerId,
         addressId: address?.id ?? null,
-        status: OrderStatus.RECEIVED,
+        status: awaitingPayment ? OrderStatus.PAYMENT_PENDING : OrderStatus.RECEIVED,
         subtotal: priced.subtotal as any,
         taxAmount: priced.taxAmount as any,
         deliveryFee: priced.deliveryFee as any,
@@ -565,7 +617,12 @@ export async function placeOrder(input: PlaceOrderInput) {
         reservationDepositApplied: reservationDepositApplied as any,
         freebieRuleId: grantedFreebieRuleId,
         items: { create: itemCreates },
-        statusEvents: { create: [{ status: OrderStatus.RECEIVED, note: 'Placed by customer' }] }
+        statusEvents: {
+          create: [{
+            status: awaitingPayment ? OrderStatus.PAYMENT_PENDING : OrderStatus.RECEIVED,
+            note: directUpiAwaitingBank ? 'Awaiting bank-verified Flavrly PG payment' : awaitingPayment ? 'Awaiting online payment' : 'Placed by customer'
+          }]
+        }
       }
     });
     // Mark the reservation redeemed + seated within the same transaction so two
@@ -576,7 +633,8 @@ export async function placeOrder(input: PlaceOrderInput) {
         data: { status: 'SEATED' }
       });
     }
-    if (coupon) {
+    // P1-10: consume the legacy coupon only when pricing actually applied it (min order met, >₹0).
+    if (coupon && priced.couponApplied) {
       // The coupon's share of the combined discount: subtract the sum of
       // offer amounts so we don't double-count when both paths fire on the
       // same order. Bounded at 0 since discount is capped at subtotal.
@@ -619,25 +677,10 @@ export async function placeOrder(input: PlaceOrderInput) {
     if (priced.signupBonusApplied > 0) {
       await holdSignupBonusForOrder(tx, input.customerId, o.id, priced.signupBonusApplied);
     }
-    if (priced.walletApplied > 0) {
-      const wallet = await tx.wallet.upsert({ where: { userId: input.customerId }, update: {}, create: { userId: input.customerId } });
-      if (Number(wallet.balance) < priced.walletApplied) {
-        // Aborts the transaction → no order row, no debit. Frontend should refresh
-        // the wallet view and let the customer retry.
-        throw new Error('Wallet balance is lower than the amount you tried to apply');
-      }
-      await tx.wallet.update({ where: { id: wallet.id }, data: { balance: { decrement: priced.walletApplied as any } } });
-      await tx.walletTransaction.create({ data: { walletId: wallet.id, orderId: o.id, type: 'ORDER_DEBIT', amount: priced.walletApplied as any } });
-    }
-    if (priced.loyaltyApplied > 0) {
-      const account = await tx.loyaltyAccount.upsert({ where: { userId: input.customerId }, update: {}, create: { userId: input.customerId } });
-      const points = Math.round(priced.loyaltyApplied); // 1pt = ₹1
-      if (account.pointsBalance < points) {
-        throw new Error('Loyalty points balance is lower than the amount you tried to redeem');
-      }
-      await tx.loyaltyAccount.update({ where: { id: account.id }, data: { pointsBalance: { decrement: points }, lifetimeRedeem: { increment: points } } });
-      await tx.loyaltyTransaction.create({ data: { accountId: account.id, orderId: o.id, type: 'REDEEM', points: -points } });
-    }
+    // P0-2: conditional debits — a concurrent checkout that would overspend aborts this transaction
+    // (no order row, nothing debited) instead of driving the balance negative.
+    await debitWalletForOrder(tx, input.customerId, o.id, priced.walletApplied);
+    await redeemPointsForOrder(tx, input.customerId, o.id, Math.round(priced.loyaltyApplied)); // 1pt = ₹1
     return o;
   });
 
@@ -645,10 +688,14 @@ export async function placeOrder(input: PlaceOrderInput) {
   // parent restaurant's unified board receives orders from every child. The
   // root is the restaurant's parent when it's a child, else itself (so a solo
   // restaurant's group channel is simply its own id — no behaviour change).
-  publish(`branch:${branch.id}:orders`, { kind: 'order:new', orderId: order.id, branchId: branch.id });
-  const groupRootId = branchWithRestaurant?.restaurant?.parentId ?? branch.restaurantId;
-  publish(groupOrderChannel(groupRootId), { kind: 'order:new', orderId: order.id, branchId: branch.id });
-  publish(`order:${order.id}`, { kind: 'status', orderId: order.id, status: 'RECEIVED', at: new Date().toISOString() });
+  // Do not place an unpaid Flavrly PG order on the kitchen/admin work queue.
+  // The server-side verified capture transition will publish RECEIVED later.
+  if (!awaitingPayment) {
+    publish(`branch:${branch.id}:orders`, { kind: 'order:new', orderId: order.id, branchId: branch.id });
+    const groupRootId = branchWithRestaurant?.restaurant?.parentId ?? branch.restaurantId;
+    publish(groupOrderChannel(groupRootId), { kind: 'order:new', orderId: order.id, branchId: branch.id });
+  }
+  publish(`order:${order.id}`, { kind: 'status', orderId: order.id, status: awaitingPayment ? 'PAYMENT_PENDING' : 'RECEIVED', at: new Date().toISOString() });
 
   // Audit each applied offer. audit() is best-effort and never throws — we
   // intentionally fire these AFTER the order txn commits so a log failure
@@ -690,15 +737,21 @@ export async function placeOrder(input: PlaceOrderInput) {
   // order has already been committed above and the customer's payment intent
   // depends on the response landing successfully.
   const customer = await prisma.user.findUnique({ where: { id: input.customerId } });
-  if (customer?.phone) {
+  const sendPlacedSms = async () => {
+    if (!customer?.phone) return;
     await notify.sms({
       to: customer.phone,
       userId: customer.id,
       template: 'order.placed',
       restaurantId: branch.restaurantId,
-      body: `${brand.name}: Order ${order.code} received. We'll start cooking once accepted.`
+      body: directUpiAwaitingBank
+        ? `${brand.name}: Order ${order.code} is awaiting payment verification. Please do not pay again while confirmation is pending.`
+        : `${brand.name}: Order ${order.code} received. We'll start cooking once accepted.`
     }).catch((e) => log.error({ err: (e as Error).message, orderId: order.id }, 'order.placed sms failed'));
-  }
+  };
+  // Online orders: no "received" SMS before payment — the capture transition to RECEIVED notifies.
+  // Flavrly PG: the "awaiting verification" SMS only makes sense once a payment session exists.
+  if (!awaitingPayment) await sendPlacedSms();
 
   // Kick off the gateway checkout for online methods (Razorpay / PhonePe).
   // Amount is `finalTotal` — for dine-in this is after the reservation discount
@@ -711,11 +764,13 @@ export async function placeOrder(input: PlaceOrderInput) {
     try {
       const session = await startOnlinePayment(order.id, {
         method: input.paymentMethod,
-        amount: finalTotal
+        amount: finalTotal,
+        ...(input.paymentRail === 'youpi' ? { rail: 'youpi' as const } : {})
       });
       // Online orders are auto-accepted (if the restaurant opts in) only AFTER
       // payment is captured — that happens in the webhook/reconcile path, not
       // here, because the order isn't paid yet.
+      if (directUpiAwaitingBank) await sendPlacedSms();
       return { order, payment: session };
     } catch (e) {
       log.error(
@@ -725,16 +780,21 @@ export async function placeOrder(input: PlaceOrderInput) {
       return { order, payment: null, paymentError: (e as Error).message };
     }
   } else {
-    await prisma.payment.create({
-      data: {
-        orderId: order.id,
-        method: input.paymentMethod,
-        status: input.paymentMethod === PaymentMethod.COD ? PaymentStatus.PENDING : PaymentStatus.CAPTURED,
-        amount: finalTotal as any,
-        currency: 'INR',
-        providerName: input.paymentMethod === PaymentMethod.COD ? 'cod' : 'wallet'
-      }
-    });
+    // COD: the rider collects finalTotal. WALLET (₹0 left, checked above): the only money taken is
+    // the wallet debit, so the CAPTURED row records exactly that amount (never finalTotal).
+    const isWallet = input.paymentMethod === PaymentMethod.WALLET;
+    if (!isWallet || priced.walletApplied > 0) {
+      await prisma.payment.create({
+        data: {
+          orderId: order.id,
+          method: input.paymentMethod,
+          status: isWallet ? PaymentStatus.CAPTURED : PaymentStatus.PENDING,
+          amount: (isWallet ? priced.walletApplied : finalTotal) as any,
+          currency: 'INR',
+          providerName: isWallet ? 'wallet' : 'cod'
+        }
+      });
+    }
     // ── Auto-accept ──────────────────────────────────────────────────────────
     // COD / wallet orders are confirmed at placement (no pending payment gate),
     // so if the restaurant has autoAcceptOrders on, move RECEIVED → ACCEPTED
@@ -771,7 +831,17 @@ export async function maybeAutoAccept(orderId: string, restaurantId: string, act
 export async function transitionOrder(
   orderId: string,
   next: OrderStatus,
-  opts: { actorId?: string; note?: string; scopeRestaurantId?: string } = {}
+  opts: {
+    actorId?: string;
+    note?: string;
+    scopeRestaurantId?: string;
+    /** Set ONLY by pg/fulfillment.ts after a bank-verified allocation (D3/D6). */
+    pgRelease?: boolean;
+    /** Dispatch-telemetry source for the OrderEvent row (default: ADMIN when an actor is known, else SYSTEM). */
+    eventSource?: OrderEventSource;
+    /** Rider deliver route runs incentives itself (to show unlocked bonuses). */
+    skipRiderIncentives?: boolean;
+  } = {}
 ) {
   // C12: when an untrusted (tenant-admin) caller passes scopeRestaurantId, the
   // lookup is constrained to that restaurant so a cross-tenant id throws rather
@@ -785,6 +855,16 @@ export async function transitionOrder(
   if (order.status === next) return order;
   if (!ALLOWED_NEXT[order.status].includes(next)) {
     throw new OrderTransitionError(`Cannot transition ${order.status} → ${next}`);
+  }
+  // Flavrly PG: an unpaid direct-UPI order reaches the kitchen only through the
+  // bank-verified release handler, never via an admin/manual or legacy path.
+  if (
+    next === OrderStatus.RECEIVED &&
+    (order.status === OrderStatus.PAYMENT_PENDING || order.status === OrderStatus.PAYMENT_FAILED) &&
+    !opts.pgRelease &&
+    (await prisma.payment.count({ where: { orderId, providerName: 'youpi' } })) > 0
+  ) {
+    throw new OrderTransitionError('Flavrly PG orders are released only after bank-verified payment.');
   }
   const stamp: Partial<Record<keyof typeof Prisma.OrderScalarFieldEnum, Date>> = {};
   switch (next) {
@@ -801,11 +881,10 @@ export async function transitionOrder(
       stamp.cancelledAt = new Date(); break;
   }
 
-  // If THIS transition is what flips a rider's assignment to DELIVERED (e.g. an
-  // admin force-deliver, not the rider's own deliver route which already
-  // flipped it), capture the riderId so we can advance incentive progress after
-  // the txn commits. Left null in the common rider-app path.
+  // If THIS transition is what flips a rider's assignment to DELIVERED, capture
+  // the riderId so we can advance incentive progress after the txn commits.
   let forceDeliveredRiderId: string | null = null;
+  let releasedRiderId: string | null = null;
 
   const updated = await prisma.$transaction(async (tx) => {
     // H8: single-winner write. The status was validated from a read OUTSIDE the
@@ -821,29 +900,57 @@ export async function transitionOrder(
       throw new OrderTransitionError('Order was changed concurrently; please retry.');
     }
     await tx.orderStatusEvent.create({ data: { orderId, status: next, actorId: opts.actorId, note: opts.note } });
+    // Flavrly PG (P1-7 / P1-10): close payable attempts; give back wallet/points of a never-paid PG order.
+    if (isCancelStatus(next)) {
+      await settlePgOrderOnCancel(tx, orderId, order.status);
+      // P0-3 / P1-10: wallet, points (if nothing was captured), coupon and offer usage come back.
+      await releaseOrderBenefitsOnCancel(tx, orderId);
+    }
     if (next === OrderStatus.DELIVERED) {
-      // Earn loyalty: 5pt per ₹100 of subtotal
+      // Earn loyalty (rate shared with customer copy: src/lib/loyalty.ts)
       const account = await tx.loyaltyAccount.upsert({ where: { userId: order.customerId }, update: {}, create: { userId: order.customerId } });
-      const points = Math.floor(Number(order.subtotal) / 100) * 5;
+      const points = loyaltyPointsForSubtotal(Number(order.subtotal));
       if (points > 0) {
         await tx.loyaltyAccount.update({ where: { id: account.id }, data: { pointsBalance: { increment: points }, lifetimeEarn: { increment: points } } });
         await tx.loyaltyTransaction.create({ data: { accountId: account.id, orderId, type: 'EARN', points } });
       }
-      // Mark assignment delivered
+      // P0-2: this transaction is the SINGLE place a rider assignment becomes
+      // DELIVERED — for the rider's own deliver route and for admin/system
+      // force-deliveries alike. Flip it conditionally (single winner), then in
+      // the same txn: free the load slot, count the delivery, credit the
+      // assignment's earnings (+ tip) and mark COD cash as collected.
       const a = await tx.riderAssignment.findUnique({ where: { orderId } });
-      if (a && a.status !== AssignmentStatus.DELIVERED) {
-        await tx.riderAssignment.update({ where: { id: a.id }, data: { status: 'DELIVERED', deliveredAt: new Date() } });
-        await tx.riderProfile.update({ where: { id: a.riderId }, data: { currentLoad: { decrement: 1 }, totalDeliveries: { increment: 1 } } });
-        forceDeliveredRiderId = a.riderId;
+      if (a && RIDER_ACTIVE_ASSIGNMENT.includes(a.status)) {
+        const flipped = await tx.riderAssignment.updateMany({
+          where: { id: a.id, status: a.status },
+          data: { status: AssignmentStatus.DELIVERED, deliveredAt: new Date() }
+        });
+        if (flipped.count === 1) {
+          await tx.riderProfile.update({
+            where: { id: a.riderId },
+            data: {
+              totalDeliveries: { increment: 1 },
+              totalEarnings: { increment: a.earningsAmt },
+              totalTips: { increment: a.tipAmt }
+            }
+          });
+          await tx.riderProfile.updateMany({
+            where: { id: a.riderId, currentLoad: { gt: 0 } },
+            data: { currentLoad: { decrement: 1 } }
+          });
+          await markCodCollectedOnDelivery(tx, orderId);
+          forceDeliveredRiderId = a.riderId;
+        }
       }
     }
+    releasedRiderId = await releaseAssignmentOnOrderClose(tx, orderId, next);
     return tx.order.findUniqueOrThrow({ where: { id: orderId } });
   });
 
-  // Advance incentive progress for force-delivered orders. The rider's own
-  // deliver route handles this for the normal path; here we cover admin/system
-  // deliveries. Best-effort — import lazily to avoid a module cycle.
-  if (forceDeliveredRiderId) {
+  // Advance incentive progress. The rider's deliver route passes
+  // skipRiderIncentives and runs this itself so it can show the rider which
+  // bonuses they just unlocked. Best-effort — import lazily to avoid a cycle.
+  if (forceDeliveredRiderId && !opts.skipRiderIncentives) {
     try {
       const { applyIncentivesForDelivery } = await import('./rider-payments');
       await applyIncentivesForDelivery(forceDeliveredRiderId);
@@ -852,10 +959,16 @@ export async function transitionOrder(
     }
   }
 
+  if (releasedRiderId) publish(`rider:${releasedRiderId}`, { kind: 'status', orderId, status: next, at: new Date().toISOString() });
   publish(`order:${orderId}`, { kind: 'status', orderId, status: next, at: new Date().toISOString() });
   publish(`branch:${order.branchId}:orders`, { kind: 'status', orderId, status: next, at: new Date().toISOString() });
   // Mirror the status change to the group channel for the parent's unified board.
   const transRootId = order.branch.restaurant?.parentId ?? order.branch.restaurantId;
+  // A paid online order enters the kitchen queue only now: announce it like placeOrder does for COD.
+  if (next === OrderStatus.RECEIVED && (order.status === OrderStatus.PAYMENT_PENDING || order.status === OrderStatus.PAYMENT_FAILED)) {
+    publish(`branch:${order.branchId}:orders`, { kind: 'order:new', orderId, branchId: order.branchId });
+    publish(groupOrderChannel(transRootId), { kind: 'order:new', orderId, branchId: order.branchId });
+  }
   publish(groupOrderChannel(transRootId), { kind: 'status', orderId, status: next, at: new Date().toISOString() });
   // OUT_FOR_DELIVERY → send the customer their delivery OTP via SMS so they
   // can hand it to the rider at the door. Fire-and-forget: a notification
@@ -868,16 +981,31 @@ export async function transitionOrder(
   // and DINE_IN orders never need a rider — they're collected/served in-house —
   // so we skip all rider dispatch for them. A READY pickup order just waits at
   // the counter for the customer to collect (with their pickupCode).
+  // Dispatch telemetry: append the milestone (never throws), and on ACCEPTED
+  // build the prep prediction / JIT release plan for DELIVERY orders.
+  const telemetry = await import('./dispatch/hooks').catch(() => null);
+  await telemetry?.onOrderTransition({
+    orderId,
+    next,
+    fulfillmentType: order.fulfillmentType,
+    source: opts.eventSource ?? (opts.actorId ? OrderEventSource.ADMIN : OrderEventSource.SYSTEM),
+    actorId: opts.actorId ?? null,
+    note: opts.note ?? null,
+  });
   if (next === OrderStatus.READY && order.fulfillmentType === FulfillmentType.DELIVERY) {
     publish('rider:pool', { kind: 'order:new', orderId, branchId: order.branchId });
+    // JIT may already have offered this order to riders before the food was
+    // ready (and a rider may already hold it). Don't push or batch-invite twice.
+    const ready = (await telemetry?.onFoodReady(orderId)) ?? { alreadyNotified: false };
+    const assigned = (await telemetry?.hasAssignment(orderId)) ?? false;
     // Push-notify online riders who have a registered device token. Best-effort
     // — a push failure must never roll back or block the transition.
-    notifyRidersOfNewOrder(orderId).catch(() => {});
+    if (!assigned && !ready.alreadyNotified) notifyRidersOfNewOrder(orderId).catch(() => {});
     // Batch-dispatch: if free rider capacity is tight, offer this order as an
     // append-to-route invitation to OUT_FOR_DELIVERY riders nearby. The engine
     // self-gates on capacity (returns {invited:0} when there are enough free
     // riders), so it's safe to call on every READY transition. Fire-and-forget.
-    maybeOfferAsBatch(orderId).catch(() => {});
+    if (!assigned) maybeOfferAsBatch(orderId).catch(() => {});
   }
   // Challenge progress refresh fires AFTER the order transition commits so a
   // challenge-update failure never rolls back a delivered order. The function
@@ -895,13 +1023,17 @@ export async function transitionOrder(
   // Cancellation/refund — restore the signup-bonus hold so the customer can
   // re-use the credit on a future order. Idempotent and reversible-aware
   // (releases pending hold OR reverses a committed credit + restores order count).
+  // Flavrly PG prepay orders: PAYMENT_FAILED is revivable (retry / accepted late payment), so the
+  // signup bonus and freebie stay held until a terminal cancel (pg/order-state.ts). Other rails unchanged.
+  const holdPgBenefits = next === OrderStatus.PAYMENT_FAILED && (await isPgPrepayOrder(orderId));
   if (
-    next === OrderStatus.CANCELLED ||
-    next === OrderStatus.CANCELLED_BY_CUSTOMER ||
-    next === OrderStatus.CANCELLED_BY_RESTAURANT ||
-    next === OrderStatus.CANCELLED_BY_ADMIN ||
-    next === OrderStatus.REFUNDED ||
-    next === OrderStatus.PAYMENT_FAILED
+    !holdPgBenefits &&
+    (next === OrderStatus.CANCELLED ||
+      next === OrderStatus.CANCELLED_BY_CUSTOMER ||
+      next === OrderStatus.CANCELLED_BY_RESTAURANT ||
+      next === OrderStatus.CANCELLED_BY_ADMIN ||
+      next === OrderStatus.REFUNDED ||
+      next === OrderStatus.PAYMENT_FAILED)
   ) {
     await restoreSignupBonusForOrder(orderId).catch((e) =>
       log.error({ err: (e as Error).message, orderId }, 'signup bonus restore failed')

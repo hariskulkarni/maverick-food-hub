@@ -229,6 +229,10 @@ export async function holdSignupBonusForOrder(
   appliedAmount: number
 ): Promise<void> {
   if (appliedAmount <= 0) return;
+  // P0-2: lock the grant row so concurrent checkouts serialise here; the balance re-check below then
+  // sees every hold committed before us (READ COMMITTED re-reads after the lock is granted).
+  const lockedRows: { id: string }[] = await tx.$queryRaw`SELECT "id" FROM "SignupBonusGrant" WHERE "userId" = ${userId} FOR UPDATE`;
+  if (lockedRows.length === 0) return;
   const grant = await tx.signupBonusGrant.findUnique({ where: { userId } });
   if (!grant) return;
   // Re-check the math under the lock — refuse if remainingBalance shrank
@@ -301,7 +305,11 @@ export async function restoreSignupBonusForOrder(orderId: string): Promise<void>
   const committed = await (prisma as any).signupBonusLedger.findFirst({ where: { orderId, kind: 'COMMIT' } });
 
   const delta = Number(apply.delta);
-  await prisma.$transaction(async (tx: any) => {
+  const did = await prisma.$transaction(async (tx: any) => {
+    // Two concurrent restores (cancel + refund racing) must not both credit: lock the grant and
+    // re-check the RESTORE marker inside the transaction.
+    await tx.$queryRaw`SELECT "id" FROM "SignupBonusGrant" WHERE "id" = ${apply.grantId} FOR UPDATE`;
+    if (await tx.signupBonusLedger.findFirst({ where: { orderId, kind: 'RESTORE' } })) return false;
     if (committed) {
       // Was delivered → reverse the commit.
       await tx.signupBonusGrant.update({
@@ -321,7 +329,9 @@ export async function restoreSignupBonusForOrder(orderId: string): Promise<void>
     await tx.signupBonusLedger.create({
       data: { grantId: apply.grantId, orderId, kind: 'RESTORE', delta: (-delta) as any, note: committed ? 'order cancelled after delivery' : 'order cancelled before delivery' }
     });
+    return true;
   });
+  if (!did) return;
   await audit('signup_bonus.restored' as any, {
     actorId: null, entityType: 'SignupBonusGrant', entityId: apply.grantId,
     before: null, after: { orderId, amount: delta, wasDelivered: !!committed }

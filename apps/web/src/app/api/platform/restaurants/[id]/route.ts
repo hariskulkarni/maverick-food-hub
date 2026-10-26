@@ -1,17 +1,19 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { audit } from '@/server/audit';
 import { revalidateRestaurantSurfaces } from '@/server/revalidate';
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { id } = await params;
   const r = await prisma.restaurant.findUnique({
     where: { id },
     include: {
-      owner: true,
+      // DTO: never ship the owner's passwordHash / TOTP secrets.
+      owner: { select: { id: true, name: true, email: true, phone: true, role: true } },
       parent: { select: { id: true, name: true, slug: true } },
       children: { orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true, status: true } },
       branches: { include: { _count: { select: { menuItems: true, orders: true } } } },
@@ -83,7 +85,8 @@ const PatchBody = z.object({
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const { id } = await params;
 
   let body: any;
@@ -176,7 +179,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
  * so order/payment history can't be wiped by accident.
  */
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { id } = await params;
   const force = new URL(req.url).searchParams.get('force') === '1';
 

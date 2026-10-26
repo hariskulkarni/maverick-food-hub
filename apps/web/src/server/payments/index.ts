@@ -16,6 +16,7 @@
 import { mockProvider } from './mock';
 import { razorpayProvider } from './razorpay';
 import { phonepeProvider, resolvePhonePeConfig, PHONEPE_PROVIDER_NAME } from './phonepe';
+import { youpiProvider, resolveYoupiConfig, YOUPI_PROVIDER_NAME } from './youpi';
 import { getConfigInherited } from '../integrations';
 
 /** Gateways that take money online (as opposed to COD/wallet settlement). */
@@ -163,7 +164,34 @@ export async function resolveGatewayKey(restaurantId?: string | null): Promise<G
  *   2. Env-configured gateway (PAYMENT_PROVIDER).
  *   3. Mock (auto-confirms, dev only).
  */
-export async function paymentProvider(restaurantId?: string | null): Promise<PaymentProvider> {
+/**
+ * Safety switch affects NEW Flavrly PG payments only. Existing webhook and
+ * reconciliation paths deliberately do not consult this switch, so emergency
+ * disablement never abandons funds already sent by customers.
+ */
+export function youpiNewPaymentsEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production' || process.env.FLAVRLY_PG_NEW_PAYMENTS_ENABLED === 'true';
+}
+
+export async function paymentProvider(
+  restaurantId?: string | null,
+  opts?: { prefer?: 'youpi' },
+): Promise<PaymentProvider> {
+  // Flavrly PG is opt-in per call. An explicit Flavrly PG request never falls back to
+  // another gateway: if it is not APPROVED/configured we fail loud.
+  if (opts?.prefer === 'youpi') {
+    if (!youpiNewPaymentsEnabled()) {
+      throw new Error('Flavrly PG new checkout is disabled (FLAVRLY_PG_NEW_PAYMENTS_ENABLED is not true)');
+    }
+    const ycfg = await resolveYoupiConfig(restaurantId, { forNew: true });
+    if (ycfg) return youpiProvider(ycfg);
+    throw new Error(
+      `Flavrly PG was requested for restaurant ${restaurantId ?? '(none)'} but is not available ` +
+        `(feature not APPROVED, or no verified receiving-account binding with matching credentials); ` +
+        `refusing to fall back to another payment gateway.`
+    );
+  }
+
   const key = await resolveGatewayKey(restaurantId);
 
   if (key === 'PHONEPE') {
@@ -199,9 +227,14 @@ export async function paymentProvider(restaurantId?: string | null): Promise<Pay
   return mockProvider();
 }
 
+/** Whether to offer Flavrly PG at checkout: APPROVED + verified, enabled merchant binding. */
+export async function youpiEnabledForRestaurant(restaurantId?: string | null): Promise<boolean> {
+  return youpiNewPaymentsEnabled() && !!(await resolveYoupiConfig(restaurantId, { forNew: true }));
+}
+
 /** True when a stored `Payment.providerName` denotes the PhonePe rail. */
 export function isPhonePePayment(providerName?: string | null): boolean {
   return providerName === PHONEPE_PROVIDER_NAME;
 }
 
-export { PHONEPE_PROVIDER_NAME };
+export { PHONEPE_PROVIDER_NAME, YOUPI_PROVIDER_NAME };

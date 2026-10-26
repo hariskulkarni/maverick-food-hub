@@ -14,7 +14,7 @@ vi.mock('@/server/auth', () => ({ auth: m.auth }));
 vi.mock('@/server/db', () => ({
   prisma: { orderFeedback: { findFirst: m.findFirst, findMany: m.findMany, update: m.update, updateMany: m.updateMany } }
 }));
-vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: m.managed }));
+vi.mock('@/server/tenancy', async () => ({ requireManagedRestaurant: m.managed, ...(await import('../../__tests__/helpers/tenant-admin-mock')).tenantAdminMocks((rid) => (m.managed)(rid)) }));
 vi.mock('@/server/audit', () => ({ audit: m.audit }));
 vi.mock('@/server/log', () => ({ log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 

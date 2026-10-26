@@ -16,6 +16,7 @@
  * CategoryAvailability rows alongside Category and pass them in. This keeps
  * the helper easy to unit-test and lets the SSR page batch its DB calls.
  */
+import { istClock } from '@/lib/ist-time';
 
 export interface ScheduleRow {
   dayOfWeek: number; // 0..6
@@ -66,8 +67,8 @@ export function isCategoryAvailableNow(category: CategoryLite, now: Date = new D
     return { available: false, reason: 'no_schedule_rows', minutesUntilOpen: null, nextOpensAt: null };
   }
 
-  const day = now.getDay();
-  const mins = now.getHours() * 60 + now.getMinutes();
+  // P1-14: schedules are IST wall-clock minutes — evaluate in IST, not the process timezone.
+  const { dayOfWeek: day, minutes: mins } = istClock(now);
 
   // Is `now` inside any window today?
   for (const row of category.availabilities) {
@@ -118,7 +119,7 @@ export function categoryOpenNow(category: CategoryLite, now: Date = new Date()):
  */
 export function formatNextOpenLabel(result: AvailabilityResult, now: Date = new Date()): string | null {
   if (!result.nextOpensAt || result.minutesUntilOpen == null) return null;
-  const today = now.getDay();
+  const today = istClock(now).dayOfWeek;
   const target = result.nextOpensAt.dayOfWeek;
   const dayDelta = (target - today + 7) % 7;
   const hh = String(Math.floor(result.nextOpensAt.startMin / 60)).padStart(2, '0');

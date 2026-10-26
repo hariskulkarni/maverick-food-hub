@@ -15,6 +15,8 @@ import { prisma } from '@/server/db';
 import { rateLimit } from '@/server/http/rate-limit';
 import { startOnlinePayment, OnlinePaymentError, isOnlineMethod } from '@/server/payments/online';
 import { log } from '@/server/log';
+import { currentRestaurant } from '@/server/tenancy';
+import { releasedBenefit } from '@/server/pg/order-state';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,11 +31,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const order = await prisma.order.findUnique({
     where: { id },
-    select: { id: true, customerId: true, status: true, paymentMethod: true },
+    select: { id: true, customerId: true, status: true, paymentMethod: true, branch: { select: { restaurantId: true } } },
   });
   if (!order) return new Response('Not found', { status: 404 });
-  if (order.customerId !== session.user.id && session.user.role === 'CUSTOMER') {
-    return new Response('Forbidden', { status: 403 });
+  // Only the ordering customer, staff of the order's own restaurant, or a
+  // super-admin may open a checkout. Other roles were previously unchecked.
+  const role = session.user.role;
+  if (order.customerId !== session.user.id) {
+    if (role === 'SUPER_ADMIN') {
+      /* platform-wide */
+    } else if (role === 'ADMIN' || role === 'KITCHEN') {
+      const r = await currentRestaurant();
+      if (!r || r.id !== order.branch.restaurantId) return new Response('Forbidden', { status: 403 });
+    } else {
+      return new Response('Forbidden', { status: 403 });
+    }
   }
   if (!isOnlineMethod(order.paymentMethod)) {
     return Response.json({ error: 'This order is not an online payment.', reason: 'bad_method' }, { status: 400 });
@@ -44,6 +56,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const PAYABLE = ['PAYMENT_PENDING', 'PAYMENT_FAILED'];
   if (!PAYABLE.includes(order.status)) {
     return Response.json({ error: 'This order can no longer be paid.', reason: 'not_payable' }, { status: 409 });
+  }
+
+  // An order failed before benefits were held across PAYMENT_FAILED may have had its signup bonus /
+  // freebie / wallet given back; charging its old (discounted) total again would double-count them.
+  if (order.status === 'PAYMENT_FAILED') {
+    const released = await releasedBenefit(prisma as never, order.id);
+    if (released) {
+      return Response.json(
+        { error: `The ${released} on this order was already given back. Please place a new order.`, reason: 'benefit_released' },
+        { status: 409 },
+      );
+    }
   }
 
   try {

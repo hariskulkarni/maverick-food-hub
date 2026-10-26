@@ -4,14 +4,18 @@
  * Resolution order for any send():
  *   1. If `restaurantId` is passed, consult `IntegrationCredential` for that
  *      tenant (TWILIO_SMS / TWILIO_WHATSAPP / SMTP).
- *   2. Else, fall back to env (NOTIFIER_SMS=twilio, NOTIFIER_EMAIL=smtp, etc.).
- *   3. Else, mock — body is journaled to NotificationLog only.
+ *   2. Else, fall back to env (NOTIFIER_SMS=twilio, NOTIFIER_EMAIL=smtp, etc.;
+ *      case-insensitive; SMS_PROVIDER / EMAIL_PROVIDER are legacy aliases).
+ *   3. Else, mock — body is journaled to NotificationLog only. Outside
+ *      production the mock reports ok:true; in production it reports ok:false
+ *      (nothing was delivered) so the journal reads FAILED.
  *
  * Every send is journaled in `NotificationLog`.
  */
 
 import { prisma } from './db';
 import { log } from './log';
+import { recordNotifyOutcome } from './observability/hooks';
 import { getConfig } from './integrations';
 import { sendMsg91 } from './notifications/msg91';
 import { sendMetaWhatsApp } from './notifications/meta-whatsapp';
@@ -44,6 +48,8 @@ interface SendArgs {
   to: string;
   body: string;
   subject?: string;
+  /** Optional HTML alternative (SMTP email adapters only). */
+  html?: string;
   template?: string;
   userId?: string | null;
   meta?: Record<string, unknown>;
@@ -54,8 +60,36 @@ interface SendArgs {
 type SendResult = { ok: boolean; providerId?: string; error?: string };
 
 // ─── adapters ───────────────────────────────────────────────────────────────
+/** Single-use credential links (password reset) must never reach logs / the journal. */
+export function redactSecretLinks(template: string | undefined, text: string): string {
+  if (template !== 'password-reset') return text;
+  return text.replace(/token=[A-Za-z0-9_-]+/g, 'token=[redacted]');
+}
+
+/** OTP-template sends: the code must never reach a log line or the journal. */
+function isOtpSend(args: SendArgs): boolean {
+  return (args.template ?? '').startsWith('otp');
+}
+function redactForStorage(args: SendArgs): string {
+  return isOtpSend(args) ? args.body.replace(/\d{4,8}/g, '••••') : redactSecretLinks(args.template, args.body);
+}
+
+/** Provider env value, normalised (the dispatcher and otp.ts read the same way). */
+function envProvider(...names: string[]): string {
+  for (const n of names) {
+    const v = (process.env[n] ?? '').toLowerCase().trim();
+    if (v) return v;
+  }
+  return '';
+}
+
 async function sendMock(channel: Channel, args: SendArgs): Promise<SendResult> {
-  log.info({ channel, to: args.to, template: args.template, body: args.body, subject: args.subject }, '[notify mock]');
+  log.info({ channel, to: args.to, template: args.template, body: redactForStorage(args), subject: args.subject }, '[notify mock]');
+  // F12: in production nothing was delivered, so never report success — the
+  // NotificationLog row must read FAILED and callers must see ok:false.
+  if (process.env.NODE_ENV === 'production') {
+    return { ok: false, error: `No ${channel} provider configured (mock notifier)` };
+  }
   return { ok: true, providerId: `mock_${Date.now()}` };
 }
 
@@ -101,7 +135,8 @@ async function sendSmtp(cfg: { host: string; port: string; username: string; pas
       from: cfg.fromEmail,
       to: args.to,
       subject: args.subject || 'Notification',
-      text: args.body
+      text: args.body,
+      ...(args.html ? { html: args.html } : {})
     });
     return { ok: true, providerId: info.messageId };
   } catch (e) {
@@ -123,7 +158,7 @@ async function sendOnChannel(channel: Channel, args: SendArgs): Promise<SendResu
       // ship before the schema enum is updated.
       const tf = await safeGetConfig(args.restaurantId, 'TWOFACTOR');
       if (tf?.apiKey) {
-        return sendTwoFactor({ apiKey: tf.apiKey, senderId: tf.senderId, templateName: tf.templateName }, args);
+        return sendTwoFactor({ apiKey: tf.apiKey, senderId: tf.senderId, templateName: tf.templateName, transactionalTemplateName: tf.tsmsTemplateName }, args);
       }
       const msg91 = await safeGetConfig(args.restaurantId, 'MSG91');
       if (msg91?.authKey && msg91?.senderId) {
@@ -173,12 +208,13 @@ async function sendOnChannel(channel: Channel, args: SendArgs): Promise<SendResu
 
   // 2. Env fallback (legacy paths + new India-friendly env routes)
   if (channel === 'SMS') {
-    const provider = process.env.NOTIFIER_SMS || process.env.SMS_PROVIDER;
+    const provider = envProvider('NOTIFIER_SMS', 'SMS_PROVIDER');
     if (provider === '2factor' && process.env.TWOFACTOR_API_KEY) {
       return sendTwoFactor({
         apiKey: process.env.TWOFACTOR_API_KEY!,
         senderId: process.env.TWOFACTOR_SENDER_ID,
-        templateName: process.env.TWOFACTOR_TEMPLATE_NAME
+        templateName: process.env.TWOFACTOR_TEMPLATE_NAME,
+        transactionalTemplateName: process.env.TWOFACTOR_TSMS_TEMPLATE_NAME
       }, args);
     }
     if (provider === 'msg91' && process.env.MSG91_AUTH_KEY) {
@@ -208,7 +244,7 @@ async function sendOnChannel(channel: Channel, args: SendArgs): Promise<SendResu
     }
   }
   if (channel === 'WHATSAPP') {
-    const wa = (process.env.NOTIFIER_WHATSAPP || '').toLowerCase();
+    const wa = envProvider('NOTIFIER_WHATSAPP');
     if ((wa === 'meta' || wa === 'meta_whatsapp' || wa === 'whatsapp_cloud') && process.env.META_WHATSAPP_ACCESS_TOKEN) {
       return sendMetaWhatsApp({
         phoneNumberId: process.env.META_WHATSAPP_PHONE_NUMBER_ID!,
@@ -224,7 +260,7 @@ async function sendOnChannel(channel: Channel, args: SendArgs): Promise<SendResu
     }
   }
   if (channel === 'EMAIL') {
-    const provider = process.env.NOTIFIER_EMAIL || process.env.EMAIL_PROVIDER;
+    const provider = envProvider('NOTIFIER_EMAIL', 'EMAIL_PROVIDER');
     if (provider === 'zoho_smtp' && process.env.SMTP_USER) {
       return sendZohoSmtp({
         host: process.env.SMTP_HOST,
@@ -271,13 +307,14 @@ async function dispatch(channel: Channel, args: SendArgs) {
     log.error({ err: (e as Error).message, channel, to: args.to, template: args.template }, 'notify dispatcher threw');
     result = { ok: false, error: (e as Error).message };
   }
+  recordNotifyOutcome(channel, result); // observability: live/mock + sent/failed per channel
   // H6: never persist a live OTP code. The admin notifications view returns and
   // can substring-search `body`, so journaling the raw "Your verification code is
   // 123456" (and meta.otpCode) let a restaurant admin harvest live codes. Redact
   // the code out of both the stored body and meta for OTP-template sends. The
   // in-memory `args.body` used to actually deliver the SMS is untouched.
-  const isOtp = (args.template ?? '').startsWith('otp');
-  const storedBody = isOtp ? args.body.replace(/\d{4,8}/g, '••••') : args.body;
+  const isOtp = isOtpSend(args);
+  const storedBody = redactForStorage(args);
   let storedMeta: unknown = args.meta;
   if (isOtp && args.meta && typeof args.meta === 'object') {
     const { otpCode: _drop, ...rest } = args.meta as Record<string, unknown>;

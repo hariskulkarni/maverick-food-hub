@@ -599,7 +599,7 @@ interface SeededCounts {
   orderCount: number;
 }
 
-const credentials: { email: string; password: string; role: string }[] = [];
+const credentials: { email: string; role: string }[] = [];
 const restaurantSummaries: { name: string; slug: string; itemCount: number; comboCount: number }[] = [];
 
 async function ensureBrand() {
@@ -689,7 +689,7 @@ async function seedCuisine(c: CuisineSeed, brandId: string, adminPass: string, k
     role: Role.ADMIN,
     passwordHash: adminPass
   });
-  credentials.push({ email: adminEmail, password: ADMIN_PASSWORD, role: 'ADMIN' });
+  credentials.push({ email: adminEmail, role: 'ADMIN' });
 
   // ── Restaurant ─────────────────────────────────────────────────────────
   const restaurant = await prisma.restaurant.upsert({
@@ -782,7 +782,7 @@ async function seedCuisine(c: CuisineSeed, brandId: string, adminPass: string, k
     role: Role.KITCHEN,
     passwordHash: kitchenPass
   });
-  credentials.push({ email: kitchenEmail, password: KITCHEN_PASSWORD, role: 'KITCHEN' });
+  credentials.push({ email: kitchenEmail, role: 'KITCHEN' });
 
   await prisma.restaurantUser.upsert({
     where: { restaurantId_userId: { restaurantId: restaurant.id, userId: kitchen.id } },
@@ -1286,9 +1286,10 @@ async function main() {
   console.log('');
   console.log(`   Totals: ${restaurantSummaries.length} restaurants, ${totalItems} items, ${totalCombos} combos, ${totalOrders} orders`);
   console.log('');
-  console.log('   Login credentials (copy & store):');
+  // Never print passwords: seed output lands in CI logs and terminal scrollback.
+  console.log('   Login accounts (demo passwords: ADMIN_PASSWORD / KITCHEN_PASSWORD in this seed file):');
   for (const cred of credentials) {
-    console.log(`     [${cred.role.padEnd(8)}] ${cred.email.padEnd(48)} / ${cred.password}`);
+    console.log(`     [${cred.role.padEnd(8)}] ${cred.email}`);
   }
   console.log('');
 }

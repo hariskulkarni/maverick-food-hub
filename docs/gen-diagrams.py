@@ -46,23 +46,25 @@ def svg_open(w,h,title,subtitle):
             f'<path d="M0 0L10 5L0 10z" fill="{SLATE}"/></marker></defs>'
             f'<rect width="{w}" height="{h}" fill="{BG}"/><rect x="0" y="0" width="{w}" height="64" fill="{INK}"/>'
             + text(36,34,title,24,"800","#FFFFFF","start") + text(36,53,subtitle,13,"400","#C9CDD6","start")
-            + text(w-36,40,"Reshee Tech",16,"700",PRIMARY,"end") + text(w-36,55,"Multi-tenant food delivery platform",11,"400","#C9CDD6","end"))
+            + text(w-36,40,"Flavrly",16,"700",PRIMARY,"end") + text(w-36,55,"Multi-tenant food ordering & delivery platform",11,"400","#C9CDD6","end"))
 def render(name, body, w, h):
     svg=body+"</svg>"
     open(os.path.join(OUT,name+".svg"),"w").write(svg)
-    cairosvg.svg2png(bytestring=svg.encode(), write_to=os.path.join(OUT,name+".png"), output_width=w*2, output_height=h*2)
+    # cairo has no per-glyph font fallback: Helvetica lacks arrow glyphs, so the PNG uses ASCII arrows.
+    png_svg=svg.replace("\u2192","-&gt;").replace("\u21c4","&lt;-&gt;")
+    cairosvg.svg2png(bytestring=png_svg.encode(), write_to=os.path.join(OUT,name+".png"), output_width=w*2, output_height=h*2)
     print("wrote", name+".png")
 
 def system_architecture():
     W,H=1680,1040; s=[svg_open(W,H,"System Architecture","Clients → Next.js app → data + realtime → external services → hosting")]
     s.append(text(40,98,"CLIENTS",13,"700",MUT)); cw=300
-    s.append(box(40,112,cw,86,"Customer Web","Discovery · menu · cart · checkout · live tracking".split(" · ")))
-    s.append(box(360,112,cw,86,"Restaurant Admin + Kitchen","Orders board · KOT · menu · settings".split(" · ")))
-    s.append(box(680,112,cw,86,"Super-Admin Platform","Network ops · approvals · payouts · KYC".split(" · ")))
-    s.append(box(1000,112,cw,86,"Rider App (Android)","Expo · OTP · pool · GPS · proof".split(" · ")))
-    s.append(box(1320,112,320,86,"Public Storefront","SEO pages · /r/[slug] menus".split(" · ")))
-    for cx in (190,510,830,1150,1480): s.append(arrow(cx,198,cx,250,SLATE))
-    s.append(text(40,236,"APPLICATION  ·  Next.js 15 App Router (TypeScript)",13,"700",MUT))
+    s.append(box(40,112,cw,98,"Customer Web",["Discovery + menu","Cart + checkout","Live order tracking"]))
+    s.append(box(360,112,cw,98,"Restaurant Admin + Kitchen",["Orders board + KOT","Menu + offers","Settings + reports"]))
+    s.append(box(680,112,cw,98,"Super-Admin Platform",["Network ops + approvals","Payouts + KYC","Observability"]))
+    s.append(box(1000,112,cw,98,"Rider App (Android)",["Expo, phone OTP","Order pool + GPS","Proof of delivery"]))
+    s.append(box(1320,112,320,98,"Public Storefront","SEO pages · /r/[slug] menus".split(" · ")))
+    for cx in (190,510,830,1150,1480): s.append(arrow(cx,210,cx,250,SLATE))
+    s.append(text(40,242,"APPLICATION  ·  Next.js 15 App Router (TypeScript)",13,"700",MUT))
     s.append(f'<rect x="40" y="250" width="1600" height="150" rx="14" fill="{PRIMARY_T}" stroke="{PRIMARY}" stroke-width="1.5"/>')
     s.append(text(60,278,"Route-grouped surfaces",13,"700",PRIMARY))
     for i,t in enumerate(["(customer)","admin","kitchen","platform","login / qr"]): s.append(chip(60+i*150,292,138,t,CARD,PRIMARY))
@@ -71,16 +73,16 @@ def system_architecture():
     s.append(arrow(300,400,300,452,SLATE,label="Prisma")); s.append(arrow(840,400,840,452,SLATE,label="publish/subscribe")); s.append(arrow(1380,400,1380,452,SLATE,label="adapters"))
     s.append(container(40,452,520,162,"Data Layer",SLATE,SLATE_T))
     s.append(box(60,486,232,116,"PostgreSQL",["Restaurants, branches, menu","Orders, items, payments","Users, sessions, addresses"],title_size=14))
-    s.append(box(308,486,232,116,"Prisma ORM",["Type-safe client","Schema + db push","Migrations"],title_size=14))
+    s.append(box(308,486,232,116,"Prisma ORM",["Type-safe client","Schema-first","33 migrations (migrate deploy)"],title_size=14))
     s.append(container(580,452,520,162,"Realtime",BLUE,BLUE_T))
     s.append(box(600,486,480,116,"EventEmitter SSE bus",["branch:{id}:orders","group:{root}:orders","rider:pool · order:{id}"],sub="GET /api/events + poll + 15s snapshot",title_size=14))
     s.append(container(1120,452,520,162,"External (adapter + mock)",GREEN,GREEN_T))
-    exts=["Razorpay (pay+webhook)","2Factor SMS / OTP","Google OAuth","OpenStreetMap / Leaflet","S3 storage","Expo push (rider)"]
+    exts=["PhonePe + Razorpay (pay+webhook)","2Factor SMS / WhatsApp","Google OAuth + Business Profile","OpenStreetMap / Leaflet","S3 storage","Expo push (rider)"]
     for i,e in enumerate(exts): s.append(chip(1140+(i%2)*250,486+(i//2)*38,234,e,CARD,GREEN))
     s.append(arrow(300,614,300,654,SLATE)); s.append(arrow(840,614,840,654,SLATE)); s.append(arrow(1380,614,1380,654,SLATE))
     s.append(text(40,646,"HOSTING  ·  Hostinger VPS",13,"700",MUT))
     s.append(f'<rect x="40" y="660" width="1600" height="86" rx="14" fill="{CARD}" stroke="{LINE}" stroke-width="1.5"/>')
-    for i,t in enumerate(["nginx (TLS, reverse proxy, SSE flush)","PM2 — rm-web (Node 20, fork)","PostgreSQL 15","GitHub deploy (scripts/deploy.sh)"]): s.append(chip(64+i*392,692,372,t,SLATE_T,SLATE,h=34))
+    for i,t in enumerate(["nginx (TLS, reverse proxy, SSE flush)","PM2 — rm-web (Node 20, fork)","PostgreSQL 15","GitHub Actions CI → deploy"]): s.append(chip(64+i*392,692,372,t,SLATE_T,SLATE,h=34))
     s.append(text(40,790,"AUTH MODEL",13,"700",MUT))
     s.append(f'<rect x="40" y="804" width="1600" height="86" rx="14" fill="{PURPLE_T}" stroke="{PURPLE}" stroke-width="1.5"/>')
     for i,t in enumerate(["NextAuth v5 (JWT)","Phone OTP — customers/riders","Email+Argon2id — staff","Single active session","Super-admin TOTP + IP allowlist"]): s.append(chip(64+i*316,836,300,t,CARD,PURPLE,h=34))
@@ -99,16 +101,16 @@ def technical_architecture():
           [("(customer)","menu·cart·checkout·track"),("admin","orders·menu·settings"),("kitchen","KOT board"),("platform","super-admin"),("rider-native","Expo app")])
     s.append(arrow(840,216,840,250,SLATE))
     layer(252,"API — /api route handlers (REST + SSE)",BLUE,BLUE_T,
-          [("orders / checkout","placeOrder, transitions"),("admin/*","tenant-scoped CRUD"),("rider/*","Bearer JWT"),("events","SSE + poll"),("payments/webhook","Razorpay verify")])
+          [("orders / checkout","placeOrder, transitions"),("admin/*","tenant-scoped CRUD"),("rider/*","Bearer JWT"),("events","SSE + poll"),("payments/webhook","PhonePe/Razorpay verify")])
     s.append(arrow(840,380,840,414,SLATE))
     layer(416,"DOMAIN — server/* modules (business logic)",PURPLE,PURPLE_T,
           [("tenancy / group-scope","active restaurant, groups"),("orders","state machine + events"),("pricing engines","happy-hour·offers·variants"),("auth / sessions","NextAuth + single-session"),("notifications","SMS/OTP, chimes")])
     s.append(arrow(840,544,840,578,SLATE))
     layer(580,"INTEGRATION — provider adapters (swappable, mock-by-default)",GREEN,GREEN_T,
-          [("payments","Razorpay / COD / wallet"),("sms","2Factor / Fast2SMS"),("storage","local / S3"),("maps","OSM / Leaflet"),("push","Expo")])
+          [("payments","PhonePe·Razorpay·COD·wallet"),("sms","2Factor / Fast2SMS"),("storage","local / S3"),("maps","OSM / Leaflet"),("push","Expo")])
     s.append(arrow(840,708,840,742,SLATE))
     layer(744,"DATA & INFRA",SLATE,SLATE_T,
-          [("PostgreSQL + Prisma","schema, db push"),("EventEmitter bus","in-process realtime"),("nginx + PM2","VPS, Node 20"),("GitHub + deploy.sh","push→build→restart"),("Vitest + Playwright","403 unit + E2E")])
+          [("PostgreSQL + Prisma","152 models · 33 migrations"),("EventEmitter bus","in-process realtime"),("nginx + PM2","VPS, Node 20"),("GitHub Actions","CI · CodeQL · deploy"),("Vitest + Playwright","2.5k unit · 238 DB · E2E")])
     s.append(text(60,1000,"Cross-cutting: feature flags · audit log · OTP rate-limits · server-authoritative pricing · Decimal→Number at the boundary · force-dynamic on per-user pages",12.5,"500",MUT))
     render("technical-architecture-v2","".join(s),W,H)
 
@@ -122,7 +124,7 @@ def data_flow():
     steps=["resolve menu items + variants/modifiers","apply happy-hour, offers, coupons, wallet, loyalty","fulfillment: delivery / pickup / dine-in / scheduled","freebie grant (atomic stock decrement)","price + tax + delivery fee → totals","create Order + items in one transaction"]
     for i,t in enumerate(steps): s.append(text(752,138+i*25,f"{i+1}. {t}",13,"500",SLATE))
     s.append(arrow(1185,296,1185,348,SLATE,label="commit"))
-    s.append(box(980,348,420,72,"PostgreSQL",None,CARD,LINE,sub="Order = RECEIVED",title_size=15))
+    s.append(box(980,348,420,72,"PostgreSQL",None,CARD,LINE,sub="RECEIVED (COD) · PAYMENT_PENDING (online)",title_size=15))
     s.append(arrow(980,384,722,384,SLATE,label="publish"))
     s.append(container(360,348,360,150,"Realtime SSE bus",BLUE,BLUE_T))
     for i,t in enumerate(["branch:{id}:orders","group:{root}:orders","order:{id}  ·  rider:pool"]): s.append(text(384,398+i*26,t,13,"600",BLUE))
@@ -148,8 +150,8 @@ def data_flow():
 
 def integrations():
     W,H=1680,940; s=[svg_open(W,H,"Third-Party Integrations","Every external service sits behind a swappable adapter with a mock default")]
-    s.append(box(640,110,400,150,"Reshee Tech",["server/* adapter interfaces","mock impl for local dev","real keys at deploy time"],PRIMARY_T,PRIMARY,tcol=PRIMARY))
-    items=[("Razorpay",BLUE,BLUE_T,"Payments","create order · capture · webhook (signature verify)"),
+    s.append(box(640,110,400,150,"Flavrly",["server/* adapter interfaces","mock impl for local dev","real keys at deploy time"],PRIMARY_T,PRIMARY,tcol=PRIMARY))
+    items=[("PhonePe + Razorpay",BLUE,BLUE_T,"Payments","checkout · verified capture · webhooks"),
       ("2Factor",GREEN,GREEN_T,"SMS / OTP","login + delivery OTP (India); MSG91/Fast2SMS alt"),
       ("Google OAuth",AMBER,AMBER_T,"Customer sign-in","NextAuth provider; email→customer provisioning"),
       ("OpenStreetMap",PURPLE,PURPLE_T,"Maps (free)","Leaflet tiles · address picker · live rider GPS"),
@@ -164,7 +166,7 @@ def integrations():
     s.append(text(64,802,"Why adapters",14,"700",INK))
     s.append(text(64,828,"Each integration is reached through a narrow interface, so local/dev runs fully on mocks (no keys, no spend) and production swaps in real",12.5,"500",SLATE))
     s.append(text(64,850,"credentials via env. A provider can be replaced (e.g. 2Factor → MSG91) without touching call sites; failures are best-effort and never roll back a paid order.",12.5,"500",SLATE))
-    s.append(text(64,878,"Config: DATABASE_URL · NEXTAUTH_SECRET · RAZORPAY_* · 2FACTOR_* · GOOGLE_CLIENT_* · STORAGE_DRIVER / S3_* · NEXT_PUBLIC_BRAND_NAME",12,"600",MUT))
+    s.append(text(64,878,"Config: DATABASE_URL · NEXTAUTH_SECRET · PHONEPE_* · RAZORPAY_* · 2FACTOR_* · GOOGLE_* · STORAGE_DRIVER / S3_* · NEXT_PUBLIC_BRAND_NAME",12,"600",MUT))
     render("integrations-v2","".join(s),W,H)
 
 def end_to_end():
@@ -180,7 +182,7 @@ def end_to_end():
         x=210+col*250; y=top+row*lh+(lh-12)/2-32; s.append(box(x,y,224,64,label,None,CARD,LINE,sub=sub,title_size=13.5))
     def cxy(col,row): return (210+col*250+112, top+row*lh+(lh-12)/2)
     node(0,0,"Login / discover","near-me restaurants"); node(1,0,"Pick restaurant","/r/[slug] menu"); node(2,0,"Build cart","variants + add-ons"); node(3,0,"Checkout","delivery/pickup/dine-in")
-    node(0,1,"Validate + price","server-authoritative"); node(1,1,"Payment","Razorpay / COD"); node(2,1,"Create order","RECEIVED + SSE")
+    node(0,1,"Validate + price","server-authoritative"); node(1,1,"Payment","PhonePe / Razorpay / COD"); node(2,1,"Create order","RECEIVED + SSE")
     node(2,2,"Accept → Prepare","KOT, prep timer"); node(3,2,"Mark READY")
     node(0,3,"Auto-accept?","restaurant setting"); node(1,3,"Live monitor","group-wide board")
     node(0,4,"Dispatch to pool","push online riders"); node(1,4,"Claim + pickup","GPS streaming"); node(2,4,"Deliver + OTP","proof-of-delivery")

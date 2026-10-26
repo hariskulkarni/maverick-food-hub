@@ -9,13 +9,16 @@
  * riders, the restaurant they belong to — so the native app can show whether
  * the rider is on the fleet or dedicated to a specific restaurant.
  */
-import { auth } from '@/server/rider-auth';
+import { auth, readRiderBearer, sessionExpiredResponse } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  // P1-11: a dead Bearer token gets an explicit 401 the app turns into a clean
+  // "please sign in again" (older builds also sign out on 401/403).
+  if ((await readRiderBearer()).kind === 'invalid') return sessionExpiredResponse();
   const session = await auth();
   if (session?.user.role !== 'RIDER') return new Response('Forbidden', { status: 403 });
   const profile = await prisma.riderProfile.findUnique({

@@ -27,6 +27,7 @@ import {
 } from '@/server/restaurant-wizard';
 import { imageRef } from '@/server/zod-helpers';
 import { revalidateRestaurantSurfaces } from '@/server/revalidate';
+import { clientIp } from '@/server/http/client-ip';
 
 // ── Zod schema ──────────────────────────────────────────────────────────────
 
@@ -71,7 +72,16 @@ const BranchSchema = z.object({
   taxRatePct:       z.number().min(0).max(40).default(5),
   baseDeliveryFee:  z.number().min(0).max(2000).default(40),
   perKmDeliveryFee: z.number().min(0).max(200).default(8),
-  packagingFee:     z.number().min(0).max(1000).default(20)
+  packagingFee:     z.number().min(0).max(1000).default(20),
+  // Optional at creation; the owner's setup guide asks for anything missing.
+  fssaiLicenseNumber: z.string().trim().regex(/^\d{14}$/, 'FSSAI number must be 14 digits').optional().nullable().or(z.literal('').transform(() => null)),
+  // 7 rows (0 = Sunday). A closed day is openMin = closeMin = 0. Omitted ⇒ no
+  // rows (legacy "always open"), which the readiness check flags.
+  hours: z.array(z.object({
+    dayOfWeek: z.number().int().min(0).max(6),
+    openMin: z.number().int().min(0).max(1440),
+    closeMin: z.number().int().min(0).max(1440)
+  })).length(7).optional()
 });
 
 const StaffSchema = z.object({
@@ -336,6 +346,7 @@ export async function POST(req: NextRequest) {
           email: adminHashed.email,
           name: adminHashed.name ?? null,
           passwordHash: adminHashed.hash,
+          mustChangePassword: true, // set by the super admin — owner picks their own at first login
           role: Role.ADMIN
         }
       });
@@ -394,7 +405,9 @@ export async function POST(req: NextRequest) {
           taxRatePct: body.branch.taxRatePct,
           baseDeliveryFee: new Prisma.Decimal(body.branch.baseDeliveryFee),
           perKmDeliveryFee: new Prisma.Decimal(body.branch.perKmDeliveryFee),
-          packagingFee: new Prisma.Decimal(body.branch.packagingFee)
+          packagingFee: new Prisma.Decimal(body.branch.packagingFee),
+          fssaiLicenseNumber: body.branch.fssaiLicenseNumber ?? null,
+          ...(body.branch.hours ? { hours: { create: body.branch.hours } } : {})
         }
       });
 
@@ -417,6 +430,7 @@ export async function POST(req: NextRequest) {
             email: k.email,
             name: k.name ?? null,
             passwordHash: k.hash,
+            mustChangePassword: true,
             role: Role.KITCHEN
           }
         });
@@ -525,7 +539,7 @@ export async function POST(req: NextRequest) {
       dineInTableCount: body.dineIn.enabled ? body.dineIn.tables.length : 0,
       allowFreebies: body.allowFreebies
     },
-    ipAddress: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
+    ipAddress: clientIp(req.headers),
     userAgent: req.headers.get('user-agent')
   }).catch((err) => log.error({ err }, 'audit log restaurant.wizard.create failed'));
 

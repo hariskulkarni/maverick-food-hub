@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 
 const Body = z.object({ reason: z.string().optional() }).optional();
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireSuperAdmin();
+  const session = await requireSuperAdminApi();
+  if (session instanceof Response) return session;
   const { id } = await params;
   const body = Body.parse(await req.json().catch(() => undefined));
   await prisma.riderApplication.update({

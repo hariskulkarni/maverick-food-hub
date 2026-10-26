@@ -36,6 +36,9 @@ vi.mock('@/server/db', () => ({
   }
 }));
 
+const rec = vi.hoisted(() => ({ capture: vi.fn(), release: vi.fn() }));
+vi.mock('@/server/payments/reconcile', () => ({ captureRazorpayPayment: rec.capture, releaseOrderAfterCapture: rec.release }));
+
 import { POST } from '@/app/api/payments/verify/route';
 
 const post = () =>
@@ -90,5 +93,28 @@ describe('C3: payment verify route', () => {
     expect(res.status).toBe(200);
     expect(payment.status).toBe('CAPTURED');
     expect(payment.providerRef).toBe('merchant-order-1'); // not overwritten with pp1
+  });
+});
+
+describe('Flavrly PG payments are never captured by browser verify', () => {
+  it('409 and payment untouched for providerName youpi', async () => {
+    payment = { id: 'pay1', status: 'PENDING', providerName: 'youpi', providerData: {} };
+    const res = await post();
+    expect(res.status).toBe(409);
+    expect(payment.status).toBe('PENDING');
+  });
+
+  it('P0-4: a verified Razorpay handler capture goes through the guarded capture helper (releases the order)', async () => {
+    rec.capture.mockImplementationOnce(async () => { payment.status = 'CAPTURED'; return true; });
+    const res = await post();
+    expect(rec.capture).toHaveBeenCalledWith('pay1', { gatewayPaymentId: 'pp1', source: 'checkout' });
+    expect((await res.json()).ok).toBe(true);
+  });
+
+  it('P0-4: a PhonePe verify capture releases the PAYMENT_PENDING order', async () => {
+    rec.release.mockClear();
+    payment = { id: 'pay1', orderId: 'o1', status: 'PENDING', providerName: 'phonepe', providerData: {}, providerRef: 'm-1' };
+    await post();
+    expect(rec.release).toHaveBeenCalledWith('o1', expect.stringContaining('captured'));
   });
 });

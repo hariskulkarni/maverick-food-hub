@@ -75,7 +75,9 @@ export function MenuManager({ branchId, categories, items }: { branchId: string;
           onApplied={() => setSelected(new Set())}
         />
 
-        <div className="grid gap-2">
+        {/* grid-cols-1 (= minmax(0,1fr)): an implicit auto column grew to the
+            row's min-content and pushed the actions off a 390px screen. */}
+        <div className="grid grid-cols-1 gap-2">
           {items.map((it) => {
             const cat = categories.find((c) => c.id === it.categoryId);
             const isSel = selected.has(it.id);
@@ -119,7 +121,7 @@ export function MenuManager({ branchId, categories, items }: { branchId: string;
                 <CardContent className="p-3 flex items-center gap-3">
                   <label
                     htmlFor={checkboxId}
-                    className="flex flex-1 min-w-0 items-center gap-3 cursor-pointer select-none"
+                    className="flex flex-1 min-w-0 items-center gap-2 sm:gap-3 cursor-pointer select-none"
                   >
                     <input
                       id={checkboxId}
@@ -129,7 +131,7 @@ export function MenuManager({ branchId, categories, items }: { branchId: string;
                       checked={isSel}
                       onChange={(e) => toggleOne(it.id, e.target.checked)}
                     />
-                    <div className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-muted border">
+                    <div className="relative size-12 sm:size-14 shrink-0 overflow-hidden rounded-lg bg-muted border">
                       {it.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={it.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
@@ -279,9 +281,10 @@ function ToggleAvailability({ id, initial }: { id: string; initial: boolean }) {
   const [v, setV] = useState(initial);
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-muted-foreground">{v ? 'Available' : 'Hidden'}</span>
+      <span className="hidden text-xs text-muted-foreground sm:inline">{v ? 'Available' : 'Hidden'}</span>
       <Switch
         checked={v}
+        aria-label={v ? 'Available' : 'Hidden'}
         onCheckedChange={async (next) => {
           // Optimistic flip first, then revert on a server error so the user
           // sees the actual state when something blocks the PATCH (expired

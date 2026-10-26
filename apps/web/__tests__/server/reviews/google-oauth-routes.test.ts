@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { reqRestMock, exchangeMock, accountsMock, locsMock, saveMock } = vi.hoisted(() => ({
   reqRestMock: vi.fn(), exchangeMock: vi.fn(), accountsMock: vi.fn(), locsMock: vi.fn(), saveMock: vi.fn(),
 }));
-vi.mock('@/server/tenancy', () => ({ requireManagedRestaurant: reqRestMock }));
+vi.mock('@/server/tenancy', async () => ({ requireManagedRestaurant: reqRestMock, ...(await import('../../helpers/tenant-admin-mock')).tenantAdminMocks((rid) => (reqRestMock)(rid)) }));
 vi.mock('@/server/reviews/google-business', () => ({
   getOAuthUrl: (s: string) => `https://accounts.google.com/o/oauth2/v2/auth?state=${s}`,
   exchangeCode: exchangeMock,

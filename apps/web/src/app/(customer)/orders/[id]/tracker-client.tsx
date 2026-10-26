@@ -11,6 +11,10 @@ import { brand } from '@/lib/brand';
 import DeliveryMap from './delivery-map';
 import { ReorderButton } from './reorder-button';
 import { FeedbackDialog, type FeedbackLite } from '../feedback-dialog';
+import { useRouter } from 'next/navigation';
+import { canPayNow, apiErrorMessage } from '@/lib/checkout-helpers';
+import { launchPayment } from '@/lib/launch-payment';
+import { GoogleReviewBlock } from '@/components/reviews/google-review-button';
 
 // Equirectangular distance approximation in km between two lat/lng points.
 // Used for the saffron ETA pill ("arriving in ~N min · 0.8 km away").
@@ -29,12 +33,16 @@ export function OrderTrackerClient({
   order: initial,
   existingFeedback: initialFeedback = null,
   deliveredAt = null,
-  feedbackWindowEndsAt = null
+  feedbackWindowEndsAt = null,
+  googleReviewUrl = null,
+  reviewToken = null
 }: {
   order: any;
   existingFeedback?: FeedbackLite | null;
   deliveredAt?: string | null;
   feedbackWindowEndsAt?: string | null;
+  googleReviewUrl?: string | null;
+  reviewToken?: string | null;
 }) {
   const [order, setOrder] = useState(initial);
   const [feedback, setFeedback] = useState<FeedbackLite | null>(initialFeedback);
@@ -149,10 +157,14 @@ export function OrderTrackerClient({
         </div>
         {/* Support buttons — stack vertically on mobile, side-by-side on sm+.
             44×44 tap targets enforced on mobile. */}
-        <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex">
+        {(brand.supportPhone || brand.supportWhatsapp) && (
+        <div className={`grid ${brand.supportPhone && brand.supportWhatsapp ? 'grid-cols-2' : 'grid-cols-1'} gap-2 w-full sm:w-auto sm:flex`}>
+          {brand.supportPhone && (
           <a href={`tel:${brand.supportPhone}`} className="inline-flex h-11 sm:h-9 items-center justify-center gap-2 rounded-md border px-3 text-sm hover:bg-accent tap-press">
             <Phone className="size-4" /> Support
           </a>
+          )}
+          {brand.supportWhatsapp && (
           <a
             href={`https://wa.me/${brand.supportWhatsapp.replace(/\D/g, '')}?text=Order%20${encodeURIComponent(order.code)}`}
             target="_blank" rel="noreferrer"
@@ -160,8 +172,13 @@ export function OrderTrackerClient({
           >
             <MessageCircle className="size-4" /> WhatsApp
           </a>
+          )}
         </div>
+        )}
       </header>
+
+      {/* ───────────────────────── Unpaid online order ───────────────────────── */}
+      {canPayNow(order) && <PayNowCard order={order} />}
 
       {/* ───────────────────────── Progress stepper ───────────────────────── */}
       {!isTerminal && (
@@ -210,6 +227,15 @@ export function OrderTrackerClient({
           windowClosed={feedbackWindowClosed}
           onOpen={() => setFeedbackOpen(true)}
         />
+      )}
+      {/* Same Google block at every rating, before and after feedback (no gating). */}
+      {isDelivered && googleReviewUrl && (
+        <div className="mb-6">
+          <GoogleReviewBlock
+            href={googleReviewUrl}
+            trackUrl={reviewToken ? `/api/review-requests/${encodeURIComponent(reviewToken)}/google` : undefined}
+          />
+        </div>
       )}
 
       {/* ───────────────────────── Live ETA pill + Map ───────────────────────── */}
@@ -828,5 +854,60 @@ function Confetti() {
         />
       ))}
     </div>
+  );
+}
+
+/**
+ * Unpaid online order (PAYMENT_PENDING / PAYMENT_FAILED): the restaurant has not been sent the order
+ * yet. "Pay now" mints a fresh gateway session (POST /api/orders/[id]/pay) and opens it; the order
+ * moves to the kitchen only after the server verifies the capture.
+ */
+function PayNowCard({ order }: { order: any }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const failed = order.status === 'PAYMENT_FAILED';
+  async function payNow() {
+    if (busy) return;
+    setBusy(true);
+    let navigating = false;
+    try {
+      const r = await fetch(`/api/orders/${order.id}/pay`, { method: 'POST' });
+      if (!r.ok) {
+        toast.error(apiErrorMessage(await r.text().catch(() => ''), 'Could not start the payment. Please try again.'));
+        return;
+      }
+      const j = await r.json();
+      const next = await launchPayment(order.id, j.payment, { merchantName: order.branch?.name ?? brand.name });
+      if (next.kind === 'redirected') {
+        navigating = true;
+        return;
+      }
+      if (next.notice) toast[next.notice.tone === 'success' ? 'success' : next.notice.tone === 'error' ? 'error' : 'message'](next.notice.text);
+      if (next.href === `/orders/${order.id}`) router.refresh();
+      else router.push(next.href);
+    } catch {
+      toast.error('Could not start the payment. Please try again.');
+    } finally {
+      if (!navigating) setBusy(false);
+    }
+  }
+  return (
+    <Card className={`mb-6 ${failed ? 'border-destructive/30 bg-destructive/5' : 'border-warning/30 bg-warning/5'}`}>
+      <CardContent className="p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="font-semibold">{failed ? 'Payment not completed' : 'Waiting for your payment'}</div>
+          <p className="text-sm text-muted-foreground break-words">
+            {failed
+              ? 'Your payment did not go through, so the restaurant has not received this order yet. You can try again.'
+              : 'The restaurant receives this order as soon as your payment of '}
+            {!failed && <span className="font-medium text-foreground">{money(Number(order.total))}</span>}
+            {!failed && ' is confirmed. If you already paid, this updates automatically.'}
+          </p>
+        </div>
+        <Button className="w-full sm:w-auto h-11 sm:h-9" onClick={payNow} disabled={busy}>
+          {busy ? 'Opening payment…' : `Pay now · ${money(Number(order.total))}`}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

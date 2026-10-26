@@ -29,6 +29,10 @@ module.exports = {
       script: 'node_modules/next/dist/bin/next',
       args: 'start -p 3001',
       env_file: '.env.demo',
+      // T-23: the demo shares the prod cwd/.next, and Next.js also loads
+      // apps/web/.env here. Process env wins over .env files, so pin the Flavrly
+      // PG new-checkout flag OFF for the demo explicitly. Never set it to true.
+      env: { FLAVRLY_PG_NEW_PAYMENTS_ENABLED: 'false' },
       max_memory_restart: '512M',
       autorestart: true,
       restart_delay: 2000,

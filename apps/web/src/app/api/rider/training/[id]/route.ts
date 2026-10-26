@@ -1,133 +1,37 @@
 /**
- * GET  /api/rider/training/[id] — one training module with this rider's
- *      progress and (if any) quiz questions.
- * POST /api/rider/training/[id] — mark the module complete (upsert progress),
- *      optionally recording a quiz score. Returns the updated progress.
+ * GET  /api/rider/training/[id]?lang= — one module: lessons, quiz (without
+ *      answers), this rider's progress + retake eligibility, plus the legacy
+ *      contentBlocks/contentBody/progress fields older app builds render.
+ * POST /api/rider/training/[id] — legacy "complete module" used by pre-v2
+ *      builds (they grade their inline quiz locally and send `quizScore`).
+ *      Enforced with the same pass mark + retake rules; see legacyComplete().
  */
 import { NextRequest } from 'next/server';
-import { auth } from '@/server/rider-auth';
-import { prisma } from '@/server/db';
+import { riderLearner, actionResponse } from '@/server/training/learner-auth';
+import { getLearnerModule, legacyComplete } from '@/server/training/service';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  if (session?.user.role !== 'RIDER') return new Response('Forbidden', { status: 403 });
-
-  const profile = await prisma.riderProfile.findUnique({
-    where: { userId: session.user.id },
-    select: { id: true },
-  });
-  if (!profile) return new Response('No rider profile', { status: 404 });
-
-  // `mod`, not `module` — `module` is a reserved CommonJS global and the
-  // @next/next/no-assign-module-variable rule (rightly) forbids shadowing it.
-  const mod = await prisma.trainingModule.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      title: true,
-      summary: true,
-      category: true,
-      contentBody: true,
-      contentBlocks: true,
-      contentVersion: true,
-      heroImageUrl: true,
-      quizQuestions: true,
-      durationMin: true,
-      isRequired: true,
-      isActive: true,
-      progress: {
-        where: { riderId: profile.id },
-        select: { completed: true, completedAt: true, quizScore: true },
-      },
-    },
-  });
-  if (!mod || !mod.isActive) return new Response('Not found', { status: 404 });
-
-  const { parseContentBlocks } = await import('@/server/training-cms');
-  const p = mod.progress[0] ?? null;
-  return Response.json({
-    id: mod.id,
-    title: mod.title,
-    summary: mod.summary,
-    category: mod.category,
-    contentBody: mod.contentBody,
-    contentBlocks: parseContentBlocks(mod.contentBlocks),
-    contentVersion: mod.contentVersion ?? 1,
-    heroImageUrl: mod.heroImageUrl,
-    quizQuestions: mod.quizQuestions ?? null,
-    durationMin: mod.durationMin,
-    isRequired: mod.isRequired,
-    progress: {
-      completed: p?.completed ?? false,
-      completedAt: p?.completedAt?.toISOString() ?? null,
-      quizScore: p?.quizScore ?? null,
-    },
-  });
+  const who = await riderLearner(req.nextUrl.searchParams.get('lang'));
+  if (who instanceof Response) return who;
+  const mod = await getLearnerModule(who.learner, id, who.lang);
+  if (!mod) return new Response('Not found', { status: 404 });
+  return Response.json(mod);
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  if (session?.user.role !== 'RIDER') return new Response('Forbidden', { status: 403 });
-
-  const profile = await prisma.riderProfile.findUnique({
-    where: { userId: session.user.id },
-    select: { id: true },
-  });
-  if (!profile) return new Response('No rider profile', { status: 404 });
-
-  // `mod`, not `module` — `module` is a reserved CommonJS global and the
-  // @next/next/no-assign-module-variable rule (rightly) forbids shadowing it.
-  const mod = await prisma.trainingModule.findUnique({
-    where: { id },
-    select: { id: true, isActive: true },
-  });
-  if (!mod || !mod.isActive) return new Response('Not found', { status: 404 });
-
+  const who = await riderLearner(null);
+  if (who instanceof Response) return who;
   let body: { quizScore?: unknown } = {};
   try {
     body = await req.json();
   } catch {
-    // An empty body is fine — completing without a quiz is allowed.
-    body = {};
+    body = {}; // empty body = complete without a quiz
   }
-
-  let quizScore: number | null = null;
-  if (typeof body.quizScore === 'number' && Number.isFinite(body.quizScore)) {
-    quizScore = Math.max(0, Math.min(100, Math.round(body.quizScore)));
-  }
-
-  const now = new Date();
-  const progress = await prisma.riderTrainingProgress.upsert({
-    where: { moduleId_riderId: { moduleId: id, riderId: profile.id } },
-    create: {
-      moduleId: id,
-      riderId: profile.id,
-      completed: true,
-      completedAt: now,
-      quizScore,
-    },
-    update: {
-      completed: true,
-      completedAt: now,
-      ...(quizScore !== null ? { quizScore } : {}),
-    },
-    select: { completed: true, completedAt: true, quizScore: true },
-  });
-
-  return Response.json({
-    completed: progress.completed,
-    completedAt: progress.completedAt?.toISOString() ?? null,
-    quizScore: progress.quizScore,
-  });
+  const score = typeof body.quizScore === 'number' && Number.isFinite(body.quizScore) ? body.quizScore : null;
+  return actionResponse(await legacyComplete(who.learner, id, score));
 }

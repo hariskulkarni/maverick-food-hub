@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
-import { requireRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 
 const Body = z.object({
   name: z.string().min(2),
@@ -22,7 +22,8 @@ function slugify(s: string) {
 }
 
 export async function POST(req: NextRequest) {
-  const restaurant = await requireRestaurant();
+  const restaurant = await tenantAdminOrError();
+  if (restaurant instanceof Response) return restaurant;
   const data = Body.parse(await req.json());
   let slug = `${restaurant.slug}-${slugify(data.name)}`;
   let n = 0;

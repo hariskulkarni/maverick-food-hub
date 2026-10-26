@@ -5,6 +5,7 @@ import { prisma } from '@/server/db';
 import { publish } from '@/server/realtime';
 import { unauthenticated, forbidden } from '@/server/api-auth';
 import { AssignmentStatus, Role } from '@prisma/client';
+import { recordOrderEvent } from '@/server/dispatch/events';
 
 const Body = z.object({ riderId: z.string(), reason: z.string().max(500).optional() });
 
@@ -40,8 +41,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Tenancy: restaurant admin must belong to the order's restaurant.
   if (role === Role.ADMIN) {
+    // Membership-aware: a KITCHEN grant on this restaurant may not reassign riders.
     const membership = await prisma.restaurantUser.findFirst({
-      where: { userId: session.user.id, restaurantId: order.branch.restaurantId }
+      where: { userId: session.user.id, restaurantId: order.branch.restaurantId, role: Role.ADMIN }
     });
     if (!membership) {
       return forbidden('That order belongs to a different restaurant.');
@@ -123,5 +125,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   publish(`rider:${body.riderId}`, { kind: 'assigned', orderId: id, riderId: body.riderId });
   publish(`order:${id}`, { kind: 'assigned', orderId: id, riderId: body.riderId });
+  await recordOrderEvent({ orderId: id, type: 'ASSIGNED', source: 'ADMIN', actorId: session.user.id, riderId: body.riderId, meta: { via: 'reassign', previousRiderId: prevRiderId ?? null } });
   return Response.json(a);
 }

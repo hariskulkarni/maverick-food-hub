@@ -3,11 +3,16 @@ import { log } from '@/server/log';
 import { brand } from '@/lib/brand';
 import { notify } from '@/server/notifications';
 import { sendWebPush } from '@/server/push/webpush';
+import { scheduleReviewRequest } from '@/server/reviews/acquisition';
 
 /**
  * One-time "how was your order?" nudge sent when an order becomes DELIVERED.
  * Channels: web push (if subscribed) + SMS. Idempotent via an atomic claim on
  * Order.feedbackRequestedAt. Best-effort: never throws (sits in the transition path).
+ *
+ * When the restaurant has Google review requests enabled, the SMS is replaced by
+ * a delayed, tracked ask (ReviewRequest, sent by the review-requests sweep with
+ * quiet hours, frequency cap and opt-out applied) so the customer is asked once.
  */
 export async function requestFeedbackOnDelivered(a: {
   orderId: string;
@@ -29,6 +34,19 @@ export async function requestFeedbackOnDelivered(a: {
     if (claim.count !== 1) return;
 
     const url = `/orders/${a.orderId}`;
+    let scheduled = false;
+    if (a.restaurantId) {
+      try {
+        scheduled = await scheduleReviewRequest({
+          orderId: a.orderId,
+          restaurantId: a.restaurantId,
+          customerId: a.customerId,
+          deliveredAt: new Date()
+        });
+      } catch (e) {
+        log.error({ err: (e as Error).message, orderId: a.orderId }, 'review request schedule failed');
+      }
+    }
     try {
       if ((await prisma.webPushSubscription.count({ where: { userId: a.customerId } })) > 0) {
         await sendWebPush(a.customerId, {
@@ -41,7 +59,7 @@ export async function requestFeedbackOnDelivered(a: {
     } catch (e) {
       log.error({ err: (e as Error).message, orderId: a.orderId }, 'feedback request push failed');
     }
-    if (a.phone) {
+    if (a.phone && !scheduled) {
       await notify
         .sms({
           to: a.phone,

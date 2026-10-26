@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { testConfig } from '@/server/integrations';
 import { PROVIDERS, ProviderKey } from '@/server/integrations/providers';
 import { sendIntegrationAlert } from '@/server/alerts';
@@ -9,13 +9,20 @@ import { categoryFromProvider } from '@/server/integration-categories';
 import { prisma } from '@/server/db';
 import { log } from '@/server/log';
 
-const Body = z.object({ config: z.record(z.string()) });
+const Body = z.object({ config: z.record(z.string(), z.string()) });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
   const { provider } = await params;
   if (!(provider in PROVIDERS)) return new Response('Unknown provider', { status: 400 });
+  // T-03: the YOUPI test fetches a caller-supplied base URL. Tenant users must not be able to
+  // make the server probe arbitrary/internal URLs, so YOUPI is blocked here exactly as on
+  // PUT/DELETE; the gateway is configured only through the super-admin approval flow.
+  if (provider === 'YOUPI') {
+    return Response.json({ error: 'Flavrly PG is configured through its approval flow, not this endpoint.' }, { status: 403 });
+  }
   const session = await auth();
-  const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId')); // auth gate only — we don't persist on /test
+  const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId')); // auth gate only — we don't persist on /test
+  if (restaurant instanceof Response) return restaurant;
   const { config } = Body.parse(await req.json());
   const def = PROVIDERS[provider as ProviderKey];
   for (const f of def.fields) {

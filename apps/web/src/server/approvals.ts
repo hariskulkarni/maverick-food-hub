@@ -70,7 +70,7 @@ export const APPROVAL_ACTIONS: Record<string, ApprovalActionDef> = {
         data: { deletedAt: new Date(), status: 'SUSPENDED', slug: freedSlug },
       });
       revalidateRestaurantSurfaces(cur.slug, r.slug);
-      await audit('restaurant.suspend', {
+      await audit('restaurant.archive', {
         actorId: ctx.actorId, actorRole: ctx.actorRole,
         entityType: 'Restaurant', entityId: r.id, after: { archived: true },
       }).catch(() => {});
@@ -138,7 +138,12 @@ export async function confidentialAction(
   return forbidden(`This action requires the “${def.capability}” capability.`);
 }
 
-/** Approve a PENDING request: run its executor, then mark APPROVED (atomic-enough). */
+/**
+ * Approve a PENDING request. F13: the request is CLAIMED first with a
+ * conditional update (PENDING → APPROVED), so two reviewers approving at once
+ * cannot both run the executor. If execution fails the claim is undone (back
+ * to PENDING with executionError) so the reviewer can retry.
+ */
 export async function approveRequest(id: string, reviewer: { id: string; role?: string | null }) {
   const ar = await prisma.approvalRequest.findUnique({ where: { id } });
   if (!ar) return { ok: false as const, error: 'not_found' };
@@ -146,11 +151,17 @@ export async function approveRequest(id: string, reviewer: { id: string; role?: 
   const def = APPROVAL_ACTIONS[ar.action];
   if (!def) return { ok: false as const, error: 'unknown_action' };
 
+  const claimed = await prisma.approvalRequest.updateMany({
+    where: { id, status: 'PENDING' },
+    data: { status: 'APPROVED', reviewedById: reviewer.id, reviewedAt: new Date(), executionError: null },
+  });
+  if (claimed.count !== 1) return { ok: false as const, error: 'not_pending' };
+
   try {
     const result = await def.execute(ar.payload as any, { actorId: ar.requestedById, actorRole: 'ADMIN_ASSIST' });
     const request = await prisma.approvalRequest.update({
       where: { id },
-      data: { status: 'APPROVED', reviewedById: reviewer.id, reviewedAt: new Date(), executedAt: new Date(), executionError: null },
+      data: { executedAt: new Date() },
     });
     await audit('approval.approve', {
       actorId: reviewer.id, actorRole: reviewer.role,
@@ -158,8 +169,11 @@ export async function approveRequest(id: string, reviewer: { id: string; role?: 
     }).catch(() => {});
     return { ok: true as const, request, result };
   } catch (e) {
-    // Execution failed — leave PENDING, record the error so the reviewer can retry.
-    await prisma.approvalRequest.update({ where: { id }, data: { executionError: (e as Error).message } }).catch(() => {});
+    // Execution failed — release the claim (back to PENDING), record the error.
+    await prisma.approvalRequest.updateMany({
+      where: { id, status: 'APPROVED', executedAt: null },
+      data: { status: 'PENDING', reviewedById: null, reviewedAt: null, executionError: (e as Error).message },
+    }).catch(() => {});
     return { ok: false as const, error: 'execution_failed', detail: (e as Error).message };
   }
 }
@@ -169,10 +183,13 @@ export async function rejectRequest(id: string, reviewer: { id: string; role?: s
   const ar = await prisma.approvalRequest.findUnique({ where: { id } });
   if (!ar) return { ok: false as const, error: 'not_found' };
   if (ar.status !== 'PENDING') return { ok: false as const, error: 'not_pending' };
-  const request = await prisma.approvalRequest.update({
-    where: { id },
+  // F13: conditional claim — never overwrite a request another reviewer approved.
+  const claimed = await prisma.approvalRequest.updateMany({
+    where: { id, status: 'PENDING' },
     data: { status: 'REJECTED', reviewedById: reviewer.id, reviewedAt: new Date(), reviewNote: note ?? null },
   });
+  if (claimed.count !== 1) return { ok: false as const, error: 'not_pending' };
+  const request = await prisma.approvalRequest.findUnique({ where: { id } });
   await audit('approval.reject', {
     actorId: reviewer.id, actorRole: reviewer.role,
     entityType: 'ApprovalRequest', entityId: id, after: { note: note ?? null },

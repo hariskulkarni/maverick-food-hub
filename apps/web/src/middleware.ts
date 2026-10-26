@@ -4,6 +4,8 @@ import { authEdgeConfig } from '@/server/auth.config';
 import { PLATFORM_ROLES, pageGateFor, can } from '@/server/permissions';
 import { PUBLIC_HOST, PORTAL_HOST, isPortalHost, hostSplitActive, isStaffPath } from '@/server/hosts';
 import { clientIp } from '@/server/http/client-ip';
+import { csrfGuard, isWebhookPath } from '@/server/http/csrf';
+import { isAuthRateLimitPath } from '@/server/http/rate-limit-paths';
 
 const { auth } = NextAuth(authEdgeConfig);
 
@@ -49,41 +51,11 @@ function rlTooMany(retryAfterSec: number): NextResponse {
     { status: 429, headers: { 'content-type': 'application/json', 'Retry-After': String(retryAfterSec), 'Cache-Control': 'no-store' } },
   );
 }
-function rlIsAuthPath(p: string): boolean {
-  return p.includes('/auth/') || /(login|signin|otp|verify|password|2fa)/i.test(p);
-}
-
-/**
- * CSRF defense-in-depth for the cookie-authenticated (browser) surface.
- * Rejects state-changing requests whose Origin doesn't match the host. Safe by
- * construction:
- *   • Bearer-token requests (native rider app) are skipped — not cookie-CSRF-able.
- *   • Requests with no Origin header (native/server clients) are allowed.
- *   • NextAuth (/api/auth) has its own CSRF token; webhooks are signature-verified.
- *   • Unparseable Origin → allowed (SameSite=Lax cookies still protect).
- */
-function csrfGuard(req: NextRequest, path: string): NextResponse | null {
-  const method = req.method.toUpperCase();
-  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return null;
-  const authz = req.headers.get('authorization');
-  if (authz && authz.startsWith('Bearer ')) return null;
-  if (path.startsWith('/api/auth') || path.includes('/webhook')) return null;
-  const origin = req.headers.get('origin');
-  if (!origin) return null;
-  try {
-    if (new URL(origin).host !== req.headers.get('host')) {
-      return new NextResponse(JSON.stringify({ error: 'Cross-origin request blocked.' }),
-        { status: 403, headers: { 'content-type': 'application/json', 'Cache-Control': 'no-store' } });
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
+const rlIsAuthPath = isAuthRateLimitPath;
 
 async function apiRateLimit(req: NextRequest, path: string): Promise<NextResponse | null> {
   try {
-    if (RL_EXEMPT_PREFIX.some((e) => path.startsWith(e)) || path.includes('/webhook')) return null;
+    if (RL_EXEMPT_PREFIX.some((e) => path.startsWith(e)) || isWebhookPath(path)) return null;
     const now = Date.now();
     rlSweep(now);
     const ip = rlClientIp(req);
@@ -172,6 +144,24 @@ async function verifyDemoCookie(token: string | undefined): Promise<boolean> {
   }
 }
 
+/**
+ * Portal root (`portal.flavrly.in/`): bounce a signed-in staff user to their
+ * dashboard, anyone else to the staff login. The session here only CHOOSES a
+ * destination — it grants nothing; every destination is enforced by the role
+ * gates below on the follow-up request.
+ */
+async function portalRootRedirect(): Promise<NextResponse> {
+  const s = await auth();
+  const r = s?.user?.role ? String(s.user.role) : null;
+  const home =
+      r === 'SUPER_ADMIN' ? '/platform'
+    : r === 'ADMIN_ASSIST' || r === 'DEVELOPER' || r === 'QA' || r === 'GUEST' ? '/platform'
+    : r === 'ADMIN'       ? '/admin'
+    : r === 'KITCHEN'     ? '/kitchen'
+    : '/login';
+  return NextResponse.redirect(new URL(home, `https://${PORTAL_HOST}`));
+}
+
 const ROLE_GATES: { prefix: string; roles: string[] }[] = [
   { prefix: '/platform', roles: PLATFORM_ROLES as unknown as string[] },
   { prefix: '/admin', roles: ['ADMIN'] },
@@ -196,6 +186,10 @@ export async function middleware(req: NextRequest) {
   // treats folders prefixed with `_` as private (not registered as routes),
   // so the underscore form 404s.
   if (process.env.DEMO_MODE === 'true') {
+    // Verify the gate cookie on EVERY request first: the (client-controlled)
+    // path decides only whether a missing/invalid cookie is tolerated, never
+    // whether verification runs at all.
+    const demoGateOk = await verifyDemoCookie(req.cookies.get(DEMO_COOKIE)?.value);
     const isGatePath =
       // The gate page + its API endpoint
       path.startsWith('/demo-gate') ||
@@ -204,6 +198,8 @@ export async function middleware(req: NextRequest) {
       path.startsWith('/_next') ||
       path.startsWith('/uploads/') ||
       path.startsWith('/downloads/') ||
+      // Rider app download route (streams the active APK; demo APKs too).
+      path.startsWith('/download/') ||
       // Common static files served straight from /public
       path === '/favicon.ico' ||
       path === '/robots.txt' ||
@@ -216,12 +212,8 @@ export async function middleware(req: NextRequest) {
       // payment webhooks, and any cookie-less caller authenticate via Bearer
       // tokens / their own auth and must not be funnelled to a password form.
       path.startsWith('/api/');
-    if (!isGatePath) {
-      const cookie = req.cookies.get(DEMO_COOKIE)?.value;
-      const ok = await verifyDemoCookie(cookie);
-      if (!ok) {
-        return NextResponse.redirect(new URL('/demo-gate', url));
-      }
+    if (!demoGateOk && !isGatePath) {
+      return NextResponse.redirect(new URL('/demo-gate', url));
     }
   }
 
@@ -252,16 +244,7 @@ export async function middleware(req: NextRequest) {
     const isLoginPath = path === '/login' || path.startsWith('/login/');
     if (onPortalHost) {
       // Portal root → the signed-in user's dashboard, else the staff login.
-      if (path === '/') {
-        const s = await auth();
-        const r = s?.user?.role ? String(s.user.role) : null;
-        const home =
-            r === 'SUPER_ADMIN' ? '/platform'
-          : r === 'ADMIN'       ? '/admin'
-          : r === 'KITCHEN'     ? '/kitchen'
-          : '/login';
-        return NextResponse.redirect(new URL(home, `https://${PORTAL_HOST}`));
-      }
+      if (path === '/') return portalRootRedirect();
       // Portal serves ONLY staff areas + login. Anything else is a customer
       // page → send it to the public site (same path).
       if (!isStaffPath(path) && !isLoginPath) {
@@ -336,8 +319,9 @@ export const config = {
   // excluded so they never hit the auth lookup.
   matcher: [
     // NOTE: `api` is excluded so Next doesn't buffer (and 10MB-truncate) large
-    // request bodies through middleware — critical for video uploads. API routes
+    // request bodies through middleware — critical for video uploads (and the
+    // ≤200 MB rider APK upload, which does its own same-origin check). API routes
     // do their own auth; the demo gate already exempts /api.
-    '/((?!api/admin/upload|api/admin/menu/import|api/events|_next/static|_next/image|favicon.ico|manifest.json|manifest.webmanifest|sw.js|push-sw.js|service-worker.js|robots.txt|sitemap.xml).*)'
+    '/((?!api/admin/upload|api/platform/app-releases/upload|api/admin/menu/import|api/events|_next/static|_next/image|favicon.ico|manifest.json|manifest.webmanifest|sw.js|push-sw.js|service-worker.js|robots.txt|sitemap.xml).*)'
   ]
 };

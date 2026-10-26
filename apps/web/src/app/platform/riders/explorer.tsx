@@ -24,9 +24,11 @@ interface RiderRow {
   totalEarnings: any;
   totalTips: any;
   approvedAt: string | null;
+  /** Required rider training modules this rider lacks a current certificate for. */
+  training?: { missing: number; overdue: number; titles: string[] };
 }
 
-const FILTERS = ['ALL', 'ONLINE', 'OFFLINE', 'UNAPPROVED'] as const;
+const FILTERS = ['ALL', 'ONLINE', 'OFFLINE', 'UNAPPROVED', 'TRAINING'] as const;
 
 export function RidersExplorer({ initial }: { initial: RiderRow[] }) {
   const [q, setQ] = useState('');
@@ -40,6 +42,7 @@ export function RidersExplorer({ initial }: { initial: RiderRow[] }) {
       if (filter === 'ONLINE' && !r.isOnline) return false;
       if (filter === 'OFFLINE' && r.isOnline) return false;
       if (filter === 'UNAPPROVED' && r.approvedAt) return false;
+      if (filter === 'TRAINING' && !r.training?.missing) return false;
       if (vehicle !== 'ALL' && r.vehicleType !== vehicle) return false;
       if (ql) {
         const hay = `${r.user.name ?? ''} ${r.user.phone ?? ''} ${r.vehicleNumber ?? ''}`.toLowerCase();
@@ -103,6 +106,15 @@ function RiderCard({ r, onOpen }: { r: RiderRow; onOpen: () => void }) {
           <div className="text-right shrink-0">
             <Badge variant={r.isOnline ? 'success' : 'muted'} className="text-[10px]">{r.isOnline ? 'Online' : 'Offline'}</Badge>
             {!r.approvedAt && <Badge variant="warning" className="text-[10px] mt-1 block">Unapproved</Badge>}
+            {!!r.training?.missing && (
+              <Badge
+                variant={r.training.overdue ? 'destructive' : 'warning'}
+                className="text-[10px] mt-1 block"
+                title={`Missing: ${r.training.titles.join(', ')}`}
+              >
+                Training incomplete ({r.training.missing})
+              </Badge>
+            )}
           </div>
         </div>
         {/* 4 mini-stats. At 360px four equal cells (~80px each) compress the
@@ -288,5 +300,5 @@ function Mini({ label, value }: { label: string; value: string }) {
   return <div className="rounded-md border bg-card p-2"><div className="text-[9px] text-muted-foreground uppercase tracking-wider">{label}</div><div className="font-medium truncate">{value}</div></div>;
 }
 function prettyFilter(f: string) {
-  return ({ ALL: 'All', ONLINE: 'Online', OFFLINE: 'Offline', UNAPPROVED: 'Unapproved' } as Record<string, string>)[f];
+  return ({ ALL: 'All', ONLINE: 'Online', OFFLINE: 'Offline', UNAPPROVED: 'Unapproved', TRAINING: 'Training incomplete' } as Record<string, string>)[f];
 }

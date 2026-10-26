@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/auth';
-import { requireManagedRestaurant } from '@/server/tenancy';
+import { tenantAdminOrError } from '@/server/tenancy';
 import { testAndSave, disconnect, getConfig } from '@/server/integrations';
 import { PROVIDERS, ProviderKey } from '@/server/integrations/providers';
 import { maskCredentials, sendIntegrationAlert } from '@/server/alerts';
@@ -9,11 +9,14 @@ import { categoryFromProvider } from '@/server/integration-categories';
 import { prisma } from '@/server/db';
 import { log } from '@/server/log';
 
-const Body = z.object({ config: z.record(z.string()) });
+const Body = z.object({ config: z.record(z.string(), z.string()) });
 
 function parseProvider(s: string): ProviderKey | null {
   return s in PROVIDERS ? (s as ProviderKey) : null;
 }
+
+const YOUPI_BLOCKED = () =>
+  Response.json({ error: 'Flavrly PG is configured through its approval flow, not this endpoint.' }, { status: 403 });
 
 function diffFields(before: Record<string, string> | null, after: Record<string, string>): Record<string, { from: string; to: string }> {
   const a = maskCredentials(before ?? {});
@@ -29,9 +32,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ prov
   const { provider } = await params;
   const p = parseProvider(provider);
   if (!p) return new Response('Unknown provider', { status: 400 });
+  if (p === 'YOUPI') return YOUPI_BLOCKED();
 
   const session = await auth();
-  const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+  const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+  if (restaurant instanceof Response) return restaurant;
   const { config } = Body.parse(await req.json());
 
   // Required-field validation up front
@@ -84,8 +89,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ p
   const { provider } = await params;
   const p = parseProvider(provider);
   if (!p) return new Response('Unknown provider', { status: 400 });
+  if (p === 'YOUPI') return YOUPI_BLOCKED();
   const session = await auth();
-  const restaurant = await requireManagedRestaurant(req.nextUrl.searchParams.get('restaurantId'));
+  const restaurant = await tenantAdminOrError(req.nextUrl.searchParams.get('restaurantId'));
+  if (restaurant instanceof Response) return restaurant;
 
   const before = await getConfig(restaurant.id, p).catch(() => null);
   const cred = await prisma.integrationCredential.findUnique({

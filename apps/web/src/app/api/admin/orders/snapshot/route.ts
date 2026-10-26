@@ -1,12 +1,13 @@
 import { prisma } from '@/server/db';
+import { loadAdminBoardOrders } from '@/server/staff-orders';
 import { requireRestaurant, accessibleOrderScope } from '@/server/tenancy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 /**
- * Admin orders snapshot — returns the 100 most recent orders for the
- * signed-in admin's restaurant, in the same shape the SSR page loads.
+ * Admin orders snapshot — returns every active order plus the 100 most
+ * recent orders for the signed-in admin's restaurants, in the same shape the SSR page loads.
  *
  * Purpose: the admin orders board polls this every 15s and on tab-visible
  * to defend against SSE silently dropping (laptop sleep, nginx restart,
@@ -20,17 +21,8 @@ export async function GET() {
   const scope = await accessibleOrderScope();
   if (!scope) return new Response('No restaurant for this user', { status: 404 });
 
-  const orders = await prisma.order.findMany({
-    where: { branchId: { in: scope.branchIds } },
-    include: {
-      customer: true,
-      items: true,
-      address: true,
-      assignment: { include: { rider: { include: { user: true } } } }
-    },
-    orderBy: { placedAt: 'desc' },
-    take: 100
-  });
+  // Same shape as the SSR page: active orders + latest 100, no full User rows.
+  const orders = await loadAdminBoardOrders(prisma, scope.branchIds);
   const annotated = orders.map((o) => ({
     ...o,
     _label: scope.labelByBranchId[o.branchId] ?? null

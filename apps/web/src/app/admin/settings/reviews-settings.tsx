@@ -8,15 +8,18 @@ import { LogoMark } from '@/components/brand/logo';
 import { brand } from '@/lib/brand';
 import { cn } from '@/lib/utils';
 import { GoogleGLogo, AnthropicLogo, OpenAILogo, NvidiaLogo } from './provider-logos';
+import { ReviewAcquisitionCard } from './review-acquisition-card';
+import { ReviewResponseSettings } from './review-response-settings';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Save, KeyRound, Star, Sparkles, Check } from 'lucide-react';
+import { Save, KeyRound, Star, Sparkles, Check, Unlink, Search, RefreshCw } from 'lucide-react';
 
 type Status = 'CONNECTED' | 'DISCONNECTED' | 'FAILED';
 interface Part { status: Status; summary: Record<string, any> | null }
 interface AutoReply { enabled: boolean; autoPostMinRating: number; draftMaxRating: number; tonePrompt: string | null }
-interface ConfigResponse { autoPublishReviews: boolean; google: Part; llm: Part; autoReply: AutoReply }
+interface PlacesPart { configured: boolean; connected: boolean; name: string | null }
+interface ConfigResponse { autoPublishReviews: boolean; google: Part; places?: PlacesPart; llm: Part; autoReply: AutoReply }
 
 const RATINGS = [1, 2, 3, 4, 5];
 const TONE_EXAMPLES = [
@@ -55,8 +58,11 @@ export function ReviewsSettings({ restaurantId }: { restaurantId?: string } = {}
       </header>
       <PublishCard initial={cfg.autoPublishReviews !== false} qs={qs} />
       <GoogleCard part={cfg.google} qs={qs} />
+      <PlacesCard part={cfg.places ?? { configured: false, connected: false, name: null }} qs={qs} onChanged={load} />
       <LlmCard part={cfg.llm} qs={qs} onSaved={load} />
       <AutoReplyCard initial={cfg.autoReply} qs={qs} />
+      <ReviewAcquisitionCard restaurantId={restaurantId} />
+      <ReviewResponseSettings qs={qs} />
     </div>
   );
 }
@@ -134,6 +140,8 @@ function GoogleCard({ part, qs }: { part: Part; qs: string }) {
   const [forcePick, setForcePick] = useState(false);
   const [selected, setSelected] = useState('');
   const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('pickLocation') === '1') setForcePick(true);
   }, []);
@@ -154,6 +162,21 @@ function GoogleCard({ part, qs }: { part: Part; qs: string }) {
     } catch {
       toast.error('Could not save location. Try again.');
       setSaving(false);
+    }
+  }
+
+  async function disconnect() {
+    setDisconnecting(true);
+    try {
+      const r = await fetch(`/api/admin/reviews/disconnect${qs}`, { method: 'POST' });
+      if (!r.ok) throw new Error('failed');
+      toast.success('Google account disconnected.');
+      const u = new URL(window.location.href);
+      u.searchParams.delete('pickLocation');
+      window.location.href = u.toString();
+    } catch {
+      toast.error('Could not disconnect. Try again.');
+      setDisconnecting(false);
     }
   }
 
@@ -211,7 +234,6 @@ function GoogleCard({ part, qs }: { part: Part; qs: string }) {
                 <p className="text-xs text-muted-foreground">Reviews sync from this location.</p>
               </>
             )}
-            {/* Disconnect intentionally omitted: use Manage on the Google card in the integrations grid above. */}
           </>
         ) : (
           <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-5 text-center">
@@ -219,10 +241,153 @@ function GoogleCard({ part, qs }: { part: Part; qs: string }) {
             <p className="mt-1 text-xs text-muted-foreground">Connect your Google Business Profile so {brand.name} can pull reviews and post replies.</p>
           </div>
         )}
-        <Button size="sm" variant={connected ? 'outline' : 'default'} className="w-full sm:w-auto"
-          onClick={() => { window.location.href = '/api/admin/integrations/google-business/connect'; }}>
-          <GoogleGLogo className="size-4" /> {connected ? 'Reconnect Google' : 'Connect Google Business'}
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <Button size="sm" variant={connected ? 'outline' : 'default'} className="min-h-[44px] w-full sm:w-auto"
+            onClick={() => { window.location.href = '/api/admin/integrations/google-business/connect'; }}>
+            <GoogleGLogo className="size-4" /> {connected ? 'Reconnect Google' : 'Connect Google Business'}
+          </Button>
+          {connected && !confirming && (
+            <Button size="sm" variant="outline" className="min-h-[44px] w-full text-destructive hover:text-destructive sm:w-auto"
+              onClick={() => setConfirming(true)}>
+              <Unlink className="size-4" /> Disconnect
+            </Button>
+          )}
+        </div>
+        {connected && confirming && (
+          <div role="alertdialog" aria-label="Confirm disconnect"
+            className="space-y-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+            <p className="text-sm font-medium">Disconnect this Google account?</p>
+            <p className="text-xs text-muted-foreground">
+              {brand.name} will stop syncing reviews and posting replies until you connect a Google account again. You can then link a different one.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button size="sm" variant="destructive" className="min-h-[44px] w-full sm:w-auto" disabled={disconnecting} onClick={disconnect}>
+                <Unlink className="size-4" /> {disconnecting ? 'Disconnecting...' : 'Yes, disconnect'}
+              </Button>
+              <Button size="sm" variant="ghost" className="min-h-[44px] w-full sm:w-auto" disabled={disconnecting} onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface PlaceCandidate { placeId: string; name: string; address: string }
+
+function PlacesCard({ part, qs, onChanged }: { part: PlacesPart; qs: string; onChanged: () => void }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<PlaceCandidate[] | null>(null);
+  const [busy, setBusy] = useState<'search' | 'connect' | 'sync' | 'disconnect' | null>(null);
+
+  async function call(path: string, body?: unknown) {
+    const r = await fetch(`/api/admin/reviews/places/${path}${qs}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data?.error ?? 'Request failed');
+    return data;
+  }
+
+  async function search() {
+    if (query.trim().length < 2) return;
+    setBusy('search');
+    try {
+      const d = await call('search', { query: query.trim() });
+      setResults(d.candidates ?? []);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally { setBusy(null); }
+  }
+  async function connect(c: PlaceCandidate) {
+    setBusy('connect');
+    try {
+      const d = await call('connect', { placeId: c.placeId, name: c.name });
+      toast.success(d.fetchFailed ? 'Connected. Reviews could not be fetched yet, try Sync.' : `Connected. ${d.synced} reviews loaded.`);
+      setResults(null); setQuery('');
+      onChanged();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally { setBusy(null); }
+  }
+  async function sync() {
+    setBusy('sync');
+    try {
+      const d = await call('sync');
+      toast.success(`Synced ${d.synced} (${d.created} new).`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally { setBusy(null); }
+  }
+  async function disconnect() {
+    setBusy('disconnect');
+    try {
+      await call('disconnect');
+      toast.success('Disconnected.');
+      onChanged();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally { setBusy(null); }
+  }
+
+  return (
+    <Card className="rounded-2xl">
+      <CardContent className="p-4 sm:p-5 space-y-4">
+        <CardHead
+          icon={<GoogleGLogo className="size-5" />}
+          title="Quick connect (Google Places - instant, no approval)"
+          desc="Shows your latest Google reviews instantly. Full history + in-app replies unlock when Business Profile API access is approved."
+          right={<StatusPill status={part.connected ? 'CONNECTED' : 'DISCONNECTED'} />}
+        />
+        {!part.configured && !part.connected ? (
+          <p className="rounded-xl border border-dashed bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
+            Quick connect is not enabled on this server yet.
+          </p>
+        ) : part.connected ? (
+          <>
+            <div className="min-w-0 rounded-xl border bg-muted/30 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Connected to</div>
+              <div className="truncate text-sm font-medium" title={part.name ?? ''}>{part.name || 'Your Google listing'}</div>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button size="sm" variant="outline" className="min-h-[44px] w-full sm:w-auto" disabled={busy !== null} onClick={sync}>
+                <RefreshCw className={cn('size-4', busy === 'sync' && 'animate-spin')} /> {busy === 'sync' ? 'Syncing...' : 'Sync now'}
+              </Button>
+              <Button size="sm" variant="outline" className="min-h-[44px] w-full text-destructive hover:text-destructive sm:w-auto" disabled={busy !== null} onClick={disconnect}>
+                <Unlink className="size-4" /> {busy === 'disconnect' ? 'Disconnecting...' : 'Disconnect'}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <div className="space-y-3">
+            <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(e) => { e.preventDefault(); search(); }}>
+              <Label htmlFor="places-q" className="sr-only">Search your restaurant on Google</Label>
+              <Input id="places-q" className="min-h-[44px]" placeholder="Restaurant name and area, e.g. Biryani House Indiranagar"
+                value={query} maxLength={100} onChange={(e) => setQuery(e.target.value)} />
+              <Button type="submit" size="sm" className="min-h-[44px] w-full sm:w-auto" disabled={busy !== null || query.trim().length < 2}>
+                <Search className="size-4" /> {busy === 'search' ? 'Searching...' : 'Search'}
+              </Button>
+            </form>
+            {results && results.length === 0 && (
+              <p className="text-xs text-muted-foreground">No matches. Try the name with your area or city.</p>
+            )}
+            {results && results.length > 0 && (
+              <ul className="grid gap-2" aria-label="Matching Google listings">
+                {results.map((c) => (
+                  <li key={c.placeId}>
+                    <button type="button" disabled={busy !== null} onClick={() => connect(c)}
+                      className="flex min-h-[44px] w-full min-w-0 flex-col items-start rounded-xl border bg-muted/30 px-3 py-2 text-left transition-colors hover:border-primary hover:bg-primary/10 disabled:opacity-50">
+                      <span className="w-full truncate text-sm font-medium">{c.name}</span>
+                      <span className="w-full truncate text-xs text-muted-foreground">{c.address}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

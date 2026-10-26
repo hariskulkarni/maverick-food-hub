@@ -112,3 +112,35 @@ export async function listSessions(userId: string, limit = 20) {
     revokedAt: r.revokedAt,
   }));
 }
+
+/** Rider token surfaces (UserSession.client). */
+export type RiderClient = 'rider-app' | 'rider-web';
+
+/**
+ * Start a RIDER token session WITHOUT the all-roles single-session rule: a
+ * rider may hold one native-app session and one web-portal session at the same
+ * time. A new login revokes only older live sessions of the SAME surface (one
+ * phone at a time / one browser at a time) and never touches
+ * User.currentSessionId (that pointer belongs to NextAuth web logins and to the
+ * super-admin "sign out everywhere" marker). Rider tokens are validated
+ * against their own UserSession row (see rider-auth riderTokenActive).
+ * Returns null on a DB error (caller answers 503).
+ */
+export async function startRiderSession(userId: string, client: RiderClient, meta: NewSessionMeta = {}): Promise<string | null> {
+  try {
+    const now = new Date();
+    const created = await prisma.$transaction(async (tx) => {
+      await tx.userSession.updateMany({
+        where: { userId, client, revokedAt: null },
+        data: { revokedAt: now, revokedReason: 'superseded' },
+      });
+      return tx.userSession.create({
+        data: { userId, client, userAgent: meta.userAgent ?? null, ipAddress: meta.ipAddress ?? null },
+        select: { id: true },
+      });
+    });
+    return created.id;
+  } catch {
+    return null;
+  }
+}

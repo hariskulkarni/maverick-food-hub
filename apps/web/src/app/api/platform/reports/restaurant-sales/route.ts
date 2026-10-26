@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/server/db';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { parseRange, deliverReport } from '@/server/reports/range';
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const { from, to, format } = parseRange(new URL(req.url));
 
   const restaurants = await prisma.restaurant.findMany({
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
         where: {
           branchId: { in: branchIds },
           placedAt: { gte: from, lte: to },
-          status: { notIn: ['CANCELLED', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] }
+          status: { notIn: ['CANCELLED', 'PAYMENT_PENDING', 'PAYMENT_FAILED', 'CANCELLED_BY_CUSTOMER', 'CANCELLED_BY_RESTAURANT', 'CANCELLED_BY_ADMIN'] }
         }
       }),
       prisma.refund.count({

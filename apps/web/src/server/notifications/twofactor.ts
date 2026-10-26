@@ -8,11 +8,14 @@
  *
  * Our app already generates its own OTP codes (server/otp.ts) and passes a full
  * message `body` to notify.sms(). So this adapter:
- *   1. Pulls the numeric code out of the body (the OTP).
- *   2. Sends it via 2Factor's OTP-template endpoint when a templateName is set
- *      and a code is present (the OTP path — the dominant use case).
- *   3. Falls back to 2Factor's transactional bulk endpoint (TSMS) for non-OTP
- *      messages (order notifications etc.), which also needs a DLT template.
+ *   1. OTP messages ONLY (template `otp.*` or an explicit `meta.otpCode`, as
+ *      server/otp.ts sends): the code goes through 2Factor's OTP-template
+ *      endpoint when an OTP templateName is set.
+ *   2. Everything else (SOS, alerts, review asks, digests, order updates) goes
+ *      verbatim through the transactional bulk endpoint (TSMS), with the
+ *      separate transactional DLT template (TWOFACTOR_TSMS_TEMPLATE_NAME /
+ *      tenant `tsmsTemplateName`) when configured. A non-OTP body is never
+ *      mined for digits (F7: an SOS SMS used to become "971600 is your code").
  *
  * INDIA DLT NOTE: All transactional/OTP SMS in India must use a DLT-registered
  * template + header (TRAI mandate) — this is true of EVERY provider, not a
@@ -27,13 +30,17 @@ export interface TwoFactorConfig {
   apiKey: string;
   /** DLT-registered sender/header, e.g. "RESHEE". Optional for the OTP endpoint. */
   senderId?: string;
-  /** DLT-approved template name created in the 2Factor dashboard. */
+  /** DLT-approved OTP template name created in the 2Factor dashboard. */
   templateName?: string;
+  /** DLT-approved transactional template name for non-OTP messages (TSMS). */
+  transactionalTemplateName?: string;
 }
 
 interface SendArgs {
   to: string;
   body: string;
+  template?: string;
+  meta?: Record<string, unknown>;
 }
 
 export interface SendResult {
@@ -50,16 +57,22 @@ function normalizeNumber(to: string): string {
   return digits;
 }
 
-/** Pull the first 4-8 digit run out of a message body — that's the OTP. */
-function extractOtp(body: string): string | null {
-  const m = body.match(/\b(\d{4,8})\b/);
+/**
+ * The OTP code, for OTP messages only: explicit meta.otpCode wins; else, for an
+ * `otp.*` template, the first 4–8 digit run of the body. Non-OTP → null.
+ */
+function otpCodeOf(args: SendArgs): string | null {
+  const explicit = args.meta?.otpCode;
+  if (typeof explicit === 'string' && explicit.trim()) return explicit.trim();
+  if (!(args.template ?? '').startsWith('otp')) return null;
+  const m = args.body.match(/\b(\d{4,8})\b/);
   return m ? m[1] : null;
 }
 
 export async function sendTwoFactor(cfg: TwoFactorConfig, args: SendArgs): Promise<SendResult> {
   try {
     const phone = normalizeNumber(args.to);
-    const otp = extractOtp(args.body);
+    const otp = otpCodeOf(args);
 
     // ── OTP path (preferred) — send our own code through the named template ──
     if (otp && cfg.templateName) {
@@ -75,13 +88,14 @@ export async function sendTwoFactor(cfg: TwoFactorConfig, args: SendArgs): Promi
       return { ok: true, providerId: json?.Details ? String(json.Details) : undefined };
     }
 
-    // ── Transactional bulk path (non-OTP messages, or no template configured) ──
+    // ── Transactional bulk path (non-OTP messages, or no OTP template configured) ──
     // POST .../ADDON_SERVICES/SEND/TSMS with From + To + Msg (+ TemplateName for DLT).
     const form = new URLSearchParams();
     form.set('To', phone);
     form.set('Msg', args.body);
     if (cfg.senderId) form.set('From', cfg.senderId);
-    if (cfg.templateName) form.set('TemplateName', cfg.templateName);
+    // The OTP template never fits a non-OTP body; use the transactional one.
+    if (cfg.transactionalTemplateName) form.set('TemplateName', cfg.transactionalTemplateName);
     const url = `https://2factor.in/API/V1/${encodeURIComponent(cfg.apiKey)}/ADDON_SERVICES/SEND/TSMS`;
     const res = await fetch(url, {
       method: 'POST',

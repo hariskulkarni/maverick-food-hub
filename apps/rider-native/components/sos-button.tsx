@@ -55,7 +55,7 @@ export function SosButton({ assignmentId }: SosButtonProps) {
     if (busy) return;
     Alert.alert(
       'Trigger SOS?',
-      'Your location and primary emergency contact will be alerted. Use this if you feel unsafe or need urgent help.',
+      'The Flavrly safety team and your emergency contacts will be alerted with your location. Use this if you feel unsafe or need urgent help.',
       [
         { text: 'Cancel', style: 'cancel' },
         {

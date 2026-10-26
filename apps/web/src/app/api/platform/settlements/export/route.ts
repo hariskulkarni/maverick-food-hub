@@ -5,7 +5,7 @@
  */
 import { NextRequest } from 'next/server';
 import ExcelJS from 'exceljs';
-import { requireSuperAdmin } from '@/server/tenancy';
+import { requireSuperAdminApi } from '@/server/api-auth';
 import { buildSettlementReport } from '@/server/settlement';
 
 export const runtime = 'nodejs';
@@ -15,7 +15,8 @@ const INR = '₹#,##0.00;[Red]-₹#,##0.00;"-"';
 const HEADER_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF23E5C' } };
 
 export async function GET(req: NextRequest) {
-  await requireSuperAdmin();
+  const gate = await requireSuperAdminApi();
+  if (gate instanceof Response) return gate;
   const sp = new URL(req.url).searchParams;
   const restaurantId = sp.get('restaurantId') ?? '';
   if (!restaurantId) return new Response('restaurantId required', { status: 400 });
@@ -43,6 +44,9 @@ export async function GET(req: NextRequest) {
     ['Delivered orders', rep.summary.deliveredOrders], ['Cancelled orders', rep.summary.cancelledOrders],
     ['Net order value', rep.summary.netOrderValue], ['Net deductions', rep.summary.netDeductions],
     ['Net additions', rep.summary.netAdditions], ['Net payout', rep.summary.netPayout],
+    ['Direct UPI orders (restaurant holds funds)', rep.summary.directToMerchantOrders],
+    ['Collected directly by restaurant', rep.summary.collectedByMerchant],
+    ['Receivable from restaurant', rep.summary.commissionReceivable],
   ];
   let r = 3;
   for (const [k, v] of meta) { s.getCell(`A${r}`).value = k; s.getCell(`A${r}`).font = { bold: true }; s.getCell(`B${r}`).value = v as ExcelJS.CellValue; r++; }
@@ -54,7 +58,7 @@ export async function GET(req: NextRequest) {
   for (const b of rep.payoutBreakup) {
     const row = pb.addRow([b.sno, b.particular, b.delivered, b.cancelled, b.total]);
     for (const c of [3, 4, 5]) row.getCell(c).numFmt = INR;
-    if (['A', 'B', 'C', 'D', 'E'].includes(b.sno)) row.font = { bold: true };
+    if (['A', 'B', 'C', 'D', 'E', 'F', 'G'].includes(b.sno)) row.font = { bold: true };
   }
   pb.getColumn(2).width = 38; [3, 4, 5].forEach((c) => (pb.getColumn(c).width = 16));
 
@@ -63,14 +67,17 @@ export async function GET(req: NextRequest) {
   const olHeads = ['S.no', 'Order ID', 'Date', 'Status', 'Payment', 'Fulfillment', 'Discount construct',
     'Subtotal', 'Packaging', 'Delivery', 'Promo disc', 'Bonus disc', 'GST collected', 'Net order value (A)',
     'Commissionable', 'Commission %', 'Commission', 'Payment fee', 'GST on fee', 'TCS', 'TDS', 'Govt charges',
-    'Net deductions (C)', 'Net additions (D)', 'Payout (E)'];
+    'Net deductions (C)', 'Net additions (D)', 'Payout (E)',
+    'Settlement mode', 'Collected by restaurant (F)', 'Receivable from restaurant (G)'];
   ol.addRow(olHeads); headerRow(ol, 1, olHeads.length);
   rep.lines.forEach((l, i) => {
     const row = ol.addRow([i + 1, l.code, l.date, l.status, l.paymentMethod, l.fulfillmentType, l.discountConstruct,
       l.subtotal, l.packaging, l.delivery, l.discountPromo, l.discountBonus, l.gstCollected, l.netOrderValue,
       l.commissionableValue, l.commissionPct, l.commission, l.paymentFee, l.gstOnFee, l.tcs, l.tds, l.govtCharges,
-      l.netDeductions, l.netAdditions, l.payout]);
+      l.netDeductions, l.netAdditions, l.payout,
+      l.settlementMode, l.collectedByMerchant, l.commissionReceivable]);
     for (let c = 8; c <= 25; c++) if (c !== 16) row.getCell(c).numFmt = INR;
+    for (const c of [27, 28]) row.getCell(c).numFmt = INR;
   });
   ol.columns.forEach((c, i) => (c.width = i < 7 ? 16 : 13));
   ol.views = [{ state: 'frozen', ySplit: 1 }];

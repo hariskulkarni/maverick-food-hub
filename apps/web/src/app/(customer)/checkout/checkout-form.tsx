@@ -1,6 +1,6 @@
 'use client';
 import type React from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,7 +12,9 @@ import { useCart } from '../cart-context';
 import { money } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Wallet, Sparkles, Bike, ShoppingBag, MapPin, CalendarClock, Gift } from 'lucide-react';
-import { openPhonePeCheckout } from '@/lib/phonepe-checkout';
+import { launchPayment } from '@/lib/launch-payment';
+import { apiErrorMessage, submitMethod } from '@/lib/checkout-helpers';
+import { LOYALTY_MAX_REDEEM_PER_ORDER } from '@/lib/loyalty';
 
 interface Addr { id: string; label: string; line1: string; line2?: string | null; city: string; postalCode: string; isDefault?: boolean; }
 
@@ -24,8 +26,9 @@ type FulfillmentType = 'DELIVERY' | 'PICKUP';
 
 /**
  * The online rail this restaurant is on, resolved server-side. `null` means no
- * gateway credentials are configured, which in dev falls through to the mock
- * provider — the online option still renders so local checkout stays testable.
+ * gateway credentials are configured. The online option renders only when
+ * `onlineAvailable` (a gateway, or the dev/demo mock) — never an option that
+ * cannot complete.
  */
 type Gateway = 'RAZORPAY' | 'PHONEPE' | null;
 
@@ -45,13 +48,19 @@ interface FulfillmentCtx {
   reservationDiscountPct: number;
 }
 
-export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints, fulfillment, gateway = null }: {
+export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints, fulfillment, gateway = null, youpiEnabled = false, onlineAvailable = gateway !== null, merchantName = 'Flavrly' }: {
   branchId: string;
   addresses: Addr[];
   walletBalance: number;
   loyaltyPoints: number;
   fulfillment: FulfillmentCtx;
   gateway?: Gateway;
+  /** Server-computed: restaurant has Flavrly PG (experimental) APPROVED. */
+  youpiEnabled?: boolean;
+  /** Server-computed: an online checkout can actually complete (gateway configured, or dev/demo mock). */
+  onlineAvailable?: boolean;
+  /** Shown in the Razorpay checkout window. */
+  merchantName?: string;
 }) {
   const { lines, clear } = useCart();
   const router = useRouter();
@@ -61,13 +70,35 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
   const [walletApply, setWalletApply] = useState(false);
   const [loyaltyApply, setLoyaltyApply] = useState(false);
   // The online choice submits the tenant's actual gateway as the PaymentMethod,
-  // so Order.paymentMethod records which rail was used. Defaults to RAZORPAY
-  // when nothing is configured (mock provider in dev).
+  // so Order.paymentMethod records which rail was used. RAZORPAY labels the
+  // dev/demo mock when no gateway is configured (only offered when onlineAvailable).
   const onlineMethod: 'RAZORPAY' | 'PHONEPE' = gateway ?? 'RAZORPAY';
-  const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'PHONEPE' | 'COD'>(onlineMethod);
+  const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'PHONEPE' | 'COD'>(onlineAvailable ? onlineMethod : 'COD');
+  // Flavrly PG rides the online PaymentMethod; `paymentRail` tells the server to use it.
+  const [youpiSelected, setYoupiSelected] = useState(false);
+  const useYoupi = youpiEnabled && youpiSelected;
   const [notes, setNotes] = useState('');
   const [pricing, setPricing] = useState<any>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Flavrly PG duplicate-click guard: a ref blocks a second click that lands
+  // before React re-renders the disabled button, and stays set while the
+  // browser redirects to the gateway so a second order/session is never started.
+  const youpiStarting = useRef(false);
+  const youpiPlacedOrderId = useRef<string | null>(null);
+  useEffect(() => {
+    // Back button from the gateway can restore this page from bfcache. The order
+    // already exists, so send the customer to its status page instead of
+    // re-enabling "Place order" (which would create a second order).
+    const onShow = (e: PageTransitionEvent) => {
+      const id = youpiPlacedOrderId.current;
+      if (e.persisted && id) {
+        router.replace(`/checkout/payment-status?orderId=${encodeURIComponent(id)}&provider=youpi`);
+      }
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, [router]);
 
   // Carry a coupon applied in the cart through to checkout so its discount is
   // reflected in the real order total (the cart stashes it in localStorage).
@@ -113,15 +144,30 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
           // Lets the quote zero the packaging fee for dine-in so the preview total
           // matches the order total computed server-side.
           fulfillmentType,
-          items: lines.map((l) => ({ menuItemId: l.kind === 'item' ? l.refId : undefined, comboId: l.kind === 'combo' ? l.refId : undefined, quantity: l.quantity })),
+          // P1-6: carry variant/modifier selections so the preview prices exactly like the order.
+          items: lines.map((l) => ({
+            menuItemId: l.kind === 'item' ? l.refId : undefined,
+            comboId: l.kind === 'combo' ? l.refId : undefined,
+            quantity: l.quantity,
+            selectedVariantId: l.selectedVariantId ?? undefined,
+            selectedModifierOptionIds: l.selectedModifierOptionIds ?? undefined
+          })),
           couponCode: appliedCoupon || undefined,
           walletApply: walletApply ? Math.min(walletBalance, 500) : 0,
-          loyaltyApply: loyaltyApply ? Math.min(loyaltyPoints, 200) : 0
+          loyaltyApply: loyaltyApply ? Math.min(loyaltyPoints, LOYALTY_MAX_REDEEM_PER_ORDER) : 0
         })
       });
+      if (!r.ok) {
+        // Never render an error body as a ₹0 quote: block "Place order" and say why.
+        const msg = apiErrorMessage(await r.text().catch(() => ''), 'We could not price your cart. Please review it.');
+        if (!cancelled) { setPricing(null); setQuoteError(msg); }
+        return;
+      }
       const j = await r.json();
-      if (!cancelled) setPricing(j);
-    })();
+      if (!cancelled) { setPricing(j); setQuoteError(null); }
+    })().catch(() => {
+      if (!cancelled) { setPricing(null); setQuoteError('We could not price your cart. Check your connection and try again.'); }
+    });
     return () => { cancelled = true; };
   }, [lines, addressId, appliedCoupon, walletApply, loyaltyApply, branchId, walletBalance, loyaltyPoints, isDelivery, fulfillmentType]);
 
@@ -170,7 +216,16 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
       scheduledForIso = when.toISOString();
     }
 
+    // P0-1: a fully covered (₹0) order is settled by WALLET; never send it to a gateway.
+    const method = submitMethod(paymentMethod, pricing?.total);
+    const goesOnline = method === 'RAZORPAY' || method === 'PHONEPE';
+    const viaYoupi = useYoupi && goesOnline;
+    if (viaYoupi) {
+      if (youpiStarting.current) return;
+      youpiStarting.current = true;
+    }
     setBusy(true);
+    let redirecting = false;
     try {
       const res = await fetch('/api/orders', {
         method: 'POST',
@@ -189,17 +244,18 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
             selectedModifierOptionIds: l.selectedModifierOptionIds ?? undefined
           })),
           couponCode: appliedCoupon || undefined,
-          paymentMethod,
+          paymentMethod: method,
+          paymentRail: viaYoupi ? 'youpi' : undefined,
           customerNotes: notes,
           walletApply: walletApply ? Math.min(walletBalance, 500) : 0,
-          loyaltyApply: loyaltyApply ? Math.min(loyaltyPoints, 200) : 0,
+          loyaltyApply: loyaltyApply ? Math.min(loyaltyPoints, LOYALTY_MAX_REDEEM_PER_ORDER) : 0,
           fulfillmentType,
           scheduledFor: scheduledForIso
         })
       });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || 'Failed to place order');
+        // P2-17: show the reason, never the raw JSON body.
+        throw new Error(apiErrorMessage(await res.text().catch(() => ''), 'Failed to place order'));
       }
       const data = await res.json();
       clear();
@@ -208,55 +264,41 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
       if (data.fulfillmentType === 'PICKUP' && data.pickupCode) {
         toast.success(`Order placed! Your pickup code is ${data.pickupCode}`);
       }
-      if (paymentMethod === 'COD') {
+      if (!goesOnline) {
         if (data.fulfillmentType !== 'PICKUP') toast.success('Order placed! Track it now.');
         router.push(`/orders/${data.orderId}`);
         return;
       }
 
       // ── Online payment ────────────────────────────────────────────────────
+      // The order waits in PAYMENT_PENDING (not yet sent to the kitchen) until the
+      // gateway capture is verified server-side.
       const payment = data.payment;
 
       // The order committed but the gateway was unreachable. Send the customer
-      // to tracking, where "Pay now" mints a fresh session — never lose an
-      // order to a transient gateway outage.
+      // to tracking, where "Pay now" mints a fresh session.
       if (!payment) {
-        toast.error(data.paymentError || 'We couldn’t open the payment page. You can pay from your order page.');
+        toast.error(data.paymentError ? `${data.paymentError} You can pay from your order page.` : 'We couldn’t open the payment page. Use “Pay now” on your order page.');
         router.push(`/orders/${data.orderId}`);
         return;
       }
 
-      if (payment.providerName === 'mock') {
-        await fetch(`/api/orders/${data.orderId}/confirm-mock-payment`, { method: 'POST' });
-        toast.success('Payment captured (mock)');
-        router.push(`/orders/${data.orderId}`);
+      if (payment.providerName === 'youpi') youpiPlacedOrderId.current = data.orderId;
+      const next = await launchPayment(data.orderId, payment, { merchantName });
+      if (next.kind === 'redirected') {
+        redirecting = true;
         return;
       }
-
-      if (payment.providerName === 'phonepe' && payment.redirectUrl) {
-        // Iframe PayPage over this page, with an automatic full-redirect
-        // fallback. Either way PhonePe returns the browser to
-        // /api/payments/phonepe/return, which reconciles and forwards to the
-        // status page — so we only need to handle the iframe-closed case here.
-        const outcome = await openPhonePeCheckout({
-          tokenUrl: payment.redirectUrl,
-          scriptUrl: payment.checkoutScriptUrl
-        });
-        if (outcome === 'REDIRECTED') return; // navigating away
-        // CONCLUDED or USER_CANCEL: the browser never left, so route to the
-        // status page ourselves. It asks our server what actually happened —
-        // "concluded" is not a claim of success.
-        router.push(`/checkout/payment-status?orderId=${data.orderId}`);
-        return;
-      }
-
-      // Razorpay (and anything else that doesn't hand back a redirect URL):
-      // the browser SDK handoff is not implemented, so land on order tracking.
-      router.push(`/orders/${data.orderId}`);
+      if (next.notice) toast[next.notice.tone === 'success' ? 'success' : next.notice.tone === 'error' ? 'error' : 'message'](next.notice.text);
+      router.push(next.href);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
-      setBusy(false);
+      // Stay disabled while navigating to the Flavrly PG checkout.
+      if (!redirecting) {
+        youpiStarting.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -380,15 +422,33 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
           <CardContent className="p-5">
             <h3 className="font-semibold mb-3">Payment</h3>
             <div className="grid gap-2 sm:grid-cols-2">
-              <PaymentChoice
-                value={onlineMethod}
-                current={paymentMethod}
-                onChange={setPaymentMethod}
-                title={GATEWAY_LABEL[onlineMethod].title}
-                subtitle={GATEWAY_LABEL[onlineMethod].subtitle}
-              />
-              <PaymentChoice value="COD" current={paymentMethod} onChange={setPaymentMethod} title="Cash on Delivery" subtitle="Pay the rider" />
+              {onlineAvailable && (
+                <PaymentChoice
+                  value={onlineMethod}
+                  current={useYoupi ? '' : paymentMethod}
+                  onChange={(v) => { setYoupiSelected(false); setPaymentMethod(v); }}
+                  title={GATEWAY_LABEL[onlineMethod].title}
+                  subtitle={GATEWAY_LABEL[onlineMethod].subtitle}
+                />
+              )}
+              {youpiEnabled && (
+                <button
+                  type="button"
+                  onClick={() => { setYoupiSelected(true); setPaymentMethod(onlineMethod); }}
+                  className={`text-left rounded-lg border p-3 hover:bg-accent ${useYoupi ? 'border-primary bg-primary/5' : ''}`}
+                >
+                  <div className="text-sm font-medium">UPI (Flavrly PG — experimental)</div>
+                  <div className="text-xs text-muted-foreground">Pay by UPI. Confirmed after your bank verifies it.</div>
+                </button>
+              )}
+              <PaymentChoice value="COD" current={paymentMethod} onChange={(v) => { setYoupiSelected(false); setPaymentMethod(v); }} title={isPickup ? 'Pay at pickup' : 'Cash on Delivery'} subtitle={isPickup ? 'Pay at the counter' : 'Pay the rider'} />
             </div>
+            {!onlineAvailable && !youpiEnabled && (
+              <p className="mt-2 text-xs text-muted-foreground">Online payment is not available for this restaurant right now.</p>
+            )}
+            {pricing && pricing.total <= 0 && (
+              <p className="mt-2 text-sm text-success">Your wallet and rewards cover this order — nothing more to pay.</p>
+            )}
           </CardContent>
         </Card>
 
@@ -453,7 +513,12 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
                 )}
               </dl>
             )}
-            <Button className="mt-4 w-full" size="lg" onClick={placeOrder} disabled={busy || !pricing || (isDelivery && !!zoneBlock)}>
+            {quoteError && (
+              <div role="alert" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive break-words">
+                {quoteError}
+              </div>
+            )}
+            <Button className="mt-4 w-full" size="lg" onClick={placeOrder} disabled={busy || !pricing || !!quoteError || (isDelivery && !!zoneBlock)}>
               {busy ? 'Placing order…' : `Place order · ${money(pricing?.total ?? 0)}`}
             </Button>
             <p className="mt-2 text-xs text-muted-foreground text-center">By placing this order you agree to our Terms.</p>
