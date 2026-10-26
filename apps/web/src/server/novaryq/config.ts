@@ -1,7 +1,9 @@
 /**
  * Novaryq integration config (CONTRACT §4): the platform feature flag plus the
  * per-restaurant credential blob stored encrypted in IntegrationCredential(NOVARYQ):
- *   { baseUrl, clientId, secret, webhookSecret, enabled, pushOn: "RECEIVED", webhookSubscriptionId? }
+ *   { baseUrl, clientId, secret, webhookSecret, enabled, pushOn: "RECEIVED" }
+ * The webhook subscription itself is created by the owner in the Novaryq developer
+ * console (CONTRACT-CHANGES NQ-1); its whsec_ secret is pasted into webhookSecret.
  * Values are strings (the integration store is Record<string, string>).
  */
 import { getConfig } from '../integrations';
@@ -18,7 +20,6 @@ export interface NovaryqConfig {
   webhookSecret: string;
   enabled: boolean;
   pushOn: 'RECEIVED';
-  webhookSubscriptionId: string;
 }
 
 export function parseNovaryqConfig(raw: Record<string, string> | null | undefined): NovaryqConfig | null {
@@ -30,7 +31,6 @@ export function parseNovaryqConfig(raw: Record<string, string> | null | undefine
     webhookSecret: raw.webhookSecret ?? '',
     enabled: raw.enabled === 'true',
     pushOn: 'RECEIVED',
-    webhookSubscriptionId: raw.webhookSubscriptionId ?? '',
   };
 }
 
@@ -42,7 +42,6 @@ export function serializeNovaryqConfig(c: NovaryqConfig): Record<string, string>
     webhookSecret: c.webhookSecret,
     enabled: c.enabled ? 'true' : 'false',
     pushOn: c.pushOn,
-    webhookSubscriptionId: c.webhookSubscriptionId,
   };
 }
 
@@ -55,7 +54,7 @@ export function novaryqWebhookPath(restaurantId: string): string {
   return `/api/integrations/novaryq/webhook/${restaurantId}`;
 }
 
-/** Public base URL for the webhook registration (override for a QA simulator). */
+/** Webhook URL the owner enters in Novaryq (NOVARYQ_WEBHOOK_BASE_URL overrides the public base). */
 export function novaryqWebhookUrl(restaurantId: string, fallbackBase: string): string {
   const base = (process.env.NOVARYQ_WEBHOOK_BASE_URL || fallbackBase).replace(/\/+$/, '');
   return `${base}${novaryqWebhookPath(restaurantId)}`;
