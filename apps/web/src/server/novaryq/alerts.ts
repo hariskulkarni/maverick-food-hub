@@ -15,9 +15,11 @@ export async function sendNovaryqAlert(a: {
   entityId: string;
   subject: string;
   text: string;
+  /** Debounce window per (entityId, kind); default 5 min. */
+  windowMin?: number;
 }): Promise<void> {
   try {
-    const gate = await checkAndStamp('Novaryq', a.entityId, `novaryq.${a.kind}`, { subject: a.subject });
+    const gate = await checkAndStamp('Novaryq', a.entityId, `novaryq.${a.kind}`, { subject: a.subject }, a.windowMin);
     if (gate.skipped) return;
     const recipients = await recipientsForRestaurant(a.restaurantId);
     for (const to of recipients) {

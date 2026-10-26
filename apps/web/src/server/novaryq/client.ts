@@ -83,36 +83,47 @@ function isPrivateIp(ip: string): boolean {
   return true;
 }
 
+export type BaseUrlVet = { ok: true } | { ok: false; error: string; transient: boolean };
+
 /**
- * SSRF guard for the tenant-supplied base URL. Returns an error message or null.
- * https + public address only; NOVARYQ_ALLOW_INSECURE_BASE_URL=true (never in
- * production) admits http/localhost for a local simulator.
+ * SSRF guard for the tenant-supplied base URL. https + public address only;
+ * NOVARYQ_ALLOW_INSECURE_BASE_URL=true (never in production) admits http/localhost
+ * for a local simulator. A resolver failure (EAI_AGAIN, ENOTFOUND, timeout…) is
+ * `transient` — not a policy decision — so callers retry it (QA-F9).
  */
-export async function checkBaseUrl(
+export async function vetBaseUrl(
   raw: string,
   deps: { resolve?: (host: string) => Promise<string[]> } = {},
-): Promise<string | null> {
+): Promise<BaseUrlVet> {
+  const refuse = (error: string): BaseUrlVet => ({ ok: false, error, transient: false });
   let url: URL;
   try {
     url = new URL(normalizeBaseUrl(raw));
   } catch {
-    return 'Enter a valid Novaryq URL, e.g. https://app.novaryq.com';
+    return refuse('Enter a valid Novaryq URL, e.g. https://app.novaryq.com');
   }
-  if (url.username || url.password) return 'The Novaryq URL must not contain credentials.';
-  if (insecureAllowed()) return url.protocol === 'https:' || url.protocol === 'http:' ? null : 'Use an http(s) URL.';
-  if (url.protocol !== 'https:') return 'The Novaryq URL must use https.';
+  if (url.username || url.password) return refuse('The Novaryq URL must not contain credentials.');
+  if (insecureAllowed()) return url.protocol === 'https:' || url.protocol === 'http:' ? { ok: true } : refuse('Use an http(s) URL.');
+  if (url.protocol !== 'https:') return refuse('The Novaryq URL must use https.');
   const host = url.hostname.replace(/^\[|\]$/g, '');
+  if (host === 'localhost') return refuse('The Novaryq URL must point to a public host.');
   const resolve = deps.resolve ?? (async (h: string) => (await lookup(h, { all: true })).map((a) => a.address));
   let addrs: string[];
   try {
     addrs = net.isIP(host) ? [host] : await resolve(host);
-  } catch {
-    return 'The Novaryq host could not be resolved.';
+  } catch (e) {
+    const code = (e as { code?: string })?.code;
+    return { ok: false, error: `The Novaryq host could not be resolved${code ? ` (${code})` : ''}.`, transient: true };
   }
-  if (host === 'localhost' || addrs.length === 0 || addrs.some(isPrivateIp)) {
-    return 'The Novaryq URL must point to a public host.';
-  }
-  return null;
+  if (addrs.length === 0) return { ok: false, error: 'The Novaryq host could not be resolved.', transient: true };
+  if (addrs.some(isPrivateIp)) return refuse('The Novaryq URL must point to a public host.');
+  return { ok: true };
+}
+
+/** vetBaseUrl as an error message (or null) for the admin save path. */
+export async function checkBaseUrl(raw: string, deps: { resolve?: (host: string) => Promise<string[]> } = {}): Promise<string | null> {
+  const v = await vetBaseUrl(raw, deps);
+  return v.ok ? null : v.error;
 }
 
 export interface RequestOptions {
@@ -137,8 +148,13 @@ export async function novaryqRequest<T = unknown>(
   // resolved public at save time and private now, is refused before anything is sent.
   // (No IP pinning: production is https-only, so a rebound target must also present a valid
   // certificate for the tenant's hostname before any request bytes are sent.)
-  const bad = await checkBaseUrl(creds.baseUrl, { resolve: opts.resolve });
-  if (bad) throw new NovaryqApiError(`Novaryq URL refused: ${bad}`, null, false);
+  // Only a policy refusal is permanent; a DNS hiccup retries with the normal backoff (QA-F9).
+  const vet = await vetBaseUrl(creds.baseUrl, { resolve: opts.resolve });
+  if (!vet.ok) {
+    throw vet.transient
+      ? new NovaryqApiError(`Novaryq unreachable: ${vet.error}`, null, true)
+      : new NovaryqApiError(`Novaryq URL refused: ${vet.error}`, null, false);
+  }
   const rawBody = body === undefined ? '' : JSON.stringify(body);
   const ts = Math.floor(Date.now() / 1000);
   const headers: Record<string, string> = {

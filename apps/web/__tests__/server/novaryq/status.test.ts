@@ -15,13 +15,14 @@ const h = vi.hoisted(() => ({
   escalations: [] as any[],
   alerts: [] as any[],
   orderStatus: 'RECEIVED',
+  autoAccept: false,
   failOn: null as string | null,
 }));
 
 vi.mock('@/server/db', () => {
   const prisma = {
     novaryqOrderSync: {
-      findFirst: vi.fn(async ({ where }: any) => (h.sync && where.orderId === h.sync.orderId && where.restaurantId === h.sync.restaurantId ? { ...h.sync, order: { id: h.sync.orderId, code: 'ORD-1', status: h.orderStatus, fulfillmentType: h.sync.fulfillmentType ?? 'DELIVERY' } } : null)),
+      findFirst: vi.fn(async ({ where }: any) => (h.sync && where.orderId === h.sync.orderId && where.restaurantId === h.sync.restaurantId ? { ...h.sync, order: { id: h.sync.orderId, code: 'ORD-1', status: h.orderStatus, fulfillmentType: h.sync.fulfillmentType ?? 'DELIVERY', branch: { restaurant: { autoAcceptOrders: h.autoAccept } } } } : null)),
       updateMany: vi.fn(async () => ({ count: h.guardCount })),
       findMany: vi.fn(async () => h.staleSyncs),
     },
@@ -54,11 +55,12 @@ beforeEach(() => {
   h.alerts = [];
   h.orderStatus = 'RECEIVED';
   h.failOn = null;
+  h.autoAccept = false;
 });
 
 describe('planStatusAction (§3 table)', () => {
-  const steps = (nq: string, cur: string, ft = 'DELIVERY') => {
-    const a = planStatusAction(nq, cur as any, ft as any);
+  const steps = (nq: string, cur: string, ft = 'DELIVERY', autoAccept = true) => {
+    const a = planStatusAction(nq, cur as any, ft as any, { autoAccept });
     return a.kind === 'transition' ? a.steps : a.kind;
   };
 
@@ -66,6 +68,11 @@ describe('planStatusAction (§3 table)', () => {
   it('SENT → ACCEPTED only from RECEIVED', () => {
     expect(steps('SENT', 'RECEIVED')).toEqual(['ACCEPTED']);
     expect(steps('SENT', 'PREPARING')).toBe('none');
+  });
+  it('FL-8: with auto-accept OFF, SENT does nothing; the first kitchen action accepts', () => {
+    expect(steps('SENT', 'RECEIVED', 'DELIVERY', false)).toBe('none');
+    expect(steps('IN_PREP', 'RECEIVED', 'DELIVERY', false)).toEqual(['ACCEPTED', 'PREPARING']);
+    expect(steps('READY', 'RECEIVED', 'DELIVERY', false)).toEqual(['ACCEPTED', 'PREPARING', 'READY']);
   });
   it('IN_PREP → PREPARING via ACCEPTED when needed', () => {
     expect(steps('IN_PREP', 'RECEIVED')).toEqual(['ACCEPTED', 'PREPARING']);
@@ -131,6 +138,18 @@ describe('pollStaleOrderStatuses (missed-webhook fallback, QA-F4)', () => {
     h.cfg = { ...h.cfg, enabled: true };
     vi.stubGlobal('fetch', vi.fn(async () => new Response('down', { status: 503 })));
     expect(await pollStaleOrderStatuses('r1')).toEqual({ polled: 1, applied: 0, errors: 1 });
+  });
+});
+
+describe('applyOrderStatusEvent — restaurant auto-accept setting (FL-8)', () => {
+  const ev = (status: string) => ({ restaurantId: 'r1', externalRef: 'o1', orderId: 'nq1', status, occurredAt: '2026-10-25T10:00:00Z' });
+  it('SENT accepts only when the restaurant auto-accepts', async () => {
+    h.autoAccept = false;
+    expect(await applyOrderStatusEvent(ev('SENT'))).toBe('noop');
+    expect(h.transitions).toEqual([]);
+    h.autoAccept = true;
+    expect(await applyOrderStatusEvent(ev('SENT'))).toBe('applied');
+    expect(h.transitions.map((t) => t[1])).toEqual(['ACCEPTED']);
   });
 });
 

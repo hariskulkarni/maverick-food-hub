@@ -20,7 +20,7 @@ const h = vi.hoisted(() => ({
 }));
 
 // The base-URL guard resolves the host on every call; keep unit tests off the network.
-vi.mock('node:dns/promises', () => ({ lookup: async () => [{ address: '93.184.216.34', family: 4 }] }));
+vi.mock('node:dns/promises', () => ({ lookup: vi.fn(async () => [{ address: '93.184.216.34', family: 4 }]) }));
 vi.mock('@/server/db', () => {
   const prisma: any = {
     order: { findUnique: vi.fn(async () => h.order) },
@@ -242,6 +242,22 @@ describe('processClaimed — push', () => {
     expect(await processClaimed(row({ attempts: 8 }), OWNER)).toBe('dead');
     expect(h.updates[0].data.state).toBe('DEAD');
     expect(h.alerts[0]).toMatchObject({ kind: 'push_dead' });
+  });
+
+  it('DEAD alerts are throttled per restaurant (one per outage window), not per order (QA-F9)', async () => {
+    h.respond = () => new Response('down', { status: 502 });
+    await processClaimed(row({ attempts: 8 }), OWNER);
+    await processClaimed(row({ id: 's2', orderId: 'o2', attempts: 8 }), OWNER);
+    expect(h.alerts.map((a) => [a.entityId, a.windowMin])).toEqual([['r1', 60], ['r1', 60]]);
+  });
+
+  it('a transient DNS failure retries with backoff — no FAILED, no alert (QA-F9)', async () => {
+    const dns = await import('node:dns/promises');
+    (dns.lookup as any).mockRejectedValueOnce(Object.assign(new Error('getaddrinfo EAI_AGAIN pos.example.com'), { code: 'EAI_AGAIN' }));
+    expect(await processClaimed(row({ attempts: 1 }), OWNER)).toBe('retried');
+    expect(h.updates[0].data.state).toBeUndefined();
+    expect(h.alerts).toEqual([]);
+    expect(h.fetches).toHaveLength(0);
   });
 
   it('a crashed worker that burnt the budget is dead-lettered without another call', async () => {

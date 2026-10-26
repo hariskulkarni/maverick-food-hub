@@ -219,12 +219,14 @@ async function retryOrDie(row: ClaimedSync, owner: string, e: unknown): Promise<
   log.warn({ syncId: row.id, orderId: row.orderId, attempts: row.attempts, err: error }, 'novaryq.push.attempt_failed');
   if (row.attempts >= PUSH_MAX_ATTEMPTS) {
     if (!(await settle(row, owner, { state: 'DEAD', lastError: error }))) return 'lost';
+    // One e-mail per restaurant per hour: an outage dead-letters many orders at once (QA-F9).
     await sendNovaryqAlert({
       restaurantId: row.restaurantId,
       kind: 'push_dead',
-      entityId: row.orderId,
+      entityId: row.restaurantId,
+      windowMin: 60,
       subject: 'Novaryq sync gave up after 8 attempts',
-      text: `Order ${row.orderId} (${row.state === 'CANCEL_PENDING' ? 'cancel' : 'push'}): ${error}\nReplay it from Flavrly admin → POS integration once Novaryq is reachable.`,
+      text: `Order ${row.orderId} (${row.state === 'CANCEL_PENDING' ? 'cancel' : 'push'}): ${error}\nOther orders may be affected too: see Flavrly admin → POS integration → Sync log (gave up) and Replay them once Novaryq is reachable.`,
     });
     return 'dead';
   }

@@ -34,7 +34,7 @@ You need a restaurant admin login on Flavrly and access to **Developer** in your
 
 - An order containing an item that is not linked to a Novaryq item is not sent. It shows as **failed** in the sync log with the item names, and the admins get an e-mail. Link the items, then tap **Replay**.
 - If Novaryq cannot be reached, Flavrly keeps retrying for several hours. After 8 tries the order shows as **gave up** and the admins get an e-mail; tap **Replay** once Novaryq is back.
-- Kitchen progress follows the POS: sent to the kitchen → Accepted, in prep → Preparing, ready → Ready. For delivery orders the rider still completes the order on Flavrly.
+- Kitchen progress follows the POS: in prep → Preparing, ready → Ready. The order shows **Accepted** as soon as the kitchen starts on it. If **Auto-accept orders** is on in Settings > Order flow, it is already accepted when the ticket reaches the kitchen. For delivery orders the rider still completes the order on Flavrly.
 - If an order is voided in Novaryq after the rider has picked it up, Flavrly does not cancel it automatically. The platform team is alerted to decide.
 - Your API secret and webhook secret are stored encrypted and are never shown again. To change one, type the new value; leave the box empty to keep the saved one.
 - See [Order statuses](help:restaurant-order-statuses) and [Item availability](help:menu-item-availability).

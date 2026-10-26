@@ -119,6 +119,26 @@ describe('call-time base URL re-check (QA-F2)', () => {
   });
 });
 
+describe('DNS failures are transient, policy refusals permanent (QA-F9)', () => {
+  it('EAI_AGAIN / ENOTFOUND / ETIMEDOUT at call time → retryable, nothing sent', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 200 }));
+    for (const code of ['EAI_AGAIN', 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET']) {
+      const err = await novaryqRequest(cfg, 'GET', '/menu', undefined, {
+        fetchImpl: fetchImpl as any,
+        resolve: async () => { throw Object.assign(new Error(`getaddrinfo ${code} pos.example.com`), { code }); },
+      }).catch((e) => e);
+      expect(err, code).toBeInstanceOf(NovaryqApiError);
+      expect(err.retryable, code).toBe(true);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('a host resolving to a private address stays a permanent refusal', async () => {
+    const err = await novaryqRequest(cfg, 'GET', '/menu', undefined, { fetchImpl: vi.fn() as any, resolve: async () => ['169.254.169.254'] }).catch((e) => e);
+    expect(err.retryable).toBe(false);
+  });
+});
+
 describe('parseRetryAfterMs', () => {
   it('reads delta-seconds, HTTP dates and the JSON retryAfterSec', () => {
     expect(parseRetryAfterMs('7', null)).toBe(7000);

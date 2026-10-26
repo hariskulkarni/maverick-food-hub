@@ -36,7 +36,17 @@ const PICKED_UP: OrderStatus[] = [
   OrderStatus.CUSTOMER_UNREACHABLE, OrderStatus.DELIVERY_FAILED, OrderStatus.DELIVERED,
 ];
 
-export function planStatusAction(nqStatus: string, current: OrderStatus, fulfillment: FulfillmentType): StatusAction {
+/**
+ * FL-8 (supersedes the §3 SENT row): SENT accepts the Flavrly order only when the restaurant
+ * has auto-accept on; otherwise the first real kitchen action (IN_PREP / READY) accepts it.
+ */
+export function planStatusAction(
+  nqStatus: string,
+  current: OrderStatus,
+  fulfillment: FulfillmentType,
+  opts: { autoAccept: boolean },
+): StatusAction {
+  if (nqStatus === 'SENT' && !opts.autoAccept) return { kind: 'none', reason: 'auto-accept off: waiting for a kitchen action' };
   const target = TARGET[nqStatus];
   if (target) {
     const from = current === OrderStatus.RECEIVED ? -1 : KITCHEN_PATH.indexOf(current);
@@ -84,7 +94,11 @@ export type ApplyOutcome =
 export async function applyOrderStatusEvent(ev: OrderStatusEvent): Promise<ApplyOutcome> {
   const sync = await prisma.novaryqOrderSync.findFirst({
     where: { orderId: ev.externalRef, restaurantId: ev.restaurantId },
-    include: { order: { select: { id: true, code: true, status: true, fulfillmentType: true } } },
+    include: {
+      order: {
+        select: { id: true, code: true, status: true, fulfillmentType: true, branch: { select: { restaurant: { select: { autoAcceptOrders: true } } } } },
+      },
+    },
   });
   if (!sync) return 'ignored:unknown_order';
   if (sync.novaryqOrderId && ev.orderId && sync.novaryqOrderId !== ev.orderId) {
@@ -105,7 +119,9 @@ export async function applyOrderStatusEvent(ev: OrderStatusEvent): Promise<Apply
     return 'ignored:stale';
   }
 
-  const plan = planStatusAction(ev.status, sync.order.status, sync.order.fulfillmentType);
+  const plan = planStatusAction(ev.status, sync.order.status, sync.order.fulfillmentType, {
+    autoAccept: sync.order.branch.restaurant.autoAcceptOrders,
+  });
   if (plan.kind === 'none') {
     if (ev.status === 'REFUNDED') log.info({ orderId: sync.orderId, code: sync.order.code }, 'novaryq.status.refunded_in_pos');
     return 'noop';
