@@ -279,6 +279,37 @@ describe('cancel: Flavrly cancellation cancels in Novaryq', () => {
     expect(live).toHaveLength(1);
   });
 
+  it('race: Flavrly cancels while the push is in flight -> Novaryq ends VOIDED, sync CANCELLED', async () => {
+    const order = await placeCod(shop);
+    sim.injectFault('POST /api/v1/orders', { kind: 'delay', ms: 1_200, phase: 'after' });
+    const worker = fl.runWorker();
+    await new Promise((r) => setTimeout(r, 300));
+    await transitionOrder(order.id, 'CANCELLED_BY_CUSTOMER' as any);
+    await worker;
+    await settle(sim);
+    await fastForward();
+    await settle(sim);
+    const nq = sim.orderByExternalRef(order.id)!;
+    expect(nq.status).toBe('VOIDED');
+    expect((await syncOf(order.id)).state).toBe('CANCELLED');
+    expect(await statusOf(order.id)).toBe('CANCELLED_BY_CUSTOMER');
+  });
+
+  it('race: the SENT webhook lands before the push response is recorded -> both applied, one Novaryq id', async () => {
+    const order = await placeCod(shop);
+    sim.injectFault('POST /api/v1/orders', { kind: 'delay', ms: 1_200, phase: 'after' });
+    const worker = fl.runWorker();
+    await new Promise((r) => setTimeout(r, 300));
+    await sim.flush(); // Novaryq already committed + fired: OPEN->SENT arrives first
+    await worker;
+    await fl.runWorker();
+    const nq = sim.orderByExternalRef(order.id)!;
+    const sync = await syncOf(order.id);
+    expect(sync.state).toBe('SENT');
+    expect(sync.novaryqOrderId).toBe(nq.id);
+    expect(await statusOf(order.id)).toBe('ACCEPTED');
+  });
+
   it('a Novaryq order already COMPLETED cannot be voided: surfaced, not retried forever', async () => {
     const pick = await placeCod(shop, undefined, { fulfillmentType: 'PICKUP', addressId: null });
     await fl.runWorker();
