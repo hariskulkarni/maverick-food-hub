@@ -180,14 +180,14 @@ export const statusTrail = async (orderId: string) =>
 /**
  * Stored inbox rows for a delivery. The contract fixes `deliveryId @unique` but not its encoding: FL
  * namespaces it per restaurant and keys on the signed envelope id when present
- * (`${restaurantId}:evt:${envelope.id}`), else on the X-Novaryq-Delivery header (`${restaurantId}:${id}`).
+ * (`${restaurantId}:evt:${event}:${envelope.id}`), else on the X-Novaryq-Delivery header (`${restaurantId}:${id}`).
  */
 function byDelivery(delivery?: string, body?: string) {
   const or: object[] = [];
   if (delivery) or.push({ deliveryId: delivery }, { deliveryId: { endsWith: `:${delivery}` } });
   try {
     const id = JSON.parse(body ?? '').id;
-    if (typeof id === 'string') or.push({ deliveryId: { endsWith: `:evt:${id}` } });
+    if (typeof id === 'string') or.push({ deliveryId: { endsWith: `:${id}` } }); // `:evt:<id>` or `:evt:<event>:<id>`
   } catch {
     /* not JSON: header id only */
   }
