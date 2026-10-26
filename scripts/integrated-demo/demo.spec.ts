@@ -353,7 +353,31 @@ test('Flavrly × Novaryq India — integrated demo', async ({ browser, playwrigh
   note(`un-86 visible on Flavrly after ${Math.round((Date.now() - tr) / 1000)} s`);
   await shot(c, 'flavrly-item-restored', `Un-86 on the POS: Mango Lassi orderable again on Flavrly (${Math.round((Date.now() - tr) / 1000)} s, menu.item.restored).`);
 
-  // ── 9. GST invoice for the channel order (Novaryq receipt API, owner session) ──
+  // ── 9. Novaryq India: the Flavrly-linked business hands its consumer channel to Flavrly (FNI-3.1) ──
+  if (E.NQ_CONSUMER_CHANNEL === 'FLAVRLY') {
+    await kds.goto(`${NQ_WEB}/admin/integrations`);
+    const card = kds.getByText(/Flavrly/).first();
+    if (await card.isVisible({ timeout: 60_000 }).catch(() => false)) {
+      await card.scrollIntoViewIfNeeded();
+      await shot(kds, 'novaryq-admin-flavrly-card', 'Novaryq India admin → Integrations: the Flavrly card (consumer channel FLAVRLY, last Flavrly order, webhook health, partner key in use).', true);
+    } else note('Novaryq admin Integrations page did not show a Flavrly card');
+    for (const [size, name] of [[DESKTOP, 'novaryq-storefront-desktop'], [MOBILE, 'novaryq-storefront-mobile']] as const) {
+      const sctx = await context(browser, size, name);
+      const sp = await sctx.newPage();
+      const store = E.NQ_STORE_HOST ?? NQ_BIZ;
+      await sp.goto(`${store}/`, { waitUntil: 'domcontentloaded' }).catch(() => undefined);
+      const redirected = await sp.waitForURL((u) => u.origin === new URL(FL).origin, { timeout: 120_000 }).then(() => true, () => false);
+      note(`Novaryq storefront ${store}/ ${redirected ? `redirected to ${sp.url()}` : `did NOT redirect (at ${sp.url()})`}`);
+      await shot(sp, name, redirected
+        ? `The restaurant's Novaryq storefront (${new URL(store).host}/) sends the guest to its Flavrly page: one online channel, one menu of record.`
+        : `The restaurant's Novaryq storefront (${new URL(store).host}/) — expected a redirect to Flavrly, got ${sp.url()}.`);
+      await sctx.close();
+    }
+  } else {
+    note(`consumer channel not switched (NQ_CONSUMER_CHANNEL=${E.NQ_CONSUMER_CHANNEL ?? 'unset'}): storefront redirect not shown`);
+  }
+
+  // ── 10. GST invoice for the channel order (Novaryq receipt API, owner session) ──
   const api = await playwright.request.newContext();
   const login = await (await api.post(`${E.NQ_API}/v1/auth/login`, { data: { email: E.NQ_OWNER_EMAIL, password: E.NQ_OWNER_PASSWORD } })).json();
   const list = await (await api.get(`${E.NQ_API}/api/v1/orders?externalRef=${codOrder}&source=flavrly`, { headers: await signedHeaders('') })).json().catch(() => null);

@@ -128,8 +128,11 @@ start nq-api "$NQ_WT/apps/api" env NODE_ENV=development PORT="$NQ_API_PORT" \
   REDIS_URL="redis://127.0.0.1:$REDIS_PORT" JWT_SECRET="demo-local-$(cat "$STATE/pg/PG_VERSION")-jwt-secret-not-for-production" \
   CSRF_SIGNING_SECRET="demo-local-csrf-secret-not-for-production-0000" MEDIA_DIR="$STATE/media" \
   CORS_ALLOWED_ORIGINS="http://localhost:$NQ_WEB_PORT" MFA_POLICY=optional NOVARYQ_DEMO_ALLOW_LOOPBACK_WEBHOOKS=true \
+  FLAVRLY_URL_ALLOWED_HOSTS="flavrly.in,localhost" \
   npx ts-node --transpile-only src/main.ts
-start nq-web "$NQ_WT/apps/web" env VITE_API_URL="http://localhost:$NQ_API_PORT" VITE_PWA_SW=false npx vite --port "$NQ_WEB_PORT" --strictPort
+cp "$HERE/vite.demo.config.ts" "$NQ_WT/apps/web/"
+start nq-web "$NQ_WT/apps/web" env VITE_API_URL="http://localhost:$NQ_API_PORT" VITE_PWA_SW=false VITE_ROOT_DOMAIN=novaryq.test \
+  npx vite --config vite.demo.config.ts --host 127.0.0.1 --port "$NQ_WEB_PORT" --strictPort
 start fl-web "$FL_WT/apps/web" npx next dev -p "$FL_PORT"
 until curl -s -o /dev/null "http://127.0.0.1:$NQ_API_PORT/api/v1/me"; do sleep 3; done
 until curl -s -o /dev/null --max-time 300 "$FL_URL/"; do sleep 3; done
@@ -141,10 +144,12 @@ log "6. Novaryq console: API key + webhook subscription for Flavrly"
 set -a; . "$STATE/nq.env"; . "$STATE/fl.env"; set +a
 if [ ! -f "$STATE/link.env" ]; then
   node "$HERE/link-novaryq.mjs" "http://127.0.0.1:$NQ_API_PORT" "$NQ_OWNER_EMAIL" "$NQ_OWNER_PASSWORD" \
-    "http://127.0.0.1:$FL_PORT/api/integrations/novaryq/webhook/$FL_RESTAURANT_ID" >"$STATE/link.env"
+    "http://127.0.0.1:$FL_PORT/api/integrations/novaryq/webhook/$FL_RESTAURANT_ID" "$FL_URL/r/$FL_RESTAURANT_SLUG" >"$STATE/link.env"
 fi
 { cat "$STATE/nq.env" "$STATE/fl.env" "$STATE/link.env"
   echo "FL_URL=$FL_URL"; echo "NQ_WEB=http://localhost:$NQ_WEB_PORT"; echo "NQ_API=http://127.0.0.1:$NQ_API_PORT"
+  echo "NQ_BIZ=http://flavrly-test-kitchen.novaryq.test:$NQ_WEB_PORT"; echo "NQ_STORE_HOST=http://$NQ_LOCATION_SLUG.novaryq.test:$NQ_WEB_PORT"
+  echo "FL_RESTAURANT_SLUG=$FL_RESTAURANT_SLUG"
   echo "INTERNAL_CRON_SECRET=$CRON_SECRET"; } >"$STATE/demo.env"
 
 cat <<EOF
