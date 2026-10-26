@@ -8,7 +8,6 @@
  * console (CONTRACT-CHANGES NQ-1); its whsec_ secret is pasted into webhookSecret.
  * Values are strings (the integration store is Record<string, string>).
  */
-import { getConfig } from '../integrations';
 
 /** Platform kill switch. Off unless NOVARYQ_INTEGRATION_ENABLED=true. */
 export function novaryqFlagOn(): boolean {
@@ -54,6 +53,9 @@ export function serializeNovaryqConfig(c: NovaryqConfig): Record<string, string>
 }
 
 export async function loadNovaryqConfig(restaurantId: string): Promise<NovaryqConfig | null> {
+  // Lazy: orders.ts imports the outbox hooks (→ this file) on every order path; the integration
+  // registry (all providers) is only loaded when a Novaryq config is actually read.
+  const { getConfig } = await import('../integrations');
   return parseNovaryqConfig(await getConfig(restaurantId, 'NOVARYQ'));
 }
 
