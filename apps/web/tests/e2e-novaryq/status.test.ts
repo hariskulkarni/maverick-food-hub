@@ -174,12 +174,11 @@ describe('status: VOIDED in Novaryq', () => {
     const { order, nq } = await pushed();
     await kitchen(nq.id, 'READY');
     await transitionOrder(order.id, 'OUT_FOR_DELIVERY' as any);
-    const pgExBefore = await db.pgException.count().catch(() => 0);
     await kitchen(nq.id, 'VOIDED');
     expect(await statusOf(order.id)).toBe('OUT_FOR_DELIVERY');
-    const pgExAfter = await db.pgException.count().catch(() => 0);
-    const evt = await db.novaryqWebhookEvent.findFirst({ where: { restaurantId: shop.restaurantId, event: 'order.status_changed' }, orderBy: { receivedAt: 'desc' } });
-    const raised = pgExAfter > pgExBefore || sent.alerts.length > 0 || sent.notify.length > 0 || /pick|exception|manual/i.test(evt?.error ?? '');
+    // Ops signal: an open order escalation and/or an alert to the restaurant/platform.
+    const escalations = await prisma.orderEscalation.count({ where: { orderId: order.id } });
+    const raised = escalations > 0 || sent.alerts.length > 0 || sent.notify.length > 0;
     expect(raised).toBe(true);
   });
 });

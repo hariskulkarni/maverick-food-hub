@@ -17,6 +17,8 @@ const sent = vi.hoisted(() => {
   return g.__novaryqQaSent as { notify: { channel: string; args: any }[]; alerts: { fn: string; args: any[] }[] };
 });
 
+// No browser session in these tests (job routes authenticate by INTERNAL_CRON_SECRET only).
+vi.mock('@/server/auth', () => ({ auth: vi.fn(async () => null) }));
 vi.mock('@/server/realtime', async (orig) => ({ ...(await orig<Record<string, unknown>>()), publish: vi.fn() }));
 vi.mock('@/server/notifications', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),

@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { NovaryqSimulator } from '../novaryq-sim/simulator';
 import { signWebhook } from '../novaryq-sim/signing';
 import { fl } from './fl';
-import { db, makeShop, placeCod, prisma, routeTransport, saveCfg, statusOf, statusTrail, webhookPath, type Shop, eventCount } from './harness';
+import { db, makeShop, placeCod, prisma, routeTransport, saveCfg, statusOf, statusTrail, webhookPath, type Shop, eventCount, quiesceDelivery } from './harness';
 
 let sim: NovaryqSimulator;
 let a: Shop;
@@ -19,9 +19,11 @@ const statusBody = (s: Shop, over: Record<string, unknown> = {}) =>
     status: 'IN_PREP', previousStatus: 'SENT', occurredAt: new Date().toISOString(), ...over,
   }));
 
-function post(s: Shop | string, body: string, headers: Record<string, string>) {
+async function post(s: Shop | string, body: string, headers: Record<string, string>) {
   const rid = typeof s === 'string' ? s : s.restaurantId;
-  return fl.webhookPOST(new Request(`http://flavrly.test${webhookPath(rid)}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body }), rid);
+  const res = await fl.webhookPOST(new Request(`http://flavrly.test${webhookPath(rid)}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body }), rid);
+  await quiesceDelivery(headers['x-novaryq-idempotency-key'] ?? headers['x-novaryq-delivery']);
+  return res;
 }
 
 function signed(secret: string, body: string, o: { t?: number; delivery?: string } = {}) {

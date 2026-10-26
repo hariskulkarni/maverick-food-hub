@@ -474,8 +474,13 @@ export class NovaryqSimulator {
       if (b.payment.amount !== undefined && !(typeof b.payment.amount === 'string' && MONEY.test(b.payment.amount))) throw new HttpError(400, 'payment.amount must be a decimal string');
     }
 
-    // Channel price wins; otherwise base price (the POS never re-prices channel figures).
-    const priced = lines.reduce((s, l) => s + toPaise(l.unitPrice ?? this.findItem(l.itemCode ?? l.menuItemId)!.price) * l.quantity, 0);
+    // NQ channel-order.ts: unitPrice is per unit INCLUDING modifiers (snapshot only, never added
+    // again); without it, list price + Σ modifier.unitPrice × modifier.quantity per unit.
+    const unitPaise = (l: any) =>
+      l.unitPrice !== undefined
+        ? toPaise(l.unitPrice)
+        : toPaise(this.findItem(l.itemCode ?? l.menuItemId)!.price) + (l.modifiers ?? []).reduce((t: number, m: any) => t + toPaise(m.unitPrice) * (m.quantity ?? 1), 0);
+    const priced = lines.reduce((s, l) => s + unitPaise(l) * l.quantity, 0);
     const grandTotal = b.totals?.grandTotal ?? fromPaise(priced);
     const initial = this.opts.channelOrderInitialStatus;
     const o: SimOrder = {

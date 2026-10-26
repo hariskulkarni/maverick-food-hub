@@ -25,8 +25,24 @@ export const routeTransport: WebhookTransport = async (url, init) => {
   const m = u.pathname.match(/^\/api\/integrations\/novaryq\/webhook\/([^/]+)$/);
   if (!m) return 404;
   const res = await fl.webhookPOST(new Request(url, { method: 'POST', headers: init.headers, body: init.body }), m[1]!);
+  await quiesceDelivery(init.headers['x-novaryq-idempotency-key'] ?? init.headers['x-novaryq-delivery']);
   return res.status;
 };
+
+/**
+ * FL processes a stored delivery inline, fire-and-forget, after answering 200. Wait until that
+ * delivery's row is processed or has recorded an error, so assertions never race the inline path.
+ * Returns at once when nothing was stored (rejected delivery).
+ */
+export async function quiesceDelivery(delivery: string | undefined, maxMs = 3_000) {
+  if (!delivery) return;
+  const until = Date.now() + maxMs;
+  while (Date.now() < until) {
+    const row = await eventByDelivery(delivery);
+    if (!row || row.processedAt || row.error) return;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
 
 export interface Shop {
   restaurantId: string;

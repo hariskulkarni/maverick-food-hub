@@ -39,8 +39,17 @@ export const fl = {
     return res.json();
   },
 
+  /** FL's server modules merged (src/server/novaryq/{push,menu,status,webhook}.ts, or an index). */
   async server(): Promise<Mod> {
-    return load('@/server/novaryq');
+    const out: Mod = {};
+    for (const p of ['@/server/novaryq/push', '@/server/novaryq/menu', '@/server/novaryq/status', '@/server/novaryq/webhook', '@/server/novaryq']) {
+      try {
+        Object.assign(out, await load(p));
+      } catch {
+        /* module not present in this layout */
+      }
+    }
+    return out;
   },
 
   async importMenu(restaurantId: string, branchId: string, actorId?: string) {

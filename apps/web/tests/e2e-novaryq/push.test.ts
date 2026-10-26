@@ -81,12 +81,10 @@ describe('push: COD and prepaid orders reach Novaryq once, at Flavrly prices', (
       expect(l.unitPrice).toMatch(/^\d+\.\d{2}$/);
       for (const m of l.modifiers ?? []) expect(m.unitPrice).toMatch(/^\d+\.\d{2}$/);
     }
-    // Line math must reproduce the subtotal under the contract's own example semantics
-    // (§2.1: 2 × 249.00 + 1 × 30.00 = 528.00, i.e. modifier quantity is absolute per line).
-    const linePaise = body.lines.reduce(
-      (s: number, l: any) => s + l.quantity * toPaise(l.unitPrice) + (l.modifiers ?? []).reduce((t: number, m: any) => t + toPaise(m.unitPrice) * (m.quantity ?? 1), 0),
-      0,
-    );
+    // NQ records unitPrice as the per-unit price INCLUDING modifiers and never adds the modifier
+    // snapshot again (apps/api/src/dev-platform/channel-order.ts), so Σ qty × unitPrice must equal
+    // the Flavrly subtotal to the paisa.
+    const linePaise = body.lines.reduce((s: number, l: any) => s + l.quantity * toPaise(l.unitPrice), 0);
     expect(linePaise).toBe(toPaise(money(o.subtotal)));
     // Item codes come from NovaryqItemLink; quantities from OrderItem.
     expect(body.lines.map((l: any) => [l.itemCode, l.quantity]).sort()).toEqual([[shop.dal.code, 1], [shop.paneer.code, 2]].sort());
