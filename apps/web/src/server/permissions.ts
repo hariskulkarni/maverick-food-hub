@@ -208,6 +208,8 @@ const RAW_PAGE_GATES: ReadonlyArray<{ prefix: string; capability: Capability }> 
   { prefix: '/platform/payment-gateways', capability: 'platform:admin' },
   { prefix: '/platform/youpi-admin', capability: 'platform:admin' },
   { prefix: '/platform/youpi', capability: 'platform:admin' },
+  // Novaryq POS integration status across tenants (read-only).
+  { prefix: '/platform/novaryq', capability: 'platform:admin' },
   // Help-center authoring — writes are SUPER_ADMIN-only (requireSuperAdminApi).
   { prefix: '/platform/help', capability: 'platform:admin' },
   // Finance (confidential) — SUPER_ADMIN only until Stage-3 approvals

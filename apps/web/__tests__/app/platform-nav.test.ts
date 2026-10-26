@@ -26,12 +26,14 @@ const PREVIOUS_LINKS = [
 ];
 // Added after the grouping: sub-pages that get their own menu entry.
 const ADDED_LINKS = ['/platform/users/test-accounts'];
+// Top-level pages added after the grouping (platform:admin, so no delegated role sees them).
+const NEW_PAGES = ['/platform/novaryq'];
 
 describe('platform nav config', () => {
   it('keeps every previous link, each exactly once', () => {
     const hrefs = allHrefs();
     expect(new Set(hrefs).size).toBe(hrefs.length);
-    expect([...hrefs].sort()).toEqual([...PREVIOUS_LINKS, ...ADDED_LINKS].sort());
+    expect([...hrefs].sort()).toEqual([...PREVIOUS_LINKS, ...ADDED_LINKS, ...NEW_PAGES].sort());
   });
 
   it('links every top-level /platform page and only real pages', () => {
@@ -97,7 +99,7 @@ describe('filterNavByAccess (capability filtering stays server-side)', () => {
     filterNavByAccess(PLATFORM_NAV, (href) => can(role, pageGateFor(href))).flatMap((g) => g.items.map((it) => it.href));
 
   it('shows SUPER_ADMIN every page', () => {
-    expect(visible('SUPER_ADMIN').length).toBe(PREVIOUS_LINKS.length + ADDED_LINKS.length);
+    expect(visible('SUPER_ADMIN').length).toBe(PREVIOUS_LINKS.length + ADDED_LINKS.length + NEW_PAGES.length);
   });
 
   it('hides finance, IAM and platform-admin pages from a GUEST and drops empty groups', () => {

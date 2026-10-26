@@ -572,7 +572,7 @@ const Novaryq: ProviderDef = {
   title: 'Novaryq POS',
   vendor: 'Novaryq',
   description: 'Send Flavrly orders to your Novaryq POS kitchen, sync order status and 86\'d items. Configured at /admin/integrations.',
-  docsUrl: '/admin/integrations',
+  docsUrl: '/admin/help/novaryq-pos-integration',
   fields: [
     { key: 'baseUrl', label: 'Novaryq URL', type: 'text', required: true, placeholder: 'https://app.novaryq.com' },
     { key: 'clientId', label: 'API key (client id)', type: 'text', required: true, placeholder: 'nq_live_…' },

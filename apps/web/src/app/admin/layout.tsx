@@ -6,12 +6,13 @@ import {
   LayoutDashboard, ScrollText, CalendarClock, Armchair, Radio, Building2,
   Bike, ShieldAlert, MessagesSquare, BarChart3, History, MessageSquare,
   Settings, Paintbrush, Star, MapPinned, LifeBuoy, Rocket, GraduationCap,
-  Landmark,
+  Landmark, Plug,
 } from 'lucide-react';
 import { LogoutButton } from '../(customer)/profile/logout-button';
 import { RestaurantSwitcher } from './restaurant-switcher';
 import { DemoBanner } from '@/components/demo-banner';
 import { AdminShell, type NavGroup } from '@/components/shell/admin-shell';
+import { novaryqFlagOn } from '@/server/novaryq/config';
 
 // CRITICAL: icons are pre-rendered as JSX elements (not component
 // references) because AdminShell passes navGroups across the
@@ -37,6 +38,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/messages',       icon: <MessagesSquare className={ICON} />,  label: 'Messages' },
       { href: '/admin/reports',        icon: <BarChart3 className={ICON} />,       label: 'Reports' },
       { href: '/admin/flavrly-pg',     icon: <Landmark className={ICON} />,        label: 'Flavrly PG' },
+      { href: '/admin/integrations',   icon: <Plug className={ICON} />,            label: 'POS integration' },
       { href: '/admin/activity',       icon: <History className={ICON} />,         label: 'Activity' },
       { href: '/admin/feedback',       icon: <MessageSquare className={ICON} />,   label: 'Feedback' },
       { href: '/admin/reviews',        icon: <Star className={ICON} />,            label: 'Reviews' },
@@ -115,7 +117,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <AdminShell
       title={title}
       subtitle="Restaurant admin"
-      navGroups={NAV_GROUPS}
+      navGroups={novaryqFlagOn() ? NAV_GROUPS : NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => i.href !== '/admin/integrations') }))}
       topBanner={<DemoBanner />}
       footer={
         <>
