@@ -341,6 +341,8 @@ describe.skipIf(REAL)('simulator — signed at-least-once webhook delivery', () 
       externalCode: 'FLV-1234',
       status: 'IN_PREP',
       previousStatus: 'SENT',
+      from: 'SENT',
+      to: 'IN_PREP',
       occurredAt: expect.any(String),
     });
     expect(env.payload).toEqual(env.data);

@@ -564,6 +564,9 @@ export class NovaryqSimulator {
         externalCode: o.externalCode,
         status: o.status,
         previousStatus,
+        // NQ orders/order-status-event.ts also serves the catalog's historic from/to names.
+        from: previousStatus,
+        to: o.status,
         occurredAt,
       },
       o.locationId,
