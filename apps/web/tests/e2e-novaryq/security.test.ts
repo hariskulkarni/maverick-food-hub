@@ -271,6 +271,24 @@ describe('SSRF: tenant-supplied baseUrl', () => {
     }
   });
 
+  it('a transient DNS failure at call time is retryable, not a permanent FAILED (QA-F9)', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    try {
+      const { novaryqRequest } = await import(/* @vite-ignore */ '@/server/novaryq/client' as string);
+      const err = await novaryqRequest(
+        { baseUrl: 'https://app.novaryq.example', clientId: 'nq_live_x', secret: 'nqsec_x' },
+        'GET',
+        '/menu',
+        undefined,
+        { resolve: async () => { throw Object.assign(new Error('getaddrinfo EAI_AGAIN app.novaryq.example'), { code: 'EAI_AGAIN' }); } },
+      ).catch((e: unknown) => e);
+      expect(err).toMatchObject({ retryable: true });
+    } finally {
+      vi.unstubAllEnvs();
+      process.env.NOVARYQ_ALLOW_INSECURE_BASE_URL = 'true';
+    }
+  });
+
   it('in production the worker never calls a private baseUrl stored earlier', async () => {
     const s = await makeShop(sim);
     const order = await placeCod(s);
