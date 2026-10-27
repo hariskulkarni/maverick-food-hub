@@ -18,6 +18,7 @@ on:
           - signups-closed
           - cleanup-stale-orders-dryrun
           - cleanup-stale-orders-apply
+          - cleanup-stale-orders-apply-paid
 permissions:
   contents: read
 concurrency:
