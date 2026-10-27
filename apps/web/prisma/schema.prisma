@@ -1287,6 +1287,8 @@ model Order {
   reviewRequest     ReviewRequest?
   recoveryTicket    ServiceRecoveryTicket?
   novaryqSync       NovaryqOrderSync?
+  // Masked rider→customer calls (Exotel) — see model CallLog.
+  callLogs          CallLog[]
 
   @@index([branchId, status])
   @@index([branchId, status, createdAt])
@@ -2147,6 +2149,8 @@ model RiderProfile {
   supportTickets    RiderSupportTicket[]
   conversations     RiderConversation[]
   batchInvitations  BatchInvitation[]
+  // Masked rider→customer calls (Exotel) — see model CallLog.
+  callLogs          CallLog[]
 
   @@index([isOnline])
   @@index([branchId, isOnline])
@@ -4801,4 +4805,56 @@ model NovaryqWebhookEvent {
 
   @@index([processedAt, nextAttemptAt])
   @@index([restaurantId, receivedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Masked calling (Exotel "connect two numbers") — 2026-10-27
+// ─────────────────────────────────────────────────────────────────────────────
+// One row per rider → customer call request. The provider bridges the rider's
+// phone to the customer's through a virtual number (ExoPhone), so neither side
+// sees the other's number. NO phone numbers are stored here — only ids, the
+// provider's call SID and the outcome. `assignmentId` is a plain id (no FK)
+// because assignments are deleted when an order is released/reassigned and the
+// call history must survive that.
+enum CallLogStatus {
+  REQUESTED // row written, provider not yet asked
+  QUEUED // provider accepted the request
+  IN_PROGRESS // ringing / connected
+  COMPLETED
+  BUSY
+  NO_ANSWER
+  FAILED
+  CANCELED
+}
+
+model CallLog {
+  id                String        @id @default(cuid())
+  provider          String // "exotel"
+  providerCallSid   String?       @unique
+  direction         String        @default("RIDER_TO_CUSTOMER")
+  assignmentId      String
+  orderId           String
+  riderId           String // RiderProfile.id
+  initiatedById     String? // User.id that asked for the call (the rider)
+  status            CallLogStatus @default(REQUESTED)
+  // Talk time in seconds (provider's ConversationDuration) once the call ends.
+  durationSec       Int?
+  startedAt         DateTime?
+  endedAt           DateTime?
+  // Per-leg outcome from the provider ("completed", "busy", "no-answer", …).
+  riderLegStatus    String?
+  customerLegStatus String?
+  // Sanitised provider error (digit runs redacted) — never a phone number.
+  failureReason     String?
+  lastEventAt       DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  order Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([riderId, createdAt])
+  @@index([status, createdAt])
 }
