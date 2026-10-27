@@ -253,6 +253,14 @@ export function CheckoutForm({ branchId, addresses, walletBalance, loyaltyPoints
           scheduledFor: scheduledForIso
         })
       });
+      if (res.status === 403) {
+        // No verified mobile yet → the phone step, then back to checkout.
+        const gate = await res.clone().json().catch(() => null);
+        if (gate?.code === 'PHONE_VERIFICATION_REQUIRED' && typeof gate.redirectTo === 'string') {
+          window.location.href = gate.redirectTo;
+          return;
+        }
+      }
       if (!res.ok) {
         // P2-17: show the reason, never the raw JSON body.
         throw new Error(apiErrorMessage(await res.text().catch(() => ''), 'Failed to place order'));

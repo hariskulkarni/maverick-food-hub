@@ -275,6 +275,15 @@ model User {
   // Pre-launch test customer: its login OTP is shown on screen instead of being
   // sent by SMS (server/test-accounts.ts). Cleared on delete; remove at launch.
   isTestAccount     Boolean   @default(false)
+  // ---- Customer onboarding (Google sign-in + mandatory phone OTP) ----
+  // Set when the customer proves the phone by OTP (phone-OTP login, or the
+  // "Add your phone" step after Google sign-in). Ordering, checkout and table
+  // reservations require it for CUSTOMER accounts (server/customer-phone.ts).
+  phoneVerifiedAt   DateTime?
+  // Optional taste profile picked during onboarding (labels from lib/onboarding.ts).
+  favoriteCuisines  String[]  @default([])
+  // Set when the customer finishes (or skips through) the welcome onboarding.
+  onboardedAt       DateTime?
   avatarUrl        String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

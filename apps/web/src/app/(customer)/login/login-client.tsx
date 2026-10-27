@@ -13,6 +13,7 @@ import { MarketingPanel } from '@/components/auth/marketing-panel';
 import { PortalMarketingPanel } from '@/components/auth/portal-marketing-panel';
 import { CustomerAuthShell } from '@/components/auth/customer/customer-auth-shell';
 import { CustomerPhoneFlow, CustomerAuthLegal } from '@/components/auth/customer/customer-phone-flow';
+import { welcomeUrl } from '@/lib/onboarding';
 
 export type LoginRole = 'customer' | 'staff' | 'super';
 
@@ -236,23 +237,26 @@ export function LoginClient({
     }
   }
 
-  async function verifyOtp() {
+  async function verifyOtp(typed?: string) {
+    // Auto-submit passes the full code: `code` state is one keystroke behind then.
+    const otp = typed ?? code;
     setBusy(true);
     try {
       if (msg91Enabled && !builtinOtp) {
         // Verify the code in the widget, then hand the signed token to the server.
-        const accessToken = await verifyWidgetOtp(code);
+        const accessToken = await verifyWidgetOtp(otp);
         const r = await signIn('msg91-widget', { accessToken, phone, redirect: false });
         if (r?.error) { setPhoneError('Sign-in failed. Please try again.'); return; }
-        await routeByRole('/restaurants');
+        // /welcome finishes a new customer's onboarding, else continues to `next`.
+        window.location.href = welcomeUrl(next || '/restaurants');
         return;
       }
-      const r = await signIn('phone-otp', { phone, code, purpose: 'login', redirect: false });
+      const r = await signIn('phone-otp', { phone, code: otp, purpose: 'login', redirect: false });
       if (r?.error) { setPhoneError('That code is wrong or has expired. Check it, or tap Resend code.'); return; }
-      // Customers land on the restaurant picker (/restaurants) so they immediately
-      // choose a restaurant, then see its menu. routeByRole returns /restaurants
-      // for the CUSTOMER role; this fallback covers the rare case /api/me is slow.
-      await routeByRole('/restaurants');
+      // Customers go through /welcome: a brand-new account gets the short
+      // onboarding, everyone else continues straight to `next` (default: the
+      // restaurant picker). Riders are sent on to /rider-app from there.
+      window.location.href = welcomeUrl(next || '/restaurants');
     } catch (e) {
       setPhoneError((e as Error).message);
     } finally { setBusy(false); }
@@ -375,11 +379,12 @@ export function LoginClient({
       devCode={devCode}
       resendIn={resendIn}
       onSendOtp={() => { void sendOtp(); }}
-      onVerify={() => { void verifyOtp(); }}
+      onVerify={(c) => { void verifyOtp(c); }}
       onResend={() => { setCode(''); void sendOtp(); }}
       onChangeNumber={() => { setOtpSent(false); setCode(''); setDevCode(null); setPhoneError(null); }}
       googleEnabled={googleEnabled}
-      onGoogle={() => { void signIn('google', { callbackUrl: next || '/restaurants' }); }}
+      // After Google, /welcome asks for the mandatory verified mobile number.
+      onGoogle={() => { void signIn('google', { callbackUrl: welcomeUrl(next || '/restaurants') }); }}
     />
   );
 
@@ -630,13 +635,17 @@ export function LoginClient({
 
           {/* Footer links */}
           <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
-            <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
-              <div className="font-medium">New customer?</div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                You can sign up automatically after your first order — no separate
-                form needed.
+            <Link
+              href="/welcome"
+              className="group rounded-2xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-primary/40 hover:bg-primary/5"
+            >
+              <div className="font-medium">
+                New customer? <span className="text-primary group-hover:underline">Join Flavrly →</span>
               </div>
-            </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Sign up with Google or your mobile in under a minute.
+              </div>
+            </Link>
             <Link
               href="/signup/restaurant"
               className="group rounded-2xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-primary/40 hover:bg-primary/5"

@@ -6,6 +6,7 @@ import { BenefitUnavailableError } from '@/server/order-benefits';
 import { PaymentMethod, FulfillmentType } from '@prisma/client';
 import { log } from '@/server/log';
 import { parseOrJsonError } from '@/server/zod-helpers';
+import { phoneGateResponse } from '@/server/customer-phone';
 
 const Body = z.object({
   branchId: z.string(),
@@ -39,6 +40,9 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return new Response('Unauthorized', { status: 401 });
+  // Customers must have an OTP-verified phone (delivery contact) to order.
+  const phoneGate = phoneGateResponse(session, '/checkout');
+  if (phoneGate) return phoneGate;
 
   const parsed = parseOrJsonError(Body, await req.json());
   if (parsed instanceof Response) return parsed;

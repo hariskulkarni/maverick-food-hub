@@ -293,6 +293,11 @@ export function ReserveClient(props: ReserveClientProps) {
         }),
       });
       const data = await res.json();
+      if (res.status === 403 && data?.code === 'PHONE_VERIFICATION_REQUIRED' && typeof data.redirectTo === 'string') {
+        // No verified mobile yet → the phone step, then back here.
+        window.location.href = data.redirectTo;
+        return;
+      }
       if (!res.ok) {
         setError(data.error || 'Could not complete your booking.');
         // A 409 usually means the table was just taken — refresh availability.

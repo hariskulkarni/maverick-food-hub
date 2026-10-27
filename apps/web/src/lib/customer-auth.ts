@@ -27,8 +27,14 @@ export function toIndianE164(input: string): string {
   return d ? `+91${d}` : '';
 }
 
-/** National digits back out of a stored "+91…" value (for the input box). */
+/**
+ * National digits back out of a stored "+91…" value (for the input box).
+ * Strips the "+91" prefix itself: a partial value like "+91987" must show
+ * "987" while typing, not "91987" (toNationalDigits only drops a leading 91
+ * once there are more than 10 digits).
+ */
 export function nationalFromE164(value: string): string {
+  if (value.startsWith('+91')) return value.slice(3).replace(/\D/g, '').slice(0, 10);
   return toNationalDigits(value);
 }
 

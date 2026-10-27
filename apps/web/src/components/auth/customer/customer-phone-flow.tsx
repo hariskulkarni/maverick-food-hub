@@ -29,6 +29,7 @@ export function CustomerPhoneFlow({
   onChangeNumber,
   googleEnabled,
   onGoogle,
+  otpAnimated = false,
 }: {
   step: 'phone' | 'otp';
   phone: string;
@@ -43,11 +44,14 @@ export function CustomerPhoneFlow({
   /** Seconds until "Resend" is allowed; 0 = allowed now. */
   resendIn: number;
   onSendOtp: () => void;
-  onVerify: () => void;
+  /** `code` is passed on auto-submit (the parent's state may not have caught up yet). */
+  onVerify: (code?: string) => void;
   onResend: () => void;
   onChangeNumber: () => void;
   googleEnabled?: boolean;
   onGoogle?: () => void;
+  /** Digit pop micro-interaction on the code boxes (welcome onboarding). */
+  otpAnimated?: boolean;
 }) {
   const codeOk = isCompleteOtp(code);
 
@@ -138,10 +142,11 @@ export function CustomerPhoneFlow({
       <OtpField
         value={code}
         onChange={onCodeChange}
-        onComplete={() => { if (!busy) onVerify(); }}
+        onComplete={(c) => { if (!busy) onVerify(c); }}
         disabled={busy}
         invalid={!!error}
         describedBy="otp-help otp-error"
+        animated={otpAnimated}
       />
       <InlineError id="otp-error" message={error} />
 

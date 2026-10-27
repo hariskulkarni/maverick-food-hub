@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   toNationalDigits,
   toIndianE164,
+  nationalFromE164,
   isValidIndianMobile,
   formatIndianMobile,
   sanitizeOtp,
@@ -26,6 +27,16 @@ describe('phone helpers', () => {
     expect(toIndianE164('')).toBe('');
     // still passes the existing client-side check in the sign-in handlers
     expect(/^\+?\d{10,15}$/.test(toIndianE164('9876500001'))).toBe(true);
+  });
+
+  it('shows only the typed national digits for a partial +91 value (no stray 91)', () => {
+    expect(nationalFromE164('+919')).toBe('9');
+    expect(nationalFromE164('+91919')).toBe('919');
+    expect(nationalFromE164('+919876543210')).toBe('9876543210');
+    // Typing digit by digit through the field round-trips cleanly.
+    let v = '';
+    for (const ch of '9198765432') v = toIndianE164(nationalFromE164(v) + ch);
+    expect(v).toBe('+919198765432');
   });
 
   it('validates Indian mobiles', () => {

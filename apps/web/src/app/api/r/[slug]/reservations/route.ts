@@ -22,6 +22,7 @@ import { paymentProvider } from '@/server/payments';
 import { log } from '@/server/log';
 import { brand } from '@/lib/brand';
 import { resolveBranchForSlug, serializeReservation } from './_helpers';
+import { phoneGateResponse } from '@/server/customer-phone';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -63,6 +64,9 @@ export async function POST(
   if (!session?.user || session.user.role !== Role.CUSTOMER) {
     return Response.json({ error: 'Sign in to book a table' }, { status: 401 });
   }
+  // A table booking needs a verified phone so the restaurant can reach the guest.
+  const phoneGate = phoneGateResponse(session, `/r/${slug}`);
+  if (phoneGate) return phoneGate;
 
   let body: Record<string, unknown> = {};
   try {
