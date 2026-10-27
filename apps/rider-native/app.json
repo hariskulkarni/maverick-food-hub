@@ -42,7 +42,7 @@
       ],
       "config": {
         "googleMaps": {
-          "apiKey": "REPLACE_WITH_GOOGLE_MAPS_ANDROID_KEY"
+          "apiKey": ""
         }
       }
     },
