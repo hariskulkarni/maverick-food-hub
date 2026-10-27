@@ -7,6 +7,8 @@
 #   bash scripts/server-ops.sh install-cron      # install deploy/flavrly-jobs.cron into /etc/cron.d (needs sudo -n)
 #   bash scripts/server-ops.sh novaryq-on        # NOVARYQ_INTEGRATION_ENABLED=true in .env, then restart rm-web
 #   bash scripts/server-ops.sh novaryq-off       # NOVARYQ_INTEGRATION_ENABLED=false in .env, then restart rm-web
+#   bash scripts/server-ops.sh signups-open      # ALLOW_CUSTOMER_SELF_SIGNUP=true (anyone can sign up), restart
+#   bash scripts/server-ops.sh signups-closed    # ALLOW_CUSTOMER_SELF_SIGNUP=false (invite-only), restart
 #
 # Never prints secret values: env checks report only whether a name is set.
 set -euo pipefail
@@ -86,5 +88,7 @@ case "${1:-}" in
   install-cron) install_cron ;;
   novaryq-on) set_flag NOVARYQ_INTEGRATION_ENABLED true ;;
   novaryq-off) set_flag NOVARYQ_INTEGRATION_ENABLED false ;;
+  signups-open) set_flag ALLOW_CUSTOMER_SELF_SIGNUP true ;;
+  signups-closed) set_flag ALLOW_CUSTOMER_SELF_SIGNUP false ;;
   *) sed -n '2,12p' "$0"; exit 1 ;;
 esac

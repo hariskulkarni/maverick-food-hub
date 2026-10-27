@@ -14,6 +14,8 @@ on:
           - install-cron
           - novaryq-on
           - novaryq-off
+          - signups-open
+          - signups-closed
 permissions:
   contents: read
 concurrency:
@@ -37,7 +39,7 @@ jobs:
           APP_DIR: ${{ vars.APP_DIR || '/opt/restaurant-manager' }}
           ACTION: ${{ inputs.action }}
         run: |
-          case "$ACTION" in status|install-cron|novaryq-on|novaryq-off) ;; *) echo "bad action"; exit 1;; esac
+          case "$ACTION" in status|install-cron|novaryq-on|novaryq-off|signups-open|signups-closed) ;; *) echo "bad action"; exit 1;; esac
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "bash -lc 'cd ${APP_DIR} && bash scripts/server-ops.sh ${ACTION}'"
