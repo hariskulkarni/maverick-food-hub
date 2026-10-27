@@ -27,7 +27,7 @@ const PREVIOUS_LINKS = [
 // Added after the grouping: sub-pages that get their own menu entry.
 const ADDED_LINKS = ['/platform/users/test-accounts'];
 // Top-level pages added after the grouping (platform:admin, so no delegated role sees them).
-const NEW_PAGES = ['/platform/novaryq'];
+const NEW_PAGES = ['/platform/novaryq', '/platform/safety-alerts'];
 
 describe('platform nav config', () => {
   it('keeps every previous link, each exactly once', () => {

@@ -191,6 +191,13 @@ enum EscalationType {
   COD_NOT_RECONCILED
   RIDER_STATIONARY // dispatch telemetry: on-task rider parked away from pickup/drop (server-side GPS check)
   POS_VOIDED // Novaryq POS voided an order Flavrly may not auto-cancel (past pickup / past restaurant-cancel)
+  // ── Rider safety & anomaly alerts (feat/rider-safety-alerts) ─────────────────
+  // Raised by the safety-alerts sweep (server/safety/alerts.ts). All debounced
+  // per assignment and auto-resolved when the condition clears or the order ends.
+  ROUTE_DEVIATION // on-task rider persistently off the expected restaurant→customer corridor
+  ETA_BREACH // projected/elapsed delivery time past the promised time by a threshold
+  LONG_WAIT_AT_RESTAURANT // rider at the restaurant geofence but order not picked up after X min
+  SIGNAL_LOST // prolonged GPS signal loss on an active delivery (ops should call the rider)
 }
 
 enum EscalationSeverity {

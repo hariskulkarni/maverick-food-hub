@@ -13,9 +13,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DetailDrawer, DrawerSection } from '@/components/admin/detail-drawer';
+import Link from 'next/link';
 import {
   AlertTriangle, Clock, Bike, Phone, Wallet, RefreshCw, ArrowUpRight, Loader2, Check,
-  CheckCircle2, MapPin, ShieldAlert
+  CheckCircle2, MapPin, ShieldAlert, Route, Store, WifiOff
 } from 'lucide-react';
 
 type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
@@ -29,7 +30,11 @@ type EscType =
   | 'CUSTOMER_UNREACHABLE'
   | 'PAYMENT_WEBHOOK_DELAY'
   | 'COD_NOT_RECONCILED'
-  | 'POS_VOIDED';
+  | 'POS_VOIDED'
+  | 'ROUTE_DEVIATION'
+  | 'ETA_BREACH'
+  | 'LONG_WAIT_AT_RESTAURANT'
+  | 'SIGNAL_LOST';
 
 interface Escalation {
   id: string;
@@ -46,7 +51,7 @@ interface Escalation {
     status: string;
     customer: { id: string; name: string | null; phone: string | null };
     branch: { name: string; restaurant: { id: string; name: string } };
-    assignment?: { rider?: { user: { name: string | null; phone: string | null } | null } | null } | null;
+    assignment?: { rider?: { id: string; user: { name: string | null; phone: string | null } | null } | null } | null;
   };
 }
 
@@ -241,6 +246,13 @@ function AlertCard({
             <Button size="sm" variant="ghost" onClick={onOpen} disabled={pending}>
               <ArrowUpRight className="size-4" /> Open order
             </Button>
+            {esc.order.assignment?.rider?.id && (
+              <Button asChild size="sm" variant="ghost">
+                <Link href={`/platform/riders/${esc.order.assignment.rider.id}/insights`}>
+                  <MapPin className="size-4" /> See on map
+                </Link>
+              </Button>
+            )}
           </div>
         </div>
       </CardContent>
@@ -389,6 +401,10 @@ function iconForType(t: EscType) {
     case 'CUSTOMER_UNREACHABLE':  return Phone;
     case 'PAYMENT_WEBHOOK_DELAY': return Wallet;
     case 'COD_NOT_RECONCILED':    return Wallet;
+    case 'ROUTE_DEVIATION':       return Route;
+    case 'ETA_BREACH':            return Clock;
+    case 'LONG_WAIT_AT_RESTAURANT': return Store;
+    case 'SIGNAL_LOST':           return WifiOff;
     default:                      return AlertTriangle;
   }
 }
@@ -403,7 +419,11 @@ function humanType(t: EscType) {
     CUSTOMER_UNREACHABLE:  'Customer unreachable',
     PAYMENT_WEBHOOK_DELAY: 'Payment webhook delay',
     COD_NOT_RECONCILED:    'COD not reconciled',
-    POS_VOIDED:            'Voided in POS (Novaryq)'
+    POS_VOIDED:            'Voided in POS (Novaryq)',
+    ROUTE_DEVIATION:       'Off route',
+    ETA_BREACH:            'Running late',
+    LONG_WAIT_AT_RESTAURANT: 'Long wait at restaurant',
+    SIGNAL_LOST:           'Signal lost'
   } as Record<EscType, string>)[t] ?? t;
 }
 
