@@ -1,9 +1,9 @@
 ---
 title: What Flavrly records while you're online
-summary: The location, online/offline times and device, network and battery info the rider app sends while you're online or on a delivery, why, who sees it, how long it is kept, and what is never collected.
+summary: The location, online/offline times and device, network and battery info the rider app sends while you're online or on a delivery, why, who sees it, how long it is kept, what is never collected, and how Flavrly checks that your location and app are genuine for fraud prevention.
 audience: RIDER
 appArea: rider.delivery
-tags: privacy, location, device, battery, network, data, online, offline, signal, tracking
+tags: privacy, location, device, battery, network, data, online, offline, signal, tracking, fraud, mock location, fake gps, integrity, authenticity
 related: rider-navigation-and-background-location, rider-go-online, rider-delivery-steps
 language: en
 ---
@@ -17,6 +17,16 @@ Flavrly records the items below **only while you are online or on an active deli
 - **Online and offline times**: when you go online or offline, when the app stops responding and you are set offline automatically, and when your signal is lost and comes back during a delivery.
 - **Device and network info**: your phone model, Android or iOS version, Flavrly app version, network type (Wi-Fi or mobile data, plus 4G or 5G when your phone reports it), battery level and whether the phone is charging.
 
+## Checking location and app are genuine (fraud prevention)
+
+So that deliveries are fair for everyone, Flavrly checks that the location you share is real and that you are using the genuine Flavrly app:
+
+- **Fake/mock GPS**: Android tells the app when a location is a "mock" (set by a fake-GPS app). A mock location is never used as your live position, and repeated mock locations are flagged for a Flavrly review.
+- **Unrealistic movement**: obviously impossible movement (for example jumping several kilometres in a few seconds) is flagged for review.
+- **App and device integrity**: when you sign in and start a shift, your phone's Android system confirms you are running the official Flavrly app on a standard device. Flavrly receives only a pass/fail *result* of this check — **not** a list of your apps and **not** any personal information.
+
+If something looks off, your account may be reviewed by the Flavrly team. Nothing here reads your personal phone activity.
+
 ## What is never collected
 
 - Your IMEI or other phone identifiers.
@@ -28,6 +38,7 @@ Flavrly records the items below **only while you are online or on an active deli
 - So customers, restaurants and Flavrly support can follow a delivery.
 - To check a delivery's distance and time if there is a question about it.
 - To fix problems: for example, when your location stops updating, support can see whether the phone lost signal, the battery was low, or the app needs an update.
+- To prevent fraud, by checking your shared location and the app are genuine (see below) — this keeps orders and earnings fair for every rider.
 
 ## Who can see it
 

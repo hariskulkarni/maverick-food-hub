@@ -17,7 +17,7 @@ const ICONS: Record<PlatformNavIcon, LucideIcon> = {
   orders: ListOrdered, restaurants: Building2, brands: Layers, cms: LayoutTemplate, qr: QrCode,
   feedback: MessageSquare, reviews: Star,
   riders: Bike, kyc: BadgeCheck, shifts: CalendarClock, dispatch: Timer, surge: Flame, settings: SlidersHorizontal,
-  training: GraduationCap, appReleases: Smartphone,
+  training: GraduationCap, appReleases: Smartphone, integrity: ShieldAlert,
   payoutRules: Receipt, riderPayouts: Wallet, incentives: Trophy, tiers: Award, referrals: UserPlus,
   sos: Siren, incidents: ShieldAlert, riderSupport: Headphones, messages: MessagesSquare,
   settlements: Banknote, cod: Coins, gateways: Landmark, pg: CreditCard, pgAdmin: Gauge,

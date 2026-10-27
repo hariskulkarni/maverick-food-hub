@@ -43,6 +43,7 @@ import { useRiderLocation } from '../../lib/use-rider-location';
 import { pickTrackedOrderId, syncDeliveryTracking } from '../../lib/delivery-tracking';
 import { hasBackgroundPermission, stopDeliveryTracking } from '../../lib/background-location';
 import { readDeviceContext } from '../../lib/device-context';
+import { attestDeviceIntegrity } from '../../lib/integrity';
 
 /** A square quick-action tile on the dashboard. */
 function QuickAction({
@@ -336,6 +337,8 @@ export default function DashboardScreen() {
         // Going offline ends all background tracking.
         void stopDeliveryTracking();
       } else {
+        // Device attestation (Play Integrity) at shift start — best-effort.
+        void attestDeviceIntegrity();
         // Keep the rider live while the phone is locked / in another app.
         const running = await syncDeliveryTracking(assignments, true);
         if (!running) void offerBackgroundLocation();
@@ -355,6 +358,10 @@ export default function DashboardScreen() {
           { text: 'Upload documents', onPress: () => router.push('/kyc') },
         ]);
         api.kyc().then((k) => setKycGate(k.gating ?? null)).catch(() => {});
+      } else if (e instanceof ApiError && e.status === 409 && (e.body as { code?: string } | null)?.code === 'integrity/failed') {
+        // Device-integrity gate (platform setting on): the device failed Play
+        // Integrity attestation. Fraud prevention — not about personal phone use.
+        Alert.alert('Security check failed', e.message, [{ text: 'OK' }]);
       } else {
         Alert.alert(
           'Could not update status',

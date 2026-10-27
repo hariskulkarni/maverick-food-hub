@@ -12,7 +12,7 @@
 export type PlatformNavIcon =
   | 'dashboard' | 'analytics' | 'reports' | 'live' | 'liveOps'
   | 'orders' | 'restaurants' | 'brands' | 'cms' | 'qr' | 'feedback' | 'reviews'
-  | 'riders' | 'kyc' | 'shifts' | 'dispatch' | 'surge' | 'settings' | 'training' | 'appReleases'
+  | 'riders' | 'kyc' | 'shifts' | 'dispatch' | 'surge' | 'settings' | 'training' | 'appReleases' | 'integrity'
   | 'payoutRules' | 'riderPayouts' | 'incentives' | 'tiers' | 'referrals'
   | 'sos' | 'incidents' | 'riderSupport' | 'messages'
   | 'settlements' | 'cod' | 'gateways' | 'pg' | 'pgAdmin'
@@ -64,6 +64,7 @@ export const PLATFORM_NAV: PlatformNavGroup[] = [
     title: 'Riders & dispatch',
     items: [
       { href: '/platform/riders', label: 'Riders', icon: 'riders', keywords: ['delivery', 'partner', 'fleet'] },
+      { href: '/platform/rider-integrity', label: 'Location integrity', icon: 'integrity', keywords: ['fraud', 'fake gps', 'mock location', 'spoof', 'tamper', 'anti-fraud'] },
       { href: '/platform/kyc', label: 'KYC review', icon: 'kyc', keywords: ['documents', 'verification', 'license', 'aadhaar'] },
       { href: '/platform/rider-shifts', label: 'Rider shifts', icon: 'shifts', keywords: ['schedule', 'roster'] },
       { href: '/platform/dispatch-insights', label: 'Dispatch insights', icon: 'dispatch', keywords: ['jit', 'food ready', 'prep time'] },

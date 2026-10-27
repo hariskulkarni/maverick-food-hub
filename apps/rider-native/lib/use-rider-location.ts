@@ -64,7 +64,10 @@ export function useRiderLocation(opts: { orderId: string | null; enabled: boolea
           const lng = first.coords.longitude;
           setPosition({ lat, lng });
           if (!isBackgroundTrackingActive()) {
-            api.sendLocation(lat, lng, orderId ?? undefined, undefined, first.timestamp).catch(() => {});
+            // `accuracy` (m) + `mocked` (OS fake-GPS flag) feed location-integrity.
+            const accuracy = first.coords.accuracy ?? undefined;
+            const mocked = (first as { mocked?: boolean }).mocked;
+            api.sendLocation(lat, lng, orderId ?? undefined, undefined, first.timestamp, accuracy, mocked).catch(() => {});
           }
         }
       } catch {
@@ -97,7 +100,9 @@ export function useRiderLocation(opts: { orderId: string | null; enabled: boolea
           // Fire-and-forget — a dropped ping just means one missed update.
           // Skipped while the background task is streaming the same fixes.
           if (!isBackgroundTrackingActive()) {
-            api.sendLocation(lat, lng, orderId ?? undefined, speedKph, loc.timestamp).catch(() => {});
+            const accuracy = loc.coords.accuracy ?? undefined;
+            const mocked = (loc as { mocked?: boolean }).mocked;
+            api.sendLocation(lat, lng, orderId ?? undefined, speedKph, loc.timestamp, accuracy, mocked).catch(() => {});
           }
         }
       );

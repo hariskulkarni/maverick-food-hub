@@ -22,7 +22,7 @@ const PREVIOUS_LINKS = [
   '/platform/messages', '/platform/rider-payouts', '/platform/rider-incentives', '/platform/surge-zones',
   '/platform/rider-tiers', '/platform/rider-referrals', '/platform/rider-sos', '/platform/rider-incidents',
   '/platform/rider-shifts', '/platform/rider-support', '/platform/training-modules', '/platform/rider-settings',
-  '/platform/app-releases',
+  '/platform/app-releases', '/platform/rider-integrity',
 ];
 // Added after the grouping: sub-pages that get their own menu entry.
 const ADDED_LINKS = ['/platform/users/test-accounts'];

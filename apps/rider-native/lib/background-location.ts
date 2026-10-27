@@ -110,6 +110,10 @@ export interface QueuedPoint {
   recordedAt: number;
   /** Absent for idle (online, no delivery) points. */
   orderId?: string;
+  /** Reported horizontal accuracy (m) — location-integrity signal. */
+  accuracy?: number;
+  /** OS fake-GPS flag (Android) — the server never treats a mocked fix as live. */
+  mocked?: boolean;
 }
 
 interface TrackingState {
@@ -279,10 +283,14 @@ TaskManager.defineTask(DELIVERY_LOCATION_TASK, async ({ data, error }) => {
       .filter((l) => Number.isFinite(l.coords.latitude) && Number.isFinite(l.coords.longitude))
       .map((l) => {
         const speed = l.coords.speed;
+        const accuracy = l.coords.accuracy;
+        const mocked = (l as { mocked?: boolean }).mocked;
         return {
           lat: l.coords.latitude,
           lng: l.coords.longitude,
           ...(speed != null && speed >= 0 ? { speedKph: speed * 3.6 } : {}),
+          ...(accuracy != null && accuracy >= 0 ? { accuracy } : {}),
+          ...(mocked ? { mocked: true } : {}),
           recordedAt: Math.round(l.timestamp || Date.now()),
           ...(orderId ? { orderId } : {}),
         };

@@ -2139,6 +2139,11 @@ model RiderProfile {
   totalTips             Decimal   @default(0.00) @db.Decimal(12, 2)
   approvedById          String? // SUPER_ADMIN id who approved this rider
   approvedAt            DateTime?
+  // Location-integrity (anti-fraud, 2026-10-27). Denormalised onto the profile
+  // so dispatch / pool queries can gate cheaply without a join; the rich
+  // evidence lives in RiderIntegrityState + RiderSpoofEvent.
+  locationSuspect       Boolean   @default(false) // flagged for ops review (fake GPS / failed device integrity)
+  offersPaused          Boolean   @default(false) // new order offers withheld (only set when the auto-pause setting is on)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -2173,7 +2178,12 @@ model RiderProfile {
   deviceSnapshot RiderDeviceSnapshot?
   deviceSamples  RiderDeviceSample[]
 
+  // Rider location-integrity (anti-fraud, 2026-10-27)
+  integrityState RiderIntegrityState?
+  spoofEvents    RiderSpoofEvent[]
+
   @@index([isOnline])
+  @@index([locationSuspect])
   @@index([branchId, isOnline])
   @@index([riderType, isOnline])
   @@index([dedicatedRestaurantId, isOnline])
@@ -2856,6 +2866,99 @@ model RiderDeviceSample {
 
   @@index([riderId, capturedAt])
   @@index([capturedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Rider location-integrity / anti-fraud (2026-10-27) — additive
+// ─────────────────────────────────────────────────────────────────────────────
+// Fraud prevention on OPERATIONAL location data only: detect fake/mock GPS and
+// tampered devices so a rider cannot fake where they are. This is NOT
+// surveillance of the rider's personal phone use — nothing here reads other
+// installed/running apps, call state/logs, contacts, IMEI or personal activity.
+// Signals: expo-location `mocked` flag, server-side movement heuristics
+// (teleport, impossible speed, repeated/round coordinates, frozen position,
+// device-clock skew) and Google Play Integrity device attestation.
+// Spoof-event evidence is pruned by the daily obs-retention job.
+
+enum RiderIntegrityStatus {
+  CLEAR // nothing suspicious
+  FLAGGED // routed to the ops review queue
+  CLEARED // an operator reviewed and dismissed it
+}
+
+/// Google Play Integrity device-attestation verdict (Android). UNEVALUATED is
+/// what we store when Play Integrity is not configured, so nothing blocks.
+enum RiderIntegrityVerdict {
+  MEETS_DEVICE_INTEGRITY
+  MEETS_BASIC_INTEGRITY
+  FAILED
+  UNEVALUATED
+}
+
+/// One suspicion signal (one ping or one shift aggregate). `reason` is human
+/// text for the ops queue; `score` is the suspicion weight it contributed.
+model RiderSpoofEvent {
+  id      String @id @default(cuid())
+  riderId String
+  orderId String? // the order in flight when detected, if any
+  /// MOCK_FLAG | TELEPORT | IMPOSSIBLE_SPEED | REPEAT_COORD | ROUND_ACCURACY | FROZEN | CLOCK_SKEW | INTEGRITY_FAILED
+  kind    String
+  score   Int
+  reason  String
+  lat     Float?
+  lng     Float?
+  at      DateTime @default(now())
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, at])
+  @@index([at])
+}
+
+/// Per-rider integrity state (one row). Shift counters reset when the rider
+/// goes online; the latest Play Integrity verdict and review metadata persist.
+model RiderIntegrityState {
+  id      String               @id @default(cuid())
+  riderId String               @unique
+  status  RiderIntegrityStatus @default(CLEAR)
+
+  // Current-shift counters (reset on going online).
+  shiftStartedAt  DateTime?
+  mockPingCount   Int       @default(0)
+  spoofEventCount Int       @default(0)
+  spoofScore      Int       @default(0)
+  lastSpoofAt     DateTime?
+
+  // Latest device-attestation verdict.
+  verdict          RiderIntegrityVerdict @default(UNEVALUATED)
+  verdictDetail    String? // short reason, e.g. the failed Play Integrity labels
+  verdictCheckedAt DateTime?
+
+  // Review workflow.
+  flaggedAt     DateTime?
+  flaggedReason String?
+  reviewedById  String? // SUPER_ADMIN / riders:write operator
+  reviewedAt    DateTime?
+  reviewNote    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+/// Single global anti-fraud policy (super-admin). Enforcement actions default
+/// OFF: a suspect rider is always flagged for review, never silently blocked.
+model RiderIntegrityConfig {
+  id                    String   @id @default("singleton")
+  mockPingThreshold     Int      @default(3) // mocked pings in a shift before flagging
+  autoPauseOffers       Boolean  @default(false) // pause new order offers to a flagged rider
+  gateOnlineOnFailed    Boolean  @default(false) // block going online on a FAILED integrity verdict
+  updatedById           String?
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
 }
 
 /// Path summary per delivered assignment, reconstructed from DeliveryLocationPing.

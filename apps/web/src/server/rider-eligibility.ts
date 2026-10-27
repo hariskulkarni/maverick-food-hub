@@ -15,6 +15,7 @@ export type IneligibleCode =
   | 'not_approved'
   | 'account_inactive'
   | 'offline'
+  | 'offers_paused'
   | 'policy'
   | 'kyc_incomplete'
   | 'at_capacity';
@@ -49,6 +50,7 @@ export async function checkRiderEligibility(
       id: true,
       approvedAt: true,
       isOnline: true,
+      offersPaused: true,
       riderType: true,
       dedicatedRestaurantId: true,
       user: { select: { deletedAt: true, suspendedAt: true, isTestAccount: true } },
@@ -57,6 +59,18 @@ export async function checkRiderEligibility(
   if (!rider) return { ok: false, code: 'not_found', status: 404, message: 'Rider not found.' };
   if (rider.user.deletedAt || rider.user.suspendedAt) {
     return { ok: false, code: 'account_inactive', status: 403, message: 'This rider account is not active.' };
+  }
+  // Location-integrity: offers are paused for a flagged rider ONLY while the
+  // auto-pause platform setting is on (service.ts sets offersPaused). This
+  // never hard-blocks on its own — an operator clears or resumes from the
+  // /platform/rider-integrity review queue.
+  if (rider.offersPaused) {
+    return {
+      ok: false,
+      code: 'offers_paused',
+      status: 403,
+      message: 'New orders are paused for this rider pending a location-integrity review.',
+    };
   }
   if (!rider.approvedAt) return { ok: false, code: 'not_approved', status: 403, message: 'Rider not approved.' };
   if (opts.requireOnline && !rider.isOnline) {

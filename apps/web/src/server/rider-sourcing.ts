@@ -244,9 +244,12 @@ export async function targetRidersForNewOrder(
 
   const restaurant = order.branch.restaurant;
 
-  // Base filter: online riders with a usable push token.
+  // Base filter: online riders with a usable push token. Location-integrity:
+  // riders whose offers are paused (flagged for fraud review, auto-pause
+  // setting on) are never pushed new orders.
   const onlineWithToken = {
     isOnline: true,
+    offersPaused: false,
     expoPushToken: { not: null },
     ...testSide,
   } as const;

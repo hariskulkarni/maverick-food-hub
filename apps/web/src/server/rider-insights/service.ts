@@ -8,6 +8,7 @@ import { RIDER_SIGNAL_STALE_MS } from '@/lib/live-fleet';
 import { downsample, reconstructPath, type PathPoint } from './path';
 import { windowStats, type DeliveryLite, type StatusType } from './stats';
 import { loadTripPoints, storeTripSummary } from './trips';
+import { getRiderIntegrity } from '../rider-integrity/service';
 
 /** Pings loaded for the 7-day stats (a rider online 12 h/day at one per ~15 s is ~20k). */
 export const STATS_MAX_PINGS = 60_000;
@@ -111,7 +112,12 @@ export async function getRiderInsights(riderId: string, nowDate: Date = new Date
 
   const signalLost = !!heartbeat?.signalLostAt || (rider.isOnline && (lastSeen === null || now - lastSeen > RIDER_SIGNAL_STALE_MS));
 
+  // Location-integrity (anti-fraud): suspicion events, mock-ping count, device
+  // attestation verdict and the review state. See server/rider-integrity.
+  const integrity = await getRiderIntegrity(riderId);
+
   return {
+    integrity,
     rider: {
       id: rider.id,
       name: rider.user.name,

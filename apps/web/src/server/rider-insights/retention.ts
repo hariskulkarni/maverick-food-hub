@@ -14,6 +14,7 @@ export const RIDER_INSIGHTS_RETENTION_DAYS = {
   statusEvents: 90,
   deviceSamples: 30,
   deviceSnapshot: 90,
+  spoofEvents: 90, // location-integrity evidence (anti-fraud)
 } as const;
 
 /** Pings are deleted in chunks so the first run on a large table never holds one huge delete. */
@@ -25,10 +26,11 @@ const daysAgo = (now: Date, d: number) => new Date(now.getTime() - d * 86_400_00
 export async function runRiderInsightsRetention(now: Date = new Date()) {
   const trips = await runTripSummaries({ limit: 1000, now });
 
-  const [events, samples, snapshots] = await Promise.all([
+  const [events, samples, snapshots, spoofs] = await Promise.all([
     prisma.riderStatusEvent.deleteMany({ where: { at: { lt: daysAgo(now, RIDER_INSIGHTS_RETENTION_DAYS.statusEvents) } } }),
     prisma.riderDeviceSample.deleteMany({ where: { capturedAt: { lt: daysAgo(now, RIDER_INSIGHTS_RETENTION_DAYS.deviceSamples) } } }),
     prisma.riderDeviceSnapshot.deleteMany({ where: { capturedAt: { lt: daysAgo(now, RIDER_INSIGHTS_RETENTION_DAYS.deviceSnapshot) } } }),
+    prisma.riderSpoofEvent.deleteMany({ where: { at: { lt: daysAgo(now, RIDER_INSIGHTS_RETENTION_DAYS.spoofEvents) } } }),
   ]);
 
   const pingCutoff = daysAgo(now, RIDER_INSIGHTS_RETENTION_DAYS.breadcrumbs);
@@ -43,6 +45,12 @@ export async function runRiderInsightsRetention(now: Date = new Date()) {
 
   return {
     tripSummaries: trips.summarized,
-    deleted: { breadcrumbs: pings, statusEvents: events.count, deviceSamples: samples.count, deviceSnapshots: snapshots.count },
+    deleted: {
+      breadcrumbs: pings,
+      statusEvents: events.count,
+      deviceSamples: samples.count,
+      deviceSnapshots: snapshots.count,
+      spoofEvents: spoofs.count,
+    },
   };
 }

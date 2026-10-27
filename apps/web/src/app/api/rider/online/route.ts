@@ -5,6 +5,8 @@ import { prisma } from '@/server/db';
 import { shiftGateBlockers } from '@/server/training/service';
 import { riderKycGate } from '@/server/rider-kyc-gate';
 import { recordStatusEvents } from '@/server/rider-insights/status-events';
+import { getIntegrityConfig } from '@/server/rider-integrity/config';
+import { resetShiftCounters } from '@/server/rider-integrity/service';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,6 +45,28 @@ export async function POST(req: NextRequest) {
         { status: 409 },
       );
     }
+    // Device-integrity gate (platform setting gateOnlineOnFailed, DEFAULT OFF):
+    // only when turned on does a FAILED Play Integrity verdict block going
+    // online. Going OFFLINE is never blocked. Degrades cleanly — when Play
+    // Integrity isn't configured the verdict is UNEVALUATED and nothing blocks.
+    const integrityCfg = await getIntegrityConfig();
+    if (integrityCfg.gateOnlineOnFailed) {
+      const st = await prisma.riderIntegrityState.findUnique({
+        where: { riderId: rp.id },
+        select: { verdict: true },
+      });
+      if (st?.verdict === 'FAILED') {
+        return Response.json(
+          {
+            error: 'integrity_failed',
+            message:
+              'Your device failed a security check. Please use the official Flavrly app on a standard, un-rooted device, or contact support.',
+            code: 'integrity/failed',
+          },
+          { status: 409 },
+        );
+      }
+    }
   }
   const before = await prisma.riderProfile.findUnique({ where: { userId: session.user.id }, select: { isOnline: true } });
   const p = await prisma.riderProfile.update({ where: { userId: session.user.id }, data: { isOnline: online } });
@@ -61,6 +85,9 @@ export async function POST(req: NextRequest) {
       create: { riderId: p.id, lastSeenAt: now },
       update: { lastSeenAt: now },
     });
+    // Location-integrity: the mock-ping / spoof-score tallies are per shift, so
+    // a new shift starts from zero. Review history + device verdict persist.
+    await resetShiftCounters(p.id, now);
   }
   return Response.json(p);
 }

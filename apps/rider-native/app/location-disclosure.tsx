@@ -109,6 +109,11 @@ export default function LocationDisclosureScreen() {
             body="So we can offer you orders near you and keep you online while your phone is in your pocket, so the customer can follow their order on the live map, the restaurant and Flavrly support can see where the order is, and for your safety if something goes wrong on the road."
           />
           <Point
+            icon="shield-checkmark-outline"
+            title="Keeping deliveries fair"
+            body="To prevent fraud, Flavrly checks that the location you share is genuine (not a fake-GPS / mock location) and that you are using the official Flavrly app on a standard device. We receive only a pass/fail result of that app check — never the list of apps on your phone, your calls, or anything about your personal phone use."
+          />
+          <Point
             icon="time-outline"
             title="When"
             body="In the background only from the moment you go online until you go offline (and during any delivery you accept, until it is delivered, cancelled or closed by support). You can keep using Google Maps or lock your phone; tracking continues. It never runs while you are offline."
