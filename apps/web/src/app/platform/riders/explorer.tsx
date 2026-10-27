@@ -1,12 +1,13 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DetailDrawer, DrawerSection } from '@/components/admin/detail-drawer';
 import { toast } from 'sonner';
-import { Search, X, Bike, Phone, Star, Wallet, Plus, Minus, Save, Loader2, MapPin } from 'lucide-react';
+import { Search, X, Bike, Phone, Star, Wallet, Plus, Minus, Save, Loader2, MapPin, Activity } from 'lucide-react';
 import { PayoutOverridePanel } from './payout-override-panel';
 
 interface RiderRow {
@@ -101,6 +102,13 @@ function RiderCard({ r, onOpen }: { r: RiderRow; onOpen: () => void }) {
               <div className="font-semibold truncate">{r.user.name ?? r.user.phone}</div>
               <div className="text-xs text-muted-foreground font-mono">{r.user.phone}</div>
               <div className="text-[11px] text-muted-foreground mt-0.5">{r.vehicleType} · {r.vehicleNumber ?? '—'}</div>
+              <Link
+                href={`/platform/riders/${r.id}/insights`}
+                onClick={(e) => e.stopPropagation()}
+                className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+              >
+                <Activity className="size-3" /> Insights
+              </Link>
             </div>
           </div>
           <div className="text-right shrink-0">
@@ -195,6 +203,9 @@ function RiderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
       <DrawerSection title="Contact">
         <div className="p-4 text-sm space-y-1.5">
           <div className="flex items-center gap-2"><Phone className="size-4 text-muted-foreground" /> <span className="font-mono">{p.user.phone}</span></div>
+          <Link href={`/platform/riders/${id}/insights`} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+            <Activity className="size-3.5" /> Open insights — status timeline, device, travel paths
+          </Link>
           {p.currentLat != null && p.currentLng != null && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <MapPin className="size-3.5" /> Last known location: {p.currentLat.toFixed(4)}, {p.currentLng.toFixed(4)}
