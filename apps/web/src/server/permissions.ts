@@ -231,6 +231,7 @@ const RAW_PAGE_GATES: ReadonlyArray<{ prefix: string; capability: Capability }> 
   { prefix: '/platform/rider-support', capability: 'riders:read' },
   { prefix: '/platform/rider-sos', capability: 'riders:read' },
   { prefix: '/platform/rider-incidents', capability: 'riders:read' },
+  { prefix: '/platform/rider-integrity', capability: 'riders:read' }, // anti-fraud review queue (actions require riders:write)
   { prefix: '/platform/riders', capability: 'riders:read' },
   // Ops
   { prefix: '/platform/orders', capability: 'ops:read' },

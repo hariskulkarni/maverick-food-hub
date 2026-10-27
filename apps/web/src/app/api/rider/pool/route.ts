@@ -21,12 +21,17 @@ export async function GET(req: NextRequest) {
     select: {
       id: true,
       approvedAt: true,
+      offersPaused: true,
       riderType: true,
       dedicatedRestaurantId: true,
       user: { select: { isTestAccount: true } },
     }
   });
   if (!profile || !profile.approvedAt) return new Response('Rider not approved', { status: 403 });
+  // Location-integrity: a rider whose offers are paused (flagged for fraud
+  // review, auto-pause setting on) sees an empty pool — they cannot claim
+  // anyway (checkRiderEligibility), so don't surface orders they can't take.
+  if (profile.offersPaused) return Response.json([]);
   const isTestAccount = profile.user.isTestAccount;
 
   // Widen a DEDICATED rider's eligibility to their whole group (parent +

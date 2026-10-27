@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Battery, BatteryCharging, Clock, Download, Loader2, MapPin, Pause, Play, RefreshCw,
-  Route, Signal, Smartphone, Wifi, WifiOff,
+  Route, Signal, ShieldAlert, ShieldCheck, Smartphone, Wifi, WifiOff,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -197,6 +197,8 @@ export function InsightsClient({ riderId }: { riderId: string }) {
           </Card>
         </div>
       </div>
+
+      {data.integrity && <IntegritySection integrity={data.integrity} />}
 
       <Card>
         <CardContent className="space-y-3 p-4">
@@ -467,5 +469,90 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
     >
       {children}
     </button>
+  );
+}
+
+type IntegrityData = NonNullable<RiderInsightsDTO['integrity']>;
+
+const VERDICT_LABEL: Record<string, string> = {
+  MEETS_DEVICE_INTEGRITY: 'Device integrity OK',
+  MEETS_BASIC_INTEGRITY: 'Basic integrity only',
+  FAILED: 'Integrity FAILED',
+  UNEVALUATED: 'Not evaluated',
+};
+
+/**
+ * Location integrity (anti-fraud): mock-ping count, spoof suspicion events and
+ * the Google Play Integrity device-attestation verdict. Read-only here; review
+ * actions live on the /platform/rider-integrity queue.
+ */
+function IntegritySection({ integrity }: { integrity: IntegrityData }) {
+  const flagged = integrity.status === 'FLAGGED';
+  const verdictFailed = integrity.integrity.verdict === 'FAILED';
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 font-medium">
+            {flagged ? <ShieldAlert className="size-4 text-destructive" /> : <ShieldCheck className="size-4 text-primary" />}
+            Location integrity
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={flagged ? 'destructive' : integrity.status === 'CLEARED' ? 'muted' : 'muted'}>{integrity.status}</Badge>
+            {integrity.offersPaused && <Badge variant="destructive">Offers paused</Badge>}
+            {flagged && (
+              <Button asChild size="sm" variant="outline">
+                <Link href="/platform/rider-integrity">Review queue</Link>
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Mini label="Mock pings (shift)" value={String(integrity.shift.mockPingCount)} />
+          <Mini label="Spoof events" value={String(integrity.shift.spoofEventCount)} />
+          <Mini label="Suspicion score" value={String(integrity.shift.spoofScore)} />
+          <Mini
+            label="Device integrity"
+            value={integrity.integrity.configured ? (VERDICT_LABEL[integrity.integrity.verdict] ?? integrity.integrity.verdict) : 'Not configured'}
+            hint={integrity.integrity.detail ?? undefined}
+          />
+        </div>
+
+        {integrity.flagged && (
+          <p className="text-xs text-muted-foreground">
+            Flagged {ist(integrity.flagged.at)}
+            {integrity.flagged.reason ? ` · ${integrity.flagged.reason}` : ''}
+            {integrity.review ? ` · reviewed ${ist(integrity.review.at)}` : ''}
+          </p>
+        )}
+        {!integrity.integrity.configured && (
+          <p className="text-[11px] text-muted-foreground">
+            Play Integrity device attestation is not configured (PLAY_INTEGRITY_* env). Mock-GPS and movement heuristics still run; device attestation shows &quot;Not configured&quot; and nothing is blocked.
+          </p>
+        )}
+
+        {integrity.events.length > 0 ? (
+          <div className="space-y-1">
+            <div className="text-xs font-medium text-muted-foreground">Recent incidents</div>
+            <ul className="divide-y rounded-md border text-xs">
+              {integrity.events.slice(0, 10).map((e) => (
+                <li key={e.id} className="flex items-center justify-between gap-2 px-2 py-1.5">
+                  <span className="min-w-0">
+                    <span className={`font-medium ${e.kind === 'MOCK_FLAG' || e.kind === 'INTEGRITY_FAILED' ? 'text-destructive' : ''}`}>{e.kind}</span>
+                    <span className="text-muted-foreground"> · {e.reason}</span>
+                  </span>
+                  <span className="shrink-0 text-muted-foreground">{ist(e.at)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            No suspicious location signals recorded.{verdictFailed ? '' : ' Fraud prevention on operational location only — never the rider’s personal phone use.'}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -10,6 +10,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { AppState } from 'react-native';
 import { api, ApiError, setAuthToken, type Rider } from './api';
 import { saveBackgroundToken, stopDeliveryTracking } from './background-location';
+import { attestDeviceIntegrity } from './integrity';
 
 const TOKEN_KEY = 'flavrly_rider_token';
 const RIDER_KEY = 'flavrly_rider_profile';
@@ -96,6 +97,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthToken(newToken);
     setToken(newToken);
     setRider(newRider);
+    // Device attestation (Play Integrity) at sign-in — best-effort, Android-only.
+    void attestDeviceIntegrity();
   }, []);
 
   const clearLocal = useCallback(async () => {

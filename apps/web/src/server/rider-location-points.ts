@@ -38,7 +38,13 @@ export const LocationPoint = z.object({
   lng: z.number().min(-180).max(180),
   speedKph: z.number().optional(),
   orderId: z.string().min(1).max(64).optional(),
-  recordedAt: z.number().int().positive().optional()
+  recordedAt: z.number().int().positive().optional(),
+  // Location-integrity (anti-fraud): the OS "mock location" flag (expo-location
+  // Android `mocked`) and the reported horizontal accuracy in metres. Both are
+  // operational-location signals only. A mocked point is never used as a live
+  // position (see the location route + server/rider-integrity).
+  mocked: z.boolean().optional(),
+  accuracy: z.number().nonnegative().optional()
 });
 export type LocationPoint = z.infer<typeof LocationPoint>;
 

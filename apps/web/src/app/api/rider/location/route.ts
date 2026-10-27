@@ -14,6 +14,7 @@ import {
 } from '@/server/rider-location-points';
 import { parseDevice, recordDeviceContext } from '@/server/rider-insights/device';
 import { markSignalRegained } from '@/server/rider-insights/status-events';
+import { runLocationIntegrity } from '@/server/rider-integrity/service';
 
 /**
  * Rider location ping — one point from the foreground app, or a batch of up to
@@ -125,9 +126,15 @@ export async function POST(req: NextRequest) {
   const riderId = profile.id;
 
   // Resolve each referenced order once; keep only the rider's own.
-  const { points, sentAt, device: rawDevice } = bodyPoints(parsed);
+  const { points: allPoints, sentAt, device: rawDevice } = bodyPoints(parsed);
   const device = parseDevice(rawDevice);
   if (device) void recordDeviceContext(riderId, device);
+  // Location-integrity: a ping the OS reported as mocked (fake GPS) is NEVER
+  // used as a live position — it is dropped here and handled (counted, scored,
+  // flagged) by runLocationIntegrity below. Everything downstream positions the
+  // rider from the real fixes only.
+  const mockedPoints = allPoints.filter((p) => p.mocked);
+  const points = allPoints.filter((p) => !p.mocked);
   const owned = new Map<string, OrderInfo>();
   for (const orderId of new Set(points.map((p) => p.orderId).filter((x): x is string => !!x))) {
     const info = await loadOrder(orderId);
@@ -151,6 +158,24 @@ export async function POST(req: NextRequest) {
   const now = Date.now();
   const { accepted, live, lastAcceptedAt: mark } = classifyPoints(scoped, now, lastAcceptedAt.get(riderId), sentAt);
   if (mark !== undefined) lastAcceptedAt.set(riderId, mark);
+
+  // ── Location-integrity (anti-fraud) ───────────────────────────────────────
+  // Score mocked pings + movement heuristics over the newly accepted real
+  // fixes. Fire-and-forget: a fraud check never blocks the ack. Device-clock
+  // skew is the drift the server would apply to the sender's timestamps.
+  if (accepted.length > 0 || mockedPoints.length > 0) {
+    const timedPoints = [
+      ...accepted.map((p) => ({ lat: p.lat, lng: p.lng, t: p.t, accuracy: p.accuracy })),
+      ...mockedPoints.map((p) => ({ lat: p.lat, lng: p.lng, t: p.recordedAt ?? now, accuracy: p.accuracy, mocked: true as const })),
+    ];
+    void runLocationIntegrity({
+      riderId,
+      orderId: live?.orderId ?? null,
+      timedPoints,
+      driftMs: sentAt !== undefined ? now - sentAt : undefined,
+      now: new Date(now),
+    });
+  }
 
   // ── Live fan-out (newest fresh point only) ────────────────────────────────
   if (live) {

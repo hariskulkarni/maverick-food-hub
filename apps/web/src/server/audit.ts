@@ -23,6 +23,8 @@ export type AuditAction =
   | 'rider.approve' | 'rider.reject' | 'rider.suspend' | 'rider.reinstate'
   | 'rider.earnings.adjust' | 'rider.location.override'
   | 'rider.insights.export'
+  // Rider location-integrity (anti-fraud) review queue + policy
+  | 'rider.integrity.review' | 'rider.integrity.config.update'
   // Orders
   | 'order.cancel' | 'order.refund' | 'order.reassign' | 'order.force_deliver'
   // COD

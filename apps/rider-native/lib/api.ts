@@ -494,8 +494,21 @@ export const api = {
     }),
 
   // ── Live location ─────────────────────────────────────────────────────────
-  /** High-frequency GPS ping — fans out to customer + admin trackers via SSE. */
-  sendLocation: (lat: number, lng: number, orderId?: string, speedKph?: number, recordedAt?: number) =>
+  /**
+   * High-frequency GPS ping — fans out to customer + admin trackers via SSE.
+   * `accuracy` (metres) and `mocked` (the OS fake-GPS flag) are operational
+   * location-integrity signals: the server never uses a mocked fix as a live
+   * position and scores it for anti-fraud review.
+   */
+  sendLocation: (
+    lat: number,
+    lng: number,
+    orderId?: string,
+    speedKph?: number,
+    recordedAt?: number,
+    accuracy?: number,
+    mocked?: boolean,
+  ) =>
     request<{ ok: true; orderActive?: boolean }>('/api/rider/location', {
       method: 'POST',
       body: {
@@ -503,6 +516,8 @@ export const api = {
         lng,
         ...(orderId ? { orderId } : {}),
         ...(speedKph != null ? { speedKph } : {}),
+        ...(accuracy != null && accuracy >= 0 ? { accuracy } : {}),
+        ...(mocked ? { mocked: true } : {}),
         // Fix time (ms epoch) — lets the server ignore stale / out-of-order points.
         ...(recordedAt != null && Number.isFinite(recordedAt)
           ? { recordedAt: Math.round(recordedAt), sentAt: Date.now() }
@@ -517,6 +532,18 @@ export const api = {
   /** Register this device's Expo push token so new-order pings reach the rider. */
   registerPushToken: (token: string) =>
     request<{ ok: true }>('/api/rider/push-token', { method: 'POST', body: { token } }),
+
+  /**
+   * Device attestation (Google Play Integrity, Android). Posts the integrity
+   * token at sign-in / shift start; the server verifies it and stores only the
+   * device/app verdict. Degrades cleanly — `configured:false` when Play
+   * Integrity isn't set up on the server, and nothing blocks.
+   */
+  verifyIntegrity: (token: string) =>
+    request<{ configured: boolean; verdict: string }>('/api/rider/integrity', {
+      method: 'POST',
+      body: { token },
+    }),
 
   /** Multipart upload of the proof-of-delivery photo for an assignment. */
   uploadDeliveryPhoto: async (

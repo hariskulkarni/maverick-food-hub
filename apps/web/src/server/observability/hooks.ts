@@ -46,3 +46,16 @@ export function recordMaskedCall(provider: string, outcome: string): void {
     /* never throw */
   }
 }
+
+/**
+ * Rider location-integrity spoof incident, counted per kind (MOCK_FLAG,
+ * TELEPORT, IMPOSSIBLE_SPEED, FROZEN, INTEGRITY_FAILED, …) so the rate of
+ * fake-GPS / tampering attempts is visible without exposing any rider identity.
+ */
+export function recordSpoofIncident(kind: string): void {
+  try {
+    incEvent('spoof', kind.slice(0, 40));
+  } catch {
+    /* never throw */
+  }
+}
