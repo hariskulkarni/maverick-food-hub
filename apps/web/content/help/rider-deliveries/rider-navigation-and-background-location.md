@@ -4,7 +4,7 @@ summary: Open your pickup or drop in Google Maps, and how Flavrly keeps sharing 
 audience: RIDER
 appArea: rider.delivery
 tags: navigate, google maps, directions, location, background, tracking, notification, permission, battery
-related: rider-delivery-steps, rider-claim-orders-from-pool, rider-go-online
+related: rider-delivery-steps, rider-claim-orders-from-pool, rider-go-online, rider-location-and-device-info
 language: en
 ---
 ## Open the location in Google Maps
@@ -42,3 +42,4 @@ You can also change Flavrly's location permission to **While using the app** in 
 
 - With the app open and you online, your location is also shared so Flavrly can offer you nearby orders.
 - After this update, the background tracking needs the latest app version from the store.
+- What is recorded while you're online (location, online/offline times, device, network and battery info) and how long it is kept: see [What Flavrly records while you're online](help:rider-location-and-device-info).

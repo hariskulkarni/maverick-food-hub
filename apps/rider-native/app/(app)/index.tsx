@@ -42,6 +42,7 @@ import { BreakModeCard } from '../../components/break-mode-card';
 import { useRiderLocation } from '../../lib/use-rider-location';
 import { pickTrackedOrderId, syncDeliveryTracking } from '../../lib/delivery-tracking';
 import { hasBackgroundPermission, stopDeliveryTracking } from '../../lib/background-location';
+import { readDeviceContext } from '../../lib/device-context';
 
 /** A square quick-action tile on the dashboard. */
 function QuickAction({
@@ -267,8 +268,11 @@ export default function DashboardScreen() {
   // "last synced" stamp so the indicator visibly tracks the 30s loop.
   const sendHeartbeat = useCallback(async () => {
     try {
-      const gps = await Location.hasServicesEnabledAsync().catch(() => true);
-      const res = await api.heartbeat(gps);
+      const [gps, device] = await Promise.all([
+        Location.hasServicesEnabledAsync().catch(() => true),
+        readDeviceContext().catch(() => undefined),
+      ]);
+      const res = await api.heartbeat(gps, device);
       setLastSyncedAt(Date.now());
       // The server set us offline (e.g. the app was away for >2 min without
       // background location): follow it instead of showing a false "Online".
