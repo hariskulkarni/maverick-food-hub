@@ -1,13 +1,23 @@
 /**
  * Novaryq menu sync (CONTRACT §5 "Menu"): connection test, location currency
- * check, menu import (reuses the spreadsheet importer), item linking + name
- * auto-match, availability (86 / un-86) and the periodic reconcile fallback.
+ * check, menu import (reuses the spreadsheet importer, plus modifier groups),
+ * item linking + name auto-match, availability (86 / un-86) and the periodic
+ * reconcile fallback.
  */
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { log } from '../log';
 import { applyMenuImport, type MenuRow } from '../menu-io';
 import { NovaryqApiError, novaryqRequest, type NovaryqCredentials } from './client';
 import { loadNovaryqConfig, novaryqFlagOn } from './config';
+
+export interface NovaryqModifierGroup {
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+  required: boolean;
+  options: Array<{ name: string; price: number; available: boolean; isDefault: boolean }>;
+}
 
 export interface NovaryqMenuItem {
   itemCode: string;
@@ -16,6 +26,26 @@ export interface NovaryqMenuItem {
   currency: string | null;
   available: boolean;
   categoryName: string | null;
+  modifierGroups: NovaryqModifierGroup[];
+}
+
+const count = (v: unknown, dflt: number) => (Number.isInteger(v) && (v as number) >= 0 ? (v as number) : dflt);
+
+/** `modifierGroups` of a GET /menu item; nameless groups/options are dropped, an option's maxQuantity is not modelled on Flavrly. */
+function parseModifierGroups(raw: unknown): NovaryqModifierGroup[] {
+  if (!Array.isArray(raw)) return [];
+  const groups: NovaryqModifierGroup[] = [];
+  for (const g of raw as Array<Record<string, unknown>>) {
+    if (!g || typeof g.name !== 'string' || !g.name.trim()) continue;
+    const options = (Array.isArray(g.options) ? (g.options as Array<Record<string, unknown>>) : [])
+      .filter((o) => o && typeof o.name === 'string' && o.name.trim())
+      .map((o) => {
+        const price = Number(o.price ?? 0);
+        return { name: (o.name as string).trim(), price: Number.isFinite(price) ? price : 0, available: o.available !== false, isDefault: o.isDefault === true };
+      });
+    groups.push({ name: g.name.trim(), minSelect: count(g.minSelect, 0), maxSelect: count(g.maxSelect, 1), required: g.required === true, options });
+  }
+  return groups;
 }
 
 /** GET /menu[?locationId] → normalized items (accepts `category` for older Novaryq builds). */
@@ -35,6 +65,7 @@ export async function fetchNovaryqMenu(creds: NovaryqCredentials, locationId?: s
       currency: typeof r.currency === 'string' ? r.currency : null,
       available: r.available !== false,
       categoryName: typeof r.categoryName === 'string' ? r.categoryName : typeof r.category === 'string' ? r.category : null,
+      modifierGroups: parseModifierGroups(r.modifierGroups),
     });
   }
   return { items, currency: typeof res.data?.currency === 'string' ? res.data.currency : null };
@@ -209,7 +240,46 @@ export async function applyAutoMatch(restaurantId: string, branchId: string): Pr
   return { linked };
 }
 
-/** Imports the location's Novaryq menu into the branch (create/update categories + items) and links every item. */
+const nameKey = (s: string) => s.trim().toLowerCase();
+
+/**
+ * Brings an imported item's modifier groups in line with Novaryq (QA-D2). Groups and options
+ * are matched by name (like items), so a re-import updates rows in place and their ids stay
+ * stable (carts hold option ids). Inside a Novaryq group Novaryq is the master: options it no
+ * longer has are removed. Groups Novaryq does not send are left alone — they are Flavrly-only
+ * add-ons, which stay editable under "POS: Novaryq" (menu-master.ts). A group renamed in
+ * Novaryq therefore arrives as a new group; the old one stays until removed on Flavrly.
+ */
+async function syncModifierGroups(tx: Prisma.TransactionClient, menuItemId: string, groups: NovaryqModifierGroup[]) {
+  const existing = await tx.modifierGroup.findMany({
+    where: { menuItemId },
+    select: { id: true, name: true, options: { select: { id: true, name: true } } },
+  });
+  const used = new Set<string>();
+  for (const [gi, g] of groups.entries()) {
+    const groupData = { name: g.name, minSelect: g.minSelect, maxSelect: g.maxSelect, required: g.required, sortOrder: gi };
+    let group = existing.find((e) => !used.has(e.id) && nameKey(e.name) === nameKey(g.name));
+    if (group) await tx.modifierGroup.update({ where: { id: group.id }, data: groupData });
+    else group = { ...(await tx.modifierGroup.create({ data: { menuItemId, ...groupData } })), options: [] };
+    used.add(group.id);
+    const kept = new Set<string>();
+    for (const [oi, o] of g.options.entries()) {
+      const optionData = { name: o.name, priceDelta: o.price.toFixed(2), isAvailable: o.available, isDefault: o.isDefault, sortOrder: oi };
+      const opt = group.options.find((e) => !kept.has(e.id) && nameKey(e.name) === nameKey(o.name));
+      if (opt) {
+        await tx.modifierOption.update({ where: { id: opt.id }, data: optionData });
+        kept.add(opt.id);
+      } else {
+        kept.add((await tx.modifierOption.create({ data: { modifierGroupId: group.id, ...optionData } })).id);
+      }
+    }
+    const gone = group.options.filter((e) => !kept.has(e.id)).map((e) => e.id);
+    if (gone.length) await tx.modifierOption.deleteMany({ where: { id: { in: gone } } });
+  }
+  return groups.length;
+}
+
+/** Imports the location's Novaryq menu into the branch (create/update categories + items + modifier groups) and links every item. */
 export async function importNovaryqMenu(restaurantId: string, branchId: string) {
   const loc = await requireLocation(restaurantId, branchId);
   const cfg = await requireConfig(restaurantId);
@@ -226,12 +296,15 @@ export async function importNovaryqMenu(restaurantId: string, branchId: string) 
   const branchItems = await prisma.menuItem.findMany({ where: { branchId }, select: { id: true, name: true, category: { select: { name: true } } } });
   const byKey = new Map(branchItems.map((b) => [`${b.category.name.toLowerCase()}::${b.name.toLowerCase()}`, b.id]));
   let linked = 0;
+  let modifierGroups = 0;
   for (const i of priced) {
     const menuItemId = byKey.get(`${(i.categoryName || 'Novaryq menu').toLowerCase()}::${i.name.toLowerCase()}`);
-    if (menuItemId && (await linkItem(restaurantId, menuItemId, i.itemCode)).ok) linked++;
+    if (!menuItemId || !(await linkItem(restaurantId, menuItemId, i.itemCode)).ok) continue;
+    linked++;
+    modifierGroups += await prisma.$transaction((tx) => syncModifierGroups(tx, menuItemId, i.modifierGroups));
   }
   await prisma.novaryqItemLink.updateMany({ where: { restaurantId, menuItem: { branchId } }, data: { lastSyncedAt: new Date() } });
-  return { ...summary, linked, skippedUnpriced: menu.items.length - priced.length };
+  return { ...summary, linked, modifierGroups, skippedUnpriced: menu.items.length - priced.length };
 }
 
 // ── Reconcile (fallback for missed webhooks) ─────────────────────────────────

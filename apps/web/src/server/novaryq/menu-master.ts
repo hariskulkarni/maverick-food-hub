@@ -4,7 +4,8 @@
  * For a restaurant that switched it on, the name, price and availability of every
  * Flavrly item LINKED to a Novaryq item come from Novaryq (import, 86 webhooks,
  * reconcile) and are read-only on Flavrly. Unlinked (Flavrly-only) items, photos,
- * descriptions, variants and add-ons stay editable. A channel-only price on Flavrly
+ * descriptions, variants and add-ons stay editable ("Import Novaryq menu" also refreshes
+ * the add-on groups Novaryq sends for each item, matched by name). A channel-only price on Flavrly
  * is an explicit opt-in (allowPriceOverride). Bulk spreadsheet/template imports are
  * refused because they rewrite items by name; "Import Novaryq menu" is the way in.
  */

@@ -137,6 +137,36 @@ describe('buildOrderPayload (§2.1)', () => {
     expect(dine.serviceMode).toBe('DINE_IN');
   });
 
+  it('sends the chosen modifiers with Flavrly\'s per-unit option prices (contract §2.1, QA-D2)', () => {
+    const o = baseOrder();
+    o.items[0].menuItem = {
+      modifierGroups: [
+        { options: [{ name: 'Extra cheese', priceDelta: '30.00' }, { name: 'Extra paneer', priceDelta: '60.00' }] },
+        { options: [{ name: 'No onion', priceDelta: 0 }] },
+      ],
+    };
+    const p = (buildOrderPayload(o as any, 'loc_1', new Map([['m1', 'SKU-1'], ['m2', 'SKU-2']])) as any).payload;
+    // unitPrice stays the line price incl. modifiers; the snapshot is never added again by Novaryq.
+    expect(p.lines[0]).toMatchObject({ unitPrice: '249.00' });
+    expect(p.lines[0].modifiers).toEqual([
+      { name: 'Full', unitPrice: '0.00', quantity: 1 }, // variant: absolute price, already the line base
+      { name: 'Extra cheese', unitPrice: '30.00', quantity: 1 },
+      { name: 'No onion', unitPrice: '0.00', quantity: 1 },
+    ]);
+  });
+
+  it('a modifier name that is ambiguous on the item (two prices), negative (Novaryq accepts only ≥ 0) or no longer on it is sent at 0.00', () => {
+    const o = baseOrder();
+    o.items[0].menuItem = {
+      modifierGroups: [
+        { options: [{ name: 'Extra cheese', priceDelta: 30 }, { name: 'No onion', priceDelta: -5 }] },
+        { options: [{ name: 'Extra cheese', priceDelta: 45 }] },
+      ],
+    };
+    const p = (buildOrderPayload(o as any, 'loc_1', new Map([['m1', 'SKU-1'], ['m2', 'SKU-2']])) as any).payload;
+    expect(p.lines[0].modifiers.map((m: any) => [m.name, m.unitPrice])).toEqual([['Full', '0.00'], ['Extra cheese', '0.00'], ['No onion', '0.00']]);
+  });
+
   it('lists every unmapped line (unlinked items and combos)', () => {
     const o = baseOrder();
     o.items.push({ menuItemId: null, comboId: 'c1', name: 'Family Combo', quantity: 1, unitPrice: 499, notes: null, isFreebie: false, selectedVariantName: null, modifiersSummary: null } as any);

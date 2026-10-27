@@ -346,9 +346,19 @@ function Locations({ ov, onSaved }: { ov: Overview; onSaved: () => void }) {
   );
 }
 
+/**
+ * The branch the mapping card works on: the owner's choice while it is still linked, else the
+ * first linked branch. Derived on every render because the card stays mounted while no branch
+ * is linked — a value captured at mount stayed '' after the first link (QA-D1: Import → 400).
+ */
+export function effectiveBranchId(branches: Array<{ id: string }>, chosen: string): string {
+  return branches.some((b) => b.id === chosen) ? chosen : (branches[0]?.id ?? '');
+}
+
 function ItemMapping({ branches }: { branches: Overview['branches'] }) {
   const api = useApi();
-  const [branchId, setBranchId] = useState(branches[0]?.id ?? '');
+  const [chosenBranchId, setBranchId] = useState('');
+  const branchId = effectiveBranchId(branches, chosenBranchId);
   const [data, setData] = useState<Mapping | null>(null);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
@@ -397,7 +407,7 @@ function ItemMapping({ branches }: { branches: Overview['branches'] }) {
           <Button size="sm" variant="outline" onClick={() => post('items/auto-match')} disabled={busy || !data?.suggestions.length}>
             <Wand2 className="size-4" /> Auto-match by name ({data?.suggestions.length ?? 0})
           </Button>
-          <Button size="sm" variant="outline" onClick={() => post('import', 'Import the Novaryq menu into this branch? Items are created or updated (matched by category + name) and linked.')} disabled={busy}>
+          <Button size="sm" variant="outline" onClick={() => post('import', 'Import the Novaryq menu into this branch? Items (matched by category + name) and their add-on groups are created or updated, and items are linked.')} disabled={busy}>
             <Download className="size-4" /> Import Novaryq menu
           </Button>
         </div>
