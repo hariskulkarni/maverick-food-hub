@@ -44,7 +44,8 @@ export function CustomerPhoneFlow({
   /** Seconds until "Resend" is allowed; 0 = allowed now. */
   resendIn: number;
   onSendOtp: () => void;
-  onVerify: () => void;
+  /** `code` is passed on auto-submit (the parent's state may not have caught up yet). */
+  onVerify: (code?: string) => void;
   onResend: () => void;
   onChangeNumber: () => void;
   googleEnabled?: boolean;
@@ -141,7 +142,7 @@ export function CustomerPhoneFlow({
       <OtpField
         value={code}
         onChange={onCodeChange}
-        onComplete={() => { if (!busy) onVerify(); }}
+        onComplete={(c) => { if (!busy) onVerify(c); }}
         disabled={busy}
         invalid={!!error}
         describedBy="otp-help otp-error"

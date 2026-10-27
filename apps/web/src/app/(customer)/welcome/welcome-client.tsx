@@ -105,15 +105,16 @@ export function WelcomeClient({
     <div className="gradient-hero relative isolate min-h-[calc(100dvh-4rem)] overflow-hidden px-4 pb-16 pt-6 sm:pt-10">
       <FloatingFood />
       <div className="relative mx-auto w-full max-w-lg">
-        <div className="rounded-[28px] border border-border/70 bg-card p-5 shadow-[0_24px_60px_-28px_hsl(var(--berry)/0.35)] sm:p-8">
+        <div className="relative overflow-hidden rounded-[28px] border border-border/70 bg-card p-5 shadow-[0_24px_60px_-28px_hsl(var(--berry)/0.35)] sm:p-8">
+          {step === 'done' && <ConfettiBurst pieces={40} />}
           <StepProgress step={step} />
 
           <div className="relative mt-6">
             <StepArt step={step} />
-            {step === 'done' && <ConfettiBurst pieces={36} />}
           </div>
 
-          <div key={step} className={cn('mt-4', dir === 'fwd' ? 'ob-enter-fwd' : 'ob-enter-back')}>
+          {/* phone → verify is one form (it keeps its state), so they share a key. */}
+          <div key={step === 'verify' ? 'phone' : step} className={cn('mt-4', dir === 'fwd' ? 'ob-enter-fwd' : 'ob-enter-back')}>
             {showBack && (
               <button
                 type="button"
@@ -126,7 +127,7 @@ export function WelcomeClient({
             <h1
               ref={headingRef}
               tabIndex={-1}
-              className="text-balance font-display text-2xl font-extrabold tracking-tight focus:outline-none sm:text-3xl"
+              className="text-balance font-display text-2xl font-extrabold tracking-tight focus:outline-none focus-visible:[box-shadow:none] sm:text-3xl"
             >
               {step === 'done' && displayName ? `You’re in, ${displayName.split(' ')[0]}!` : copy.title}
             </h1>
@@ -202,13 +203,13 @@ function WelcomeStep({ googleEnabled, next, onPhone }: { googleEnabled: boolean;
           Use my mobile number <ArrowRight aria-hidden="true" />
         </Button>
       )}
-      <ul className="grid grid-cols-1 gap-2 pt-2 text-sm sm:grid-cols-3">
+      <ul className="flex flex-wrap justify-center gap-2 pt-2 text-xs sm:text-sm">
         {[
           { Icon: MapPin, t: 'Live tracking' },
           { Icon: Sparkles, t: 'Welcome offers' },
           { Icon: PartyPopper, t: 'One-tap reorders' },
         ].map(({ Icon, t }) => (
-          <li key={t} className="flex items-center gap-2 rounded-xl bg-muted/60 px-3 py-2.5 font-medium">
+          <li key={t} className="flex items-center gap-1.5 rounded-full bg-muted/70 px-3 py-2 font-medium">
             <Icon className="size-4 text-primary" aria-hidden="true" /> {t}
           </li>
         ))}
@@ -260,9 +261,9 @@ function AnonymousPhoneStep({ next, selfSignupOpen, onPhase }: { next: string; s
     }
   }
 
-  async function verify() {
+  async function verify(typed?: string) {
     setBusy(true);
-    const r = await signIn('phone-otp', { phone, code, purpose: 'login', redirect: false }).catch(() => null);
+    const r = await signIn('phone-otp', { phone, code: typed ?? code, purpose: 'login', redirect: false }).catch(() => null);
     if (!r || r.error) {
       setBusy(false);
       setCode('');
@@ -302,7 +303,7 @@ function AnonymousPhoneStep({ next, selfSignupOpen, onPhase }: { next: string; s
       devCode={devCode}
       resendIn={resendIn}
       onSendOtp={() => void send()}
-      onVerify={() => void verify()}
+      onVerify={(c) => void verify(c)}
       onResend={() => { setCode(''); void send(); }}
       onChangeNumber={() => { setSent(false); setCode(''); setDevCode(null); setError(null); onPhase('phone'); }}
       otpAnimated

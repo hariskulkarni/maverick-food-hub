@@ -64,9 +64,10 @@ export function CustomerLoginClient({ slug, googleEnabled = false }: { slug: str
     }
   }
 
-  async function verifyOtp() {
+  async function verifyOtp(typed?: string) {
     setBusy(true);
-    const r = await signIn('phone-otp', { phone, code, purpose: 'login', redirect: false });
+    // Auto-submit passes the full code: `code` state is one keystroke behind then.
+    const r = await signIn('phone-otp', { phone, code: typed ?? code, purpose: 'login', redirect: false });
     setBusy(false);
     if (r?.error) return setError('That code is wrong or has expired. Check it, or tap Resend code.');
     // Hard-navigate (via /welcome, which onboards brand-new customers) back to
@@ -86,7 +87,7 @@ export function CustomerLoginClient({ slug, googleEnabled = false }: { slug: str
       devCode={devCode}
       resendIn={resendIn}
       onSendOtp={() => { void sendOtp(); }}
-      onVerify={() => { void verifyOtp(); }}
+      onVerify={(c) => { void verifyOtp(c); }}
       onResend={() => { setCode(''); void sendOtp(); }}
       onChangeNumber={() => { setOtpSent(false); setCode(''); setDevCode(null); setError(null); }}
       googleEnabled={googleEnabled}

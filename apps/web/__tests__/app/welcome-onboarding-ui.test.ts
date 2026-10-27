@@ -98,6 +98,18 @@ describe('verify phone flow + profile', () => {
   });
 });
 
+describe('OTP auto-submit uses the full code (state lags one keystroke)', () => {
+  const src = (rel: string) => fs.readFileSync(path.resolve(__dirname, '../../src', rel), 'utf8');
+  it('CustomerPhoneFlow hands the completed code to onVerify and every caller uses it', () => {
+    expect(src('components/auth/customer/customer-phone-flow.tsx')).toContain('onComplete={(c) => { if (!busy) onVerify(c); }}');
+    for (const f of ['app/(customer)/login/login-client.tsx', 'app/(customer)/r/[slug]/login/login-client.tsx', 'app/(customer)/welcome/welcome-client.tsx']) {
+      expect(src(f)).toMatch(/onVerify=\{\(c\) =>/);
+      expect(src(f)).toMatch(/typed \?\? code/);
+    }
+    expect(src('components/auth/customer/onboarding/verify-phone-flow.tsx')).toContain('onComplete={(c) => void verify(c)}');
+  });
+});
+
 describe('motion is accessible', () => {
   it('every onboarding animation is disabled under prefers-reduced-motion', () => {
     const css = fs.readFileSync(path.resolve(__dirname, '../../src/styles/globals.css'), 'utf8');

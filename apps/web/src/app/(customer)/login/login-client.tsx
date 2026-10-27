@@ -237,19 +237,21 @@ export function LoginClient({
     }
   }
 
-  async function verifyOtp() {
+  async function verifyOtp(typed?: string) {
+    // Auto-submit passes the full code: `code` state is one keystroke behind then.
+    const otp = typed ?? code;
     setBusy(true);
     try {
       if (msg91Enabled && !builtinOtp) {
         // Verify the code in the widget, then hand the signed token to the server.
-        const accessToken = await verifyWidgetOtp(code);
+        const accessToken = await verifyWidgetOtp(otp);
         const r = await signIn('msg91-widget', { accessToken, phone, redirect: false });
         if (r?.error) { setPhoneError('Sign-in failed. Please try again.'); return; }
         // /welcome finishes a new customer's onboarding, else continues to `next`.
         window.location.href = welcomeUrl(next || '/restaurants');
         return;
       }
-      const r = await signIn('phone-otp', { phone, code, purpose: 'login', redirect: false });
+      const r = await signIn('phone-otp', { phone, code: otp, purpose: 'login', redirect: false });
       if (r?.error) { setPhoneError('That code is wrong or has expired. Check it, or tap Resend code.'); return; }
       // Customers go through /welcome: a brand-new account gets the short
       // onboarding, everyone else continues straight to `next` (default: the
@@ -377,7 +379,7 @@ export function LoginClient({
       devCode={devCode}
       resendIn={resendIn}
       onSendOtp={() => { void sendOtp(); }}
-      onVerify={() => { void verifyOtp(); }}
+      onVerify={(c) => { void verifyOtp(c); }}
       onResend={() => { setCode(''); void sendOtp(); }}
       onChangeNumber={() => { setOtpSent(false); setCode(''); setDevCode(null); setPhoneError(null); }}
       googleEnabled={googleEnabled}
