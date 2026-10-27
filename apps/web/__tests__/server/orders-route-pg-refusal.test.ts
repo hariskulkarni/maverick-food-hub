@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 // UAT O-1: a refused direct-UPI order is a client error (409), not a 500.
 const h = vi.hoisted(() => ({ placeOrder: vi.fn() }));
-vi.mock('@/server/auth', () => ({ auth: vi.fn(async () => ({ user: { id: 'u1', role: 'CUSTOMER' } })) }));
+vi.mock('@/server/auth', () => ({ auth: vi.fn(async () => ({ user: { id: 'u1', role: 'CUSTOMER', phoneVerified: true } })) }));
 vi.mock('@/server/orders', async () => {
   class PgUnavailableError extends Error {}
   class CheckoutRejectedError extends Error {}

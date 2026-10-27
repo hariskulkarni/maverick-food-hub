@@ -295,6 +295,18 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/', selfBase));
   }
 
+  // Customer phone gate: a CUSTOMER without an OTP-verified phone (e.g. fresh
+  // from Google sign-in) is sent to the mandatory "Add your phone" step first,
+  // returning here afterwards. Only an explicit `false` redirects: tokens minted
+  // before the flag existed carry no value, and the APIs/pages re-check the
+  // live DB state anyway (server/customer-phone.ts).
+  if (role === 'CUSTOMER' && (session.user as { phoneVerified?: boolean }).phoneVerified === false) {
+    const welcome = new URL('/welcome', selfBase);
+    welcome.searchParams.set('next', path + url.search);
+    welcome.searchParams.set('gate', '1');
+    return NextResponse.redirect(welcome);
+  }
+
   // Within the /platform console, enforce the per-surface capability gate so a
   // delegated platform role (Admin Assist / QA / Developer / Guest) only reaches
   // the areas its role grants. SUPER_ADMIN holds every capability. Unmapped

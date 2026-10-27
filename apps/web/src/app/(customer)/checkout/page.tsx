@@ -3,6 +3,7 @@ import { auth } from '@/server/auth';
 import { prisma } from '@/server/db';
 import { CheckoutForm } from './checkout-form';
 import { resolveGatewayKey, youpiEnabledForRestaurant } from '@/server/payments';
+import { welcomeUrl } from '@/lib/onboarding';
 
 export const metadata = { title: 'Checkout' };
 // Read addresses live every time — never serve a cached render that could show
@@ -25,6 +26,14 @@ export default async function CheckoutPage({
     if (sp.notes) params.set('notes', sp.notes);
     const qs = params.toString();
     redirect(`/login?next=${encodeURIComponent(`/checkout${qs ? `?${qs}` : ''}`)}`);
+  }
+  // Checkout needs a verified mobile for delivery (Google sign-ins add it first).
+  if (session.user.role === 'CUSTOMER' && !session.user.phoneVerified) {
+    const params = new URLSearchParams();
+    if (sp.branchId) params.set('branchId', sp.branchId);
+    if (sp.notes) params.set('notes', sp.notes);
+    const qs = params.toString();
+    redirect(welcomeUrl(`/checkout${qs ? `?${qs}` : ''}`));
   }
 
   const branchInclude = {
