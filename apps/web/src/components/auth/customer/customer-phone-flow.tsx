@@ -29,6 +29,7 @@ export function CustomerPhoneFlow({
   onChangeNumber,
   googleEnabled,
   onGoogle,
+  otpAnimated = false,
 }: {
   step: 'phone' | 'otp';
   phone: string;
@@ -48,6 +49,8 @@ export function CustomerPhoneFlow({
   onChangeNumber: () => void;
   googleEnabled?: boolean;
   onGoogle?: () => void;
+  /** Digit pop micro-interaction on the code boxes (welcome onboarding). */
+  otpAnimated?: boolean;
 }) {
   const codeOk = isCompleteOtp(code);
 
@@ -142,6 +145,7 @@ export function CustomerPhoneFlow({
         disabled={busy}
         invalid={!!error}
         describedBy="otp-help otp-error"
+        animated={otpAnimated}
       />
       <InlineError id="otp-error" message={error} />
 

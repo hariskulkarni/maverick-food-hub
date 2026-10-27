@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { toast } from 'sonner';
 import { CustomerPhoneFlow } from '@/components/auth/customer/customer-phone-flow';
+import { welcomeUrl } from '@/lib/onboarding';
 
 export function CustomerLoginClient({ slug, googleEnabled = false }: { slug: string; googleEnabled?: boolean }) {
   const [phone, setPhone] = useState('');
@@ -68,9 +69,9 @@ export function CustomerLoginClient({ slug, googleEnabled = false }: { slug: str
     const r = await signIn('phone-otp', { phone, code, purpose: 'login', redirect: false });
     setBusy(false);
     if (r?.error) return setError('That code is wrong or has expired. Check it, or tap Resend code.');
-    // Hard-navigate back to the restaurant page so the layout/header re-renders
-    // with the signed-in state (matches /login's `routeByRole` behaviour).
-    window.location.href = `/r/${slug}`;
+    // Hard-navigate (via /welcome, which onboards brand-new customers) back to
+    // the restaurant page so the layout/header re-renders signed in.
+    window.location.href = welcomeUrl(`/r/${slug}`);
   }
 
   return (
@@ -89,7 +90,7 @@ export function CustomerLoginClient({ slug, googleEnabled = false }: { slug: str
       onResend={() => { setCode(''); void sendOtp(); }}
       onChangeNumber={() => { setOtpSent(false); setCode(''); setDevCode(null); setError(null); }}
       googleEnabled={googleEnabled}
-      onGoogle={() => { void signIn('google', { callbackUrl: `/r/${slug}` }); }}
+      onGoogle={() => { void signIn('google', { callbackUrl: welcomeUrl(`/r/${slug}`) }); }}
     />
   );
 }

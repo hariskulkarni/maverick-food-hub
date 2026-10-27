@@ -22,7 +22,7 @@ export default async function ProfilePage() {
   if (!session?.user?.id) redirect('/login?next=/profile');
 
   const [user, wallet, loyalty, addresses, recentOrders, referrals, signupGrant] = await Promise.all([
-    prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true, name: true, phone: true, email: true, role: true } }),
+    prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true, name: true, phone: true, phoneVerifiedAt: true, email: true, role: true } }),
     prisma.wallet.findUnique({ where: { userId: session.user.id } }),
     prisma.loyaltyAccount.findUnique({ where: { userId: session.user.id } }),
     prisma.address.findMany({ where: { userId: session.user.id }, orderBy: { isDefault: 'desc' } }),
@@ -107,7 +107,7 @@ export default async function ProfilePage() {
       </aside>
 
       <section className="space-y-4 min-w-0">
-        {user?.role === 'CUSTOMER' && <EditProfile name={user.name} email={user.email} phone={user.phone} />}
+        {user?.role === 'CUSTOMER' && <EditProfile name={user.name} email={user.email} phone={user.phone} phoneVerified={!!user.phoneVerifiedAt} />}
         <PushToggle />
         {bonus && !bonus.revoked && bonus.balance > 0 && (
           <Card className="border-primary/30 bg-gradient-to-br from-primary/10 via-warning/5 to-card">

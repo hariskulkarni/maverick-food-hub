@@ -17,6 +17,7 @@ export function OtpField({
   invalid,
   describedBy,
   autoFocus = true,
+  animated = false,
 }: {
   value: string;
   onChange: (code: string) => void;
@@ -26,6 +27,8 @@ export function OtpField({
   invalid?: boolean;
   describedBy?: string;
   autoFocus?: boolean;
+  /** Playful micro-interaction: each digit pops in as it lands (onboarding). */
+  animated?: boolean;
 }) {
   const refs = useRef<Array<HTMLInputElement | null>>([]);
 
@@ -85,6 +88,7 @@ export function OtpField({
               'focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/15',
               'disabled:cursor-not-allowed disabled:opacity-50',
               ch ? 'border-primary/50' : 'border-input',
+              animated && ch && 'ob-digit-pop bg-primary/5',
               invalid && 'border-destructive focus:border-destructive focus:ring-destructive/15',
             )}
           />

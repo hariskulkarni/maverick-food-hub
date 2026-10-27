@@ -1,17 +1,25 @@
 'use client';
-/** Customer self-service: edit name / email (PATCH /api/customer/me). */
+/**
+ * Customer self-service: edit name / email (PATCH /api/customer/me), and change
+ * the mobile number — which always needs an OTP to the new number
+ * (VerifyPhoneFlow → /api/customer/phone/*).
+ */
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Pencil } from 'lucide-react';
+import { BadgeCheck, Pencil, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
+import { VerifyPhoneFlow } from '@/components/auth/customer/onboarding/verify-phone-flow';
 
-export function EditProfile({ name, email, phone }: { name: string | null; email: string | null; phone: string | null }) {
+export function EditProfile({
+  name, email, phone, phoneVerified = false,
+}: { name: string | null; email: string | null; phone: string | null; phoneVerified?: boolean }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
+  const [changingPhone, setChangingPhone] = useState(false);
   const [n, setN] = useState(name ?? '');
   const [e, setE] = useState(email ?? '');
   const [busy, setBusy] = useState(false);
@@ -50,7 +58,13 @@ export function EditProfile({ name, email, phone }: { name: string | null; email
           <dl className="grid gap-2 text-sm sm:grid-cols-3">
             <div className="min-w-0"><dt className="text-xs text-muted-foreground">Name</dt><dd className="truncate">{name || '—'}</dd></div>
             <div className="min-w-0"><dt className="text-xs text-muted-foreground">Email</dt><dd className="break-all">{email || '—'}</dd></div>
-            <div className="min-w-0"><dt className="text-xs text-muted-foreground">Phone</dt><dd className="truncate">{phone || '—'}</dd></div>
+            <div className="min-w-0">
+              <dt className="text-xs text-muted-foreground">Phone</dt>
+              <dd className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate">{phone || '—'}</span>
+                {phone && phoneVerified && <BadgeCheck className="size-4 shrink-0 text-success" aria-label="Verified" />}
+              </dd>
+            </div>
           </dl>
         ) : (
           <form className="space-y-3" onSubmit={(ev) => { ev.preventDefault(); void save(); }}>
@@ -62,12 +76,35 @@ export function EditProfile({ name, email, phone }: { name: string | null; email
               <Label htmlFor="profile-email">Email (optional)</Label>
               <Input id="profile-email" type="email" value={e} onChange={(ev) => setE(ev.target.value)} maxLength={160} autoComplete="email" />
             </div>
-            <p className="text-xs text-muted-foreground">Your phone number is how you sign in and can&apos;t be changed here.</p>
+            <p className="text-xs text-muted-foreground">To change your phone number, use “Change number” below — we&apos;ll verify the new one by OTP.</p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save'}</Button>
               <Button type="button" variant="ghost" disabled={busy} onClick={() => { setEditing(false); setN(name ?? ''); setE(email ?? ''); }}>Cancel</Button>
             </div>
           </form>
+        )}
+        {!editing && (
+          <div className="border-t pt-3">
+            {changingPhone ? (
+              <div className="max-w-md space-y-3">
+                <h4 className="text-sm font-semibold">{phone ? 'Change your mobile number' : 'Add your mobile number'}</h4>
+                <VerifyPhoneFlow
+                  mode={phoneVerified ? 'change' : 'add'}
+                  next="/profile"
+                  onCancel={() => setChangingPhone(false)}
+                  onVerified={() => {
+                    toast.success('Mobile number updated');
+                    setChangingPhone(false);
+                    router.refresh();
+                  }}
+                />
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" className="min-h-11" onClick={() => setChangingPhone(true)}>
+                <Smartphone className="size-3.5" /> {phone ? 'Change number' : 'Add mobile number'}
+              </Button>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

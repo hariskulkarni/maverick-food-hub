@@ -466,11 +466,59 @@
   .savings-overlay { animation: fade-in-overlay 0.3s ease-out both; }
   @keyframes fade-in-overlay { 0% { opacity: 0; } 100% { opacity: 1; } }
 
+  /* ───────── Customer welcome onboarding (/welcome) ───────── */
+
+  /* Step content enters from the right (forward) or left (back). */
+  .ob-enter-fwd { animation: ob-enter-fwd 0.32s cubic-bezier(0.2,0.7,0.3,1) both; }
+  .ob-enter-back { animation: ob-enter-back 0.32s cubic-bezier(0.2,0.7,0.3,1) both; }
+  @keyframes ob-enter-fwd { 0% { opacity: 0; transform: translateX(28px); } 100% { opacity: 1; transform: none; } }
+  @keyframes ob-enter-back { 0% { opacity: 0; transform: translateX(-28px); } 100% { opacity: 1; transform: none; } }
+
+  /* Illustration motion: a gentle bob, rising steam, a wiggle, a pin drop. */
+  .ob-bob { animation: ob-bob 3.2s ease-in-out infinite; }
+  @keyframes ob-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+  .ob-steam { animation: ob-steam 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: bottom center; }
+  .ob-steam-2 { animation-delay: 0.6s; }
+  .ob-steam-3 { animation-delay: 1.2s; }
+  @keyframes ob-steam {
+    0%   { opacity: 0; transform: translateY(6px) scaleY(0.8); }
+    40%  { opacity: 0.9; }
+    100% { opacity: 0; transform: translateY(-12px) scaleY(1.1); }
+  }
+  .ob-wiggle { animation: ob-wiggle 2.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes ob-wiggle { 0%, 70%, 100% { transform: rotate(0); } 78% { transform: rotate(-8deg); } 86% { transform: rotate(7deg); } 94% { transform: rotate(-3deg); } }
+  .ob-drop { animation: ob-drop 0.7s cubic-bezier(0.2,0.7,0.3,1.4) both; transform-box: fill-box; transform-origin: bottom center; }
+  @keyframes ob-drop { 0% { opacity: 0; transform: translateY(-26px) scale(0.8); } 70% { opacity: 1; transform: translateY(2px) scale(1.04, 0.96); } 100% { opacity: 1; transform: none; } }
+  .ob-twinkle { animation: ob-twinkle 1.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes ob-twinkle { 0%, 100% { opacity: 0.35; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.1); } }
+
+  /* OTP digit lands with a little pop; the code group shakes on a wrong code. */
+  .ob-digit-pop { animation: ob-digit-pop 0.22s cubic-bezier(0.2,0.7,0.3,1.6) both; }
+  @keyframes ob-digit-pop { 0% { transform: scale(0.82); } 100% { transform: scale(1); } }
+  .ob-shake { animation: ob-shake 0.42s cubic-bezier(0.36,0.07,0.19,0.97) both; }
+  @keyframes ob-shake { 10%, 90% { transform: translateX(-2px); } 20%, 80% { transform: translateX(4px); } 30%, 50%, 70% { transform: translateX(-6px); } 40%, 60% { transform: translateX(6px); } }
+
+  /* Confetti burst from the centre (pieces get --dx/--dy/--rot inline). */
+  .ob-confetti {
+    position: absolute; left: 50%; top: 45%;
+    width: 8px; height: 12px; border-radius: 2px;
+    opacity: 0;
+    animation: ob-confetti 1.1s cubic-bezier(0.15,0.6,0.3,1) forwards;
+  }
+  @keyframes ob-confetti {
+    0%   { opacity: 1; transform: translate(-50%, -50%) rotate(0) scale(0.6); }
+    80%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)) scale(1); }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .reveal, .reveal-stagger > *, .float-soft, .pulse-soft, .marquee, .burst,
     .confetti-piece, .shimmer, .gradient-mesh, .hero-sheen, .hero-rail-crawl,
     .hero-device, .fc-pop, .fc-ripple, .fc-ride, .fc-steam, .fc-flame,
-    .savings-splash, .savings-card, .savings-overlay { animation: none !important; }
+    .savings-splash, .savings-card, .savings-overlay,
+    .ob-enter-fwd, .ob-enter-back, .ob-bob, .ob-steam, .ob-wiggle, .ob-drop, .ob-twinkle,
+    .ob-digit-pop, .ob-shake { animation: none !important; }
+    .ob-confetti { display: none; }
     .hero-device { transform: perspective(1200px) rotateY(-7deg) rotateX(3deg); }
     .card-lift, .tap-press, .hero-pulse-card { transition: none; }
     html { scroll-behavior: auto; }
