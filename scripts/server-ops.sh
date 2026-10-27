@@ -9,6 +9,8 @@
 #   bash scripts/server-ops.sh novaryq-off       # NOVARYQ_INTEGRATION_ENABLED=false in .env, then restart rm-web
 #   bash scripts/server-ops.sh signups-open      # ALLOW_CUSTOMER_SELF_SIGNUP=true (anyone can sign up), restart
 #   bash scripts/server-ops.sh signups-closed    # ALLOW_CUSTOMER_SELF_SIGNUP=false (invite-only), restart
+#   bash scripts/server-ops.sh cleanup-stale-orders-dryrun  # list stuck orders >7d (no change)
+#   bash scripts/server-ops.sh cleanup-stale-orders-apply   # cancel stuck orders >7d
 #
 # Never prints secret values: env checks report only whether a name is set.
 set -euo pipefail
@@ -90,5 +92,7 @@ case "${1:-}" in
   novaryq-off) set_flag NOVARYQ_INTEGRATION_ENABLED false ;;
   signups-open) set_flag ALLOW_CUSTOMER_SELF_SIGNUP true ;;
   signups-closed) set_flag ALLOW_CUSTOMER_SELF_SIGNUP false ;;
+  cleanup-stale-orders-dryrun) load_node && (cd "$WEB_DIR" && npx tsx scripts/cleanup-stale-orders.ts --days 7) ;;
+  cleanup-stale-orders-apply)  load_node && (cd "$WEB_DIR" && npx tsx scripts/cleanup-stale-orders.ts --days 7 --apply) ;;
   *) sed -n '2,12p' "$0"; exit 1 ;;
 esac
