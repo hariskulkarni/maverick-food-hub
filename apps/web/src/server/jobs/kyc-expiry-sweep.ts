@@ -19,6 +19,7 @@ import { brand } from '@/lib/brand';
 import { istStartOfDay } from '@/lib/ist';
 import { kycTypeLabel, riderKycGate } from '../rider-kyc-gate';
 import { log } from '../log';
+import { recordStatusEvents } from '../rider-insights/status-events';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REMIND_DAYS = [7, 1];
@@ -67,6 +68,7 @@ export async function runKycExpirySweep(now: Date = new Date()): Promise<{
       if (!rider) continue;
       if (gate.enforced && !gate.canGoOnline && rider.isOnline) {
         await prisma.riderProfile.update({ where: { id: riderId }, data: { isOnline: false } });
+        await recordStatusEvents([{ riderId, type: 'OFFLINE', source: 'kyc_expiry', at: now }]);
         ridersTakenOffline++;
       }
       const expiredTypes = due.filter((d) => d.riderId === riderId).map((d) => kycTypeLabel(d.type));

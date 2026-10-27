@@ -2148,6 +2148,11 @@ model RiderProfile {
   conversations     RiderConversation[]
   batchInvitations  BatchInvitation[]
 
+  // Rider operational insights (2026-10-27)
+  statusEvents   RiderStatusEvent[]
+  deviceSnapshot RiderDeviceSnapshot?
+  deviceSamples  RiderDeviceSample[]
+
   @@index([isOnline])
   @@index([branchId, isOnline])
   @@index([riderType, isOnline])
@@ -2183,6 +2188,8 @@ model RiderAssignment {
 
   order Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
   rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Restrict)
+
+  tripSummary RiderTripSummary? // rider insights (2026-10-27)
 
   @@index([riderId, status])
   @@index([status, claimedAt])
@@ -2744,9 +2751,114 @@ model RiderHeartbeat {
   batteryLevel   Int?
   gpsEnabled     Boolean   @default(true)
   appVersion     String?
+  // Rider insights (2026-10-27): set by the auto-offline sweep when an online
+  // rider on an active delivery goes silent (SIGNAL_LOST event); cleared by the
+  // next heartbeat / location post (SIGNAL_REGAINED event).
+  signalLostAt   DateTime?
   updatedAt      DateTime  @updatedAt
 
   @@index([lastSeenAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Rider operational insights (2026-10-27) — additive
+// ─────────────────────────────────────────────────────────────────────────────
+// Collected only while the rider is online / on a delivery (heartbeat and
+// location posts) and disclosed in the app's location disclosure screen and the
+// rider help article. Never IMEI, other apps, or call state/activity.
+// Raw rows (status events, device samples, DeliveryLocationPing) are pruned by
+// the daily obs-retention job — see src/server/rider-insights/retention.ts.
+
+enum RiderStatusEventType {
+  ONLINE
+  OFFLINE
+  AUTO_OFFLINE
+  SIGNAL_LOST
+  SIGNAL_REGAINED
+}
+
+/// One online/offline/signal transition for a rider.
+model RiderStatusEvent {
+  id      String               @id @default(cuid())
+  riderId String
+  type    RiderStatusEventType
+  /// rider | logout | kyc_expiry | heartbeat_sweep | heartbeat | location
+  source  String?
+  at      DateTime             @default(now())
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, at])
+  @@index([at])
+}
+
+/// Latest device context per rider (one row, upserted on each post that carries it).
+model RiderDeviceSnapshot {
+  id                 String    @id @default(cuid())
+  riderId            String    @unique
+  deviceModel        String?
+  osName             String?
+  osVersion          String?
+  appVersion         String?
+  appBuild           String?
+  /// WIFI | CELLULAR | ETHERNET | NONE | OTHER | UNKNOWN
+  networkType        String?
+  /// 2g | 3g | 4g | 5g when the OS reports it
+  cellularGeneration String?
+  batteryLevel       Int?
+  charging           Boolean?
+  capturedAt         DateTime  @default(now())
+  /// When the last RiderDeviceSample row was written (history thinning).
+  historyAt          DateTime?
+  updatedAt          DateTime  @updatedAt
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([capturedAt])
+}
+
+/// Thinned device-context history (≤ 1 per 5 min, plus network/charging changes).
+model RiderDeviceSample {
+  id                 String   @id @default(cuid())
+  riderId            String
+  deviceModel        String?
+  osName             String?
+  osVersion          String?
+  appVersion         String?
+  appBuild           String?
+  networkType        String?
+  cellularGeneration String?
+  batteryLevel       Int?
+  charging           Boolean?
+  capturedAt         DateTime @default(now())
+
+  rider RiderProfile @relation(fields: [riderId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, capturedAt])
+  @@index([capturedAt])
+}
+
+/// Path summary per delivered assignment, reconstructed from DeliveryLocationPing.
+/// Kept after the raw pings are pruned (no coordinates stored here).
+model RiderTripSummary {
+  id            String    @id @default(cuid())
+  assignmentId  String    @unique
+  riderId       String
+  orderId       String
+  pointCount    Int
+  droppedPoints Int       @default(0)
+  distanceM     Int
+  durationSec   Int
+  movingSec     Int
+  maxGapSec     Int
+  gapCount      Int       @default(0)
+  startedAt     DateTime?
+  endedAt       DateTime?
+  computedAt    DateTime  @default(now())
+
+  assignment RiderAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([riderId, endedAt])
 }
 
 enum AppPlatform {

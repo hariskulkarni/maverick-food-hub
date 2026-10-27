@@ -4,6 +4,7 @@ import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { shiftGateBlockers } from '@/server/training/service';
 import { riderKycGate } from '@/server/rider-kyc-gate';
+import { recordStatusEvents } from '@/server/rider-insights/status-events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,7 +44,13 @@ export async function POST(req: NextRequest) {
       );
     }
   }
+  const before = await prisma.riderProfile.findUnique({ where: { userId: session.user.id }, select: { isOnline: true } });
   const p = await prisma.riderProfile.update({ where: { userId: session.user.id }, data: { isOnline: online } });
+  // Rider insights: one ONLINE/OFFLINE event per real transition (re-asserting
+  // the current state records nothing).
+  if (before && before.isOnline !== online) {
+    await recordStatusEvents([{ riderId: p.id, type: online ? 'ONLINE' : 'OFFLINE', source: 'rider' }]);
+  }
   if (online) {
     // Going online is proof the app is alive right now: stamp lastSeenAt so the
     // auto-offline sweep (1-minute cron, 2-minute window) can't flip the rider

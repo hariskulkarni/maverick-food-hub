@@ -16,6 +16,7 @@
 import { prisma } from './db';
 import { isActiveDelivery } from './rider-location-points';
 import { RIDER_SIGNAL_STALE_MS } from '@/lib/live-fleet';
+import { clearSignalLost, markSignalLost, recordStatusEvents } from './rider-insights/status-events';
 
 // Shared with the live map's "signal lost" marker so both agree on staleness.
 const STALE_MS = RIDER_SIGNAL_STALE_MS; // 2 minutes
@@ -35,9 +36,10 @@ export async function runHeartbeatSweep(): Promise<{ flipped: number }> {
   const riderIds = online.map((r) => r.id);
   const heartbeats = await prisma.riderHeartbeat.findMany({
     where: { riderId: { in: riderIds } },
-    select: { riderId: true, lastSeenAt: true }
+    select: { riderId: true, lastSeenAt: true, signalLostAt: true }
   });
   const lastSeen = new Map(heartbeats.map((h) => [h.riderId, h.lastSeenAt]));
+  const signalLost = new Set(heartbeats.filter((h) => h.signalLostAt).map((h) => h.riderId));
 
   const stale: string[] = [];
   for (const r of online) {
@@ -54,11 +56,20 @@ export async function runHeartbeatSweep(): Promise<{ flipped: number }> {
     active.filter((a) => isActiveDelivery(a.status, a.order.status)).map((a) => a.riderId)
   );
   const toFlip = stale.filter((id) => !delivering.has(id));
+
+  // Rider insights: a silent rider kept online because they are mid-delivery
+  // gets one SIGNAL_LOST event (cleared by their next heartbeat/location post).
+  // Insights writes never throw, so they can't break the sweep itself.
+  await markSignalLost(stale.filter((id) => delivering.has(id) && lastSeen.has(id) && !signalLost.has(id)));
+
   if (toFlip.length === 0) return { flipped: 0 };
 
   const res = await prisma.riderProfile.updateMany({
     where: { id: { in: toFlip }, isOnline: true },
     data: { isOnline: false }
   });
+  await recordStatusEvents(toFlip.map((riderId) => ({ riderId, type: 'AUTO_OFFLINE', source: 'heartbeat_sweep' })));
+  // An auto-offlined rider no longer has an open "signal lost" incident.
+  await clearSignalLost(toFlip.filter((id) => signalLost.has(id)));
   return { flipped: res.count };
 }

@@ -10,16 +10,24 @@
  * believing it is live while the fleet map and dispatch treat it as offline.
  * The heartbeat itself never flips a rider back online: going online stays an
  * explicit rider action (POST /api/rider/online).
+ *
+ * Optional `device` (rider insights): model, OS, app version/build, network
+ * type/generation, battery level/charging — validated strictly by
+ * server/rider-insights/device.ts and stored only while the rider is online.
+ * An invalid `device` is dropped without failing the heartbeat.
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
+import { parseDevice, recordDeviceContext } from '@/server/rider-insights/device';
+import { markSignalRegained } from '@/server/rider-insights/status-events';
 
 const Body = z.object({
   batteryLevel: z.number().int().min(0).max(100).optional(),
   gpsEnabled: z.boolean().optional(),
-  appVersion: z.string().max(32).optional()
+  appVersion: z.string().max(32).optional(),
+  device: z.unknown().optional()
 });
 
 export const runtime = 'nodejs';
@@ -44,7 +52,15 @@ export async function POST(req: NextRequest) {
     payload = {};
   }
 
+  const device = parseDevice(payload.device);
+  // Legacy top-level fields win; otherwise mirror the device context's values.
+  if (device) {
+    if (payload.batteryLevel === undefined && device.battery !== undefined) payload.batteryLevel = device.battery;
+    if (payload.appVersion === undefined && device.appVersion !== undefined) payload.appVersion = device.appVersion;
+  }
+
   const now = new Date();
+  await markSignalRegained(profile.id, 'heartbeat');
   await prisma.riderHeartbeat.upsert({
     where: { riderId: profile.id },
     create: {
@@ -61,6 +77,7 @@ export async function POST(req: NextRequest) {
       ...(payload.appVersion !== undefined ? { appVersion: payload.appVersion } : {})
     }
   });
+  if (device) await recordDeviceContext(profile.id, device, { online: profile.isOnline, now });
 
   return Response.json({ online: profile.isOnline }, { headers: { 'Cache-Control': 'no-store' } });
 }

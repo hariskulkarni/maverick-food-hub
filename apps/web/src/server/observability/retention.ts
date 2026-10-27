@@ -4,9 +4,12 @@
  *   resolved alerts 90d · probe history 7d · expired mutes.
  * Also closes job runs stuck in RUNNING (process restarted mid-run) and takes the
  * daily table-size snapshot used for growth tracking.
+ * Also prunes rider insights data (GPS breadcrumbs, status events, device
+ * context) — see src/server/rider-insights/retention.ts.
  */
 import { prisma } from '../db';
 import { snapshotTableSizes } from './q-infra';
+import { runRiderInsightsRetention } from '../rider-insights/retention';
 
 export const RETENTION_DAYS = { requestMinutes: 30, eventMinutes: 30, errors: 14, jobRuns: 90, alerts: 90, probeEvents: 7 } as const;
 
@@ -27,8 +30,11 @@ export async function runRetention() {
       data: { status: 'FAILED', error: 'No completion recorded (process restart or timeout)', finishedAt: new Date() },
     }),
   ]);
+  // Isolated: a rider-insights failure must not stop observability pruning.
+  const riderInsights = await runRiderInsightsRetention().catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
   await snapshotTableSizes();
   return {
+    riderInsights,
     deleted: {
       requestMinutes: req.count,
       eventMinutes: evt.count,
