@@ -1,0 +1,62 @@
+name: Configure SMS (MSG91)
+# Owner-triggered: write MSG91 SMS config to the VPS .env and switch on real SMS
+# delivery (OTP + transactional). The auth key comes from the MSG91_AUTH_KEY
+# GitHub Actions secret (add it in repo Settings → Secrets → Actions). The
+# non-secret ids come from the inputs below.
+on:
+  workflow_dispatch:
+    inputs:
+      sender_id:
+        description: "MSG91 DLT-approved sender/header (6 chars, e.g. FLAVRY)"
+        type: string
+        required: true
+      otp_template_id:
+        description: "MSG91 OTP template/flow id (login + phone verification)"
+        type: string
+        required: true
+      txn_dlt_template_id:
+        description: "DLT template id for transactional SMS (order/alert texts)"
+        type: string
+        required: true
+      route:
+        description: "MSG91 route (4 = transactional)"
+        type: string
+        required: false
+        default: "4"
+permissions:
+  contents: read
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+jobs:
+  configure:
+    name: Configure MSG91
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        env:
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          if [ -z "${VPS_KNOWN_HOSTS}" ]; then echo "::error::VPS_KNOWN_HOSTS secret is not set."; exit 1; fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${VPS_KNOWN_HOSTS}" > ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+      - name: Apply MSG91 config
+        env:
+          APP_DIR: ${{ vars.APP_DIR || '/opt/restaurant-manager' }}
+          MSG91_AUTH_KEY: ${{ secrets.MSG91_AUTH_KEY }}
+          MSG91_SENDER_ID: ${{ inputs.sender_id }}
+          MSG91_OTP_TEMPLATE_ID: ${{ inputs.otp_template_id }}
+          MSG91_TXN_DLT_TEMPLATE_ID: ${{ inputs.txn_dlt_template_id }}
+          MSG91_ROUTE: ${{ inputs.route }}
+        run: |
+          if [ -z "${MSG91_AUTH_KEY}" ]; then
+            echo "::error::MSG91_AUTH_KEY GitHub Actions secret is not set. Add it in Settings → Secrets → Actions."
+            exit 1
+          fi
+          # Pass values to the VPS as environment over SSH (SendEnv is unreliable;
+          # export inline then run the script). The auth key is masked in logs.
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 \
+            -o SendEnv=none \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "MSG91_AUTH_KEY='${MSG91_AUTH_KEY}' MSG91_SENDER_ID='${MSG91_SENDER_ID}' MSG91_OTP_TEMPLATE_ID='${MSG91_OTP_TEMPLATE_ID}' MSG91_TXN_DLT_TEMPLATE_ID='${MSG91_TXN_DLT_TEMPLATE_ID}' MSG91_ROUTE='${MSG91_ROUTE}' bash -lc 'cd ${APP_DIR} && bash scripts/configure-msg91.sh'"
