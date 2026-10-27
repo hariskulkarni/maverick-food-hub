@@ -10,6 +10,7 @@ import { prisma } from '@/server/db';
 import { readRiderBearer } from '@/server/rider-auth';
 import { revokeSession } from '@/server/sessions';
 import { audit } from '@/server/audit';
+import { onlineRiderIdForUser, recordStatusEvents } from '@/server/rider-insights/status-events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,7 +32,9 @@ export async function POST() {
   // token. Signing out of the web portal (cookie transport) must not touch a
   // delivery that may be running in the app right now.
   if (bearer.transport === 'bearer') {
+    const wasOnline = await onlineRiderIdForUser(userId);
     await prisma.riderProfile.updateMany({ where: { userId }, data: { expoPushToken: null, isOnline: false } });
+    if (wasOnline) await recordStatusEvents([{ riderId: wasOnline, type: 'OFFLINE', source: 'logout' }]);
   }
   await audit('auth.logout', { actorId: userId, actorRole: 'RIDER', entityType: 'User', entityId: userId, after: { provider: bearer.transport === 'cookie' ? 'rider-web' : 'rider-token' } }).catch(() => {});
   return Response.json({ ok: true });

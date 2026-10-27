@@ -22,6 +22,7 @@ export type AuditAction =
   // Riders
   | 'rider.approve' | 'rider.reject' | 'rider.suspend' | 'rider.reinstate'
   | 'rider.earnings.adjust' | 'rider.location.override'
+  | 'rider.insights.export'
   // Orders
   | 'order.cancel' | 'order.refund' | 'order.reassign' | 'order.force_deliver'
   // COD

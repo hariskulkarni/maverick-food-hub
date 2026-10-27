@@ -3,7 +3,8 @@
  * policy). Shown BEFORE the OS "Allow all the time" / "Always" prompt, the
  * first time the rider goes online (or an accepted delivery needs background
  * tracking) without that permission. Explains what is
- * collected, why, when, and how to stop; only "Continue" triggers the system
+ * collected (location, plus on-duty device/network/battery info and online
+ * status history), why, when, how long it is kept, and how to stop; only "Continue" triggers the system
  * permission request. "Not now" keeps foreground-only tracking.
  */
 import { useState } from 'react';
@@ -98,6 +99,11 @@ export default function LocationDisclosureScreen() {
             body="Your location about every 30 seconds while you are online and waiting for orders, and your precise GPS location and speed about every 15 seconds or 30 metres while you are on a delivery."
           />
           <Point
+            icon="phone-portrait-outline"
+            title="Device and network info"
+            body="While you are online we also send your phone model, Android/iOS version, Flavrly app version, network type (Wi-Fi or mobile data, and 4G/5G when your phone reports it) and battery level and charging status, plus the times you go online or offline or lose signal. This helps support fix tracking and connection problems. We never read your IMEI, the other apps on your phone, or your calls."
+          />
+          <Point
             icon="people-outline"
             title="Why"
             body="So we can offer you orders near you and keep you online while your phone is in your pocket, so the customer can follow their order on the live map, the restaurant and Flavrly support can see where the order is, and for your safety if something goes wrong on the road."
@@ -123,7 +129,7 @@ export default function LocationDisclosureScreen() {
           <Point
             icon="stop-circle-outline"
             title="How to stop"
-            body={`It stops by itself when you go offline or sign out. You can also change Location to "While using the app" in your phone settings; tracking then pauses whenever Flavrly is not on screen, and you may be set offline after 2 minutes away from the app.`}
+            body={`Your route history is kept for 90 days and device info for 30 days, then deleted. It stops by itself when you go offline or sign out. You can also change Location to "While using the app" in your phone settings; tracking then pauses whenever Flavrly is not on screen, and you may be set offline after 2 minutes away from the app.`}
           />
         </View>
 

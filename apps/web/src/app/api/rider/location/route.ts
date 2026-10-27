@@ -12,6 +12,8 @@ import {
   pointsToPersist,
   isActiveDelivery
 } from '@/server/rider-location-points';
+import { parseDevice, recordDeviceContext } from '@/server/rider-insights/device';
+import { markSignalRegained } from '@/server/rider-insights/status-events';
 
 /**
  * Rider location ping — one point from the foreground app, or a batch of up to
@@ -31,6 +33,10 @@ import {
  * - Every request with accepted points refreshes RiderHeartbeat.lastSeenAt.
  * - Accepted points go into DeliveryLocationPing (the route trail) thinned to
  *   one per ~3 s per rider, stamped with their fix time.
+ * - Rider insights: an optional `device` context (see
+ *   server/rider-insights/device.ts) is stored while the rider is online, and a
+ *   post with accepted points clears a sweep-set "signal lost" mark
+ *   (SIGNAL_REGAINED). Both are fire-and-forget and never fail the ping.
  * - The response carries `orderActive` for the newest tagged point so the
  *   background task can stop itself once the delivery is over.
  *
@@ -119,7 +125,9 @@ export async function POST(req: NextRequest) {
   const riderId = profile.id;
 
   // Resolve each referenced order once; keep only the rider's own.
-  const { points, sentAt } = bodyPoints(parsed);
+  const { points, sentAt, device: rawDevice } = bodyPoints(parsed);
+  const device = parseDevice(rawDevice);
+  if (device) void recordDeviceContext(riderId, device);
   const owned = new Map<string, OrderInfo>();
   for (const orderId of new Set(points.map((p) => p.orderId).filter((x): x is string => !!x))) {
     const info = await loadOrder(orderId);
@@ -215,6 +223,7 @@ export async function POST(req: NextRequest) {
         prisma.riderProfile.update({ where: { id: riderId }, data: { currentLat: storedLive.lat, currentLng: storedLive.lng } })
       );
     }
+    writes.push(markSignalRegained(riderId, 'location'));
     // Fire-and-forget: never block the ack behind disk I/O.
     Promise.all(writes).catch(() => {});
   }

@@ -40,6 +40,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as SecureStore from 'expo-secure-store';
 import { File, Paths } from 'expo-file-system';
 import { API_BASE, getAuthToken } from './api';
+import { readDeviceContext } from './device-context';
 
 export const DELIVERY_LOCATION_TASK = 'flavrly-delivery-location';
 
@@ -218,7 +219,8 @@ async function flushQueue(): Promise<void> {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           // sentAt lets the server correct for a wrong phone clock.
-          body: JSON.stringify({ points: batch, sentAt: Date.now() }),
+          // device: on-duty device context (lib/device-context.ts) — this task only runs while online.
+          body: JSON.stringify({ points: batch, sentAt: Date.now(), device: await readDeviceContext().catch(() => undefined) }),
         });
       } catch {
         return; // offline — retry on the next fix

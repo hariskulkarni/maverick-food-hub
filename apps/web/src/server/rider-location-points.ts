@@ -44,18 +44,24 @@ export type LocationPoint = z.infer<typeof LocationPoint>;
 
 const SentAt = z.number().int().positive().optional();
 
+/**
+ * Optional rider-insights device context; validated separately (strictly) by
+ * server/rider-insights/device.ts so a bad value never rejects the points.
+ */
+const Device = z.unknown().optional();
+
 /** Either one point (foreground app) or `{ points: [...] }` (background batch). */
 export const LocationBody = z.union([
-  z.object({ points: z.array(LocationPoint).min(1).max(MAX_BATCH), sentAt: SentAt }),
-  LocationPoint.extend({ sentAt: SentAt })
+  z.object({ points: z.array(LocationPoint).min(1).max(MAX_BATCH), sentAt: SentAt, device: Device }),
+  LocationPoint.extend({ sentAt: SentAt, device: Device })
 ]);
 export type LocationBody = z.infer<typeof LocationBody>;
 
-/** Normalise either body shape to a point list + optional device send time. */
-export function bodyPoints(body: LocationBody): { points: LocationPoint[]; sentAt?: number } {
-  if ('points' in body) return { points: body.points, sentAt: body.sentAt };
-  const { sentAt, ...point } = body;
-  return { points: [point], sentAt };
+/** Normalise either body shape to a point list + optional device send time (+ raw device context). */
+export function bodyPoints(body: LocationBody): { points: LocationPoint[]; sentAt?: number; device?: unknown } {
+  if ('points' in body) return { points: body.points, sentAt: body.sentAt, device: body.device };
+  const { sentAt, device, ...point } = body;
+  return { points: [point], sentAt, device };
 }
 
 export type TimedPoint = LocationPoint & { t: number };

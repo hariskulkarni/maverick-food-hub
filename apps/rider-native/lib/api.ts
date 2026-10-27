@@ -13,6 +13,8 @@
  * the cert (issued for flavrly.in) actually validates.
  */
 
+import type { DeviceContext } from './device-context';
+
 /**
  * EAS build profiles set EXPO_PUBLIC_API_BASE (e.g. demo-preview →
  * https://demo.flavrly.in) so demo APKs never talk to production. Expo inlines
@@ -423,10 +425,14 @@ export const api = {
    * auto-offline us. Reports whether the phone's location services are on.
    * The server answers with its own view of the online flag (`online`), so the
    * app can notice it was set offline while it was in the background. Older
-   * servers answer 204 (null).
+   * servers answer 204 (null). Carries the on-duty device context (model, OS,
+   * app version, network, battery — see lib/device-context.ts).
    */
-  heartbeat: (gpsEnabled: boolean) =>
-    request<{ online?: boolean } | null>('/api/rider/heartbeat', { method: 'POST', body: { gpsEnabled } }),
+  heartbeat: (gpsEnabled: boolean, device?: DeviceContext) =>
+    request<{ online?: boolean } | null>('/api/rider/heartbeat', {
+      method: 'POST',
+      body: device ? { gpsEnabled, device } : { gpsEnabled },
+    }),
 
   /** Claimable orders from the shared pool (READY, unclaimed, platform-wide). */
   pool: () => request<PoolOrder[]>('/api/rider/pool'),

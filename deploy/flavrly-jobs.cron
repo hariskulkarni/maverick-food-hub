@@ -66,6 +66,8 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 * * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 50 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/dispatch-jit/run >> /var/log/restaurant-manager/jobs.log 2>&1
 # Stationary on-task riders → RIDER_STATIONARY escalation on /platform/live-ops (debounced per assignment).
 */2 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 90 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/rider-stationary/run >> /var/log/restaurant-manager/jobs.log 2>&1
+# Rider insights — per-delivery GPS path summaries (distance, duration, max gap) for recently delivered orders.
+*/10 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 120 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/rider-trip-summaries/run >> /var/log/restaurant-manager/jobs.log 2>&1
 # H3 zone supply/demand snapshot (also the rider-hours source for orders-per-rider-hour).
 */5 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 90 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/zone-snapshot/run >> /var/log/restaurant-manager/jobs.log 2>&1
 # Nightly prep-time percentiles per restaurant × hour (feeds predicted prep / JIT).
@@ -74,6 +76,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # and flushes metrics). Super-admin e-mail/SMS on new alerts, debounced.
 * * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 50 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/obs-alerts/run >> /var/log/restaurant-manager/jobs.log 2>&1
 # Observability retention — prune metrics (30d), errors (14d), job runs (90d); daily 03:30 IST.
+# Also prunes rider insights data: GPS breadcrumbs 90d, status events 90d, device history 30d.
 30 3 * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 300 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/obs-retention/run >> /var/log/restaurant-manager/jobs.log 2>&1
 
 # Novaryq POS worker — webhook inbox (POS status + 86'd items) and order push/cancel outbox, each under a DB lease. Every minute.
