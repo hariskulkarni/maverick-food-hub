@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DetailDrawer, DrawerSection } from '@/components/admin/detail-drawer';
+import { CallLogBlock } from '@/components/admin/call-log-block';
 import { Search, Download, RefreshCw, ArrowUpRight, X, Loader2, Phone, MapPin, Bike, Clock, CheckCircle2, AlertTriangle, Star, MessageSquare, Wallet, CreditCard, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -237,6 +238,10 @@ function OrderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
       <DrawerSection title="Customer feedback">
         <OrderFeedbackBlock orderId={o.id} />
+      </DrawerSection>
+
+      <DrawerSection title="Masked calls">
+        <CallLogBlock orderId={o.id} />
       </DrawerSection>
 
       <DrawerSection title={`Timeline (${o.statusEvents.length})`}>

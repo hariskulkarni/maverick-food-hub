@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DetailDrawer, DrawerSection } from '@/components/admin/detail-drawer';
+import { CallLogBlock } from '@/components/admin/call-log-block';
 import { toast } from 'sonner';
 import { Search, X, Bike, Phone, Star, Wallet, Plus, Minus, Save, Loader2, MapPin } from 'lucide-react';
 import { PayoutOverridePanel } from './payout-override-panel';
@@ -267,6 +268,10 @@ function RiderDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           ))}
           {data.recent.length === 0 && <li className="p-4 text-center text-xs text-muted-foreground">No deliveries yet.</li>}
         </ul>
+      </DrawerSection>
+
+      <DrawerSection title="Masked calls to customers">
+        <CallLogBlock riderId={p.id} />
       </DrawerSection>
 
       {data.ratingHistory.length > 0 && (
