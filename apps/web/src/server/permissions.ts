@@ -230,6 +230,7 @@ const RAW_PAGE_GATES: ReadonlyArray<{ prefix: string; capability: Capability }> 
   { prefix: '/platform/rider-referrals', capability: 'riders:read' },
   { prefix: '/platform/rider-support', capability: 'riders:read' },
   { prefix: '/platform/rider-sos', capability: 'riders:read' },
+  { prefix: '/platform/safety-alerts', capability: 'platform:admin' },
   { prefix: '/platform/rider-incidents', capability: 'riders:read' },
   { prefix: '/platform/riders', capability: 'riders:read' },
   // Ops

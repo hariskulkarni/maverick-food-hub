@@ -89,6 +89,7 @@ export const PLATFORM_NAV: PlatformNavGroup[] = [
     title: 'Rider safety & support',
     items: [
       { href: '/platform/rider-sos', label: 'SOS alerts', icon: 'sos', keywords: ['emergency', 'panic'] },
+      { href: '/platform/safety-alerts', label: 'Safety alerts', icon: 'settings', keywords: ['route deviation', 'eta breach', 'late', 'signal lost', 'long wait', 'anomaly', 'thresholds'] },
       { href: '/platform/rider-incidents', label: 'Incidents', icon: 'incidents', keywords: ['accident', 'report'] },
       { href: '/platform/rider-support', label: 'Rider support', icon: 'riderSupport', keywords: ['tickets', 'helpdesk'] },
       { href: '/platform/messages', label: 'Messages', icon: 'messages', keywords: ['chat', 'inbox'] },

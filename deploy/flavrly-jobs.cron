@@ -66,6 +66,9 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 * * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 50 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/dispatch-jit/run >> /var/log/restaurant-manager/jobs.log 2>&1
 # Stationary on-task riders → RIDER_STATIONARY escalation on /platform/live-ops (debounced per assignment).
 */2 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 90 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/rider-stationary/run >> /var/log/restaurant-manager/jobs.log 2>&1
+# Rider safety & anomaly alerts → ROUTE_DEVIATION / ETA_BREACH / LONG_WAIT_AT_RESTAURANT / SIGNAL_LOST escalations
+# on /platform/live-ops (debounced per assignment, auto-resolved; each type toggleable in platform safety-alert settings).
+*/2 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 90 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/safety-alerts/run >> /var/log/restaurant-manager/jobs.log 2>&1
 # Rider insights — per-delivery GPS path summaries (distance, duration, max gap) for recently delivered orders.
 */10 * * * * deploy . /opt/restaurant-manager/apps/web/.env; curl -fsS -m 120 -X POST -H "x-internal-secret: $INTERNAL_CRON_SECRET" https://flavrly.in/api/platform/jobs/rider-trip-summaries/run >> /var/log/restaurant-manager/jobs.log 2>&1
 # H3 zone supply/demand snapshot (also the rider-hours source for orders-per-rider-hour).

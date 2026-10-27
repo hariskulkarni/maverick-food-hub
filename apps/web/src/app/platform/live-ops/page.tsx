@@ -6,11 +6,13 @@
  * that admins acknowledge or resolve. Backed by the stuck-order detector at
  * /api/platform/escalations/scan.
  */
+import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { prisma } from '@/server/db';
 import { requireCapability } from '@/server/tenancy';
 import { LiveOpsClient } from './live-ops-client';
-import { AlertTriangle, Flame, AlertOctagon, Activity, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, Flame, AlertOctagon, Activity, CheckCircle2, Siren, MapPin, ArrowUpRight, Phone } from 'lucide-react';
 import { money } from '@/lib/utils';
 
 export const metadata = { title: 'Platform · Live ops' };
@@ -29,7 +31,8 @@ export default async function PlatformLiveOpsPage() {
     totalRiders,
     pausedBranches,
     pendingPayment,
-    codPendingAgg
+    codPendingAgg,
+    activeSos
   ] = await Promise.all([
     prisma.orderEscalation.findMany({
       where: { status: { in: ['OPEN', 'ACKNOWLEDGED'] } },
@@ -62,6 +65,13 @@ export default async function PlatformLiveOpsPage() {
       where: { status: { in: ['PENDING_COLLECTION', 'PARTIAL_COLLECTED', 'DEPOSIT_PENDING'] } },
       _sum: { amountToCollect: true },
       _count: true
+    }),
+    // Active rider SOS — the highest-priority signal; surfaced above the alert stack.
+    prisma.sosAlert.findMany({
+      where: { status: 'ACTIVE' },
+      include: { rider: { select: { id: true, user: { select: { name: true, phone: true } } } } },
+      orderBy: { triggeredAt: 'asc' },
+      take: 50
     })
   ]);
 
@@ -116,11 +126,57 @@ export default async function PlatformLiveOpsPage() {
         <KpiTile icon={CheckCircle2} label="Resolved today"  value={counts.resolvedToday} tone="success" />
       </div>
 
+      {activeSos.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
+            <Siren className="size-4" /> Needs attention · {activeSos.length} active SOS
+          </div>
+          <div className="grid gap-2">
+            {activeSos.map((s) => (
+              <Card key={s.id} className="border-l-4 border-l-destructive">
+                <CardContent className="p-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <div className="grid size-9 place-items-center rounded-lg bg-destructive/15 text-destructive shrink-0">
+                    <Siren className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm truncate">{s.rider.user?.name ?? 'Rider'}</div>
+                    <div className="text-xs text-muted-foreground">
+                      SOS {timeAgo(s.triggeredAt)}{s.note ? ` · ${s.note}` : ''}
+                    </div>
+                  </div>
+                  {s.rider.user?.phone && (
+                    <span className="inline-flex items-center gap-1 text-xs font-mono text-muted-foreground">
+                      <Phone className="size-3.5" /> {s.rider.user.phone}
+                    </span>
+                  )}
+                  <div className="ml-auto flex items-center gap-2">
+                    <Button asChild size="sm" variant="outline">
+                      <Link href="/platform/rider-sos"><ArrowUpRight className="size-4" /> Open SOS</Link>
+                    </Button>
+                    <Button asChild size="sm" variant="ghost">
+                      <Link href={`/platform/riders/${s.rider.id}/insights`}><MapPin className="size-4" /> See on map</Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
+
       <LiveOpsClient
         initial={JSON.parse(JSON.stringify(escalations))}
       />
     </div>
   );
+}
+
+function timeAgo(d: Date): string {
+  const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 }
 
 function KpiTile({
