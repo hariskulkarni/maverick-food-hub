@@ -1,6 +1,7 @@
 import { auth } from '@/server/rider-auth';
 import { prisma } from '@/server/db';
 import { isDemoMode } from '@/lib/demo';
+import { maskPhone } from '@/server/telephony/phone';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,9 @@ export async function GET() {
         include: {
           items: true,
           // P0-3: only what the rider needs to reach the customer — never the
-          // full User row (passwordHash, totpSecret, email, …).
+          // full User row (passwordHash, totpSecret, email, …). The phone is
+          // read ONLY to build the masked "+91 ******12" hint below; riders
+          // call through POST …/call-customer (masked via Exotel).
           customer: { select: { id: true, name: true, phone: true } },
           address: true,
           // Include the branch's restaurant so each assignment carries the
@@ -43,6 +46,10 @@ export async function GET() {
     order: {
       ...a.order,
       deliveryOtp: demo ? a.order.deliveryOtp : null,
+      // Never the real number — name + masked hint only (masked calling).
+      customer: a.order.customer
+        ? { id: a.order.customer.id, name: a.order.customer.name, maskedPhone: maskPhone(a.order.customer.phone) }
+        : null,
       pickupCode: undefined,
       branch: a.order.branch
         ? {

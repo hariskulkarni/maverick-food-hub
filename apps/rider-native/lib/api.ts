@@ -194,7 +194,12 @@ export interface AssignmentOrder {
   deliveryOtp: string | null; // customer's hand-over code, checked by /deliver
   placedAt: string;
   items: { id: string; quantity: number }[];
-  customer: { id: string; name: string | null; phone: string | null } | null;
+  /**
+   * The customer's real number is never sent to the app. `maskedPhone` is a
+   * display hint only ("+91 ******12"); calls go through `api.callCustomer`
+   * (masked via Flavrly's calling provider).
+   */
+  customer: { id: string; name: string | null; maskedPhone: string | null } | null;
   address: {
     line1: string;
     line2: string | null;
@@ -452,6 +457,17 @@ export const api = {
     request<{ ok: true; orderStatus: 'CUSTOMER_UNREACHABLE' }>(
       `/api/rider/assignments/${id}/customer-unreachable`,
       { method: 'POST', body: note ? { note } : {} }
+    ),
+  /**
+   * Masked call: Flavrly rings the rider's phone, then connects them to the
+   * customer — neither sees the other's number. Errors carry a machine code in
+   * `body.error` (telephony_unavailable, rate_limited, customer_phone_missing,
+   * call_failed, test_account, not_active) with rider-facing copy as the message.
+   */
+  callCustomer: (id: string) =>
+    request<{ ok: true; callId: string; message: string }>(
+      `/api/rider/assignments/${id}/call-customer`,
+      { method: 'POST', body: {} }
     ),
   /** Hand-over — verifies the customer's OTP. 400 on mismatch. */
   deliver: (id: string, otp: string) =>

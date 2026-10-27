@@ -34,3 +34,15 @@ export function recordClientErrorBeacon(source: string): void {
     /* never throw */
   }
 }
+
+/**
+ * Masked-calling outcomes per provider (REQUESTED, RATE_LIMITED, FAILED and the
+ * terminal call statuses from the provider callback). Never carries numbers.
+ */
+export function recordMaskedCall(provider: string, outcome: string): void {
+  try {
+    incEvent('masked_call', provider.slice(0, 40), outcome.slice(0, 40));
+  } catch {
+    /* never throw */
+  }
+}
