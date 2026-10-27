@@ -27,7 +27,6 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  Linking,
   KeyboardAvoidingView,
   Platform,
   Modal,
@@ -47,6 +46,7 @@ import { orderHold } from '../../lib/order-hold';
 import { openNavigation, canNavigate } from '../../lib/maps-nav';
 import { useDeliveryTracking } from '../../lib/delivery-tracking';
 import { BackgroundLocationBanner } from '../../components/background-location-banner';
+import { useMaskedCall } from '../../lib/use-masked-call';
 import { colors, spacing, radius, font, shadow } from '../../lib/theme';
 
 type Step =
@@ -193,12 +193,22 @@ function Stepper({ activeIndex }: { activeIndex: number }) {
   );
 }
 
-function RouteBlock({ a }: { a: Assignment }) {
+function RouteBlock({
+  a,
+  calling,
+  onCall,
+}: {
+  a: Assignment;
+  calling: boolean;
+  onCall: () => void;
+}) {
   const o = a.order;
   const drop = o.address
     ? [o.address.line1, o.address.line2, o.address.city].filter(Boolean).join(', ')
     : 'Customer address';
-  const phone = o.customer?.phone ?? null;
+  // Masked calling: the app only ever gets "+91 ******12"; the call itself is
+  // bridged by the server so neither side sees the other's number.
+  const canCall = a.status === 'ACCEPTED' || a.status === 'PICKED_UP';
 
   return (
     <View style={styles.card}>
@@ -231,20 +241,35 @@ function RouteBlock({ a }: { a: Assignment }) {
               Note: {o.address.instructions}
             </Text>
           ) : null}
-          {o.customer?.name ? (
-            <Text style={styles.routeSub}>{o.customer.name}</Text>
+          {o.customer?.name || o.customer?.maskedPhone ? (
+            <Text style={styles.routeSub}>
+              {[o.customer?.name, o.customer?.maskedPhone].filter(Boolean).join(' · ')}
+            </Text>
           ) : null}
         </View>
-        {phone ? (
-          <Pressable
-            style={styles.callBtn}
-            onPress={() => Linking.openURL(`tel:${phone}`)}
-            hitSlop={8}
-          >
-            <Ionicons name="call" size={18} color={colors.primary} />
-          </Pressable>
-        ) : null}
       </View>
+      {canCall ? (
+        <Pressable
+          style={[styles.callCustomerBtn, calling && styles.callCustomerBtnBusy]}
+          onPress={onCall}
+          disabled={calling}
+          accessibilityRole="button"
+          accessibilityLabel="Call customer. Flavrly rings your phone first and keeps both numbers private."
+          accessibilityState={{ busy: calling, disabled: calling }}
+        >
+          {calling ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Ionicons name="call" size={18} color={colors.primary} />
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.callCustomerText}>{calling ? 'Connecting…' : 'Call customer'}</Text>
+            <Text style={styles.callCustomerHint}>
+              We ring your phone, then connect you. Numbers stay private.
+            </Text>
+          </View>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -274,6 +299,16 @@ export default function DeliveryScreen() {
   const [failReason, setFailReason] = useState<FailReason | null>(null);
   const [failNote, setFailNote] = useState('');
   const [failError, setFailError] = useState<string | null>(null);
+  const openUnreachSheet = useCallback(() => {
+    setUnreachError(null);
+    setUnreachOpen(true);
+  }, []);
+  // Masked "Call customer". If calling isn't possible, offer the existing
+  // "Customer unreachable" flow — but only at the door, where it is allowed.
+  const maskedCall = useMaskedCall(
+    assignment?.id ?? null,
+    assignment && deriveStep(assignment) === 'at_customer' ? openUnreachSheet : undefined
+  );
 
   const load = useCallback(async () => {
     try {
@@ -416,29 +451,13 @@ export default function DeliveryScreen() {
    */
   function startUnreachable() {
     if (acting || !assignment) return;
-    const phone = assignment.order.customer?.phone ?? null;
-    const openNoteSheet = () => {
-      setUnreachError(null);
-      setUnreachOpen(true);
-    };
-    if (!phone) {
-      Alert.alert(
-        'No phone number on this order',
-        'We could not find a number for this customer. You can still alert Flavrly support.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Continue', onPress: openNoteSheet },
-        ]
-      );
-      return;
-    }
     Alert.alert(
       'Call the customer first',
       'Try calling the customer (and knock / ring the bell) before reporting them unreachable.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Call customer', onPress: () => Linking.openURL(`tel:${phone}`) },
-        { text: "I've already called", onPress: openNoteSheet },
+        { text: 'Call customer', onPress: maskedCall.confirmAndCall },
+        { text: "I've already called", onPress: openUnreachSheet },
       ]
     );
   }
@@ -709,7 +728,7 @@ export default function DeliveryScreen() {
               </Text>
             </View>
           ) : null}
-          <RouteBlock a={assignment} />
+          <RouteBlock a={assignment} calling={maskedCall.calling} onCall={maskedCall.confirmAndCall} />
 
           {o.customerNotes ? (
             <View style={styles.notesCard}>
@@ -1199,14 +1218,20 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     marginVertical: 2,
   },
-  callBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primarySoft,
+  callCustomerBtn: {
+    marginTop: spacing.md,
+    minHeight: 48,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
   },
+  callCustomerBtnBusy: { opacity: 0.7 },
+  callCustomerText: { fontSize: font.size.md, fontWeight: font.weight.bold, color: colors.primary },
+  callCustomerHint: { fontSize: font.size.xs, color: colors.textMuted, marginTop: 1 },
 
   notesCard: {
     marginTop: spacing.md,
