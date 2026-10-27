@@ -30,6 +30,7 @@ import { saveConfig } from '@/server/integrations';
 import { transitionOrder } from '@/server/orders';
 import { enqueueNovaryqPush, runNovaryqPushWorker } from '@/server/novaryq/push';
 import { runNovaryqWebhookWorker } from '@/server/novaryq/webhook';
+import { importNovaryqMenu } from '@/server/novaryq/menu';
 import { POST as webhookPOST } from '@/app/api/integrations/novaryq/webhook/[restaurantId]/route';
 import { uid } from './fixtures';
 
@@ -246,5 +247,92 @@ describe('webhook inbox', () => {
     expect(events.map((e) => e.error)).toEqual([null, 'ignored:stale']);
     const sync = await prisma.novaryqOrderSync.findUniqueOrThrow({ where: { orderId: o.id } });
     expect(sync).toMatchObject({ lastStatus: 'IN_PREP' });
+  });
+});
+
+describe('menu import with modifier groups + priced modifier snapshot (QA-D2)', () => {
+  const nqMenu = (addOns: Array<{ id: string; name: string; price: string }>) => ({
+    data: [{
+      itemCode: 'SKU-BIRYANI', id: 'nq_item_b', name: 'Veg Biryani', category: 'Mains', categoryName: 'Mains', price: '249.00', currency: 'INR', available: true,
+      modifierGroups: [
+        { id: 'g_spice', name: 'Spice level', minSelect: 1, maxSelect: 1, required: true, options: [
+          { id: 'o_mild', name: 'Mild', price: '0.00', available: true, isDefault: true, maxQuantity: 1 },
+          { id: 'o_hot', name: 'Hot', price: '0.00', available: true, isDefault: false, maxQuantity: 1 },
+        ] },
+        { id: 'g_add', name: 'Add-ons', minSelect: 0, maxSelect: 2, required: false, options: addOns.map((a) => ({ ...a, available: true, isDefault: false, maxQuantity: 1 })) },
+      ],
+    }],
+    page: 1, pageSize: 1, total: 1,
+  });
+  let menu: unknown = null;
+  const posted: any[] = [];
+  let b2 = '';
+
+  beforeAll(async () => {
+    b2 = (await prisma.branch.create({ data: { restaurantId, name: 'Second', slug: `nq-b2-${uid()}`, line1: 'x', city: 'Pune', postalCode: '411001' } })).id;
+    await prisma.novaryqLocationLink.create({ data: { restaurantId, branchId: b2, novaryqLocationId: 'loc_2', currency: 'INR' } });
+  });
+  beforeEach(() => {
+    posted.length = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      const u = new URL(url);
+      if ((init.method ?? 'GET') === 'GET' && u.pathname === '/api/v1/menu') return new Response(JSON.stringify(menu), { status: 200 });
+      if (init.method === 'POST' && u.pathname === '/api/v1/orders') {
+        posted.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify({ id: `nq_${uid()}`, orderNumber: 1, idempotentReplay: false }), { status: 201 });
+      }
+      return new Response('{}', { status: 404 });
+    }));
+  });
+
+  const itemState = async () => {
+    const item = await prisma.menuItem.findFirstOrThrow({
+      where: { branchId: b2, name: 'Veg Biryani' },
+      include: { novaryqLink: true, modifierGroups: { orderBy: { sortOrder: 'asc' }, include: { options: { orderBy: { sortOrder: 'asc' } } } } },
+    });
+    return {
+      item,
+      groups: item.modifierGroups.map((g) => ({ id: g.id, name: g.name, minSelect: g.minSelect, maxSelect: g.maxSelect, required: g.required,
+        options: g.options.map((o) => ({ id: o.id, name: o.name, price: Number(o.priceDelta), isDefault: o.isDefault })) })),
+    };
+  };
+
+  it('imports groups/options; a re-import updates in place (stable ids + link), drops removed options, keeps Flavrly-only groups; push prices the snapshot', async () => {
+    menu = nqMenu([{ id: 'o_paneer', name: 'Extra paneer', price: '60.00' }, { id: 'o_cheese', name: 'Extra cheese', price: '30.00' }]);
+    expect(await importNovaryqMenu(restaurantId, b2)).toMatchObject({ created: 1, linked: 1, modifierGroups: 2 });
+    const first = await itemState();
+    expect(first.item.novaryqLink?.novaryqItemCode).toBe('SKU-BIRYANI');
+    expect(first.groups.map((g) => [g.name, g.minSelect, g.maxSelect, g.required, g.options.map((o) => [o.name, o.price, o.isDefault])])).toEqual([
+      ['Spice level', 1, 1, true, [['Mild', 0, true], ['Hot', 0, false]]],
+      ['Add-ons', 0, 2, false, [['Extra paneer', 60, false], ['Extra cheese', 30, false]]],
+    ]);
+
+    // A Flavrly-only add-on group, then Novaryq raises a price and drops an option.
+    await prisma.modifierGroup.create({ data: { menuItemId: first.item.id, name: 'Gift wrap', sortOrder: 9, options: { create: [{ name: 'Ribbon', priceDelta: '10.00' }] } } });
+    menu = nqMenu([{ id: 'o_paneer', name: 'Extra paneer', price: '70.00' }]);
+    expect(await importNovaryqMenu(restaurantId, b2)).toMatchObject({ created: 0, linked: 1, modifierGroups: 2 });
+    const again = await itemState();
+    expect(again.item.id).toBe(first.item.id);
+    expect(again.item.novaryqLink?.id).toBe(first.item.novaryqLink?.id);
+    expect(again.groups.map((g) => g.id)).toEqual([first.groups[0].id, first.groups[1].id, expect.any(String)]);
+    expect(again.groups[0].options.map((o) => o.id)).toEqual(first.groups[0].options.map((o) => o.id));
+    expect(again.groups[1].options).toEqual([{ ...first.groups[1].options[0], price: 70 }]);
+    expect(again.groups[2]).toMatchObject({ name: 'Gift wrap', options: [{ name: 'Ribbon', price: 10 }] });
+    expect(await prisma.modifierGroup.count({ where: { menuItemId: first.item.id } })).toBe(3);
+
+    // The order line keeps the chosen names; the push sends them with Flavrly's per-unit prices.
+    const o = await prisma.order.create({
+      data: {
+        code: `ORD-${uid()}`, branchId: b2, customerId, status: OrderStatus.RECEIVED, subtotal: '638.00', total: '638.00', paymentMethod: PaymentMethod.COD,
+        items: { create: [{ name: 'Veg Biryani', quantity: 2, unitPrice: '319.00', menuItemId: first.item.id, modifiersSummary: 'Mild, Extra paneer' }] },
+      },
+    });
+    expect(await prisma.$transaction((tx) => enqueueNovaryqPush(tx, o.id, b2))).toBe(true);
+    expect((await runNovaryqPushWorker()).sent).toBe(1);
+    expect(posted).toHaveLength(1);
+    expect(posted[0].lines).toEqual([{
+      itemCode: 'SKU-BIRYANI', quantity: 2, unitPrice: '319.00',
+      modifiers: [{ name: 'Mild', unitPrice: '0.00', quantity: 1 }, { name: 'Extra paneer', unitPrice: '70.00', quantity: 1 }],
+    }]);
   });
 });

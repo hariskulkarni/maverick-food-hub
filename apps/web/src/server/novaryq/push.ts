@@ -92,6 +92,8 @@ export interface PushOrder {
     isFreebie: boolean;
     selectedVariantName: string | null;
     modifiersSummary: string | null;
+    /** The item's current add-on options, to price the modifier snapshot. */
+    menuItem?: { modifierGroups: Array<{ options: Array<{ name: string; priceDelta: Money }> }> } | null;
   }>;
 }
 
@@ -99,9 +101,24 @@ const money = (v: Money) => Number(v).toFixed(2);
 const SERVICE_MODE: Record<FulfillmentType, string> = { DELIVERY: 'DELIVERY', PICKUP: 'TAKEOUT', DINE_IN: 'DINE_IN' };
 
 /**
+ * Option name → per-unit price on this item. A name with two different prices is left out, and
+ * so is a negative delta (Novaryq accepts only non-negative modifier prices): both go at 0.00.
+ */
+function modifierPrices(item: PushOrder['items'][number]): Map<string, string> {
+  const prices = new Map<string, string | null>();
+  for (const o of item.menuItem?.modifierGroups.flatMap((g) => g.options) ?? []) {
+    const p = Number(o.priceDelta) < 0 ? null : money(o.priceDelta);
+    prices.set(o.name, prices.has(o.name) && prices.get(o.name) !== p ? null : p);
+  }
+  return new Map([...prices].filter((e): e is [string, string] => e[1] !== null));
+}
+
+/**
  * Builds the POST /orders body, or lists every line that has no Novaryq item code.
- * Line unitPrice already includes variant + modifier deltas (OrderItem contract), so
- * modifiers go as a 0.00 snapshot and the POS never adds them twice.
+ * Line unitPrice already includes variant + modifier deltas (OrderItem contract); the
+ * modifiers go as a ticket snapshot with each add-on's per-unit Flavrly price (QA-D2),
+ * which the POS records but never adds again. OrderItem keeps only the chosen names, so
+ * the price is the item's option price at push time (the variant, an absolute price, at 0.00).
  * Flavrly-side credits (wallet, loyalty, signup bonus, reservation deposit) are folded
  * into `discount` so subtotal − discount + fees + tax = grandTotal = Order.total, and
  * `payment.amount` is exactly what is paid online / what the rider collects (QA-C3).
@@ -115,10 +132,15 @@ export function buildOrderPayload(
   if (unmapped.length) return { unmapped };
 
   const lines = order.items.map((i) => {
-    const mods = [i.selectedVariantName, ...(i.modifiersSummary ?? '').split(',')]
-      .map((s) => (s ?? '').trim())
-      .filter(Boolean)
-      .map((name) => ({ name, unitPrice: '0.00', quantity: 1 }));
+    const prices = modifierPrices(i);
+    const mods = [
+      ...(i.selectedVariantName?.trim() ? [{ name: i.selectedVariantName.trim(), unitPrice: '0.00', quantity: 1 }] : []),
+      ...(i.modifiersSummary ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((name) => ({ name, unitPrice: prices.get(name) ?? '0.00', quantity: 1 })),
+    ];
     const notes = [i.isFreebie ? 'Free gift' : null, i.notes].filter(Boolean).join(' · ');
     return {
       itemCode: codeByMenuItem.get(i.menuItemId!)!,
@@ -241,7 +263,7 @@ async function pushOrder(row: ClaimedSync, owner: string, cfg: NovaryqConfig): P
   const order = await prisma.order.findUnique({
     where: { id: row.orderId },
     include: {
-      items: true,
+      items: { include: { menuItem: { select: { modifierGroups: { select: { options: { select: { name: true, priceDelta: true } } } } } } } },
       customer: { select: { name: true, phone: true } },
       address: { select: { line1: true, line2: true, landmark: true, city: true, postalCode: true } },
       branch: { select: { restaurantId: true, novaryqLink: { select: { novaryqLocationId: true, currency: true } } } },

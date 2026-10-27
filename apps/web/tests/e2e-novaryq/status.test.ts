@@ -8,7 +8,17 @@ import { fl } from './fl';
 import { capturePrepaid, db, fastForward, makeShop, placeCod, placePrepaid, prisma, routeTransport, settle, statusOf, statusTrail, syncOf, transitionOrder, type Shop, eventByDelivery, eventCount } from './harness';
 
 let sim: NovaryqSimulator;
-let shop: Shop;
+let shop: Shop; // Restaurant.autoAcceptOrders off (the default)
+
+/** FL-8 / LEAD-1: SENT accepts the Flavrly order only while the restaurant has auto-accept on. */
+async function withAutoAccept(fn: () => Promise<void>) {
+  await prisma.restaurant.update({ where: { id: shop.restaurantId }, data: { autoAcceptOrders: true } });
+  try {
+    await fn();
+  } finally {
+    await prisma.restaurant.update({ where: { id: shop.restaurantId }, data: { autoAcceptOrders: false } });
+  }
+}
 
 async function pushed(s: Shop = shop, extra: Record<string, unknown> = {}) {
   const order = await placeCod(s, undefined, extra);
@@ -47,7 +57,7 @@ afterAll(async () => {
 });
 
 describe('status: Novaryq kitchen progress moves the Flavrly order via transitionOrder', () => {
-  it('SENT -> ACCEPTED, IN_PREP -> PREPARING, READY -> READY (each one OrderStatusEvent)', async () => {
+  it('auto-accept ON: SENT -> ACCEPTED, IN_PREP -> PREPARING, READY -> READY (each one OrderStatusEvent)', () => withAutoAccept(async () => {
     const { order, nq } = await pushed();
     await sim.flush(); // the OPEN -> SENT event fired on create
     await fl.runWorker();
@@ -59,6 +69,17 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     expect(await statusTrail(order.id)).toEqual(['RECEIVED', 'ACCEPTED', 'PREPARING', 'READY']);
     const sync = await syncOf(order.id);
     expect(sync.lastStatus).toBe('READY');
+  }));
+
+  it('auto-accept OFF: SENT leaves the order RECEIVED; READY then walks RECEIVED -> ACCEPTED -> PREPARING -> READY (FL-8)', async () => {
+    const { order, nq } = await pushed(shop);
+    await sim.flush(); // the OPEN -> SENT event fired on create
+    await fl.runWorker();
+    expect(await statusOf(order.id)).toBe('RECEIVED');
+    expect((await syncOf(order.id)).lastStatus).toBe('SENT');
+    await kitchen(nq.id, 'READY');
+    expect(await statusOf(order.id)).toBe('READY');
+    expect(await statusTrail(order.id)).toEqual(['RECEIVED', 'ACCEPTED', 'PREPARING', 'READY']);
   });
 
   it('READY straight from RECEIVED walks through ACCEPTED and PREPARING', async () => {
@@ -142,7 +163,7 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     expect(await statusOf(order.id)).toBe('READY');
   });
 
-  it('NQ-2: legacy alias deliveries (order.updated / order.sent / order.closed) are acknowledged and ignored', async () => {
+  it('NQ-2: legacy alias deliveries (order.updated / order.sent / order.closed) are acknowledged and ignored', () => withAutoAccept(async () => {
     const { order, nq } = await pushed();
     await sim.flush();
     await fl.runWorker();
@@ -156,7 +177,7 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     // Storing it is optional (QA-F5: FL drops ignored events); if stored it must not stay pending.
     const row = await eventByDelivery(d!.id, d!.body);
     if (row) expect(row.processedAt).not.toBeNull();
-  });
+  }));
 
   it('webhooks for non-Flavrly POS orders (source ≠ flavrly) are accepted and ignored', async () => {
     const before = await prisma.order.count();
@@ -179,7 +200,7 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
 });
 
 describe('status: missed webhooks are recovered (QA-F4) and the inbox is pruned (QA-F5)', () => {
-  it('a READY never delivered (subscription auto-disabled) is applied by the reconcile job after the order goes quiet', async () => {
+  it('a READY never delivered (subscription auto-disabled) is applied by the reconcile job after the order goes quiet', () => withAutoAccept(async () => {
     const { order, nq } = await pushed();
     await sim.flush();
     await fl.runWorker();
@@ -195,7 +216,7 @@ describe('status: missed webhooks are recovered (QA-F4) and the inbox is pruned 
     } finally {
       shop.sub.isActive = true;
     }
-  });
+  }));
 
   it('processed inbox rows older than 30 days are pruned; unprocessed ones are kept', async () => {
     const old = new Date(Date.now() - 31 * 86_400_000);
@@ -289,13 +310,18 @@ describe('cancel: Flavrly cancellation cancels in Novaryq', () => {
     expect(sim.orders.get(nq.id)!.status).toBe('VOIDED');
   });
 
-  it('RECEIVED -> PAYMENT_FAILED (payment reversed) voids the Novaryq ticket: the kitchen must not cook an unpaid order', async () => {
+  // QA-F3 is WONTFIX (QA-FINDINGS.md QA-F3; CONTRACT-CHANGES FL-7): voiding here would break the
+  // PAYMENT_FAILED -> RECEIVED revival below (Novaryq idempotency returns the voided order for the
+  // same externalRef). Only legacy never-pushed orders take this edge. Pinned as decided.
+  it('RECEIVED -> PAYMENT_FAILED leaves the Novaryq ticket live (QA-F3 WONTFIX, decided behaviour)', async () => {
     const order = await placePrepaidReceived();
     await fl.runWorker();
     const nq = sim.orderByExternalRef(order.id)!;
     await transitionOrder(order.id, 'PAYMENT_FAILED' as any);
     await settle(sim);
-    expect(sim.orders.get(nq.id)!.status).toBe('VOIDED');
+    expect(await statusOf(order.id)).toBe('PAYMENT_FAILED');
+    expect(sim.orders.get(nq.id)!.status).not.toBe('VOIDED');
+    expect((await syncOf(order.id)).state).toBe('SENT');
   });
 
   it('PAYMENT_FAILED -> RECEIVED again: the kitchen ends up with a live (non-VOIDED) ticket', async () => {
@@ -328,7 +354,7 @@ describe('cancel: Flavrly cancellation cancels in Novaryq', () => {
     expect(await statusOf(order.id)).toBe('CANCELLED_BY_CUSTOMER');
   });
 
-  it('race: the SENT webhook lands before the push response is recorded -> both applied, one Novaryq id', async () => {
+  it('race: the SENT webhook lands before the push response is recorded -> both applied, one Novaryq id (auto-accept ON)', () => withAutoAccept(async () => {
     const order = await placeCod(shop);
     sim.injectFault('POST /api/v1/orders', { kind: 'delay', ms: 1_200, phase: 'after' });
     const worker = fl.runWorker();
@@ -341,7 +367,7 @@ describe('cancel: Flavrly cancellation cancels in Novaryq', () => {
     expect(sync.state).toBe('SENT');
     expect(sync.novaryqOrderId).toBe(nq.id);
     expect(await statusOf(order.id)).toBe('ACCEPTED');
-  });
+  }));
 
   it('a Novaryq order already COMPLETED cannot be voided: surfaced, not retried forever', async () => {
     const pick = await placeCod(shop, undefined, { fulfillmentType: 'PICKUP', addressId: null });

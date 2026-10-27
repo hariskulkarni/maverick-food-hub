@@ -17,6 +17,8 @@ const h = vi.hoisted(() => ({
   linkGuard: 1,
   ownItem: true,
   cfg: null as any,
+  groups: [] as any[], // ModifierGroup rows (with options) for the modifier-sync tests
+  modWrites: [] as string[],
 }));
 
 // The base-URL guard resolves the host on every call; keep unit tests off the network.
@@ -38,7 +40,39 @@ vi.mock('@/server/db', () => {
       updateMany: vi.fn(async () => ({ count: h.linkGuard })),
       findMany: vi.fn(async () => h.links),
     },
+    // Minimal in-memory ModifierGroup / ModifierOption store (real semantics: tests/db/novaryq.db.test.ts).
+    modifierGroup: {
+      findMany: vi.fn(async (a: any) => h.groups.filter((g) => g.menuItemId === a.where.menuItemId)),
+      create: vi.fn(async (a: any) => {
+        const g = { id: `g${h.groups.length + 1}`, ...a.data, options: [] };
+        h.groups.push(g);
+        h.modWrites.push(`group+ ${a.data.menuItemId} ${a.data.name}`);
+        return g;
+      }),
+      update: vi.fn(async (a: any) => { const g = h.groups.find((x) => x.id === a.where.id); Object.assign(g, a.data); h.modWrites.push(`group~ ${g.id}`); return g; }),
+    },
+    modifierOption: {
+      create: vi.fn(async (a: any) => {
+        const g = h.groups.find((x) => x.id === a.data.modifierGroupId);
+        const o = { id: `${g.id}o${g.options.length + 1}`, ...a.data };
+        g.options.push(o);
+        h.modWrites.push(`option+ ${g.id} ${a.data.name} ${a.data.priceDelta}`);
+        return o;
+      }),
+      update: vi.fn(async (a: any) => {
+        const o = h.groups.flatMap((g) => g.options).find((x: any) => x.id === a.where.id);
+        Object.assign(o, a.data);
+        h.modWrites.push(`option~ ${o.id} ${a.data.priceDelta}`);
+        return o;
+      }),
+      deleteMany: vi.fn(async (a: any) => {
+        for (const g of h.groups) g.options = g.options.filter((o: any) => !a.where.id.in.includes(o.id));
+        h.modWrites.push(`option- ${a.where.id.in.join(',')}`);
+        return { count: a.where.id.in.length };
+      }),
+    },
   };
+  prisma.$transaction = vi.fn(async (fn: any) => fn(prisma));
   return { prisma, db: prisma };
 });
 vi.mock('@/server/menu-io', () => ({
@@ -66,6 +100,8 @@ beforeEach(() => {
   h.linkGuard = 1;
   h.ownItem = true;
   h.cfg = { ...creds, webhookSecret: 'w', enabled: true, pushOn: 'RECEIVED' };
+  h.groups = [];
+  h.modWrites = [];
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: h.menu, page: 1, pageSize: 100, total: h.menu.length, ...(h.topCurrency ? { currency: h.topCurrency } : {}) }), { status: 200 })));
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -73,9 +109,31 @@ afterEach(() => vi.unstubAllGlobals());
 describe('fetchNovaryqMenu', () => {
   it('normalizes items (categoryName or category, numeric price, availability)', async () => {
     const { items } = await fetchNovaryqMenu(creds, 'loc_1');
-    expect(items[0]).toEqual({ itemCode: 'SKU-1', name: 'Paneer Tikka', price: 249, currency: 'INR', available: true, categoryName: 'Starters' });
+    expect(items[0]).toEqual({ itemCode: 'SKU-1', name: 'Paneer Tikka', price: 249, currency: 'INR', available: true, categoryName: 'Starters', modifierGroups: [] });
     expect(items[1]).toMatchObject({ categoryName: 'Drinks', price: 99, available: false });
     expect((fetch as any).mock.calls[0][0]).toBe('https://pos.example.com/api/v1/menu?locationId=loc_1');
+  });
+
+  it('normalizes modifier groups and options (GET /menu shape, NQ-API-FINAL §5) — QA-D2', async () => {
+    h.menu[0].modifierGroups = [
+      { id: 'g1', name: 'Spice level', minSelect: 1, maxSelect: 1, required: true,
+        options: [{ id: 'm1', name: 'Mild', price: '0.00', available: true, isDefault: true, maxQuantity: 1 },
+                  { id: 'm2', name: 'Hot', price: '0', available: false, isDefault: false, maxQuantity: 1 }] },
+      { id: 'g2', name: 'Add-ons', minSelect: 0, maxSelect: 2, required: false,
+        options: [{ id: 'm3', name: 'Extra paneer', price: '60.00', available: true, isDefault: false, maxQuantity: 1 },
+                  { id: 'm4', price: '5.00' }, 'junk'] },
+      { id: 'g3', options: [] },
+    ];
+    const { items } = await fetchNovaryqMenu(creds, 'loc_1');
+    expect(items[0].modifierGroups).toEqual([
+      { name: 'Spice level', minSelect: 1, maxSelect: 1, required: true, options: [
+        { name: 'Mild', price: 0, available: true, isDefault: true },
+        { name: 'Hot', price: 0, available: false, isDefault: false },
+      ] },
+      { name: 'Add-ons', minSelect: 0, maxSelect: 2, required: false, options: [
+        { name: 'Extra paneer', price: 60, available: true, isDefault: false },
+      ] },
+    ]);
   });
 });
 
@@ -127,6 +185,34 @@ describe('importNovaryqMenu', () => {
     expect(h.upserts.map((u) => [u.where.menuItemId, u.create.novaryqItemCode])).toEqual([['m1', 'SKU-1'], ['m2', 'SKU-2']]);
     expect(r).toMatchObject({ created: 2, linked: 2, skippedUnpriced: 1 });
   });
+
+  it('imports Novaryq modifier groups onto the linked items; a re-import updates them in place — QA-D2', async () => {
+    h.branchItems = [
+      { id: 'm1', name: 'Paneer Tikka', category: { name: 'Starters' } },
+      { id: 'm2', name: 'Mango Lassi', category: { name: 'Drinks' } },
+    ];
+    h.menu[0].modifierGroups = [
+      { id: 'g1', name: 'Add-ons', minSelect: 0, maxSelect: 2, required: false,
+        options: [{ id: 'o1', name: 'Extra paneer', price: '60.00', available: true, isDefault: false },
+                  { id: 'o2', name: 'Extra cheese', price: '30.00', available: true, isDefault: false }] },
+    ];
+    const first = await importNovaryqMenu('r1', 'b1');
+    expect(first).toMatchObject({ linked: 2, modifierGroups: 1 });
+    expect(h.groups).toHaveLength(1);
+    expect(h.groups[0]).toMatchObject({ menuItemId: 'm1', name: 'Add-ons', minSelect: 0, maxSelect: 2, required: false });
+    expect(h.groups[0].options.map((o: any) => [o.name, o.priceDelta, o.isAvailable])).toEqual([['Extra paneer', '60.00', true], ['Extra cheese', '30.00', true]]);
+    const ids = h.groups[0].options.map((o: any) => o.id);
+
+    // Re-import: price change, an option dropped in Novaryq, a Flavrly-only group on the item.
+    h.groups.push({ id: 'flv', menuItemId: 'm1', name: 'Packaging', options: [{ id: 'flvo', name: 'Gift wrap', priceDelta: '10.00' }] });
+    h.menu[0].modifierGroups[0].options = [{ id: 'o1', name: 'Extra paneer', price: '70.00', available: false, isDefault: false }];
+    h.modWrites = [];
+    await importNovaryqMenu('r1', 'b1');
+    expect(h.groups.map((g) => g.id)).toEqual(['g1', 'flv']); // no duplicate group, Flavrly-only group kept
+    expect(h.groups[0].options.map((o: any) => [o.id, o.priceDelta, o.isAvailable])).toEqual([[ids[0], '70.00', false]]);
+    expect(h.groups[1].options).toHaveLength(1);
+    expect(h.modWrites.some((w) => w.startsWith('group+') || w.startsWith('option+'))).toBe(false);
+  });
 });
 
 describe('linkItem', () => {
@@ -144,7 +230,7 @@ describe('linkItem', () => {
 });
 
 describe('suggestMatches (auto-match by name)', () => {
-  const nq = (code: string, name: string) => ({ itemCode: code, name, price: 1, currency: 'INR', available: true, categoryName: null });
+  const nq = (code: string, name: string) => ({ itemCode: code, name, price: 1, currency: 'INR', available: true, categoryName: null, modifierGroups: [] });
   it('matches unlinked items by normalized name, skipping ambiguous and already-used codes', () => {
     const flavrly = [
       { id: 'a', name: 'Paneer Tikka', linkedCode: null },
