@@ -138,7 +138,7 @@ until curl -s -o /dev/null "http://127.0.0.1:$NQ_API_PORT/api/v1/me"; do sleep 3
 until curl -s -o /dev/null --max-time 300 "$FL_URL/"; do sleep 3; done
 CRON_SECRET=$(grep '^INTERNAL_CRON_SECRET=' "$FL_ENV" | cut -d= -f2)
 # Stand-in for deploy/flavrly-jobs.cron (every minute in production) — every 5 s so the demo is quick.
-start fl-cron "$STATE" bash -c "while true; do curl -s -o /dev/null -X POST -H 'x-internal-secret: $CRON_SECRET' $FL_URL/api/platform/jobs/novaryq-worker/run; sleep 5; done"
+start fl-cron "$STATE" bash -c "while true; do curl -s -o /dev/null --max-time 120 -X POST -H 'x-internal-secret: $CRON_SECRET' $FL_URL/api/platform/jobs/novaryq-worker/run; sleep 5; done"
 
 log "6. Novaryq console: API key + webhook subscription for Flavrly"
 set -a; . "$STATE/nq.env"; . "$STATE/fl.env"; set +a

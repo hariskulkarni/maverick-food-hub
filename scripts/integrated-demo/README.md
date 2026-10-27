@@ -8,6 +8,11 @@ scripts/integrated-demo/run-demo.sh      # record the story again on a running s
 scripts/integrated-demo/down.sh          # stop everything, drop the data, remove the scratch worktrees
 ```
 
+Re-record only the 86 / un-86 pass into the existing evidence folder:
+`DEMO_ONLY=86 DEMO_APPEND=1 scripts/integrated-demo/run-demo.sh`.
+Each story stage is soft: a stage that fails writes a `failed-<stage>` frame and a `STAGE FAILED` line in `story.log`, and the run carries on.
+An optional `NOTES.md` in the evidence folder is placed at the top of the generated README.
+
 Paths, branches and ports are set in `demo.conf`. By default:
 - Novaryq is checked out at `origin/feat/flavrly-ordering-channel`. `origin/feat/india-flavrly-consumer-channel` is merged in when it exists.
 - Flavrly is checked out at `origin/feat/novaryq-integration`.

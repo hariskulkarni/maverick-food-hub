@@ -1,5 +1,6 @@
 // Builds README.md (frame index with captions) and, when ffmpeg is installed, story.mp4: a stitched
 // slideshow of every frame in story order (each frame letterboxed to 1440x900, 4 s each).
+// An optional NOTES.md in <demoOutDir> (reviewer notes: status, known gaps) is placed above the frame index.
 // Usage: node make-readme.mjs <demoOutDir>
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -8,6 +9,7 @@ import { join } from 'node:path';
 const out = process.argv[2];
 const frames = existsSync(join(out, 'frames.json')) ? JSON.parse(readFileSync(join(out, 'frames.json'), 'utf8')) : [];
 const story = existsSync(join(out, 'story.log')) ? readFileSync(join(out, 'story.log'), 'utf8').trim() : '';
+const notes = existsSync(join(out, 'NOTES.md')) ? readFileSync(join(out, 'NOTES.md'), 'utf8').trim() : '';
 const videos = existsSync(join(out, 'video'))
   ? readdirSync(join(out, 'video'), { recursive: true }).filter((f) => String(f).endsWith('.webm')).map(String).sort()
   : [];
@@ -38,6 +40,7 @@ const md = [
   '- `video/<actor>/*.webm` — raw per-browser recordings (Flavrly admin, customer, Novaryq kitchen, …).',
   '- `story.log` — timestamped notes the run wrote (what was done through which surface).',
   '',
+  ...(notes ? [notes, ''] : []),
   '## Frames',
   '',
   '| # | Frame | What it shows |',

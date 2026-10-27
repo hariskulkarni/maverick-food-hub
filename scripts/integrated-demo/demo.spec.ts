@@ -3,7 +3,7 @@
  * Every screenshot is saved as frames/NN-<slug>-<width>.png and captioned in frames.json; every
  * browser context records a video. Run by up.sh (`run-demo`), never against production.
  */
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { authenticator } from 'otplib';
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
@@ -14,8 +14,10 @@ const OUT = E.DEMO_OUT ?? 'demo-out';
 const FRAMES = `${OUT}/frames`;
 mkdirSync(FRAMES, { recursive: true });
 mkdirSync(`${OUT}/video`, { recursive: true });
-const captions: { file: string; caption: string }[] = [];
-let n = 0;
+// DEMO_APPEND=1 adds frames to an existing evidence folder (a re-recorded stage) instead of starting over.
+const captions: { file: string; caption: string }[] =
+  E.DEMO_APPEND === '1' && existsSync(`${OUT}/frames.json`) ? JSON.parse(readFileSync(`${OUT}/frames.json`, 'utf8')) : [];
+let n = captions.length;
 
 async function shot(page: Page, slug: string, caption: string, fullPage = false) {
   n += 1;
@@ -24,6 +26,18 @@ async function shot(page: Page, slug: string, caption: string, fullPage = false)
   await page.screenshot({ path: `${FRAMES}/${file}`, fullPage });
   captions.push({ file, caption });
   writeFileSync(`${OUT}/frames.json`, JSON.stringify(captions, null, 2));
+}
+
+/** Runs a later story stage; a failure is recorded in story.log + a frame, and the story continues. */
+const failedStages: string[] = [];
+async function stage(name: string, page: Page | null, fn: () => Promise<void>) {
+  try {
+    await fn();
+  } catch (e) {
+    failedStages.push(name);
+    note(`STAGE FAILED: ${name}: ${(e as Error).message.split('\n')[0].slice(0, 300)}`);
+    if (page) await shot(page, `failed-${name}`, `Stage "${name}" did not complete — see story.log.`).catch(() => undefined);
+  }
 }
 
 function note(line: string) {
@@ -139,7 +153,16 @@ async function checkout(page: Page, method: 'COD' | 'ONLINE'): Promise<string> {
   await page.getByRole('button', { name: method === 'COD' ? /Cash on Delivery/ : /Pay online/ }).click();
   await expect(page.getByRole('button', { name: /Place order · ₹[1-9]/ })).toBeVisible();
   await page.getByRole('button', { name: /Place order/ }).click();
-  await page.waitForURL(/\/orders\/[a-z0-9]+/, { timeout: 900_000, waitUntil: 'commit' });
+  // Normally the checkout routes straight to the tracker. On a cold dev server the client navigation can be
+  // lost after the cart is cleared ("Your cart is empty"); the customer then opens My orders → newest order.
+  const tracked = await page.waitForURL(/\/orders\/[a-z0-9]+/, { timeout: 240_000, waitUntil: 'commit' }).then(() => true, () => false);
+  if (!tracked) {
+    note('checkout did not route to the tracker (dev-server navigation lost); opening My orders');
+    await page.goto(`${FL}/orders`, { waitUntil: 'domcontentloaded' });
+    const first = page.locator('a[href^="/orders/c"]').filter({ visible: true }).first();
+    await first.waitFor({ timeout: 300_000 });
+    await page.goto(`${FL}${await first.getAttribute('href')}`, { waitUntil: 'domcontentloaded' });
+  }
   const id = new URL(page.url()).pathname.split('/').pop()!;
   note(`customer placed ${method} order ${id}`);
   return id;
@@ -183,7 +206,76 @@ class RiderApp {
   act(assignmentId: string, action: string, data?: unknown) { return this.call('POST', `/api/rider/assignments/${assignmentId}/${action}`, data); }
 }
 
+/** Stage 8: 86 on the Novaryq POS hides the item on Flavrly; Restore brings it back. Returns the POS context. */
+async function story86(browser: Browser, c: Page): Promise<BrowserContext> {
+  const posCtx = await context(browser, DESKTOP, 'novaryq-pos');
+  const pos = await posCtx.newPage();
+  await stage('86', pos, async () => {
+  await pos.goto(`${NQ_BIZ}/pos`);
+  await pos.getByText('Flavrly Test Kitchen — Indiranagar').click();
+  for (const d of '1357') await pos.getByRole('button', { name: d, exact: true }).first().click();
+  await pos.getByRole('button', { name: 'Sign in' }).click();
+  const till = pos.getByRole('button', { name: /Open till/ });
+  const fnBtn = pos.getByRole('button', { name: 'Functions' });
+  await expect(till.or(fnBtn).first()).toBeVisible();
+  if (await till.isVisible().catch(() => false)) {
+    await pos.locator('input').first().fill('2000');
+    await till.click();
+  }
+  await pos.getByRole('button', { name: 'Functions' }).click();
+  await pos.getByRole('button', { name: /86 items/ }).click();
+  await pos.getByPlaceholder('Search menu…').fill('Mango');
+  await pos.getByRole('button', { name: /Mango Lassi/ }).first().click();
+  await expect(pos.getByText(/Mango Lassi/).first()).toBeVisible();
+  await shot(pos, 'novaryq-pos-86', 'Novaryq India POS (manager PIN): Mango Lassi 86\'d at this location.');
+  await c.goto(`${FL}/r/${E.FL_RESTAURANT_SLUG ?? 'flavrly-test-kitchen'}`, { waitUntil: 'domcontentloaded' });
+  const t86 = Date.now();
+  // Orderable = the Mango Lassi card itself (smallest element around its title that has a button) offers ADD.
+  const lassiAvailable = () => c.evaluate(() => {
+    const title = Array.from(document.querySelectorAll('h1,h2,h3,h4,p,span,div')).find(
+      (el) => el.childElementCount === 0 && el.textContent?.trim() === 'Mango Lassi' && (el as HTMLElement).offsetParent !== null);
+    let card: HTMLElement | null = (title as HTMLElement | undefined)?.parentElement ?? null;
+    while (card && !card.querySelector('button')) card = card.parentElement;
+    const btn = card ? Array.from(card.querySelectorAll('button')).find((b) => /^\+?\s*ADD$/i.test((b.textContent ?? '').trim())) : undefined;
+    return !!btn && !(btn as HTMLButtonElement).disabled;
+  });
+  while (await lassiAvailable()) { if (Date.now() - t86 > 300_000) break; await c.waitForTimeout(2_000); await c.reload({ waitUntil: 'domcontentloaded' }); }
+  await c.reload({ waitUntil: 'load' }).catch(() => undefined);
+  await c.waitForTimeout(3_000);
+  const off = !(await lassiAvailable());
+  // Show the Drinks section (where Mango Lassi lives) rather than the page header.
+  await c.getByText(/^Drinks/).filter({ visible: true }).last().scrollIntoViewIfNeeded().catch(() => undefined);
+  note(`86 ${off ? 'visible' : 'NOT visible'} on Flavrly after ${Math.round((Date.now() - t86) / 1000)} s`);
+  await shot(c, 'flavrly-item-86ed', off
+    ? `Flavrly storefront: Mango Lassi can no longer be ordered (${Math.round((Date.now() - t86) / 1000)} s after the 86 — signed menu.item.86ed webhook).`
+    : `Flavrly storefront ${Math.round((Date.now() - t86) / 1000)} s after the 86: Mango Lassi still orderable (webhook not applied yet).`);
+  await pos.getByRole('button', { name: 'Restore' }).first().click();
+  const tr = Date.now();
+  await c.reload({ waitUntil: 'domcontentloaded' });
+  while (!(await lassiAvailable())) { if (Date.now() - tr > 300_000) break; await c.waitForTimeout(2_000); await c.reload({ waitUntil: 'domcontentloaded' }); }
+  const on = await lassiAvailable();
+  await c.getByText('Mango Lassi').filter({ visible: true }).last().scrollIntoViewIfNeeded().catch(() => undefined);
+  note(`un-86 ${on ? 'visible' : 'NOT visible'} on Flavrly after ${Math.round((Date.now() - tr) / 1000)} s`);
+  await shot(c, 'flavrly-item-restored', on
+    ? `Restore on the POS: Mango Lassi orderable again on Flavrly (${Math.round((Date.now() - tr) / 1000)} s — menu.item.restored).`
+    : `Flavrly ${Math.round((Date.now() - tr) / 1000)} s after the restore: Mango Lassi not back yet.`);
+  });
+
+  return posCtx;
+}
+
+test('86 only (DEMO_ONLY=86, appended to an existing recording)', async ({ browser }) => {
+  test.skip(E.DEMO_ONLY !== '86');
+  const custCtx = await context(browser, MOBILE, 'flavrly-customer-86');
+  const c = await custCtx.newPage();
+  const posCtx = await story86(browser, c);
+  await posCtx.close();
+  await custCtx.close();
+  note(failedStages.length ? `86 pass finished with failed stages: ${failedStages.join(', ')}` : '86 pass finished');
+});
+
 test('Flavrly × Novaryq India — integrated demo', async ({ browser, playwright }) => {
+  test.skip(!!E.DEMO_ONLY);
   const admin = await context(browser, DESKTOP, 'flavrly-admin');
   const a = await admin.newPage();
   a.on('response', async (r) => {
@@ -216,7 +308,7 @@ test('Flavrly × Novaryq India — integrated demo', async ({ browser, playwrigh
   await a.reload();
   a.on('dialog', (d) => d.accept());
   await a.getByRole('button', { name: /Import Novaryq menu/ }).click();
-  await expect(a.getByText(/Paneer Tikka/).first()).toBeVisible({ timeout: 120_000 });
+  await expect(a.getByText(/Paneer Tikka/).filter({ visible: true }).first()).toBeVisible({ timeout: 120_000 });
   await shot(a, 'flavrly-admin-menu-imported', 'Branch linked to the Novaryq India location (currency INR verified) and the Novaryq menu imported into Flavrly; every item linked by Novaryq item code.', true);
   }
 
@@ -298,10 +390,11 @@ test('Flavrly × Novaryq India — integrated demo', async ({ browser, playwrigh
   await rider.act(assignmentId, 'reach-customer').catch(() => undefined);
   await rider.act(assignmentId, 'deliver', { otp });
   await c.reload({ waitUntil: 'domcontentloaded' });
-  await waitForText(c, /Currently:\s*Delivered|Order delivered|Delivered at/i, 20_000, 600_000);
+  await waitForText(c, /Delivered\. Enjoy|Delivered — hope you enjoy/i, 20_000, 600_000);
   await shot(c, 'flavrly-delivered', 'Rider entered the customer\'s code: order DELIVERED on Flavrly (Novaryq keeps the kitchen side; the rider leg is Flavrly\'s).');
   const riderCtx = await context(browser, MOBILE, 'flavrly-rider-portal');
   const r = await riderCtx.newPage();
+  await stage('rider-portal', r, async () => {
   await r.goto(`${FL}/rider/login`);
   await dismissCookies(r);
   await r.locator('#rider-phone').fill(E.FL_RIDER_PHONE!.replace(/^\+91/, ''));
@@ -309,10 +402,12 @@ test('Flavrly × Novaryq India — integrated demo', async ({ browser, playwrigh
   const rcode = (await r.getByText(/code is \d{6}/).innerText()).match(/\d{6}/)![0];
   await r.locator('input[autocomplete="one-time-code"]').first().fill(rcode);
   await r.getByRole('button', { name: /Verify|Sign in|Continue/ }).first().click();
-  await r.waitForURL((u) => !u.pathname.startsWith('/rider/login'), { timeout: 300_000 });
+  await r.waitForURL((u) => !u.pathname.startsWith('/rider/login'), { timeout: 600_000 });
   await shot(r, 'flavrly-rider-portal', 'Test rider\'s web portal after the delivery (earnings / shifts).');
+  });
 
   // ── 7. Prepaid order ──
+  await stage('prepaid', c, async () => {
   await c.goto(`${FL}/r/${E.FL_RESTAURANT_SLUG ?? 'flavrly-test-kitchen'}`);
   await addToCart(c, 'Hyderabadi Veg Biryani');
   const prepaid = await checkout(c, 'ONLINE');
@@ -321,43 +416,17 @@ test('Flavrly × Novaryq India — integrated demo', async ({ browser, playwrigh
   const preCode = await orderCode(c);
   await waitForText(kds, new RegExp(preCode.split('-').pop() || 'FLAVRLY', 'i'));
   await shot(kds, 'novaryq-kds-prepaid-ticket', `Prepaid Flavrly order ${preCode} on the KDS (external tender recorded, nothing to collect).`);
+  });
 
   // ── 8. 86 on the Novaryq POS → unavailable on Flavrly; un-86 restores ──
-  const posCtx = await context(browser, DESKTOP, 'novaryq-pos');
-  const pos = await posCtx.newPage();
-  await pos.goto(`${NQ_BIZ}/pos`);
-  await pos.getByText('Flavrly Test Kitchen — Indiranagar').click();
-  for (const d of '1357') await pos.getByRole('button', { name: d, exact: true }).first().click();
-  await pos.getByRole('button', { name: 'Sign in' }).click();
-  const till = pos.getByRole('button', { name: /Open till/ });
-  if (await till.isVisible({ timeout: 20_000 }).catch(() => false)) {
-    await pos.locator('input').first().fill('2000');
-    await till.click();
-  }
-  await pos.getByRole('button', { name: 'Functions' }).click();
-  await pos.getByRole('button', { name: /86 items/ }).click();
-  await pos.getByPlaceholder('Search menu…').fill('Mango');
-  await pos.getByRole('button', { name: /Mango Lassi/ }).first().click();
-  await expect(pos.getByText(/Mango Lassi/).first()).toBeVisible();
-  await shot(pos, 'novaryq-pos-86', 'Novaryq India POS (manager PIN): Mango Lassi 86\'d at this location.');
-  await c.goto(`${FL}/r/${E.FL_RESTAURANT_SLUG ?? 'flavrly-test-kitchen'}`);
-  const t86 = Date.now();
-  const lassiAvailable = async () => (await c.locator('div,article,li').filter({ visible: true }).filter({ hasText: 'Mango Lassi' }).filter({ has: c.getByRole('button', { name: /^ADD$/i }) }).count()) > 0;
-  while (await lassiAvailable()) { if (Date.now() - t86 > 120_000) break; await c.waitForTimeout(2_000); await c.reload(); }
-  note(`86 visible on Flavrly after ${Math.round((Date.now() - t86) / 1000)} s`);
-  await shot(c, 'flavrly-item-86ed', `Flavrly storefront: Mango Lassi can no longer be ordered (${Math.round((Date.now() - t86) / 1000)} s after the 86, via signed menu.item.86ed webhook).`);
-  await pos.getByRole('button', { name: 'Restore' }).first().click();
-  const tr = Date.now();
-  await c.reload();
-  while (!(await lassiAvailable())) { if (Date.now() - tr > 120_000) break; await c.waitForTimeout(2_000); await c.reload(); }
-  note(`un-86 visible on Flavrly after ${Math.round((Date.now() - tr) / 1000)} s`);
-  await shot(c, 'flavrly-item-restored', `Un-86 on the POS: Mango Lassi orderable again on Flavrly (${Math.round((Date.now() - tr) / 1000)} s, menu.item.restored).`);
+  const posCtx = await story86(browser, c);
 
   // ── 9. Novaryq India: the Flavrly-linked business hands its consumer channel to Flavrly (FNI-3.1) ──
+  await stage('consumer-channel', kds, async () => {
   if (E.NQ_CONSUMER_CHANNEL === 'FLAVRLY') {
     await kds.goto(`${NQ_WEB}/admin/integrations`);
-    const card = kds.getByText(/Flavrly/).first();
-    if (await card.isVisible({ timeout: 60_000 }).catch(() => false)) {
+    const card = kds.getByText(/Flavrly/).filter({ visible: true }).first();
+    if (await card.waitFor({ timeout: 180_000 }).then(() => true, () => false)) {
       await card.scrollIntoViewIfNeeded();
       await shot(kds, 'novaryq-admin-flavrly-card', 'Novaryq India admin → Integrations: the Flavrly card (consumer channel FLAVRLY, last Flavrly order, webhook health, partner key in use).', true);
     } else note('Novaryq admin Integrations page did not show a Flavrly card');
@@ -376,8 +445,10 @@ test('Flavrly × Novaryq India — integrated demo', async ({ browser, playwrigh
   } else {
     note(`consumer channel not switched (NQ_CONSUMER_CHANNEL=${E.NQ_CONSUMER_CHANNEL ?? 'unset'}): storefront redirect not shown`);
   }
+  });
 
   // ── 10. GST invoice for the channel order (Novaryq receipt API, owner session) ──
+  await stage('gst-receipt', null, async () => {
   const api = await playwright.request.newContext();
   const login = await (await api.post(`${E.NQ_API}/v1/auth/login`, { data: { email: E.NQ_OWNER_EMAIL, password: E.NQ_OWNER_PASSWORD } })).json();
   const list = await (await api.get(`${E.NQ_API}/api/v1/orders?externalRef=${codOrder}&source=flavrly`, { headers: await signedHeaders('') })).json().catch(() => null);
@@ -393,8 +464,10 @@ test('Flavrly × Novaryq India — integrated demo', async ({ browser, playwrigh
   } else {
     note('could not resolve the Novaryq order id for the receipt');
   }
+  });
 
   for (const ctx of [admin, kitchenCtx, custCtx, deskCust, riderCtx, posCtx]) await ctx.close();
+  note(failedStages.length ? `story finished with failed stages: ${failedStages.join(', ')}` : 'story finished: every stage completed');
 });
 
 /** Partner-API HMAC headers (CONTRACT §1) with the demo key — used only to look up the Novaryq order id. */

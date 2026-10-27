@@ -28,7 +28,7 @@ for p in /login /admin /admin/onboarding /admin/integrations "/r/$FL_RESTAURANT_
   curl -s -o /dev/null --max-time 300 "$FL_URL$p" || true
 done
 
-rm -rf "$DEMO_OUT"; mkdir -p "$DEMO_OUT"
-( cd "$FL_WT/apps/web" && DEMO_OUT="$DEMO_OUT" nice -n 5 npx playwright test -c qa-demo/playwright.config.ts ) || STATUS=$?
+if [ "${DEMO_APPEND:-}" != 1 ]; then rm -rf "$DEMO_OUT"; fi; mkdir -p "$DEMO_OUT"
+( cd "$FL_WT/apps/web" && DEMO_OUT="$DEMO_OUT" DEMO_APPEND="${DEMO_APPEND:-}" DEMO_ONLY="${DEMO_ONLY:-}" nice -n 5 npx playwright test -c qa-demo/playwright.config.ts ) || STATUS=$?
 node "$HERE/make-readme.mjs" "$DEMO_OUT" || true
 exit "${STATUS:-0}"
