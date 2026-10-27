@@ -1,0 +1,43 @@
+name: Server ops
+# Owner-triggered maintenance on the VPS (Actions → "Server ops" → Run workflow).
+# Runs only the fixed actions in scripts/server-ops.sh — never arbitrary commands.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to run on the VPS"
+        type: choice
+        required: true
+        default: status
+        options:
+          - status
+          - install-cron
+          - novaryq-on
+          - novaryq-off
+permissions:
+  contents: read
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+jobs:
+  ops:
+    name: Server ops (${{ inputs.action }})
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        env:
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          if [ -z "${VPS_KNOWN_HOSTS}" ]; then echo "::error::VPS_KNOWN_HOSTS secret is not set."; exit 1; fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${VPS_KNOWN_HOSTS}" > ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+      - name: Run ${{ inputs.action }}
+        env:
+          APP_DIR: ${{ vars.APP_DIR || '/opt/restaurant-manager' }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          case "$ACTION" in status|install-cron|novaryq-on|novaryq-off) ;; *) echo "bad action"; exit 1;; esac
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "bash -lc 'cd ${APP_DIR} && bash scripts/server-ops.sh ${ACTION}'"
