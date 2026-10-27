@@ -94,5 +94,6 @@ case "${1:-}" in
   signups-closed) set_flag ALLOW_CUSTOMER_SELF_SIGNUP false ;;
   cleanup-stale-orders-dryrun) load_node && (cd "$WEB_DIR" && npx tsx scripts/cleanup-stale-orders.ts --days 7) ;;
   cleanup-stale-orders-apply)  load_node && (cd "$WEB_DIR" && npx tsx scripts/cleanup-stale-orders.ts --days 7 --apply) ;;
+  cleanup-stale-orders-apply-paid) load_node && (cd "$WEB_DIR" && npx tsx scripts/cleanup-stale-orders.ts --days 7 --apply --include-paid) ;;
   *) sed -n '2,12p' "$0"; exit 1 ;;
 esac
