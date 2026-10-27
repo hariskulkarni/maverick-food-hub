@@ -1,0 +1,45 @@
+name: Configure Google sign-in
+# Owner-triggered: fix/replace the Google *sign-in* OAuth creds on the VPS.
+# Leave both inputs blank to just clean stray <>/quotes/whitespace from the
+# existing values. To change them: put the sign-in client id in the input, and
+# (optionally) add the GOOGLE_SIGNIN_CLIENT_SECRET GitHub Actions secret.
+on:
+  workflow_dispatch:
+    inputs:
+      client_id:
+        description: "Google sign-in OAuth client id (leave blank to keep & clean existing)"
+        type: string
+        required: false
+        default: ""
+      use_secret:
+        description: "Also replace the client secret from the GOOGLE_SIGNIN_CLIENT_SECRET repo secret?"
+        type: boolean
+        required: false
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+jobs:
+  configure:
+    name: Configure Google sign-in
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        env:
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          if [ -z "${VPS_KNOWN_HOSTS}" ]; then echo "::error::VPS_KNOWN_HOSTS secret is not set."; exit 1; fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${VPS_KNOWN_HOSTS}" > ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+      - name: Apply Google sign-in config
+        env:
+          APP_DIR: ${{ vars.APP_DIR || '/opt/restaurant-manager' }}
+          GOOGLE_SIGNIN_CLIENT_ID: ${{ inputs.client_id }}
+          GOOGLE_SIGNIN_CLIENT_SECRET: ${{ inputs.use_secret && secrets.GOOGLE_SIGNIN_CLIENT_SECRET || '' }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "GOOGLE_SIGNIN_CLIENT_ID='${GOOGLE_SIGNIN_CLIENT_ID}' GOOGLE_SIGNIN_CLIENT_SECRET='${GOOGLE_SIGNIN_CLIENT_SECRET}' bash -lc 'cd ${APP_DIR} && bash scripts/configure-google-signin.sh'"
