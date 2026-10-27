@@ -28,6 +28,7 @@ import { startSession, isSessionActive, revokeSession } from './sessions';
 import { isStaffTotpRole, consumeUserTotp, isBreakGlassEmail, isRecoveryCodeFormat, consumeRecoveryCode } from './user-totp';
 import { verifyWidgetAccessToken } from './msg91-widget';
 import { phoneOtpRoleAllowed } from './phone-otp-policy';
+import { linkGoogleToPhoneAccount } from './customer-phone';
 
 declare module 'next-auth' {
   interface Session {
@@ -37,6 +38,8 @@ declare module 'next-auth' {
       name?: string | null;
       email?: string | null;
       phone?: string | null;
+      /** CUSTOMER has an OTP-verified phone (User.phoneVerifiedAt). */
+      phoneVerified?: boolean;
       branchId?: string | null;
     };
   }
@@ -49,7 +52,7 @@ declare module 'next-auth' {
  * pre-registered/invited accounts can log in anywhere. Staff (email-password)
  * and riders (rider auth) already require pre-existing accounts regardless.
  */
-function allowCustomerSelfSignup(): boolean {
+export function allowCustomerSelfSignup(): boolean {
   return process.env.ALLOW_CUSTOMER_SELF_SIGNUP !== 'false';
 }
 
@@ -92,7 +95,11 @@ export const authConfig: NextAuthConfig = {
           await audit('auth.login.unregistered', { entityType: 'User', after: { phone, provider: 'phone-otp' } }).catch(() => {});
           return null;
         }
-        const user = existing ?? await prisma.user.create({ data: { phone, role: Role.CUSTOMER } });
+        // The OTP just proved this phone, so record it as verified.
+        const user = existing ?? await prisma.user.create({ data: { phone, role: Role.CUSTOMER, phoneVerifiedAt: new Date() } });
+        if (existing && !existing.phoneVerifiedAt) {
+          await prisma.user.update({ where: { id: existing.id }, data: { phoneVerifiedAt: new Date() } });
+        }
         if (!existing) {
           // First-time OTP verification = signup. Phone is known here (and is
           // the canonical anti-abuse key), so phone-based dedup works. IP isn't
@@ -138,7 +145,10 @@ export const authConfig: NextAuthConfig = {
           await audit('auth.login.unregistered', { entityType: 'User', after: { phone, provider: 'msg91-widget' } }).catch(() => {});
           return null;
         }
-        const user = existing ?? await prisma.user.create({ data: { phone, role: Role.CUSTOMER } });
+        const user = existing ?? await prisma.user.create({ data: { phone, role: Role.CUSTOMER, phoneVerifiedAt: new Date() } });
+        if (existing && !existing.phoneVerifiedAt) {
+          await prisma.user.update({ where: { id: existing.id }, data: { phoneVerifiedAt: new Date() } });
+        }
         if (!existing) {
           try {
             const { grantSignupBonus } = await import('./signup-bonus');
@@ -146,6 +156,20 @@ export const authConfig: NextAuthConfig = {
           } catch { /* bonus best-effort */ }
         }
         return { id: user.id, name: user.name ?? null, email: user.email ?? null };
+      }
+    }),
+    // Google account → existing phone account link. Minted only by
+    // POST /api/customer/phone/verify after the signed-in Google customer proved
+    // the phone by OTP and the phone's account has no email; the customer then
+    // confirms "link". Signs in as the existing account (server/customer-phone.ts).
+    Credentials({
+      id: 'phone-link',
+      name: 'Link Google to phone account',
+      credentials: { ticket: { label: 'Ticket', type: 'text' } },
+      async authorize(creds) {
+        const ticket = String(creds?.ticket ?? '').trim();
+        if (!ticket) return null;
+        return linkGoogleToPhoneAccount(ticket);
       }
     }),
     Credentials({
@@ -277,8 +301,10 @@ export const authConfig: NextAuthConfig = {
         }
         if (!allowCustomerSelfSignup()) {
           // Locked-down mode: unknown Google account cannot self-register.
+          // Refused (no account is created); land on a friendly explanation
+          // instead of the generic auth error page.
           await audit('auth.login.unregistered', { entityType: 'User', after: { email, provider: 'google' } }).catch(() => {});
-          return false;
+          return '/login/invite-only';
         }
         const created = await prisma.user.create({
           data: { email, name: user.name ?? null, role: Role.CUSTOMER }
@@ -334,6 +360,7 @@ export const authConfig: NextAuthConfig = {
         if (u) {
           token.role = u.role;
           token.phone = u.phone;
+          token.phoneVerified = !!u.phoneVerifiedAt;
           token.email = u.email;
           token.name = u.name;
           token.branchId = u.branchMemberships[0]?.branchId ?? null;
@@ -351,6 +378,7 @@ export const authConfig: NextAuthConfig = {
       s.user.id = (token.uid as string) ?? '';
       s.user.role = (token.role as Role) ?? Role.CUSTOMER;
       s.user.phone = (token.phone as string | null) ?? null;
+      s.user.phoneVerified = token.phoneVerified === true;
       s.user.email = (token.email as string | null) ?? null;
       s.user.name = (token.name as string | null) ?? null;
       s.user.branchId = (token.branchId as string | null) ?? null;
