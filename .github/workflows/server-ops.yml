@@ -42,7 +42,7 @@ jobs:
           APP_DIR: ${{ vars.APP_DIR || '/opt/restaurant-manager' }}
           ACTION: ${{ inputs.action }}
         run: |
-          case "$ACTION" in status|install-cron|novaryq-on|novaryq-off|signups-open|signups-closed|cleanup-stale-orders-dryrun|cleanup-stale-orders-apply) ;; *) echo "bad action"; exit 1;; esac
+          case "$ACTION" in status|install-cron|novaryq-on|novaryq-off|signups-open|signups-closed|cleanup-stale-orders-dryrun|cleanup-stale-orders-apply|cleanup-stale-orders-apply-paid) ;; *) echo "bad action"; exit 1;; esac
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "bash -lc 'cd ${APP_DIR} && bash scripts/server-ops.sh ${ACTION}'"
