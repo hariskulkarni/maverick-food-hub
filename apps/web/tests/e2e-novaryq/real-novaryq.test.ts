@@ -10,14 +10,15 @@
  * http://127.0.0.1:$FL_HOOK_PORT/api/integrations/novaryq/webhook/$FL_E2E_RESTAURANT_ID (default
  * fni-e2e-kitchen) and Novaryq must allow loopback webhook targets in its dev/test mode. The 86 test needs
  * the key's write:menu scope. Optional refusals: NQ_NA_CLIENT_ID/NQ_NA_SECRET (a North-American tenant's
- * key) and NQ_FOREIGN_LOCATION_ID (another tenant's location).
+ * key), NQ_FOREIGN_LOCATION_ID (another tenant's location) and NQ_STAFF_EMAIL/NQ_STAFF_PASSWORD (a staff
+ * login of the tenant, to bump the KDS ticket in Novaryq itself).
  */
 import http from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { NovaryqSimulator, toPaise } from '../novaryq-sim/simulator';
 import { nqFetch, type NqCreds } from '../novaryq-sim/client';
 import { fl } from './fl';
-import { db, fastForward, makeShop, placeCod, placePrepaid, capturePrepaid, prisma, saveCfg, syncOf, transitionOrder, type Shop } from './harness';
+import { db, fastForward, makeShop, placeCod, placePrepaid, capturePrepaid, prisma, saveCfg, statusOf, syncOf, transitionOrder, type Shop } from './harness';
 import { checkLocationCurrency, testNovaryqConnection } from '@/server/novaryq/menu';
 import { pollStaleOrderStatuses } from '@/server/novaryq/status';
 import { saveNovaryqCredentials, setBranchLocation } from '@/server/novaryq/admin';
@@ -156,6 +157,17 @@ describe.runIf(REAL)('Flavrly -> real Novaryq API', () => {
     expect((linked as { itemCount: number }).itemCount).toBeGreaterThan(0);
   });
 
+  it('F-07: a pickup handed over on Flavrly is closed in Novaryq (POST /complete, API 1.5.2), COD balance and all', async () => {
+    const pick = await placeCod(shop, undefined, { fulfillmentType: 'PICKUP', addressId: null });
+    await fl.runWorker();
+    expect((await syncOf(pick.id)).state).toBe('SENT');
+    for (const st of ['ACCEPTED', 'PREPARING', 'READY', 'DELIVERED']) await transitionOrder(pick.id, st as any);
+    await fl.runWorker();
+    const sync = await syncOf(pick.id);
+    expect(sync, JSON.stringify(sync)).toMatchObject({ state: 'COMPLETED', lastError: null });
+    expect((await nqOrder(pick.id)).status).toBe('COMPLETED');
+  });
+
   it('poll fallback: a pushed order whose webhooks never came reads its status from GET /orders/:id', async () => {
     await db.restaurant.update({ where: { id: shop.restaurantId }, data: { autoAcceptOrders: true } });
     try {
@@ -203,6 +215,30 @@ describe.runIf(REAL)('Flavrly -> real Novaryq API', () => {
     } finally {
       await patch(true);
     }
+  });
+
+  it.runIf(HOOKS && !!env.NQ_STAFF_EMAIL)('webhook: a Novaryq KDS bump (READY) reaches Flavrly', async () => {
+    const order = await placeCod(shop);
+    await fl.runWorker();
+    const sync = await syncOf(order.id);
+    expect(sync.state).toBe('SENT');
+    const login = await fetch(`${creds.baseUrl}/v1/auth/login`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: env.NQ_STAFF_EMAIL, password: env.NQ_STAFF_PASSWORD }),
+    });
+    const { accessToken } = await login.json();
+    expect(accessToken, `staff login ${login.status}`).toBeTruthy();
+    const authz = { authorization: `Bearer ${accessToken}` };
+    let mine: Array<{ id: string }> = [];
+    await until(async () => {
+      const list = await (await fetch(`${creds.baseUrl}/v1/kds/tickets?locationId=${encodeURIComponent(env.NQ_LOCATION_ID!)}`, { headers: authz })).json();
+      mine = ((list?.data ?? list ?? []) as Array<{ id: string; orderId: string }>).filter((t) => t.orderId === sync.novaryqOrderId);
+      return mine.length > 0;
+    }, 'the KDS ticket of the Flavrly order');
+    for (const t of mine) {
+      const bump = await fetch(`${creds.baseUrl}/v1/kds/tickets/${t.id}/bump`, { method: 'POST', headers: authz });
+      expect(bump.ok, `bump ${bump.status}`).toBe(true);
+    }
+    await until(async () => (await statusOf(order.id)) === 'READY' && (await syncOf(order.id)).lastStatus === 'READY', 'READY on Flavrly');
   });
 
   it.runIf(HOOKS)('webhook: order.status_changed reaches Flavrly signed and is applied (VOIDED after a Flavrly cancel)', async () => {

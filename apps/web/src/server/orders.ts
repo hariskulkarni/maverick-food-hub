@@ -41,7 +41,7 @@ import { branchHasActiveZones } from './delivery/zones';
 import { isBranchOpenAt, isScheduledTimeInsideOpenWindow } from './operating-hours';
 import { isCancelStatus, isPgPrepayOrder, settlePgOrderOnCancel } from './pg/order-state';
 import { debitWalletForOrder, redeemPointsForOrder, releaseOrderBenefitsOnCancel } from './order-benefits';
-import { enqueueNovaryqCancel, enqueueNovaryqPush } from './novaryq/push';
+import { enqueueNovaryqCancel, enqueueNovaryqComplete, enqueueNovaryqPush } from './novaryq/push';
 
 // State machine. Cancellation is allowed from any pre-delivery state into the
 // matching CANCELLED_BY_* terminal. Legacy CANCELLED is kept for back-compat.
@@ -913,6 +913,8 @@ export async function transitionOrder(
     }
     // Novaryq POS outbox: a paid online order enters the kitchen (RECEIVED) only now.
     if (next === OrderStatus.RECEIVED) await enqueueNovaryqPush(tx, orderId, order.branchId);
+    // Novaryq POS outbox: a delivered / handed-over order is closed there too (no-op when never pushed).
+    if (next === OrderStatus.DELIVERED) await enqueueNovaryqComplete(tx, orderId);
     if (next === OrderStatus.DELIVERED) {
       // Earn loyalty (rate shared with customer copy: src/lib/loyalty.ts)
       const account = await tx.loyaltyAccount.upsert({ where: { userId: order.customerId }, update: {}, create: { userId: order.customerId } });

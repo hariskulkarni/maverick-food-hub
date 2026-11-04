@@ -45,6 +45,7 @@ import {
   processClaimed,
   enqueueNovaryqPush,
   enqueueNovaryqCancel,
+  enqueueNovaryqComplete,
   replaySync,
   PUSH_MAX_ATTEMPTS,
 } from '@/server/novaryq/push';
@@ -243,6 +244,55 @@ describe('enqueue hooks (transactional outbox)', () => {
     expect(voided.data.state).toBe('CANCELLED');
     expect(pending.where).toMatchObject({ orderId: 'o1', state: { in: ['PENDING', 'SENT', 'FAILED', 'DEAD'] } });
     expect(pending.data).toMatchObject({ state: 'CANCEL_PENDING', attempts: 0, lastError: null });
+  });
+});
+
+describe('F-07 completion (API 1.5.2 POST /orders/:id/complete)', () => {
+  it('DELIVERED → a SENT row becomes COMPLETE_PENDING, unless Novaryq itself reported COMPLETED', async () => {
+    const t = { novaryqOrderSync: { updateMany: vi.fn(async () => ({ count: 1 })) } };
+    await enqueueNovaryqComplete(t as any, 'o1');
+    const [c] = t.novaryqOrderSync.updateMany.mock.calls.map((x: any) => x[0]);
+    expect(c.where).toEqual({ orderId: 'o1', state: 'SENT', OR: [{ lastStatus: null }, { lastStatus: { not: 'COMPLETED' } }] });
+    expect(c.data).toMatchObject({ state: 'COMPLETE_PENDING', attempts: 0, lastError: null });
+  });
+
+  it('200 → COMPLETED; the request is POST /orders/:novaryqId/complete {}', async () => {
+    h.respond = () => new Response(JSON.stringify({ id: 'nq_1', status: 'COMPLETED', completed: true, alreadyCompleted: false }), { status: 200 });
+    expect(await processClaimed(row({ state: 'COMPLETE_PENDING', novaryqOrderId: 'nq_1' }), OWNER)).toBe('completed');
+    expect(h.fetches[0].url).toBe('https://pos.example.com/api/v1/orders/nq_1/complete');
+    expect(h.fetches[0].init).toMatchObject({ method: 'POST', body: '{}' });
+    expect(h.updates[0]).toMatchObject({ where: { id: 's1', leaseOwner: OWNER, state: 'COMPLETE_PENDING' }, data: { state: 'COMPLETED', lastError: null } });
+  });
+
+  it('404 (older Novaryq without the route) and 409 (voided there) settle quietly: no alert, no retry', async () => {
+    for (const status of [404, 409]) {
+      h.updates = [];
+      h.respond = () => new Response(JSON.stringify({ message: 'nope' }), { status });
+      expect(await processClaimed(row({ state: 'COMPLETE_PENDING', novaryqOrderId: 'nq_1' }), OWNER)).toBe('completed');
+      expect(h.updates[0].data.state).toBe('COMPLETED');
+      expect(h.updates[0].data.lastError).toMatch(/Not closed in Novaryq/);
+    }
+    expect(h.alerts).toHaveLength(0);
+  });
+
+  it('403 (another key) → FAILED + complete_failed alert; 5xx → retried', async () => {
+    h.respond = () => new Response(JSON.stringify({ message: 'other key' }), { status: 403 });
+    expect(await processClaimed(row({ state: 'COMPLETE_PENDING', novaryqOrderId: 'nq_1' }), OWNER)).toBe('failed');
+    expect(h.alerts[0]).toMatchObject({ kind: 'complete_failed' });
+    h.respond = () => new Response('{}', { status: 503 });
+    expect(await processClaimed(row({ state: 'COMPLETE_PENDING', novaryqOrderId: 'nq_1' }), OWNER)).toBe('retried');
+  });
+
+  it('an order delivered before its push went out is completed right after the push', async () => {
+    h.order = baseOrder({ status: 'DELIVERED' });
+    h.respond = () => new Response(JSON.stringify({ id: 'nq_1', orderNumber: 7 }), { status: 201 });
+    expect(await processClaimed(row(), OWNER)).toBe('sent');
+    expect(h.updates[0].data).toMatchObject({ state: 'COMPLETE_PENDING', novaryqOrderId: 'nq_1', attempts: 0 });
+  });
+
+  it('replay of a failed completion of a delivered order replays the completion', async () => {
+    h.syncRow = { id: 's1', restaurantId: 'r1', state: 'FAILED', novaryqOrderId: 'nq_1', order: { status: 'DELIVERED' } };
+    expect(await replaySync('r1', 's1', 'u1')).toEqual({ ok: true, state: 'COMPLETE_PENDING' });
   });
 });
 

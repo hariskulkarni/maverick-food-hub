@@ -61,6 +61,20 @@ export async function enqueueNovaryqCancel(tx: Tx, orderId: string): Promise<voi
   });
 }
 
+/**
+ * Called in the transaction that puts an order into DELIVERED (rider delivered, or a pickup / dine-in
+ * handed over): Novaryq 1.5.2 closes the POS order (sales ledger, EOD) and records a COD balance as the
+ * Flavrly tender. Nothing to send when Novaryq itself reported COMPLETED. A row not yet pushed is
+ * completed right after its push (pushOrder).
+ */
+export async function enqueueNovaryqComplete(tx: Tx, orderId: string): Promise<void> {
+  if (!novaryqFlagOn()) return;
+  await tx.novaryqOrderSync.updateMany({
+    where: { orderId, state: 'SENT', OR: [{ lastStatus: null }, { lastStatus: { not: 'COMPLETED' } }] },
+    data: { state: 'COMPLETE_PENDING', attempts: 0, nextAttemptAt: new Date(), lastError: null },
+  });
+}
+
 // ── Payload (§2.1) ───────────────────────────────────────────────────────────
 
 type Money = Prisma.Decimal | number | string;
@@ -225,7 +239,7 @@ export interface ClaimedSync {
   novaryqOrderId: string | null;
 }
 
-export type SyncOutcome = 'sent' | 'cancelled' | 'retried' | 'failed' | 'dead' | 'lost';
+export type SyncOutcome = 'sent' | 'cancelled' | 'completed' | 'retried' | 'failed' | 'dead' | 'lost';
 
 async function claimDue(owner: string, limit: number, leaseMs: number): Promise<ClaimedSync[]> {
   return prisma.$queryRaw<ClaimedSync[]>`
@@ -236,7 +250,7 @@ async function claimDue(owner: string, limit: number, leaseMs: number): Promise<
         "updatedAt" = timezone('utc', now())
     WHERE s."id" IN (
       SELECT "id" FROM "NovaryqOrderSync"
-      WHERE "state" IN ('PENDING', 'CANCEL_PENDING') AND "nextAttemptAt" <= timezone('utc', now())
+      WHERE "state" IN ('PENDING', 'CANCEL_PENDING', 'COMPLETE_PENDING') AND "nextAttemptAt" <= timezone('utc', now())
         AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" < timezone('utc', now()))
       ORDER BY "nextAttemptAt"
       LIMIT ${limit}
@@ -245,7 +259,8 @@ async function claimDue(owner: string, limit: number, leaseMs: number): Promise<
 }
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 500);
-const fence = (row: ClaimedSync, owner: string) => ({ id: row.id, leaseOwner: owner, state: row.state as 'PENDING' | 'CANCEL_PENDING' });
+const fence = (row: ClaimedSync, owner: string) => ({ id: row.id, leaseOwner: owner, state: row.state as 'PENDING' | 'CANCEL_PENDING' | 'COMPLETE_PENDING' });
+const action = (row: ClaimedSync) => (row.state === 'CANCEL_PENDING' ? 'cancel' : row.state === 'COMPLETE_PENDING' ? 'complete' : 'push');
 const released = { leaseOwner: null, leaseExpiresAt: null };
 
 async function settle(row: ClaimedSync, owner: string, data: Prisma.NovaryqOrderSyncUpdateManyMutationInput): Promise<boolean> {
@@ -255,12 +270,15 @@ async function settle(row: ClaimedSync, owner: string, data: Prisma.NovaryqOrder
 
 async function fail(row: ClaimedSync, owner: string, error: string): Promise<SyncOutcome> {
   if (!(await settle(row, owner, { state: 'FAILED', lastError: error }))) return 'lost';
-  const isCancel = row.state === 'CANCEL_PENDING';
+  const kind = action(row);
   await sendNovaryqAlert({
     restaurantId: row.restaurantId,
-    kind: isCancel ? 'cancel_failed' : 'push_failed',
+    kind: kind === 'cancel' ? 'cancel_failed' : kind === 'complete' ? 'complete_failed' : 'push_failed',
     entityId: row.orderId,
-    subject: isCancel ? 'A Flavrly cancellation could not be sent to Novaryq' : 'A Flavrly order could not be sent to Novaryq POS',
+    subject:
+      kind === 'cancel' ? 'A Flavrly cancellation could not be sent to Novaryq'
+        : kind === 'complete' ? 'A delivered Flavrly order could not be closed in Novaryq POS'
+          : 'A Flavrly order could not be sent to Novaryq POS',
     text: `Order ${row.orderId}: ${error}\nFix it in Flavrly admin → POS integration, then press Replay.`,
   });
   return 'failed';
@@ -278,7 +296,7 @@ async function retryOrDie(row: ClaimedSync, owner: string, e: unknown): Promise<
       entityId: row.restaurantId,
       windowMin: 60,
       subject: 'Novaryq sync gave up after 8 attempts',
-      text: `Order ${row.orderId} (${row.state === 'CANCEL_PENDING' ? 'cancel' : 'push'}): ${error}\nOther orders may be affected too: see Flavrly admin → POS integration → Sync log (gave up) and Replay them once Novaryq is reachable.`,
+      text: `Order ${row.orderId} (${action(row)}): ${error}\nOther orders may be affected too: see Flavrly admin → POS integration → Sync log (gave up) and Replay them once Novaryq is reachable.`,
     });
     return 'dead';
   }
@@ -329,7 +347,9 @@ async function pushOrder(row: ClaimedSync, owner: string, cfg: NovaryqConfig): P
   }
   const novaryqOrderId = res.data?.id ? String(res.data.id) : null;
   const novaryqOrderNumber = res.data?.orderNumber != null ? String(res.data.orderNumber) : null;
-  if (await settle(row, owner, { state: 'SENT', novaryqOrderId, novaryqOrderNumber, lastError: null })) return 'sent';
+  // Delivered before its push went out: close it in Novaryq right away (enqueueNovaryqComplete only sees SENT rows).
+  const delivered = order.status === OrderStatus.DELIVERED;
+  if (await settle(row, owner, { state: delivered ? 'COMPLETE_PENDING' : 'SENT', novaryqOrderId, novaryqOrderNumber, lastError: null, ...(delivered ? { attempts: 0, nextAttemptAt: new Date() } : {}) })) return 'sent';
   // A cancel arrived while the push was in flight: keep CANCEL_PENDING, record the id, run the cancel now.
   const r = await prisma.novaryqOrderSync.updateMany({
     where: { id: row.id, leaseOwner: owner },
@@ -369,25 +389,41 @@ async function cancelOrder(row: ClaimedSync, owner: string, cfg: NovaryqConfig):
   }
 }
 
+/** POST /orders/:id/complete (API 1.5.2). Not possible there (older Novaryq: 404; voided/refunded: 409) is settled quietly. */
+async function completeOrder(row: ClaimedSync, owner: string, cfg: NovaryqConfig): Promise<SyncOutcome> {
+  if (!row.novaryqOrderId) return (await settle(row, owner, { state: 'COMPLETED', lastError: 'Never reached Novaryq: nothing to close' })) ? 'completed' : 'lost';
+  try {
+    await novaryqRequest(cfg, 'POST', `/orders/${encodeURIComponent(row.novaryqOrderId)}/complete`, {});
+    return (await settle(row, owner, { state: 'COMPLETED', lastError: null })) ? 'completed' : 'lost';
+  } catch (e) {
+    if (e instanceof NovaryqApiError && (e.status === 404 || e.status === 409)) {
+      return (await settle(row, owner, { state: 'COMPLETED', lastError: `Not closed in Novaryq: ${e.message}` })) ? 'completed' : 'lost';
+    }
+    if (e instanceof NovaryqApiError && (!e.retryable || e.status === 403)) return fail(row, owner, e.message);
+    return retryOrDie(row, owner, e);
+  }
+}
+
 /** Handles one claimed row. Exported for unit tests; the worker is runNovaryqPushWorker. */
 export async function processClaimed(row: ClaimedSync, owner: string): Promise<SyncOutcome> {
   if (row.attempts > PUSH_MAX_ATTEMPTS) return retryOrDie(row, owner, new Error('Attempt budget exhausted (worker crashed or lease expired)'));
   try {
     const cfg = await loadNovaryqConfig(row.restaurantId);
     if (!cfg?.enabled) return retryOrDie(row, owner, new Error('Novaryq is not configured or is disabled for this restaurant'));
+    if (row.state === 'COMPLETE_PENDING') return await completeOrder(row, owner, cfg);
     return row.state === 'CANCEL_PENDING' ? await cancelOrder(row, owner, cfg) : await pushOrder(row, owner, cfg);
   } catch (e) {
     return retryOrDie(row, owner, e);
   }
 }
 
-export interface PushRunResult { claimed: number; sent: number; cancelled: number; retried: number; failed: number; dead: number }
+export interface PushRunResult { claimed: number; sent: number; cancelled: number; completed: number; retried: number; failed: number; dead: number }
 
 /** Drains due push/cancel rows until none are due or `maxMs` elapses. */
 export async function runNovaryqPushWorker(opts: { leaseMs?: number; batch?: number; maxMs?: number } = {}): Promise<PushRunResult> {
   const owner = newLeaseOwner('novaryq-push');
   const deadline = Date.now() + (opts.maxMs ?? 40_000);
-  const out: PushRunResult = { claimed: 0, sent: 0, cancelled: 0, retried: 0, failed: 0, dead: 0 };
+  const out: PushRunResult = { claimed: 0, sent: 0, cancelled: 0, completed: 0, retried: 0, failed: 0, dead: 0 };
   while (Date.now() < deadline) {
     const rows = await claimDue(owner, opts.batch ?? BATCH, opts.leaseMs ?? PUSH_LEASE_MS);
     if (rows.length === 0) break;
@@ -405,13 +441,13 @@ export async function runNovaryqPushWorker(opts: { leaseMs?: number; batch?: num
 export async function replaySync(restaurantId: string, syncId: string, actorId: string): Promise<{ ok: true; state: string } | { ok: false; error: string }> {
   const row = await prisma.novaryqOrderSync.findFirst({
     where: { id: syncId, restaurantId },
-    select: { id: true, state: true, orderId: true, order: { select: { status: true } } },
+    select: { id: true, state: true, orderId: true, novaryqOrderId: true, order: { select: { status: true } } },
   });
   if (!row) return { ok: false, error: 'Not found' };
   if (row.state !== 'FAILED' && row.state !== 'DEAD') return { ok: false, error: `Only failed or dead syncs can be replayed (this one is ${row.state}).` };
   const status = row.order?.status;
   const cancelled = !!status && (status in CANCEL_REASON || status === OrderStatus.CANCELLED);
-  const state = cancelled ? 'CANCEL_PENDING' : 'PENDING';
+  const state = cancelled ? 'CANCEL_PENDING' : status === OrderStatus.DELIVERED && row.novaryqOrderId ? 'COMPLETE_PENDING' : 'PENDING';
   const r = await prisma.novaryqOrderSync.updateMany({
     where: { id: syncId, restaurantId, state: { in: ['FAILED', 'DEAD'] } },
     data: { state, attempts: 0, nextAttemptAt: new Date(), lastError: null, ...released },

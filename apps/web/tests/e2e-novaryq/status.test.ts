@@ -162,6 +162,19 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     expect(await statusOf(counter.id)).toBe('DELIVERED');
   });
 
+  it('F-07: a pickup handed over on Flavrly closes the Novaryq order (POST /complete), once', async () => {
+    const pick = await placeCod(shop, undefined, { fulfillmentType: 'PICKUP', addressId: null });
+    await fl.runWorker();
+    const nq = sim.orderByExternalRef(pick.id)!;
+    for (const s of ['ACCEPTED', 'PREPARING', 'READY', 'DELIVERED']) await transitionOrder(pick.id, s as any);
+    expect((await syncOf(pick.id)).state).toBe('COMPLETE_PENDING');
+    await settle(sim);
+    expect((await syncOf(pick.id)).state).toBe('COMPLETED');
+    expect(nq.status).toBe('COMPLETED');
+    expect(sim.requestsTo('POST', `/api/v1/orders/${nq.id}/complete`)).toHaveLength(1);
+    expect(await statusOf(pick.id)).toBe('DELIVERED'); // the COMPLETED webhook that follows is a no-op
+  });
+
   it('REFUNDED does not change the Flavrly order', async () => {
     const { order, nq } = await pushed();
     await kitchen(nq.id, 'READY');

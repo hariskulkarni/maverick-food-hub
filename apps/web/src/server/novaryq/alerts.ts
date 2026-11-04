@@ -7,7 +7,7 @@ import { checkAndStamp, recipientsForRestaurant } from '../alerts';
 import { notify } from '../notifications';
 import { log } from '../log';
 
-export type NovaryqAlertKind = 'push_failed' | 'push_dead' | 'cancel_failed' | 'pos_voided' | 'webhook_dead';
+export type NovaryqAlertKind = 'push_failed' | 'push_dead' | 'cancel_failed' | 'complete_failed' | 'pos_voided' | 'webhook_dead';
 
 export async function sendNovaryqAlert(a: {
   restaurantId: string;

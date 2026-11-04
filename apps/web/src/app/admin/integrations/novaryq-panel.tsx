@@ -48,7 +48,7 @@ const HEALTH: Record<Health, { label: string; variant: 'success' | 'warning' | '
   not_connected: { label: 'Not connected', variant: 'muted' },
 };
 const STATE_VARIANT: Record<string, 'success' | 'warning' | 'destructive' | 'muted' | 'default'> = {
-  SENT: 'success', CANCELLED: 'muted', PENDING: 'default', CANCEL_PENDING: 'default', FAILED: 'warning', DEAD: 'destructive',
+  SENT: 'success', CANCELLED: 'muted', PENDING: 'default', CANCEL_PENDING: 'default', COMPLETE_PENDING: 'default', COMPLETED: 'success', FAILED: 'warning', DEAD: 'destructive',
 };
 const when = (d: string | null | undefined) => (d ? new Date(d).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 
@@ -472,7 +472,7 @@ function SyncLog({ onChange }: { onChange: () => void }) {
       <CardContent className="p-4 sm:p-6 space-y-3">
         <h2 className="font-semibold">Sync log</h2>
         <div className="flex flex-wrap gap-2">
-          {['', 'FAILED', 'DEAD', 'PENDING', 'SENT', 'CANCEL_PENDING', 'CANCELLED'].map((s) => (
+          {['', 'FAILED', 'DEAD', 'PENDING', 'SENT', 'CANCEL_PENDING', 'CANCELLED', 'COMPLETE_PENDING', 'COMPLETED'].map((s) => (
             <Button key={s || 'all'} size="sm" variant={state === s ? 'default' : 'outline'} onClick={() => setState(s)}>
               {s ? s.replace('_', ' ').toLowerCase() : 'all'}
             </Button>

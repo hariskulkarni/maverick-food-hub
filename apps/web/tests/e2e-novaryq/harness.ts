@@ -201,7 +201,7 @@ export const eventCount = (delivery?: string, body?: string) => db.novaryqWebhoo
 /** Make every pending Novaryq row due now (time travel instead of sleeping through backoff). */
 export async function fastForward() {
   const past = new Date(Date.now() - 1000);
-  await db.novaryqOrderSync.updateMany({ where: { state: { in: ['PENDING', 'CANCEL_PENDING'] } }, data: { nextAttemptAt: past, leaseExpiresAt: null, leaseOwner: null } });
+  await db.novaryqOrderSync.updateMany({ where: { state: { in: ['PENDING', 'CANCEL_PENDING', 'COMPLETE_PENDING'] } }, data: { nextAttemptAt: past, leaseExpiresAt: null, leaseOwner: null } });
   await db.novaryqWebhookEvent.updateMany({ where: { processedAt: null }, data: { nextAttemptAt: past } });
 }
 

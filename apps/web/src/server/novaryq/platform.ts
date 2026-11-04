@@ -56,7 +56,7 @@ export async function platformNovaryqConsole(opts: { q?: string; view?: ConsoleV
     prisma.novaryqOrderSync.groupBy({ by: ['restaurantId', 'state'], _count: { _all: true } }),
     prisma.novaryqOrderSync.groupBy({ by: ['restaurantId'], where: { createdAt: { gte: since } }, _count: { _all: true } }),
     prisma.novaryqOrderSync.groupBy({
-      by: ['restaurantId'], where: { state: { in: ['PENDING', 'CANCEL_PENDING'] }, attempts: { gt: 1 } }, _count: { _all: true },
+      by: ['restaurantId'], where: { state: { in: ['PENDING', 'CANCEL_PENDING', 'COMPLETE_PENDING'] }, attempts: { gt: 1 } }, _count: { _all: true },
     }),
     prisma.novaryqWebhookEvent.groupBy({ by: ['restaurantId'], _max: { receivedAt: true } }),
   ]);
