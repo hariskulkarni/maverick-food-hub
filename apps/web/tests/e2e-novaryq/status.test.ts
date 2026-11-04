@@ -154,6 +154,12 @@ describe('status: Novaryq kitchen progress moves the Flavrly order via transitio
     await kitchen(nqPick.id, 'READY');
     await kitchen(nqPick.id, 'COMPLETED');
     expect(await statusOf(pick.id)).toBe('DELIVERED');
+
+    // FNI-F2: closed at the counter without a READY bump: not left stuck in the kitchen funnel.
+    const counter = await placeCod(shop, undefined, { fulfillmentType: 'PICKUP', addressId: null });
+    await fl.runWorker();
+    await kitchen(sim.orderByExternalRef(counter.id)!.id, 'COMPLETED');
+    expect(await statusOf(counter.id)).toBe('DELIVERED');
   });
 
   it('REFUNDED does not change the Flavrly order', async () => {

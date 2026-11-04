@@ -2,20 +2,62 @@
  * Flavrly worker -> a REAL Novaryq apps/api (local), when NQ_BASE_URL/NQ_CLIENT_ID/NQ_SECRET/
  * NQ_LOCATION_ID/NQ_ITEM_CODE/NQ_ITEM_CODE_2 point at one (seeded tenant, INR location). Verifies what
  * the simulator cannot: that Novaryq records Flavrly's money exactly, fires the order, replays
- * idempotently and voids on a Flavrly cancel. Webhooks back to Flavrly are out of scope here: Novaryq's
- * egress guard (vetWebhookUrl) refuses 127.0.0.1 targets by design.
+ * idempotently, voids on a Flavrly cancel, and answers the poll fallback.
+ *
+ * Webhook leg (FNI): with NQ_WEBHOOK_SECRET + FL_HOOK_PORT set, this file listens on
+ * http://127.0.0.1:$FL_HOOK_PORT and hands every POST to the real Flavrly webhook route handler. The
+ * Novaryq subscription (events order.status_changed + menu.item.availability_changed) must point at
+ * http://127.0.0.1:$FL_HOOK_PORT/api/integrations/novaryq/webhook/$FL_E2E_RESTAURANT_ID (default
+ * fni-e2e-kitchen) and Novaryq must allow loopback webhook targets in its dev/test mode. The 86 test needs
+ * the key's write:menu scope. Optional refusals: NQ_NA_CLIENT_ID/NQ_NA_SECRET (a North-American tenant's
+ * key) and NQ_FOREIGN_LOCATION_ID (another tenant's location).
  */
+import http from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { NovaryqSimulator, toPaise } from '../novaryq-sim/simulator';
 import { nqFetch, type NqCreds } from '../novaryq-sim/client';
 import { fl } from './fl';
 import { db, fastForward, makeShop, placeCod, placePrepaid, capturePrepaid, prisma, saveCfg, syncOf, transitionOrder, type Shop } from './harness';
+import { checkLocationCurrency, testNovaryqConnection } from '@/server/novaryq/menu';
+import { pollStaleOrderStatuses } from '@/server/novaryq/status';
+import { saveNovaryqCredentials, setBranchLocation } from '@/server/novaryq/admin';
 
 const env = process.env;
 const REAL = !!env.NQ_BASE_URL;
+const HOOKS = REAL && !!env.NQ_WEBHOOK_SECRET && !!env.FL_HOOK_PORT;
+const HOOK_RESTAURANT_ID = env.FL_E2E_RESTAURANT_ID || 'fni-e2e-kitchen';
 let shop: Shop;
 let creds: NqCreds;
+let receiver: http.Server | null = null;
+const received: Array<{ event: string | null; status: number }> = [];
 const money = (d: unknown) => Number(d).toFixed(2);
+
+/** Polls `ok` (running the Flavrly worker between tries) until true or 30 s pass. */
+async function until(ok: () => Promise<boolean>, what: string) {
+  const end = Date.now() + 30_000;
+  while (Date.now() < end) {
+    if (await ok()) return;
+    await fl.runWorker();
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`timed out waiting for ${what}; webhooks received: ${JSON.stringify(received)}`);
+}
+
+/** Real HTTP in, real route handler: what next start does for this path (minus middleware, which only exempts it from CSRF). */
+function startReceiver(port: number) {
+  receiver = http.createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const c of req) chunks.push(c as Buffer);
+    const m = req.url?.match(/^\/api\/integrations\/novaryq\/webhook\/([^/?]+)$/);
+    if (req.method !== 'POST' || !m) return void res.writeHead(404).end();
+    const headers = new Headers();
+    for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v);
+    const out = await fl.webhookPOST(new Request(`http://127.0.0.1:${port}${req.url}`, { method: 'POST', headers, body: Buffer.concat(chunks) }), m[1]!);
+    received.push({ event: headers.get('x-novaryq-event'), status: out.status });
+    res.writeHead(out.status).end(await out.text());
+  });
+  return new Promise<void>((r) => receiver!.listen(port, '127.0.0.1', r));
+}
 
 async function nqOrder(orderId: string) {
   const list = await nqFetch(creds, 'GET', `/api/v1/orders?externalRef=${orderId}&source=flavrly`);
@@ -31,13 +73,15 @@ describe.runIf(REAL)('Flavrly -> real Novaryq API', () => {
     creds = { baseUrl: env.NQ_BASE_URL!, clientId: env.NQ_CLIENT_ID!, secret: env.NQ_SECRET! };
     // Build a Flavrly shop wired to the real API instead of the simulator.
     const placeholder = new NovaryqSimulator();
-    shop = await makeShop(placeholder);
-    await saveCfg(shop, { baseUrl: creds.baseUrl, clientId: creds.clientId, secret: creds.secret });
+    shop = await makeShop(placeholder, HOOKS ? { restaurantId: HOOK_RESTAURANT_ID } : {});
+    await saveCfg(shop, { baseUrl: creds.baseUrl, clientId: creds.clientId, secret: creds.secret, ...(HOOKS ? { webhookSecret: env.NQ_WEBHOOK_SECRET! } : {}) });
+    if (HOOKS) await startReceiver(Number(env.FL_HOOK_PORT));
     await db.novaryqLocationLink.update({ where: { branchId: shop.branchId }, data: { novaryqLocationId: env.NQ_LOCATION_ID! } });
     await db.novaryqItemLink.update({ where: { menuItemId: shop.paneer.id }, data: { novaryqItemCode: env.NQ_ITEM_CODE! } });
     await db.novaryqItemLink.update({ where: { menuItemId: shop.dal.id }, data: { novaryqItemCode: env.NQ_ITEM_CODE_2! } });
   });
   afterAll(async () => {
+    await new Promise((r) => (receiver ? receiver.close(r) : r(null)));
     await prisma.$disconnect();
   });
 
@@ -99,5 +143,79 @@ describe.runIf(REAL)('Flavrly -> real Novaryq API', () => {
     const menu = await nqFetch(creds, 'GET', `/api/v1/menu?locationId=${env.NQ_LOCATION_ID}`);
     const src = menu.json.data.find((i: any) => i.itemCode === env.NQ_ITEM_CODE);
     expect(money(link.menuItem.price)).toBe(money(src.price));
+  });
+
+  it('admin setup path: test-and-save against the real API, then link the branch (INR checked)', async () => {
+    const s3 = await makeShop(new NovaryqSimulator());
+    await db.integrationCredential.deleteMany({ where: { restaurantId: s3.restaurantId } });
+    const ctx = { restaurantId: s3.restaurantId, restaurantName: 'FNI admin path', userId: s3.ownerId };
+    const saved = await saveNovaryqCredentials(ctx, { baseUrl: creds.baseUrl, clientId: creds.clientId, secret: creds.secret, webhookSecret: 'whsec_fni_admin_path', enabled: true });
+    expect(saved, JSON.stringify(saved)).toMatchObject({ ok: true });
+    const linked = await setBranchLocation(ctx, s3.branchId, env.NQ_LOCATION_ID!);
+    expect(linked, JSON.stringify(linked)).toMatchObject({ ok: true });
+    expect((linked as { itemCount: number }).itemCount).toBeGreaterThan(0);
+  });
+
+  it('poll fallback: a pushed order whose webhooks never came reads its status from GET /orders/:id', async () => {
+    await db.restaurant.update({ where: { id: shop.restaurantId }, data: { autoAcceptOrders: true } });
+    try {
+      const order = await placeCod(shop);
+      await fl.runWorker();
+      expect((await syncOf(order.id)).state).toBe('SENT');
+      // As if every status webhook was lost: nothing recorded, quiet for more than 10 minutes.
+      await prisma.$executeRaw`UPDATE "NovaryqOrderSync" SET "lastStatus" = NULL, "lastStatusAt" = NULL, "updatedAt" = now() - interval '11 minutes' WHERE "orderId" = ${order.id}`;
+      const r = await pollStaleOrderStatuses(shop.restaurantId);
+      expect(r.errors).toBe(0);
+      expect(r.polled).toBeGreaterThanOrEqual(1);
+      expect(['SENT', 'IN_PREP', 'READY']).toContain((await syncOf(order.id)).lastStatus);
+      expect(['ACCEPTED', 'PREPARING', 'READY']).toContain((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status);
+    } finally {
+      await db.restaurant.update({ where: { id: shop.restaurantId }, data: { autoAcceptOrders: false } });
+    }
+  });
+
+  it('refusals: a wrong secret fails the connection test (401)', async () => {
+    const r = await testNovaryqConnection({ ...creds, secret: 'nqsec_wrong' });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/401/);
+  });
+
+  it.runIf(!!env.NQ_NA_CLIENT_ID)('refusals: a North-American tenant key is refused (not INR)', async () => {
+    const r = await testNovaryqConnection({ baseUrl: creds.baseUrl, clientId: env.NQ_NA_CLIENT_ID!, secret: env.NQ_NA_SECRET! });
+    expect(r).toMatchObject({ ok: false });
+    expect(r.error).toMatch(/Novaryq India|INR/);
+  });
+
+  it.runIf(!!env.NQ_FOREIGN_LOCATION_ID)('refusals: another tenant\'s location cannot be linked with this key', async () => {
+    expect((await checkLocationCurrency(creds, env.NQ_FOREIGN_LOCATION_ID!)).ok).toBe(false);
+  });
+
+  it.runIf(HOOKS)('webhook: an 86 in Novaryq reaches Flavrly over HTTP within seconds, and so does the restore', async () => {
+    const patch = (available: boolean) => nqFetch(creds, 'PATCH', `/api/v1/menu/items/${encodeURIComponent(env.NQ_ITEM_CODE_2!)}/availability`, { available });
+    const avail = async () => (await prisma.menuItem.findUniqueOrThrow({ where: { id: shop.dal.id } })).isAvailable;
+    try {
+      const off = await patch(false);
+      expect(off.status, JSON.stringify(off.json)).toBe(200);
+      await until(async () => !(await avail()), 'the 86 on Flavrly');
+      expect((await patch(true)).status).toBe(200);
+      await until(avail, 'the restore on Flavrly');
+      expect(received.filter((d) => d.event?.startsWith('menu.item.')).every((d) => d.status === 200)).toBe(true);
+    } finally {
+      await patch(true);
+    }
+  });
+
+  it.runIf(HOOKS)('webhook: order.status_changed reaches Flavrly signed and is applied (VOIDED after a Flavrly cancel)', async () => {
+    const order = await placeCod(shop);
+    await fl.runWorker();
+    const sent = await syncOf(order.id);
+    await transitionOrder(order.id, 'CANCELLED_BY_CUSTOMER' as any);
+    await fl.runWorker();
+    await until(async () => (await syncOf(order.id)).lastStatus === 'VOIDED', 'order.status_changed VOIDED');
+    const events = await db.novaryqWebhookEvent.findMany({ where: { restaurantId: shop.restaurantId, event: 'order.status_changed' } });
+    const mine = events.filter((e: any) => JSON.stringify(e.payload).includes(sent.novaryqOrderId));
+    expect(mine.length).toBeGreaterThanOrEqual(1);
+    expect(mine.every((e: any) => e.processedAt && !e.error)).toBe(true);
+    expect(received.filter((d) => d.event === 'order.status_changed').every((d) => d.status === 200)).toBe(true);
   });
 });

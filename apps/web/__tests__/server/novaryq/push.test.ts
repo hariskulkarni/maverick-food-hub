@@ -68,6 +68,13 @@ function baseOrder(over: any = {}) {
   };
 }
 
+function comboLine() {
+  return {
+    menuItemId: null, comboId: 'c1', name: 'Thali', quantity: 2, unitPrice: 299, notes: 'no ghee', isFreebie: false, selectedVariantName: null, modifiersSummary: null,
+    combo: { items: [{ menuItemId: 'm1', quantity: 2, menuItem: { name: 'Paneer Tikka' } }, { menuItemId: 'm3', quantity: 3, menuItem: { name: 'Roti' } }] },
+  };
+}
+
 beforeEach(() => {
   vi.stubEnv('NOVARYQ_INTEGRATION_ENABLED', 'true');
   h.cfg = { baseUrl: 'https://pos.example.com', clientId: 'nq_test', secret: 's', webhookSecret: 'w', enabled: true, pushOn: 'RECEIVED', webhookSubscriptionId: '' };
@@ -108,7 +115,7 @@ describe('buildOrderPayload (§2.1)', () => {
     expect(p.deliveryAddress).toBe('12 MG Road, Near park, Pune 411001');
     expect(p.deliveryHandledBy).toBe('PARTNER'); // LEAD-1: Flavrly riders deliver
     expect(p.lines[0]).toEqual({
-      itemCode: 'SKU-1', quantity: 2, unitPrice: '249.00', notes: 'less spicy',
+      itemCode: 'SKU-1', quantity: 2, unitPrice: '249.00', notes: 'Order note: ring twice · less spicy', // FNI-F3
       modifiers: [
         { name: 'Full', unitPrice: '0.00', quantity: 1 },
         { name: 'Extra cheese', unitPrice: '0.00', quantity: 1 },
@@ -167,10 +174,34 @@ describe('buildOrderPayload (§2.1)', () => {
     expect(p.lines[0].modifiers.map((m: any) => [m.name, m.unitPrice])).toEqual([['Full', '0.00'], ['Extra cheese', '0.00'], ['No onion', '0.00']]);
   });
 
-  it('lists every unmapped line (unlinked items and combos)', () => {
+  it('lists every unmapped line (unlinked items, a combo with an unlinked component, a deleted combo)', () => {
     const o = baseOrder();
     o.items.push({ menuItemId: null, comboId: 'c1', name: 'Family Combo', quantity: 1, unitPrice: 499, notes: null, isFreebie: false, selectedVariantName: null, modifiersSummary: null } as any);
-    expect(buildOrderPayload(o as any, 'loc_1', new Map([['m1', 'SKU-1']]))).toEqual({ unmapped: ['Lassi', 'Family Combo'] });
+    o.items.push({ ...comboLine(), combo: { items: [{ menuItemId: 'm1', quantity: 1, menuItem: { name: 'Paneer Tikka' } }, { menuItemId: 'm9', quantity: 1, menuItem: { name: 'Naan' } }] } } as any);
+    expect(buildOrderPayload(o as any, 'loc_1', new Map([['m1', 'SKU-1']]))).toEqual({ unmapped: ['Lassi', 'Family Combo', 'Thali: Naan'] });
+  });
+
+  it('FNI-F1: a combo is pushed as its linked components; the line totals still equal the Flavrly subtotal', () => {
+    const o = baseOrder({ customerNotes: null, subtotal: 528 + 2 * 299 });
+    o.items.push(comboLine() as any);
+    const p = (buildOrderPayload(o as any, 'loc_1', new Map([['m1', 'SKU-1'], ['m2', 'SKU-2'], ['m3', 'SKU-3']])) as any).payload;
+    expect(p.lines.slice(2)).toEqual([
+      { itemCode: 'SKU-1', quantity: 2, unitPrice: '299.00', notes: 'Combo: Thali · no ghee' },
+      { itemCode: 'SKU-1', quantity: 2, unitPrice: '0.00', notes: 'Combo: Thali · no ghee' }, // 2 paneer per thali
+      { itemCode: 'SKU-3', quantity: 6, unitPrice: '0.00', notes: 'Combo: Thali · no ghee' }, // 3 rotis per thali
+    ]);
+    const paise = p.lines.reduce((s: number, l: any) => s + Math.round(Number(l.unitPrice) * 100) * l.quantity, 0);
+    expect(paise).toBe(Math.round(Number(p.totals.subtotal) * 100));
+  });
+
+  it('FNI-F3: the customer note and a scheduled slot lead the first line\'s notes (Novaryq tickets show line notes only)', () => {
+    const o = baseOrder({ scheduledFor: new Date('2026-11-05T08:00:00Z') });
+    const p = (buildOrderPayload(o as any, 'loc_1', new Map([['m1', 'SKU-1'], ['m2', 'SKU-2']])) as any).payload;
+    expect(p.lines[0].notes).toMatch(/^SCHEDULED 5 Nov 2026, 1:30\spm · Order note: ring twice · less spicy$/i);
+    expect(p.lines[1].notes).toBeUndefined();
+    expect(p.notes).toBe('ring twice');
+    const plain = (buildOrderPayload(baseOrder({ customerNotes: null }) as any, 'loc_1', new Map([['m1', 'SKU-1'], ['m2', 'SKU-2']])) as any).payload;
+    expect(plain.lines[0].notes).toBe('less spicy');
   });
 });
 

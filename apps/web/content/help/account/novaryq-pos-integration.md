@@ -27,7 +27,7 @@ You need a restaurant admin login on Flavrly and access to **Developer** in your
 2. On Flavrly, open **Admin > POS integration**. Enter your Novaryq URL, the API key and the API secret, turn on **Send new Flavrly orders to Novaryq**, and tap **Test & save**.
 3. Copy the **webhook URL** shown on the page. In Novaryq, open **Developer > Webhooks**, add that URL and tick the events listed on the page.
 4. Copy the signing secret Novaryq shows (it starts with whsec_) into **Webhook signing secret** on Flavrly and save again. Press **Send test** in Novaryq; the time appears under "Last webhook received".
-5. Under **Branches → Novaryq locations**, enter the Novaryq location id for each branch and tap **Save**.
+5. Under **Branches → Novaryq locations**, enter the Novaryq location id for each branch and tap **Save**. Novaryq lists your location ids under **Admin > Integrations > Flavrly**.
 6. Link your menu: tap **Import Novaryq menu** to copy the Novaryq menu into the branch, or use **Auto-match by name** and pick the Novaryq item for anything left over.
 
 ## Make Novaryq your menu master ("POS: Novaryq")
@@ -46,7 +46,8 @@ Once your branches and menu are linked, turn on **POS: Novaryq** under **Admin >
 - An order containing an item that is not linked to a Novaryq item is not sent. It shows as **failed** in the sync log with the item names, and the admins get an e-mail. Link the items, then tap **Replay**.
 - If Novaryq cannot be reached, Flavrly keeps retrying for several hours. After 8 tries the order shows as **gave up** and the admins get an e-mail; tap **Replay** once Novaryq is back.
 - Kitchen progress follows the POS: when the kitchen marks the order ready in Novaryq, it becomes **Ready** on Flavrly (accepted and preparing on the way). If **Auto-accept orders** is on in Settings > Order flow, the order is accepted as soon as the ticket reaches the kitchen; otherwise it stays new until you accept it on Flavrly or the POS marks it ready.
-- Flavrly riders deliver: delivery orders are marked in Novaryq as delivered by Flavrly, so do not send your own driver. For delivery orders the rider completes the order on Flavrly.
+- Flavrly riders deliver: delivery orders are marked in Novaryq as delivered by Flavrly, so do not send your own driver. For delivery orders the rider completes the order on Flavrly. A pickup or dine-in order is completed on Flavrly when you close it in Novaryq.
+- Combos are sent to the kitchen as their items (each item must be linked); the combo price is shown on the first item. The customer's note and the time of a scheduled order are printed on the first item of the ticket.
 - If an order is voided in Novaryq after the rider has picked it up, Flavrly does not cancel it automatically. The platform team is alerted to decide.
 - The Flavrly platform team can also set this up for you from their console; every change is recorded.
 - Your API secret and webhook secret are stored encrypted and are never shown again. To change one, type the new value; leave the box empty to keep the saved one.

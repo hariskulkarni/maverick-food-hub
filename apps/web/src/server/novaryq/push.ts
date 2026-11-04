@@ -80,6 +80,7 @@ export interface PushOrder {
   signupBonusApplied?: Money;
   reservationDepositApplied?: Money;
   customerNotes: string | null;
+  scheduledFor?: Date | string | null;
   customer: { name: string | null; phone: string | null } | null;
   address: { line1: string; line2: string | null; landmark: string | null; city: string; postalCode: string } | null;
   items: Array<{
@@ -94,10 +95,13 @@ export interface PushOrder {
     modifiersSummary: string | null;
     /** The item's current add-on options, to price the modifier snapshot. */
     menuItem?: { modifierGroups: Array<{ options: Array<{ name: string; priceDelta: Money }> }> } | null;
+    /** A combo line: the combo's components, each a (linked) Flavrly menu item. */
+    combo?: { items: Array<{ menuItemId: string; quantity: number; menuItem: { name: string } }> } | null;
   }>;
 }
 
 const money = (v: Money) => Number(v).toFixed(2);
+type Line = { itemCode: string; quantity: number; unitPrice: string; notes?: string; modifiers?: Array<{ name: string; unitPrice: string; quantity: number }> };
 const SERVICE_MODE: Record<FulfillmentType, string> = { DELIVERY: 'DELIVERY', PICKUP: 'TAKEOUT', DINE_IN: 'DINE_IN' };
 
 /**
@@ -128,10 +132,27 @@ export function buildOrderPayload(
   locationId: string,
   codeByMenuItem: Map<string, string>,
 ): { payload: Record<string, unknown> } | { unmapped: string[] } {
-  const unmapped = order.items.filter((i) => !i.menuItemId || !codeByMenuItem.has(i.menuItemId)).map((i) => i.name);
+  const parts = (i: PushOrder['items'][number]) =>
+    i.comboId && i.combo?.items.length
+      ? i.combo.items.map((c) => ({ menuItemId: c.menuItemId, name: `${i.name}: ${c.menuItem.name}` }))
+      : [{ menuItemId: i.menuItemId, name: i.name }];
+  const unmapped = order.items.flatMap(parts).filter((p) => !p.menuItemId || !codeByMenuItem.has(p.menuItemId)).map((p) => p.name);
   if (unmapped.length) return { unmapped };
 
-  const lines = order.items.map((i) => {
+  const lines = order.items.flatMap((i): Line[] => {
+    if (i.comboId && i.combo) {
+      // FNI-F1: a combo has no Novaryq item: the kitchen gets its components. The whole combo price sits on one
+      // unit of the first component (the rest at 0.00), so the line totals still add up to the Flavrly subtotal.
+      // shortcut: components are the combo's current definition (OrderItem keeps no snapshot of them).
+      const notes = [`Combo: ${i.name}`, i.notes].filter(Boolean).join(' · ').slice(0, 500);
+      const [first, ...rest] = i.combo.items;
+      const line = (c: typeof first, quantity: number, unitPrice: string) => ({ itemCode: codeByMenuItem.get(c.menuItemId)!, quantity, unitPrice, notes });
+      return [
+        line(first, i.quantity, money(i.unitPrice)),
+        ...(first.quantity > 1 ? [line(first, i.quantity * (first.quantity - 1), '0.00')] : []),
+        ...rest.map((c) => line(c, i.quantity * c.quantity, '0.00')),
+      ];
+    }
     const prices = modifierPrices(i);
     const mods = [
       ...(i.selectedVariantName?.trim() ? [{ name: i.selectedVariantName.trim(), unitPrice: '0.00', quantity: 1 }] : []),
@@ -142,14 +163,21 @@ export function buildOrderPayload(
         .map((name) => ({ name, unitPrice: prices.get(name) ?? '0.00', quantity: 1 })),
     ];
     const notes = [i.isFreebie ? 'Free gift' : null, i.notes].filter(Boolean).join(' · ');
-    return {
+    return [{
       itemCode: codeByMenuItem.get(i.menuItemId!)!,
       quantity: i.quantity,
       unitPrice: money(i.unitPrice),
       ...(notes ? { notes: notes.slice(0, 500) } : {}),
       ...(mods.length ? { modifiers: mods } : {}),
-    };
+    }];
   });
+  // FNI-F3: Novaryq's KDS and printed tickets show line notes only, so the customer's note and a scheduled
+  // slot also lead the first line's notes (the order-level `notes` field is still sent).
+  const slot = order.scheduledFor
+    ? new Date(order.scheduledFor).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' })
+    : null;
+  const orderNote = [slot && `SCHEDULED ${slot}`, order.customerNotes && `Order note: ${order.customerNotes}`].filter(Boolean).join(' · ');
+  if (orderNote) lines[0] = { ...lines[0], notes: [orderNote, lines[0].notes].filter(Boolean).join(' · ').slice(0, 500) };
   const a = order.address;
   const deliveryAddress =
     order.fulfillmentType === 'DELIVERY' && a
@@ -263,7 +291,12 @@ async function pushOrder(row: ClaimedSync, owner: string, cfg: NovaryqConfig): P
   const order = await prisma.order.findUnique({
     where: { id: row.orderId },
     include: {
-      items: { include: { menuItem: { select: { modifierGroups: { select: { options: { select: { name: true, priceDelta: true } } } } } } } },
+      items: {
+        include: {
+          menuItem: { select: { modifierGroups: { select: { options: { select: { name: true, priceDelta: true } } } } } },
+          combo: { select: { items: { select: { menuItemId: true, quantity: true, menuItem: { select: { name: true } } } } } },
+        },
+      },
       customer: { select: { name: true, phone: true } },
       address: { select: { line1: true, line2: true, landmark: true, city: true, postalCode: true } },
       branch: { select: { restaurantId: true, novaryqLink: { select: { novaryqLocationId: true, currency: true } } } },
@@ -274,7 +307,7 @@ async function pushOrder(row: ClaimedSync, owner: string, cfg: NovaryqConfig): P
   if (!loc) return fail(row, owner, 'The order\'s branch is not mapped to a Novaryq location');
   if (loc.currency !== 'INR') return fail(row, owner, `Novaryq location currency is ${loc.currency}, not INR`);
 
-  const ids = order.items.map((i) => i.menuItemId).filter((x): x is string => !!x);
+  const ids = order.items.flatMap((i) => [i.menuItemId, ...(i.combo?.items.map((c) => c.menuItemId) ?? [])]).filter((x): x is string => !!x);
   const links = await prisma.novaryqItemLink.findMany({
     where: { restaurantId: row.restaurantId, menuItemId: { in: ids } },
     select: { menuItemId: true, novaryqItemCode: true },

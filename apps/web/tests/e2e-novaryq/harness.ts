@@ -67,6 +67,8 @@ export interface ShopOpts {
   taxRatePct?: number;
   packagingFee?: number;
   autoAccept?: boolean;
+  /** Fixed restaurant id, so a real Novaryq webhook subscription can be created for it ahead of the run. */
+  restaurantId?: string;
 }
 
 export async function makeShop(sim: NovaryqSimulator, o: ShopOpts = {}): Promise<Shop> {
@@ -74,7 +76,7 @@ export async function makeShop(sim: NovaryqSimulator, o: ShopOpts = {}): Promise
   const owner = await prisma.user.create({ data: { role: 'ADMIN', email: `nq-o-${id}@test.invalid` } });
   const customer = await prisma.user.create({ data: { role: 'CUSTOMER', email: `nq-c-${id}@test.invalid`, name: 'Asha', phone: `+9198${id.replace(/\D/g, '').padEnd(8, '0').slice(0, 8)}` } });
   const address = await prisma.address.create({ data: { userId: customer.id, line1: '12 MG Road', city: 'Pune', postalCode: '411001' } });
-  const r = await prisma.restaurant.create({ data: { slug: `nq-${id}`, name: `NQ ${id}`, ownerUserId: owner.id, autoAcceptOrders: o.autoAccept ?? false } });
+  const r = await prisma.restaurant.create({ data: { ...(o.restaurantId ? { id: o.restaurantId } : {}), slug: `nq-${id}`, name: `NQ ${id}`, ownerUserId: owner.id, autoAcceptOrders: o.autoAccept ?? false } });
   const b = await prisma.branch.create({
     data: { restaurantId: r.id, name: 'Main', slug: `nqb-${id}`, line1: 'x', city: 'Pune', postalCode: '411001', taxRatePct: o.taxRatePct ?? 5, packagingFee: (o.packagingFee ?? 10) as any },
   });

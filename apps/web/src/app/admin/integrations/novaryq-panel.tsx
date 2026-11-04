@@ -318,7 +318,7 @@ function Locations({ ov, onSaved }: { ov: Overview; onSaved: () => void }) {
       <CardContent className="p-4 sm:p-6 space-y-3">
         <div>
           <h2 className="font-semibold">Branches → Novaryq locations</h2>
-          <p className="text-xs text-muted-foreground">Only linked branches send orders. The Novaryq location must sell in INR.</p>
+          <p className="text-xs text-muted-foreground">Only linked branches send orders. The Novaryq location must sell in INR. Find each location id in Novaryq under Admin → Integrations → Flavrly.</p>
         </div>
         <ul className="divide-y divide-border">
           {ov.branches.map((b) => (
@@ -330,7 +330,7 @@ function Locations({ ov, onSaved }: { ov: Overview; onSaved: () => void }) {
               <Input
                 className="sm:flex-1"
                 aria-label={`Novaryq location id for ${b.name}`}
-                placeholder="Novaryq location id, e.g. loc_…"
+                placeholder="Novaryq location id"
                 value={draft[b.id] ?? ''}
                 onChange={(e) => setDraft({ ...draft, [b.id]: e.target.value })}
               />
