@@ -248,10 +248,14 @@ describe.runIf(REAL)('Flavrly -> real Novaryq API', () => {
     await transitionOrder(order.id, 'CANCELLED_BY_CUSTOMER' as any);
     await fl.runWorker();
     await until(async () => (await syncOf(order.id)).lastStatus === 'VOIDED', 'order.status_changed VOIDED');
-    const events = await db.novaryqWebhookEvent.findMany({ where: { restaurantId: shop.restaurantId, event: 'order.status_changed' } });
-    const mine = events.filter((e: any) => JSON.stringify(e.payload).includes(sent.novaryqOrderId));
-    expect(mine.length).toBeGreaterThanOrEqual(1);
-    expect(mine.every((e: any) => e.processedAt && !e.error)).toBe(true);
+    const mine = async () =>
+      (await db.novaryqWebhookEvent.findMany({ where: { restaurantId: shop.restaurantId, event: 'order.status_changed' } }))
+        .filter((e: any) => JSON.stringify(e.payload).includes(sent.novaryqOrderId));
+    await until(async () => (await mine()).every((e: any) => e.processedAt), 'every status delivery processed');
+    const events = await mine();
+    expect(events.length).toBeGreaterThanOrEqual(1);
+    // A SENT delivered after VOIDED is dropped by the out-of-order guard ('ignored:stale'): correct, not an error.
+    expect(events.map((e: any) => e.error).filter((err: string | null) => err && !err.startsWith('ignored:'))).toEqual([]);
     expect(received.filter((d) => d.event === 'order.status_changed').every((d) => d.status === 200)).toBe(true);
   });
 });
