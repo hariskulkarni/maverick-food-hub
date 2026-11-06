@@ -390,6 +390,10 @@ export class NovaryqSimulator {
       this.need(key, 'write:orders');
       return this.cancelOrder(m[1]!, this.parse(rawBody), key);
     }
+    if (method === 'POST' && (m = p.match(/^\/api\/v1\/orders\/([^/]+)\/complete$/))) {
+      this.need(key, 'write:orders');
+      return this.completeOrder(m[1]!, key);
+    }
     throw new HttpError(404, `Cannot ${method} ${p}`);
   }
 
@@ -549,6 +553,18 @@ export class NovaryqSimulator {
     o.cancel = { reason: b.reason, note: b.note };
     this.advance(o.id, 'VOIDED');
     return { status: 200, body: view(false) };
+  }
+
+  /** API 1.5.2 (public-api.service.ts completeOrder): the creating key closes its order; idempotent; 409 once voided/refunded. */
+  private completeOrder(id: string, key: SimApiKey): { status: number; body: unknown } {
+    const o = this.orders.get(id);
+    if (!o) throw new HttpError(404, 'Order not found');
+    if (o.apiClientId !== key.clientId) throw new HttpError(403, 'Only the API key that created this order can complete it through the partner API');
+    if (o.status === 'VOIDED' || o.status === 'REFUNDED') throw new HttpError(409, `Order is ${o.status} and cannot be completed`, { status: o.status });
+    const already = o.status === 'COMPLETED';
+    if (!already) this.advance(o.id, 'COMPLETED');
+    const { idempotentReplay: _ignored, ...rest } = this.orderView(o, false);
+    return { status: 200, body: { ...rest, completed: true, alreadyCompleted: already } };
   }
 
   /** Kitchen action in the POS: move an order and emit order.status_changed (§2.4). */

@@ -84,7 +84,7 @@ export async function novaryqOverview(restaurantId: string) {
       orderBy: { createdAt: 'asc' },
     }),
     prisma.novaryqOrderSync.groupBy({ by: ['state'], where: { restaurantId }, _count: { _all: true } }),
-    prisma.novaryqOrderSync.count({ where: { restaurantId, state: { in: ['PENDING', 'CANCEL_PENDING'] }, attempts: { gt: 1 } } }),
+    prisma.novaryqOrderSync.count({ where: { restaurantId, state: { in: ['PENDING', 'CANCEL_PENDING', 'COMPLETE_PENDING'] }, attempts: { gt: 1 } } }),
     prisma.novaryqWebhookEvent.findFirst({ where: { restaurantId }, orderBy: { receivedAt: 'desc' }, select: { receivedAt: true, event: true } }),
     prisma.restaurant.findUnique({ where: { id: restaurantId }, select: { slug: true } }),
     prisma.novaryqItemLink.count({ where: { restaurantId } }),
@@ -194,7 +194,7 @@ export async function removeBranchLocation(ctx: AdminContext, branchId: string) 
   return { ok: true as const, removed: r.count };
 }
 
-const SYNC_STATES = ['PENDING', 'SENT', 'FAILED', 'DEAD', 'CANCEL_PENDING', 'CANCELLED'] as const;
+const SYNC_STATES = ['PENDING', 'SENT', 'FAILED', 'DEAD', 'CANCEL_PENDING', 'CANCELLED', 'COMPLETE_PENDING', 'COMPLETED'] as const;
 
 /** Sync log: order pushes (filterable by state) and the latest inbound webhook events. */
 export async function syncLog(restaurantId: string, state?: string | null) {

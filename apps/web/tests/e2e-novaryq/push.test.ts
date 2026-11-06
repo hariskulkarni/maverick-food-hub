@@ -94,6 +94,26 @@ describe('push: COD and prepaid orders reach Novaryq once, at Flavrly prices', (
     expect(body.lines.map((l: any) => [l.itemCode, l.quantity]).sort()).toEqual([[shop.dal.code, 1], [shop.paneer.code, 2]].sort());
   });
 
+  it('FNI-F1: a combo reaches the kitchen as its linked components, line totals still equal the subtotal', async () => {
+    const combo = await prisma.combo.create({
+      data: {
+        branchId: shop.branchId, name: 'Paneer Dal Combo', slug: `combo-${Date.now()}`, price: '399.00' as any,
+        items: { create: [{ menuItemId: shop.paneer.id, quantity: 1 }, { menuItemId: shop.dal.id, quantity: 2 }] },
+      },
+    });
+    const order = await placeCod(shop, [{ comboId: combo.id, quantity: 2 } as any]);
+    await fl.runWorker();
+    expect((await syncOf(order.id)).state).toBe('SENT');
+    const body = simOrdersFor(order.id)[0]!.request;
+    const o = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(body.lines.map((l: any) => [l.itemCode, l.quantity, l.unitPrice])).toEqual([
+      [shop.paneer.code, 2, money(399)],
+      [shop.dal.code, 4, '0.00'],
+    ]);
+    expect(body.lines.every((l: any) => String(l.notes).includes('Combo: Paneer Dal Combo'))).toBe(true);
+    expect(body.lines.reduce((s: number, l: any) => s + l.quantity * toPaise(l.unitPrice), 0)).toBe(toPaise(money(o.subtotal)));
+  });
+
   it('a COD order with wallet applied: Novaryq grand total / amount due equals what the rider collects', async () => {
     await prisma.wallet.upsert({ where: { userId: shop.customerId }, update: { balance: 100 as any }, create: { userId: shop.customerId, balance: 100 as any } });
     const order = await placeCod(shop, undefined, { walletApply: 100 });

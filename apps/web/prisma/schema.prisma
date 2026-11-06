@@ -4957,6 +4957,8 @@ enum NovaryqSyncState {
   DEAD // retry budget exhausted; owner alerted; replay from admin UI
   CANCEL_PENDING // Flavrly cancelled; POST /orders/:id/cancel due
   CANCELLED // cancel confirmed by Novaryq (or nothing to cancel there)
+  COMPLETE_PENDING // Flavrly order DELIVERED; POST /orders/:id/complete due (Novaryq closes it, records the COD tender)
+  COMPLETED // completion confirmed by Novaryq (or not possible there: older API / voided)
 }
 
 /// One Flavrly branch ↔ one Novaryq location. Orders of a linked branch are pushed.

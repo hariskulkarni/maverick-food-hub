@@ -88,7 +88,14 @@ describe('planStatusAction (§3 table)', () => {
     expect(steps('COMPLETED', 'READY', 'DELIVERY')).toBe('none');
     expect(steps('COMPLETED', 'READY', 'PICKUP')).toEqual(['DELIVERED']);
     expect(steps('COMPLETED', 'READY', 'DINE_IN')).toEqual(['DELIVERED']);
-    expect(steps('COMPLETED', 'PREPARING', 'PICKUP')).toBe('none');
+  });
+  it('FNI-F2: COMPLETED before READY (POS closed it at the counter) walks the kitchen path instead of leaving it stuck', () => {
+    expect(steps('COMPLETED', 'PREPARING', 'PICKUP')).toEqual(['READY', 'DELIVERED']);
+    expect(steps('COMPLETED', 'RECEIVED', 'DINE_IN', false)).toEqual(['ACCEPTED', 'PREPARING', 'READY', 'DELIVERED']);
+    expect(steps('COMPLETED', 'ACCEPTED', 'DELIVERY')).toEqual(['PREPARING', 'READY']); // the rider still completes it
+    expect(steps('COMPLETED', 'OUT_FOR_DELIVERY', 'DELIVERY')).toBe('none');
+    expect(steps('COMPLETED', 'DELIVERED', 'PICKUP')).toBe('none');
+    expect(steps('COMPLETED', 'CANCELLED_BY_CUSTOMER', 'PICKUP')).toBe('none');
   });
   it('VOIDED → CANCELLED_BY_RESTAURANT before pickup', () => {
     for (const s of ['RECEIVED', 'ACCEPTED', 'PREPARING']) expect(steps('VOIDED', s)).toEqual(['CANCELLED_BY_RESTAURANT']);

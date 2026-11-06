@@ -45,6 +45,7 @@ import {
   processClaimed,
   enqueueNovaryqPush,
   enqueueNovaryqCancel,
+  enqueueNovaryqComplete,
   replaySync,
   PUSH_MAX_ATTEMPTS,
 } from '@/server/novaryq/push';
@@ -65,6 +66,13 @@ function baseOrder(over: any = {}) {
       { menuItemId: 'm2', comboId: null, name: 'Lassi', quantity: 1, unitPrice: 30, notes: null, isFreebie: false, selectedVariantName: null, modifiersSummary: null },
     ],
     ...over,
+  };
+}
+
+function comboLine() {
+  return {
+    menuItemId: null, comboId: 'c1', name: 'Thali', quantity: 2, unitPrice: 299, notes: 'no ghee', isFreebie: false, selectedVariantName: null, modifiersSummary: null,
+    combo: { items: [{ menuItemId: 'm1', quantity: 2, menuItem: { name: 'Paneer Tikka' } }, { menuItemId: 'm3', quantity: 3, menuItem: { name: 'Roti' } }] },
   };
 }
 
@@ -108,7 +116,7 @@ describe('buildOrderPayload (§2.1)', () => {
     expect(p.deliveryAddress).toBe('12 MG Road, Near park, Pune 411001');
     expect(p.deliveryHandledBy).toBe('PARTNER'); // LEAD-1: Flavrly riders deliver
     expect(p.lines[0]).toEqual({
-      itemCode: 'SKU-1', quantity: 2, unitPrice: '249.00', notes: 'less spicy',
+      itemCode: 'SKU-1', quantity: 2, unitPrice: '249.00', notes: 'Order note: ring twice · less spicy', // FNI-F3
       modifiers: [
         { name: 'Full', unitPrice: '0.00', quantity: 1 },
         { name: 'Extra cheese', unitPrice: '0.00', quantity: 1 },
@@ -167,10 +175,34 @@ describe('buildOrderPayload (§2.1)', () => {
     expect(p.lines[0].modifiers.map((m: any) => [m.name, m.unitPrice])).toEqual([['Full', '0.00'], ['Extra cheese', '0.00'], ['No onion', '0.00']]);
   });
 
-  it('lists every unmapped line (unlinked items and combos)', () => {
+  it('lists every unmapped line (unlinked items, a combo with an unlinked component, a deleted combo)', () => {
     const o = baseOrder();
     o.items.push({ menuItemId: null, comboId: 'c1', name: 'Family Combo', quantity: 1, unitPrice: 499, notes: null, isFreebie: false, selectedVariantName: null, modifiersSummary: null } as any);
-    expect(buildOrderPayload(o as any, 'loc_1', new Map([['m1', 'SKU-1']]))).toEqual({ unmapped: ['Lassi', 'Family Combo'] });
+    o.items.push({ ...comboLine(), combo: { items: [{ menuItemId: 'm1', quantity: 1, menuItem: { name: 'Paneer Tikka' } }, { menuItemId: 'm9', quantity: 1, menuItem: { name: 'Naan' } }] } } as any);
+    expect(buildOrderPayload(o as any, 'loc_1', new Map([['m1', 'SKU-1']]))).toEqual({ unmapped: ['Lassi', 'Family Combo', 'Thali: Naan'] });
+  });
+
+  it('FNI-F1: a combo is pushed as its linked components; the line totals still equal the Flavrly subtotal', () => {
+    const o = baseOrder({ customerNotes: null, subtotal: 528 + 2 * 299 });
+    o.items.push(comboLine() as any);
+    const p = (buildOrderPayload(o as any, 'loc_1', new Map([['m1', 'SKU-1'], ['m2', 'SKU-2'], ['m3', 'SKU-3']])) as any).payload;
+    expect(p.lines.slice(2)).toEqual([
+      { itemCode: 'SKU-1', quantity: 2, unitPrice: '299.00', notes: 'Combo: Thali · no ghee' },
+      { itemCode: 'SKU-1', quantity: 2, unitPrice: '0.00', notes: 'Combo: Thali · no ghee' }, // 2 paneer per thali
+      { itemCode: 'SKU-3', quantity: 6, unitPrice: '0.00', notes: 'Combo: Thali · no ghee' }, // 3 rotis per thali
+    ]);
+    const paise = p.lines.reduce((s: number, l: any) => s + Math.round(Number(l.unitPrice) * 100) * l.quantity, 0);
+    expect(paise).toBe(Math.round(Number(p.totals.subtotal) * 100));
+  });
+
+  it('FNI-F3: the customer note and a scheduled slot lead the first line\'s notes (Novaryq tickets show line notes only)', () => {
+    const o = baseOrder({ scheduledFor: new Date('2026-11-05T08:00:00Z') });
+    const p = (buildOrderPayload(o as any, 'loc_1', new Map([['m1', 'SKU-1'], ['m2', 'SKU-2']])) as any).payload;
+    expect(p.lines[0].notes).toMatch(/^SCHEDULED 5 Nov 2026, 1:30\spm · Order note: ring twice · less spicy$/i);
+    expect(p.lines[1].notes).toBeUndefined();
+    expect(p.notes).toBe('ring twice');
+    const plain = (buildOrderPayload(baseOrder({ customerNotes: null }) as any, 'loc_1', new Map([['m1', 'SKU-1'], ['m2', 'SKU-2']])) as any).payload;
+    expect(plain.lines[0].notes).toBe('less spicy');
   });
 });
 
@@ -212,6 +244,55 @@ describe('enqueue hooks (transactional outbox)', () => {
     expect(voided.data.state).toBe('CANCELLED');
     expect(pending.where).toMatchObject({ orderId: 'o1', state: { in: ['PENDING', 'SENT', 'FAILED', 'DEAD'] } });
     expect(pending.data).toMatchObject({ state: 'CANCEL_PENDING', attempts: 0, lastError: null });
+  });
+});
+
+describe('F-07 completion (API 1.5.2 POST /orders/:id/complete)', () => {
+  it('DELIVERED → a SENT row becomes COMPLETE_PENDING, unless Novaryq itself reported COMPLETED', async () => {
+    const t = { novaryqOrderSync: { updateMany: vi.fn(async () => ({ count: 1 })) } };
+    await enqueueNovaryqComplete(t as any, 'o1');
+    const [c] = t.novaryqOrderSync.updateMany.mock.calls.map((x: any) => x[0]);
+    expect(c.where).toEqual({ orderId: 'o1', state: 'SENT', OR: [{ lastStatus: null }, { lastStatus: { not: 'COMPLETED' } }] });
+    expect(c.data).toMatchObject({ state: 'COMPLETE_PENDING', attempts: 0, lastError: null });
+  });
+
+  it('200 → COMPLETED; the request is POST /orders/:novaryqId/complete {}', async () => {
+    h.respond = () => new Response(JSON.stringify({ id: 'nq_1', status: 'COMPLETED', completed: true, alreadyCompleted: false }), { status: 200 });
+    expect(await processClaimed(row({ state: 'COMPLETE_PENDING', novaryqOrderId: 'nq_1' }), OWNER)).toBe('completed');
+    expect(h.fetches[0].url).toBe('https://pos.example.com/api/v1/orders/nq_1/complete');
+    expect(h.fetches[0].init).toMatchObject({ method: 'POST', body: '{}' });
+    expect(h.updates[0]).toMatchObject({ where: { id: 's1', leaseOwner: OWNER, state: 'COMPLETE_PENDING' }, data: { state: 'COMPLETED', lastError: null } });
+  });
+
+  it('404 (older Novaryq without the route) and 409 (voided there) settle quietly: no alert, no retry', async () => {
+    for (const status of [404, 409]) {
+      h.updates = [];
+      h.respond = () => new Response(JSON.stringify({ message: 'nope' }), { status });
+      expect(await processClaimed(row({ state: 'COMPLETE_PENDING', novaryqOrderId: 'nq_1' }), OWNER)).toBe('completed');
+      expect(h.updates[0].data.state).toBe('COMPLETED');
+      expect(h.updates[0].data.lastError).toMatch(/Not closed in Novaryq/);
+    }
+    expect(h.alerts).toHaveLength(0);
+  });
+
+  it('403 (another key) → FAILED + complete_failed alert; 5xx → retried', async () => {
+    h.respond = () => new Response(JSON.stringify({ message: 'other key' }), { status: 403 });
+    expect(await processClaimed(row({ state: 'COMPLETE_PENDING', novaryqOrderId: 'nq_1' }), OWNER)).toBe('failed');
+    expect(h.alerts[0]).toMatchObject({ kind: 'complete_failed' });
+    h.respond = () => new Response('{}', { status: 503 });
+    expect(await processClaimed(row({ state: 'COMPLETE_PENDING', novaryqOrderId: 'nq_1' }), OWNER)).toBe('retried');
+  });
+
+  it('an order delivered before its push went out is completed right after the push', async () => {
+    h.order = baseOrder({ status: 'DELIVERED' });
+    h.respond = () => new Response(JSON.stringify({ id: 'nq_1', orderNumber: 7 }), { status: 201 });
+    expect(await processClaimed(row(), OWNER)).toBe('sent');
+    expect(h.updates[0].data).toMatchObject({ state: 'COMPLETE_PENDING', novaryqOrderId: 'nq_1', attempts: 0 });
+  });
+
+  it('replay of a failed completion of a delivered order replays the completion', async () => {
+    h.syncRow = { id: 's1', restaurantId: 'r1', state: 'FAILED', novaryqOrderId: 'nq_1', order: { status: 'DELIVERED' } };
+    expect(await replaySync('r1', 's1', 'u1')).toEqual({ ok: true, state: 'COMPLETE_PENDING' });
   });
 });
 

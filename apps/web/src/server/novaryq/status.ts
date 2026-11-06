@@ -56,11 +56,14 @@ export function planStatusAction(
     return { kind: 'transition', steps: KITCHEN_PATH.slice(from + 1, to + 1) };
   }
   switch (nqStatus) {
-    case 'COMPLETED':
-      if (fulfillment === FulfillmentType.DELIVERY) return { kind: 'none', reason: 'rider completes delivery orders' };
-      return current === OrderStatus.READY
-        ? { kind: 'transition', steps: [OrderStatus.DELIVERED] }
-        : { kind: 'none', reason: `COMPLETED while ${current}` };
+    case 'COMPLETED': {
+      // FNI-F2: the POS may close an order without bumping READY (counter service): walk the rest of the
+      // kitchen path. The rider completes delivery orders; a pickup / dine-in order is handed over (DELIVERED).
+      const from = current === OrderStatus.RECEIVED ? 0 : KITCHEN_PATH.indexOf(current) + 1;
+      if (from === 0 && current !== OrderStatus.RECEIVED) return { kind: 'none', reason: `COMPLETED while ${current}` };
+      const steps = [...KITCHEN_PATH.slice(from), ...(fulfillment === FulfillmentType.DELIVERY ? [] : [OrderStatus.DELIVERED])];
+      return steps.length ? { kind: 'transition', steps } : { kind: 'none', reason: 'rider completes delivery orders' };
+    }
     case 'VOIDED':
       if (RESTAURANT_CANCELLABLE.includes(current)) return { kind: 'transition', steps: [OrderStatus.CANCELLED_BY_RESTAURANT] };
       if (CANCELLED.includes(current)) return { kind: 'none', reason: `already ${current}` };

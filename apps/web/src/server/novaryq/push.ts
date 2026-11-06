@@ -61,6 +61,20 @@ export async function enqueueNovaryqCancel(tx: Tx, orderId: string): Promise<voi
   });
 }
 
+/**
+ * Called in the transaction that puts an order into DELIVERED (rider delivered, or a pickup / dine-in
+ * handed over): Novaryq 1.5.2 closes the POS order (sales ledger, EOD) and records a COD balance as the
+ * Flavrly tender. Nothing to send when Novaryq itself reported COMPLETED. A row not yet pushed is
+ * completed right after its push (pushOrder).
+ */
+export async function enqueueNovaryqComplete(tx: Tx, orderId: string): Promise<void> {
+  if (!novaryqFlagOn()) return;
+  await tx.novaryqOrderSync.updateMany({
+    where: { orderId, state: 'SENT', OR: [{ lastStatus: null }, { lastStatus: { not: 'COMPLETED' } }] },
+    data: { state: 'COMPLETE_PENDING', attempts: 0, nextAttemptAt: new Date(), lastError: null },
+  });
+}
+
 // ── Payload (§2.1) ───────────────────────────────────────────────────────────
 
 type Money = Prisma.Decimal | number | string;
@@ -80,6 +94,7 @@ export interface PushOrder {
   signupBonusApplied?: Money;
   reservationDepositApplied?: Money;
   customerNotes: string | null;
+  scheduledFor?: Date | string | null;
   customer: { name: string | null; phone: string | null } | null;
   address: { line1: string; line2: string | null; landmark: string | null; city: string; postalCode: string } | null;
   items: Array<{
@@ -94,10 +109,13 @@ export interface PushOrder {
     modifiersSummary: string | null;
     /** The item's current add-on options, to price the modifier snapshot. */
     menuItem?: { modifierGroups: Array<{ options: Array<{ name: string; priceDelta: Money }> }> } | null;
+    /** A combo line: the combo's components, each a (linked) Flavrly menu item. */
+    combo?: { items: Array<{ menuItemId: string; quantity: number; menuItem: { name: string } }> } | null;
   }>;
 }
 
 const money = (v: Money) => Number(v).toFixed(2);
+type Line = { itemCode: string; quantity: number; unitPrice: string; notes?: string; modifiers?: Array<{ name: string; unitPrice: string; quantity: number }> };
 const SERVICE_MODE: Record<FulfillmentType, string> = { DELIVERY: 'DELIVERY', PICKUP: 'TAKEOUT', DINE_IN: 'DINE_IN' };
 
 /**
@@ -128,10 +146,27 @@ export function buildOrderPayload(
   locationId: string,
   codeByMenuItem: Map<string, string>,
 ): { payload: Record<string, unknown> } | { unmapped: string[] } {
-  const unmapped = order.items.filter((i) => !i.menuItemId || !codeByMenuItem.has(i.menuItemId)).map((i) => i.name);
+  const parts = (i: PushOrder['items'][number]) =>
+    i.comboId && i.combo?.items.length
+      ? i.combo.items.map((c) => ({ menuItemId: c.menuItemId, name: `${i.name}: ${c.menuItem.name}` }))
+      : [{ menuItemId: i.menuItemId, name: i.name }];
+  const unmapped = order.items.flatMap(parts).filter((p) => !p.menuItemId || !codeByMenuItem.has(p.menuItemId)).map((p) => p.name);
   if (unmapped.length) return { unmapped };
 
-  const lines = order.items.map((i) => {
+  const lines = order.items.flatMap((i): Line[] => {
+    if (i.comboId && i.combo) {
+      // FNI-F1: a combo has no Novaryq item: the kitchen gets its components. The whole combo price sits on one
+      // unit of the first component (the rest at 0.00), so the line totals still add up to the Flavrly subtotal.
+      // shortcut: components are the combo's current definition (OrderItem keeps no snapshot of them).
+      const notes = [`Combo: ${i.name}`, i.notes].filter(Boolean).join(' · ').slice(0, 500);
+      const [first, ...rest] = i.combo.items;
+      const line = (c: typeof first, quantity: number, unitPrice: string) => ({ itemCode: codeByMenuItem.get(c.menuItemId)!, quantity, unitPrice, notes });
+      return [
+        line(first, i.quantity, money(i.unitPrice)),
+        ...(first.quantity > 1 ? [line(first, i.quantity * (first.quantity - 1), '0.00')] : []),
+        ...rest.map((c) => line(c, i.quantity * c.quantity, '0.00')),
+      ];
+    }
     const prices = modifierPrices(i);
     const mods = [
       ...(i.selectedVariantName?.trim() ? [{ name: i.selectedVariantName.trim(), unitPrice: '0.00', quantity: 1 }] : []),
@@ -142,14 +177,21 @@ export function buildOrderPayload(
         .map((name) => ({ name, unitPrice: prices.get(name) ?? '0.00', quantity: 1 })),
     ];
     const notes = [i.isFreebie ? 'Free gift' : null, i.notes].filter(Boolean).join(' · ');
-    return {
+    return [{
       itemCode: codeByMenuItem.get(i.menuItemId!)!,
       quantity: i.quantity,
       unitPrice: money(i.unitPrice),
       ...(notes ? { notes: notes.slice(0, 500) } : {}),
       ...(mods.length ? { modifiers: mods } : {}),
-    };
+    }];
   });
+  // FNI-F3: Novaryq's KDS and printed tickets show line notes only, so the customer's note and a scheduled
+  // slot also lead the first line's notes (the order-level `notes` field is still sent).
+  const slot = order.scheduledFor
+    ? new Date(order.scheduledFor).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' })
+    : null;
+  const orderNote = [slot && `SCHEDULED ${slot}`, order.customerNotes && `Order note: ${order.customerNotes}`].filter(Boolean).join(' · ');
+  if (orderNote) lines[0] = { ...lines[0], notes: [orderNote, lines[0].notes].filter(Boolean).join(' · ').slice(0, 500) };
   const a = order.address;
   const deliveryAddress =
     order.fulfillmentType === 'DELIVERY' && a
@@ -197,7 +239,7 @@ export interface ClaimedSync {
   novaryqOrderId: string | null;
 }
 
-export type SyncOutcome = 'sent' | 'cancelled' | 'retried' | 'failed' | 'dead' | 'lost';
+export type SyncOutcome = 'sent' | 'cancelled' | 'completed' | 'retried' | 'failed' | 'dead' | 'lost';
 
 async function claimDue(owner: string, limit: number, leaseMs: number): Promise<ClaimedSync[]> {
   return prisma.$queryRaw<ClaimedSync[]>`
@@ -208,7 +250,7 @@ async function claimDue(owner: string, limit: number, leaseMs: number): Promise<
         "updatedAt" = timezone('utc', now())
     WHERE s."id" IN (
       SELECT "id" FROM "NovaryqOrderSync"
-      WHERE "state" IN ('PENDING', 'CANCEL_PENDING') AND "nextAttemptAt" <= timezone('utc', now())
+      WHERE "state" IN ('PENDING', 'CANCEL_PENDING', 'COMPLETE_PENDING') AND "nextAttemptAt" <= timezone('utc', now())
         AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" < timezone('utc', now()))
       ORDER BY "nextAttemptAt"
       LIMIT ${limit}
@@ -217,7 +259,8 @@ async function claimDue(owner: string, limit: number, leaseMs: number): Promise<
 }
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 500);
-const fence = (row: ClaimedSync, owner: string) => ({ id: row.id, leaseOwner: owner, state: row.state as 'PENDING' | 'CANCEL_PENDING' });
+const fence = (row: ClaimedSync, owner: string) => ({ id: row.id, leaseOwner: owner, state: row.state as 'PENDING' | 'CANCEL_PENDING' | 'COMPLETE_PENDING' });
+const action = (row: ClaimedSync) => (row.state === 'CANCEL_PENDING' ? 'cancel' : row.state === 'COMPLETE_PENDING' ? 'complete' : 'push');
 const released = { leaseOwner: null, leaseExpiresAt: null };
 
 async function settle(row: ClaimedSync, owner: string, data: Prisma.NovaryqOrderSyncUpdateManyMutationInput): Promise<boolean> {
@@ -227,12 +270,15 @@ async function settle(row: ClaimedSync, owner: string, data: Prisma.NovaryqOrder
 
 async function fail(row: ClaimedSync, owner: string, error: string): Promise<SyncOutcome> {
   if (!(await settle(row, owner, { state: 'FAILED', lastError: error }))) return 'lost';
-  const isCancel = row.state === 'CANCEL_PENDING';
+  const kind = action(row);
   await sendNovaryqAlert({
     restaurantId: row.restaurantId,
-    kind: isCancel ? 'cancel_failed' : 'push_failed',
+    kind: kind === 'cancel' ? 'cancel_failed' : kind === 'complete' ? 'complete_failed' : 'push_failed',
     entityId: row.orderId,
-    subject: isCancel ? 'A Flavrly cancellation could not be sent to Novaryq' : 'A Flavrly order could not be sent to Novaryq POS',
+    subject:
+      kind === 'cancel' ? 'A Flavrly cancellation could not be sent to Novaryq'
+        : kind === 'complete' ? 'A delivered Flavrly order could not be closed in Novaryq POS'
+          : 'A Flavrly order could not be sent to Novaryq POS',
     text: `Order ${row.orderId}: ${error}\nFix it in Flavrly admin → POS integration, then press Replay.`,
   });
   return 'failed';
@@ -250,7 +296,7 @@ async function retryOrDie(row: ClaimedSync, owner: string, e: unknown): Promise<
       entityId: row.restaurantId,
       windowMin: 60,
       subject: 'Novaryq sync gave up after 8 attempts',
-      text: `Order ${row.orderId} (${row.state === 'CANCEL_PENDING' ? 'cancel' : 'push'}): ${error}\nOther orders may be affected too: see Flavrly admin → POS integration → Sync log (gave up) and Replay them once Novaryq is reachable.`,
+      text: `Order ${row.orderId} (${action(row)}): ${error}\nOther orders may be affected too: see Flavrly admin → POS integration → Sync log (gave up) and Replay them once Novaryq is reachable.`,
     });
     return 'dead';
   }
@@ -263,7 +309,12 @@ async function pushOrder(row: ClaimedSync, owner: string, cfg: NovaryqConfig): P
   const order = await prisma.order.findUnique({
     where: { id: row.orderId },
     include: {
-      items: { include: { menuItem: { select: { modifierGroups: { select: { options: { select: { name: true, priceDelta: true } } } } } } } },
+      items: {
+        include: {
+          menuItem: { select: { modifierGroups: { select: { options: { select: { name: true, priceDelta: true } } } } } },
+          combo: { select: { items: { select: { menuItemId: true, quantity: true, menuItem: { select: { name: true } } } } } },
+        },
+      },
       customer: { select: { name: true, phone: true } },
       address: { select: { line1: true, line2: true, landmark: true, city: true, postalCode: true } },
       branch: { select: { restaurantId: true, novaryqLink: { select: { novaryqLocationId: true, currency: true } } } },
@@ -274,7 +325,7 @@ async function pushOrder(row: ClaimedSync, owner: string, cfg: NovaryqConfig): P
   if (!loc) return fail(row, owner, 'The order\'s branch is not mapped to a Novaryq location');
   if (loc.currency !== 'INR') return fail(row, owner, `Novaryq location currency is ${loc.currency}, not INR`);
 
-  const ids = order.items.map((i) => i.menuItemId).filter((x): x is string => !!x);
+  const ids = order.items.flatMap((i) => [i.menuItemId, ...(i.combo?.items.map((c) => c.menuItemId) ?? [])]).filter((x): x is string => !!x);
   const links = await prisma.novaryqItemLink.findMany({
     where: { restaurantId: row.restaurantId, menuItemId: { in: ids } },
     select: { menuItemId: true, novaryqItemCode: true },
@@ -296,7 +347,9 @@ async function pushOrder(row: ClaimedSync, owner: string, cfg: NovaryqConfig): P
   }
   const novaryqOrderId = res.data?.id ? String(res.data.id) : null;
   const novaryqOrderNumber = res.data?.orderNumber != null ? String(res.data.orderNumber) : null;
-  if (await settle(row, owner, { state: 'SENT', novaryqOrderId, novaryqOrderNumber, lastError: null })) return 'sent';
+  // Delivered before its push went out: close it in Novaryq right away (enqueueNovaryqComplete only sees SENT rows).
+  const delivered = order.status === OrderStatus.DELIVERED;
+  if (await settle(row, owner, { state: delivered ? 'COMPLETE_PENDING' : 'SENT', novaryqOrderId, novaryqOrderNumber, lastError: null, ...(delivered ? { attempts: 0, nextAttemptAt: new Date() } : {}) })) return 'sent';
   // A cancel arrived while the push was in flight: keep CANCEL_PENDING, record the id, run the cancel now.
   const r = await prisma.novaryqOrderSync.updateMany({
     where: { id: row.id, leaseOwner: owner },
@@ -336,25 +389,41 @@ async function cancelOrder(row: ClaimedSync, owner: string, cfg: NovaryqConfig):
   }
 }
 
+/** POST /orders/:id/complete (API 1.5.2). Not possible there (older Novaryq: 404; voided/refunded: 409) is settled quietly. */
+async function completeOrder(row: ClaimedSync, owner: string, cfg: NovaryqConfig): Promise<SyncOutcome> {
+  if (!row.novaryqOrderId) return (await settle(row, owner, { state: 'COMPLETED', lastError: 'Never reached Novaryq: nothing to close' })) ? 'completed' : 'lost';
+  try {
+    await novaryqRequest(cfg, 'POST', `/orders/${encodeURIComponent(row.novaryqOrderId)}/complete`, {});
+    return (await settle(row, owner, { state: 'COMPLETED', lastError: null })) ? 'completed' : 'lost';
+  } catch (e) {
+    if (e instanceof NovaryqApiError && (e.status === 404 || e.status === 409)) {
+      return (await settle(row, owner, { state: 'COMPLETED', lastError: `Not closed in Novaryq: ${e.message}` })) ? 'completed' : 'lost';
+    }
+    if (e instanceof NovaryqApiError && (!e.retryable || e.status === 403)) return fail(row, owner, e.message);
+    return retryOrDie(row, owner, e);
+  }
+}
+
 /** Handles one claimed row. Exported for unit tests; the worker is runNovaryqPushWorker. */
 export async function processClaimed(row: ClaimedSync, owner: string): Promise<SyncOutcome> {
   if (row.attempts > PUSH_MAX_ATTEMPTS) return retryOrDie(row, owner, new Error('Attempt budget exhausted (worker crashed or lease expired)'));
   try {
     const cfg = await loadNovaryqConfig(row.restaurantId);
     if (!cfg?.enabled) return retryOrDie(row, owner, new Error('Novaryq is not configured or is disabled for this restaurant'));
+    if (row.state === 'COMPLETE_PENDING') return await completeOrder(row, owner, cfg);
     return row.state === 'CANCEL_PENDING' ? await cancelOrder(row, owner, cfg) : await pushOrder(row, owner, cfg);
   } catch (e) {
     return retryOrDie(row, owner, e);
   }
 }
 
-export interface PushRunResult { claimed: number; sent: number; cancelled: number; retried: number; failed: number; dead: number }
+export interface PushRunResult { claimed: number; sent: number; cancelled: number; completed: number; retried: number; failed: number; dead: number }
 
 /** Drains due push/cancel rows until none are due or `maxMs` elapses. */
 export async function runNovaryqPushWorker(opts: { leaseMs?: number; batch?: number; maxMs?: number } = {}): Promise<PushRunResult> {
   const owner = newLeaseOwner('novaryq-push');
   const deadline = Date.now() + (opts.maxMs ?? 40_000);
-  const out: PushRunResult = { claimed: 0, sent: 0, cancelled: 0, retried: 0, failed: 0, dead: 0 };
+  const out: PushRunResult = { claimed: 0, sent: 0, cancelled: 0, completed: 0, retried: 0, failed: 0, dead: 0 };
   while (Date.now() < deadline) {
     const rows = await claimDue(owner, opts.batch ?? BATCH, opts.leaseMs ?? PUSH_LEASE_MS);
     if (rows.length === 0) break;
@@ -372,13 +441,13 @@ export async function runNovaryqPushWorker(opts: { leaseMs?: number; batch?: num
 export async function replaySync(restaurantId: string, syncId: string, actorId: string): Promise<{ ok: true; state: string } | { ok: false; error: string }> {
   const row = await prisma.novaryqOrderSync.findFirst({
     where: { id: syncId, restaurantId },
-    select: { id: true, state: true, orderId: true, order: { select: { status: true } } },
+    select: { id: true, state: true, orderId: true, novaryqOrderId: true, order: { select: { status: true } } },
   });
   if (!row) return { ok: false, error: 'Not found' };
   if (row.state !== 'FAILED' && row.state !== 'DEAD') return { ok: false, error: `Only failed or dead syncs can be replayed (this one is ${row.state}).` };
   const status = row.order?.status;
   const cancelled = !!status && (status in CANCEL_REASON || status === OrderStatus.CANCELLED);
-  const state = cancelled ? 'CANCEL_PENDING' : 'PENDING';
+  const state = cancelled ? 'CANCEL_PENDING' : status === OrderStatus.DELIVERED && row.novaryqOrderId ? 'COMPLETE_PENDING' : 'PENDING';
   const r = await prisma.novaryqOrderSync.updateMany({
     where: { id: syncId, restaurantId, state: { in: ['FAILED', 'DEAD'] } },
     data: { state, attempts: 0, nextAttemptAt: new Date(), lastError: null, ...released },
