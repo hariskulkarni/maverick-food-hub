@@ -5091,3 +5091,22 @@ model CallLog {
   @@index([riderId, createdAt])
   @@index([status, createdAt])
 }
+
+/// Standalone platform flags, keyed by name.
+///
+/// Deliberately separate from the encrypted platform-config blob in
+/// `server/2fa.ts`. That blob is reached through `setPlatformSecurity`, which
+/// bootstraps a sentinel Restaurant row and therefore REQUIRES a SUPER_ADMIN
+/// user to exist. Maintenance mode is the switch you reach for during an
+/// incident, so it must not depend on other rows being present, on a foreign
+/// key, or on the encryption key being readable. One table, no relations, no
+/// encryption (nothing here is a secret).
+model PlatformFlag {
+  key       String   @id
+  /// Flag payload. Shape is owned by the reader (see server/maintenance.ts).
+  value     Json
+  /// Operator label for the audit trail, e.g. "cli:harish@flavrly-vps".
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}

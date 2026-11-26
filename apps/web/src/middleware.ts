@@ -1,6 +1,16 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import NextAuth from 'next-auth';
 import { authEdgeConfig } from '@/server/auth.config';
+import { verifyToken } from '@/server/signed-token';
+import {
+  MAINTENANCE_BYPASS_COOKIE,
+  MAINTENANCE_BYPASS_SCOPE,
+  MAINTENANCE_STATUS_ENDPOINT,
+  UNDER_CONSTRUCTION_PATH,
+  isMaintenanceExemptPath,
+  isMaintenanceInfraPath,
+  wantsJsonMaintenanceResponse,
+} from '@/server/maintenance-paths';
 import { PLATFORM_ROLES, pageGateFor, can } from '@/server/permissions';
 import { PUBLIC_HOST, PORTAL_HOST, isPortalHost, hostSplitActive, isStaffPath } from '@/server/hosts';
 import { clientIp } from '@/server/http/client-ip';
@@ -8,6 +18,124 @@ import { csrfGuard, isWebhookPath } from '@/server/http/csrf';
 import { isAuthRateLimitPath } from '@/server/http/rate-limit-paths';
 
 const { auth } = NextAuth(authEdgeConfig);
+
+// ───────────────────────── Maintenance / under-construction ─────────────────
+// One switch closes the WHOLE platform — both hostnames, customers and staff
+// alike, SUPER_ADMIN included. There is no product UI for it; it is flipped
+// with `npm run maintenance:on|off` on the server (see server/maintenance.ts).
+//
+// Middleware runs on the Edge runtime and CANNOT query Prisma, so the flag is
+// read over HTTP from /api/system/maintenance and cached in this module. The
+// deployment is a single long-lived `next start` process (pm2 fork), so this
+// cache is shared by every request, exactly like the rate-limit buckets below:
+// one fetch per MAINT_TTL_MS, not one per request.
+type MaintCache = { on: boolean; message: string | null; fetchedAt: number };
+let MAINT_CACHE: MaintCache | null = null;
+let MAINT_INFLIGHT: Promise<void> | null = null;
+const MAINT_TTL_MS = 10_000;
+
+/**
+ * The flag, cached.
+ *
+ * A stale entry is refreshed SYNCHRONOUSLY rather than served stale while a
+ * refresh runs in the background. Serve-stale would mean the first request
+ * after the TTL lapses still sees the old value, so flipping the switch would
+ * take "10 seconds, plus one unlucky request" — and the one request that slips
+ * through is exactly the one you were trying to stop. The read is a loopback
+ * fetch to this same process, so the cost of being correct is a fraction of a
+ * millisecond once every 10 seconds.
+ *
+ * Fails OPEN in two distinct ways, both deliberate:
+ *   • first fetch fails → `null` → treated as "site up". A gate that closed
+ *     the site because it couldn't reach its own status endpoint would be an
+ *     outage with no off switch.
+ *   • later fetch fails → the last known value is kept and reused. A blip
+ *     must not silently reopen a site that was closed on purpose.
+ */
+async function maintenanceState(req: NextRequest): Promise<MaintCache | null> {
+  const now = Date.now();
+  const fresh = MAINT_CACHE && now - MAINT_CACHE.fetchedAt < MAINT_TTL_MS;
+  if (fresh) return MAINT_CACHE;
+
+  if (!MAINT_INFLIGHT) {
+    // Self-fetch. `req.nextUrl.origin` is the local socket (127.0.0.1:3000)
+    // behind `next start`, which is what we want: the request stays inside the
+    // box rather than going out through nginx and Cloudflare and back.
+    const base = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+    MAINT_INFLIGHT = fetch(`${base}${MAINTENANCE_STATUS_ENDPOINT}`, {
+      cache: 'no-store',
+      headers: { 'x-maintenance-probe': '1' },
+      signal: AbortSignal.timeout(2_000),
+    })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`status ${r.status}`);
+        const j = (await r.json()) as { on?: boolean; message?: string | null };
+        MAINT_CACHE = { on: j?.on === true, message: j?.message ?? null, fetchedAt: Date.now() };
+      })
+      .catch(() => {
+        // Keep the last known value; only mark it refreshed so a hard-down
+        // status endpoint can't spin one fetch per request.
+        if (MAINT_CACHE) MAINT_CACHE = { ...MAINT_CACHE, fetchedAt: Date.now() };
+      })
+      .finally(() => {
+        MAINT_INFLIGHT = null;
+      });
+  }
+
+  // Wait for the refresh. On failure the catch above has already restored the
+  // previous value (or left it null), so we return whatever is known.
+  await MAINT_INFLIGHT.catch(() => {});
+  return MAINT_CACHE;
+}
+
+function maintenanceJson(): NextResponse {
+  return new NextResponse(
+    JSON.stringify({
+      error: 'Flavrly is temporarily closed for maintenance. Please try again shortly.',
+      code: 'service/maintenance',
+    }),
+    {
+      status: 503,
+      headers: {
+        'content-type': 'application/json',
+        'Retry-After': '600',
+        'Cache-Control': 'no-store',
+      },
+    },
+  );
+}
+
+/**
+ * Gate every request while maintenance is on.
+ *
+ * Returns a response to serve, or null to let the request through. Runs BEFORE
+ * the demo gate and the domain split: when the platform is closed, nothing
+ * else about the request matters.
+ */
+async function maintenanceGate(req: NextRequest, path: string): Promise<NextResponse | null> {
+  if (isMaintenanceExemptPath(path)) return null;
+
+  const state = await maintenanceState(req);
+  if (!state?.on) return null;
+
+  // A valid, unexpired, correctly-scoped bypass token lets an operator through.
+  const bypass = await verifyToken(req.cookies.get(MAINTENANCE_BYPASS_COOKIE)?.value, {
+    scope: MAINTENANCE_BYPASS_SCOPE,
+  });
+  if (bypass) return null;
+
+  if (wantsJsonMaintenanceResponse(path)) return maintenanceJson();
+
+  // Rewrite (not redirect) so the visitor keeps the URL they asked for and
+  // simply finds the site closed — and so a crawler sees 503 at that URL
+  // rather than a 307 to a page that returns 200.
+  const res = NextResponse.rewrite(new URL(UNDER_CONSTRUCTION_PATH, req.nextUrl), { status: 503 });
+  res.headers.set('Retry-After', '600');
+  res.headers.set('Cache-Control', 'no-store');
+  res.headers.set('CDN-Cache-Control', 'no-store');
+  return res;
+}
+
 
 // ─────────────────────────── API rate limiting ───────────────────────────────
 // In-memory fixed-window limiter. This deployment is a single long-lived
@@ -174,6 +302,12 @@ export async function middleware(req: NextRequest) {
   const url = req.nextUrl;
   const path = url.pathname;
 
+  // ─── Maintenance gate ──────────────────────────────────────────────────
+  // Checked before everything else: when the platform is closed, no other
+  // routing decision matters.
+  const closed = await maintenanceGate(req, path);
+  if (closed) return closed;
+
   // ─── Demo gate ─────────────────────────────────────────────────────────
   // When DEMO_MODE=true on this runtime, every page request needs a valid
   // signed gate cookie. The gate is intentionally a WEB-UI-only guard — it
@@ -239,6 +373,10 @@ export async function middleware(req: NextRequest) {
     !path.startsWith('/api/') &&
     !path.startsWith('/_next') &&
     !path.startsWith('/demo-gate') &&
+    // The holding page and the bypass-claim route are valid on BOTH hosts:
+    // bypass cookies are host-only, so an operator must be able to claim one
+    // on the portal without being bounced to the customer site.
+    !isMaintenanceInfraPath(path) &&
     !ASSET_RE.test(path)
   ) {
     const isLoginPath = path === '/login' || path.startsWith('/login/');
