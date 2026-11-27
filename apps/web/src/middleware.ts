@@ -9,6 +9,7 @@ import {
   UNDER_CONSTRUCTION_PATH,
   isMaintenanceExemptPath,
   isMaintenanceInfraPath,
+  loopbackStatusOrigin,
   wantsJsonMaintenanceResponse,
 } from '@/server/maintenance-paths';
 import { PLATFORM_ROLES, pageGateFor, can } from '@/server/permissions';
@@ -58,10 +59,13 @@ async function maintenanceState(req: NextRequest): Promise<MaintCache | null> {
   if (fresh) return MAINT_CACHE;
 
   if (!MAINT_INFLIGHT) {
-    // Self-fetch. `req.nextUrl.origin` is the local socket (127.0.0.1:3000)
-    // behind `next start`, which is what we want: the request stays inside the
-    // box rather than going out through nginx and Cloudflare and back.
-    const base = `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+    // Loopback, scheme forced to http -- see loopbackStatusOrigin() for why
+    // deriving this from req.nextUrl silently disabled the whole gate in
+    // production while passing every local test.
+    const base = loopbackStatusOrigin(req.nextUrl, {
+      MAINTENANCE_STATUS_ORIGIN: process.env.MAINTENANCE_STATUS_ORIGIN,
+      PORT: process.env.PORT,
+    });
     MAINT_INFLIGHT = fetch(`${base}${MAINTENANCE_STATUS_ENDPOINT}`, {
       cache: 'no-store',
       headers: { 'x-maintenance-probe': '1' },
@@ -72,7 +76,14 @@ async function maintenanceState(req: NextRequest): Promise<MaintCache | null> {
         const j = (await r.json()) as { on?: boolean; message?: string | null };
         MAINT_CACHE = { on: j?.on === true, message: j?.message ?? null, fetchedAt: Date.now() };
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        // LOUDLY. Failing open in silence is how this gate spent a whole
+        // production deploy doing nothing while reporting healthy. At most one
+        // line per TTL, since there is at most one fetch per TTL.
+        console.error(
+          `[maintenance] status read failed from ${base} \u2014 failing ${MAINT_CACHE ? 'to last known state' : 'OPEN'}:`,
+          err instanceof Error ? err.message : String(err),
+        );
         // Keep the last known value; only mark it refreshed so a hard-down
         // status endpoint can't spin one fetch per request.
         if (MAINT_CACHE) MAINT_CACHE = { ...MAINT_CACHE, fetchedAt: Date.now() };
