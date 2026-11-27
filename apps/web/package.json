@@ -41,7 +41,11 @@
     "test:e2e": "playwright test",
     "uat:phonepe": "tsx scripts/phonepe-uat.ts",
     "check:responsive": "node ../../scripts/check-responsive.mjs",
-    "ci": "npm run typecheck && npm run lint && npm run check:responsive && npm run test:ci"
+    "ci": "npm run typecheck && npm run lint && npm run check:responsive && npm run test:ci",
+    "maintenance:status": "tsx scripts/maintenance.ts status",
+    "maintenance:on": "tsx scripts/maintenance.ts on",
+    "maintenance:off": "tsx scripts/maintenance.ts off",
+    "maintenance:bypass": "tsx scripts/maintenance.ts bypass"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
