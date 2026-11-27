@@ -94,6 +94,15 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
             >
               Try again
             </button>
+            {/*
+              A plain <a>, not next/link, and deliberately so: the root layout
+              has crashed, so the client router is running in a broken tree.
+              A client-side navigation would route through the very runtime
+              that just failed; a full document load is the point. eslint's
+              no-html-link-for-pages optimises for SPA navigation, which is
+              the wrong goal on a last-resort error page.
+            */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
               href="/"
               style={{

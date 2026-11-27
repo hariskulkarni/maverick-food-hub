@@ -11,6 +11,7 @@ import {
   isMaintenanceExemptPath,
   wantsJsonMaintenanceResponse,
   isMaintenanceInfraPath,
+  loopbackStatusOrigin,
   MAINTENANCE_BYPASS_COOKIE,
   MAINTENANCE_BYPASS_SCOPE,
   MAINTENANCE_STATUS_ENDPOINT,
@@ -114,6 +115,34 @@ describe('routes valid on BOTH hostnames', () => {
     for (const p of ['/admin', '/login', '/api/system/maintenance', '/under-construction-notes']) {
       expect(isMaintenanceInfraPath(p)).toBe(false);
     }
+  });
+});
+
+describe('loopback status origin \u2014 regression, prod outage 2026-11-27', () => {
+  it('forces http and 127.0.0.1, never the scheme from nextUrl', () => {
+    // Next 15.5.28 honours X-Forwarded-Proto when building nextUrl, so behind
+    // nginx it reads `https://localhost:3000` -- https scheme, loopback host.
+    // Deriving the origin from it meant TLS against a plain HTTP port, an
+    // instant "wrong version number", and a gate that silently failed open.
+    // 15.5.18 did not honour that header, so it passed every local test.
+    expect(loopbackStatusOrigin({ port: '3000' })).toBe('http://127.0.0.1:3000');
+    expect(loopbackStatusOrigin({ port: '3000' })).not.toContain('https');
+    expect(loopbackStatusOrigin({ port: '3000' })).not.toContain('localhost');
+  });
+
+  it('keeps a non-default port so a relocated app still reads its own flag', () => {
+    expect(loopbackStatusOrigin({ port: '3001' })).toBe('http://127.0.0.1:3001');
+  });
+
+  it('falls back to PORT, then to Next default', () => {
+    expect(loopbackStatusOrigin({}, { PORT: '4000' })).toBe('http://127.0.0.1:4000');
+    expect(loopbackStatusOrigin({})).toBe('http://127.0.0.1:3000');
+  });
+
+  it('honours an explicit override, trailing slash and all', () => {
+    expect(
+      loopbackStatusOrigin({ port: '3000' }, { MAINTENANCE_STATUS_ORIGIN: 'http://app.internal:8080/' }),
+    ).toBe('http://app.internal:8080');
   });
 });
 

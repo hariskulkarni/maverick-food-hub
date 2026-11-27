@@ -87,6 +87,36 @@ export function isMaintenanceExemptPath(path: string): boolean {
 }
 
 /**
+ * Origin for middleware's loopback read of the maintenance flag.
+ *
+ * The scheme is ALWAYS http and the host ALWAYS 127.0.0.1. This looks
+ * over-specified until you know what it is defending against:
+ *
+ *   Next 15.5.28 honours `X-Forwarded-Proto` when building `req.nextUrl`, so
+ *   behind nginx (which sets it to https) nextUrl becomes
+ *   `https://localhost:3000` -- https scheme, loopback host. Fetching that is
+ *   TLS against a plain HTTP port: it fails instantly with "wrong version
+ *   number", the status read fails, and the gate fails open. The whole switch
+ *   silently does nothing while reporting healthy.
+ *
+ *   Next 15.5.18 did NOT honour that header, so deriving the origin from
+ *   nextUrl worked in dev and on the previous patch release, and broke only in
+ *   production (2026-11-27). Hence: never derive it.
+ *
+ * The port still comes from nextUrl when that is the socket address, so a
+ * non-default port keeps working; MAINTENANCE_STATUS_ORIGIN overrides
+ * everything if the app is ever fronted differently.
+ */
+export function loopbackStatusOrigin(
+  nextUrl: { port?: string },
+  env: { MAINTENANCE_STATUS_ORIGIN?: string; PORT?: string } = {},
+): string {
+  if (env.MAINTENANCE_STATUS_ORIGIN) return env.MAINTENANCE_STATUS_ORIGIN.replace(/\/+$/, '');
+  const port = nextUrl?.port || env.PORT || '3000';
+  return `http://127.0.0.1:${port}`;
+}
+
+/**
  * The two maintenance routes that are valid on BOTH hostnames.
  *
  * The domain split (see `hosts.ts`) otherwise bounces anything that isn't a

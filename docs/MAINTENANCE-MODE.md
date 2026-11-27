@@ -84,6 +84,15 @@ A stale entry is refreshed synchronously rather than served stale, so the
 request", where the request that slips through is the one you were trying to
 stop.
 
+The loopback origin is hardcoded to `http://127.0.0.1:<port>` and must never be
+derived from `req.nextUrl`. Next 15.5.28 honours `X-Forwarded-Proto` when
+building it, so behind nginx nextUrl reads `https://localhost:3000` — https
+scheme, loopback host — and fetching that is TLS against a plain HTTP port.
+15.5.18 did not honour the header, so deriving it worked locally and silently
+disabled the entire gate in production. Pinned by a unit test
+(`loopbackStatusOrigin`), and a failed status read is now logged rather than
+swallowed.
+
 ### Why its own table
 
 `PlatformFlag` is deliberately **not** the encrypted platform-config blob that
@@ -141,6 +150,18 @@ npm run maintenance:on -- --message "Back by 2am IST."
 
 # 5. Verify through the bypass, then reopen.
 npm run maintenance:off
+```
+
+Check for in-flight work first — riders can't complete a handover while the API
+is closed. Note the `sed 's/?.*//'`: Prisma's URL carries `?schema=public`,
+which `psql` rejects outright.
+
+```bash
+DB=$(grep -m1 '^DATABASE_URL' .env | cut -d'"' -f2 | sed 's/?.*//')
+psql "$DB" -P pager=off -c "SELECT status, COUNT(*) FROM \"Order\" WHERE status IN
+  ('PAYMENT_PENDING','RECEIVED','ACCEPTED','PREPARING','READY','RIDER_ASSIGNED',
+   'RIDER_REACHED_RESTAURANT','PICKED_UP','OUT_FOR_DELIVERY','RIDER_REACHED_CUSTOMER')
+  GROUP BY status ORDER BY status;"
 ```
 
 Check it took effect from outside:
